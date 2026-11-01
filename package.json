@@ -1,0 +1,13 @@
+{
+  "name": "@orix/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ORIX — Open Research & Intelligence eXplorer",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "check": "node --check src/cli.mjs && node --check src/core/inspect.mjs",
+    "test": "node --test"
+  },
+  "license": "Apache-2.0"
+}
