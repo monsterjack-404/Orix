@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { inspect_file } from '../src/core/inspect.mjs';
 import { scan_directory } from '../src/analyzer/scan.mjs';
 import { parse_arguments } from '../src/cli/arguments.mjs';
-import { create_elf_fixture } from './helpers.mjs';
+import { create_elf_fixture, create_pe_fixture, create_zip_fixture } from './helpers.mjs';
 
 async function with_temp_dir(callback) {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-test-'));
@@ -84,5 +84,45 @@ test('scan coverage marks an actually exceeded file cap as truncated', async () 
     const report = await scan_directory(directory, { limits: { max_scan_files: 1, max_scan_directories: 10, max_scan_entries: 20 } });
     assert.equal(report.scan.files_analyzed, 1);
     assert.equal(report.scan.coverage.truncated, true);
+  });
+});
+
+
+test('inspect_file attaches explainable PE section indicators to the artifact report', async () => {
+  await with_temp_dir(async directory => {
+    const file = path.join(directory, 'review.exe');
+    const image = create_pe_fixture();
+    const section_table = 0x80 + 4 + 20 + 224;
+    image.writeUInt32LE(0xe0000020, section_table + 36);
+    await writeFile(file, image);
+    const report = await inspect_file(file);
+    assert.ok(report.indicators.some(item => item.rule_id === 'ORIX-PE-WRITABLE-EXECUTABLE-001'));
+    assert.equal(report.indicators.find(item => item.rule_id === 'ORIX-PE-WRITABLE-EXECUTABLE-001').confidence, 'derived');
+  });
+});
+
+test('inspect_file reports unsafe ZIP metadata without extracting archive entries', async () => {
+  await with_temp_dir(async directory => {
+    const file = path.join(directory, 'archive.zip');
+    await writeFile(file, create_zip_fixture('../outside.txt', 'metadata-only'));
+    const report = await inspect_file(file);
+    assert.equal(report.parser.status, 'parsed');
+    assert.ok(report.indicators.some(item => item.rule_id === 'ORIX-ZIP-UNSAFE-ENTRY-001'));
+    assert.match(report.parser.result.notes.join(' '), /does not extract/);
+  });
+});
+
+test('directory scan aggregates indicator counts independently of format counts', async () => {
+  await with_temp_dir(async directory => {
+    const image = create_pe_fixture();
+    const section_table = 0x80 + 4 + 20 + 224;
+    image.writeUInt32LE(0xe0000020, section_table + 36);
+    await writeFile(path.join(directory, 'review.exe'), image);
+    await writeFile(path.join(directory, 'plain.bin'), Buffer.from('ordinary printable content'));
+    const report = await scan_directory(directory);
+    assert.equal(report.scan.files_with_indicators, 1);
+    assert.equal(report.scan.indicator_counts.high, 1);
+    assert.equal(report.scan.formats.PE, 1);
+    assert.equal(report.artifacts.length, 2);
   });
 });

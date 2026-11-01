@@ -1,6 +1,6 @@
 # CLI and Automation Guide
 
-The CLI is the supported human and automation entry point for ORIX 0.2.0. It is a thin command layer over the same programmatic functions exported from `src/index.mjs`.
+The CLI is the supported human and automation entry point for ORIX 0.2.1. It is a thin command layer over the same programmatic functions exported from `src/index.mjs`.
 
 ## Commands
 
@@ -19,6 +19,7 @@ An inspection report contains:
 - `detection`: signature candidate, description and confidence;
 - `parser`: one of `parsed`, `rejected` or `not-supported`, plus parser result or structured error;
 - `metrics`: byte entropy, extracted printable strings and a bounded hex preview;
+- `indicators`: deterministic rule IDs, severity, confidence and bounded supporting observations;
 - `evidence`: provenance records with offsets and confidence;
 - `warnings`: limits, parser rejection and consistency warnings.
 
@@ -30,7 +31,7 @@ node src/cli.mjs scan ./release --json --max-files 2000 --max-depth 12
 node src/cli.mjs scan ./release --concurrency 2 --no-strings
 ```
 
-A scan report stores the aggregate summary separately from each artifact result. Per-file errors are isolated. The inventory has a `truncated` flag and skipped-entry list; consumers must inspect these before claiming full coverage.
+A scan report stores the aggregate summary separately from each artifact result. It includes `files_with_indicators` and `indicator_counts`, while each artifact retains its own rule findings. Per-file errors are isolated. The inventory has a `truncated` flag and skipped-entry list; consumers must inspect these before claiming full coverage.
 
 ### List known signatures
 
@@ -38,7 +39,7 @@ A scan report stores the aggregate summary separately from each artifact result.
 node src/cli.mjs formats
 ```
 
-This command lists both recognized signatures and, by implication, formats that still need structural parsers. Use the format support matrix for the precise parser state.
+This command lists both recognized signatures and, by implication, formats that still need structural parsers. Use the format support matrix for the precise parser state. Static indicator rules are separate from signature recognition; see [`INDICATORS.md`](INDICATORS.md) for trigger conditions and false-positive guidance.
 
 ## Output contracts
 

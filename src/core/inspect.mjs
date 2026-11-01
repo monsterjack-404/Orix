@@ -9,6 +9,7 @@ import { extract_strings } from './strings.mjs';
 import { analyze_known_format } from '../formats/index.mjs';
 import { create_evidence } from './evidence.mjs';
 import { OrixError } from './errors.mjs';
+import { evaluate_indicators } from '../analyzer/indicators.mjs';
 
 async function hash_file_handle(handle, file_size) {
   const hash = createHash('sha256');
@@ -83,6 +84,15 @@ export async function inspect_file(file_path, options = {}) {
     if (analyzed.parser_status === 'parsed') {
       evidence.push(create_evidence({ kind: 'format-structure', summary: `${analyzed.detection.format} header structures parsed with bounds checks`, source: absolute_path, offset: 0, length: bytes.length, confidence: 'derived', details: { top_level_keys: Object.keys(analyzed.parsed) } }));
     }
+    const indicators = evaluate_indicators({
+      format: analyzed.detection.format,
+      parser_status: analyzed.parser_status,
+      parsed: analyzed.parsed,
+      parser_error: analyzed.parser_error,
+      entropy,
+      strings,
+      stable_during_read,
+    });
     return {
       schema_version: 'orix.artifact.v1',
       artifact: {
@@ -104,6 +114,7 @@ export async function inspect_file(file_path, options = {}) {
         hex_preview_bytes: preview_length,
       },
       evidence,
+      indicators,
       warnings: [
         ...(bytes.length < opened.size ? [`Only the first ${bytes.length} bytes were parsed; file size is ${opened.size} bytes.`] : []),
         ...(!stable_during_read ? ['File metadata changed while it was inspected; repeat the analysis against a stable copy.'] : []),

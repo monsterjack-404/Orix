@@ -56,3 +56,8 @@ A parser is ready for registration only after it has:
 8. A documented distinction between raw offsets, virtual addresses, RVAs and indices.
 
 Do not use file extensions as a substitute for signature recognition. Extensions may be useful contextual metadata, but they are user-controlled labels.
+
+
+## Indicator integration
+
+Format parsers return structural facts only. A separate analyzer evaluates selected parsed fields without changing parser output. For PE, it reviews section permission combinations and raw-file ranges. For ZIP, it inspects entry path and symlink metadata. The static indicator catalogue is maintained in [`INDICATORS.md`](INDICATORS.md); those findings are triage leads and do not extend the parser's semantic coverage.

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orix.scan.v1.schema.json",
+  "title": "ORIX Directory Scan Report v1",
+  "type": "object",
+  "required": ["schema_version", "scan", "artifacts", "errors", "inventory_skips", "limitations"],
+  "properties": {
+    "schema_version": { "const": "orix.scan.v1" },
+    "scan": {
+      "type": "object",
+      "required": ["root", "started_at", "completed_at", "duration_ms", "coverage", "files_analyzed", "files_skipped", "total_bytes_analyzed", "formats"],
+      "properties": {
+        "root": { "type": "string" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "completed_at": { "type": "string", "format": "date-time" },
+        "duration_ms": { "type": "number", "minimum": 0 },
+        "coverage": { "type": "object", "required": ["directories_examined", "entries_examined", "files_discovered", "truncated"], "additionalProperties": true },
+        "files_analyzed": { "type": "integer", "minimum": 0 },
+        "files_skipped": { "type": "integer", "minimum": 0 },
+        "total_bytes_analyzed": { "type": "integer", "minimum": 0 },
+        "formats": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "files_with_indicators": { "type": "integer", "minimum": 0 },
+        "indicator_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+      },
+      "additionalProperties": true
+    },
+    "artifacts": { "type": "array", "items": { "$ref": "artifact.v1.schema.json" } },
+    "errors": { "type": "array", "items": { "type": "object", "required": ["status", "path", "error"], "additionalProperties": true } },
+    "inventory_skips": { "type": "array", "items": { "type": "object", "required": ["path", "reason"], "additionalProperties": true } },
+    "limitations": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

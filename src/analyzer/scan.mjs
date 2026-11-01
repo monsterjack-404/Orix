@@ -36,11 +36,17 @@ export async function scan_directory(root_path, options = {}) {
   const analyzed = results.filter(item => item.status === 'analyzed');
   const skipped = results.filter(item => item.status === 'skipped');
   const formats = {};
+  const indicator_counts = {};
+  const files_with_indicators = new Set();
   let total_bytes = 0;
   for (const item of analyzed) {
     total_bytes += item.artifact.artifact.size_bytes;
     const format = item.artifact.detection.format;
     formats[format] = (formats[format] ?? 0) + 1;
+    if (item.artifact.indicators?.length) files_with_indicators.add(item.path);
+    for (const indicator of item.artifact.indicators ?? []) {
+      indicator_counts[indicator.severity] = (indicator_counts[indicator.severity] ?? 0) + 1;
+    }
   }
   return {
     schema_version: 'orix.scan.v1',
@@ -54,6 +60,8 @@ export async function scan_directory(root_path, options = {}) {
       files_skipped: skipped.length + inventory.skipped.length,
       total_bytes_analyzed: total_bytes,
       formats: Object.fromEntries(Object.entries(formats).sort(([a], [b]) => a.localeCompare(b))),
+      files_with_indicators: files_with_indicators.size,
+      indicator_counts: Object.fromEntries(['critical','high','medium','low','info'].filter(key => indicator_counts[key]).map(key => [key, indicator_counts[key]])),
     },
     artifacts: analyzed.map(item => item.artifact),
     errors: skipped,

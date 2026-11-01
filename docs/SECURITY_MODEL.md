@@ -2,7 +2,7 @@
 
 ## Current security posture
 
-ORIX 0.2.0 is a static local inspector. It reads file bytes, calculates hashes, extracts printable strings, calculates entropy, parses selected headers and writes optional reports. It does not execute the target, load a target library, attach to another process, modify the artifact, elevate privileges, connect to the network or dynamically load third-party parser code.
+ORIX 0.2.1 is a static local inspector. It reads file bytes, calculates hashes, extracts printable strings, calculates entropy, parses selected headers and writes optional reports. It does not execute the target, load a target library, attach to another process, modify the artifact, elevate privileges, connect to the network or dynamically load third-party parser code.
 
 ## Threats considered
 
@@ -16,6 +16,12 @@ ORIX 0.2.0 is a static local inspector. It reads file bytes, calculates hashes, 
 | Report overwrite | `--out` uses exclusive-create semantics | Parent-directory permissions and storage integrity remain OS responsibilities |
 | False confidence | Evidence confidence labels, explicit parser status and limitations | Users can still over-interpret results; reports must be read with their warnings |
 | Dependency supply chain | No third-party runtime dependencies in current package | Node.js runtime, npm and development tooling still require trusted acquisition |
+
+## Static indicator interpretation
+
+The built-in rule set is deliberately small and explainable. It can report PE writable/executable sections, invalid section raw ranges, unsafe ZIP entry paths or symlink markers, encrypted ZIP entries, high-entropy samples, selected process-memory or credential-access API-name strings, parser rejection and file-metadata instability. Each finding carries a stable rule ID, a triage severity, a confidence label and a bounded list of supporting observations.
+
+These findings are not detections of malicious behavior. API-name strings do not prove that a symbol is imported or called. High entropy commonly appears in ordinary compressed or encrypted content. Writable/executable memory can have legitimate uses. Unsafe archive paths identify a risk if an extracting consumer handles them incorrectly; ORIX itself does not extract them. A report without findings is not a benign verdict.
 
 ## Input handling rules
 

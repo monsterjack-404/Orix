@@ -1,6 +1,6 @@
 # ORIX Architecture
 
-This document describes the 0.2.0 implementation and the constraints new modules must preserve. The architecture is intentionally layered: file acquisition owns filesystem facts, the binary reader owns offset validation, format parsers own format interpretation, analyzers own orchestration, evidence owns provenance, and renderers own presentation.
+This document describes the 0.2.1 implementation and the constraints new modules must preserve. The architecture is intentionally layered: file acquisition owns filesystem facts, the binary reader owns offset validation, format parsers own format interpretation, analyzers own orchestration, evidence owns provenance, and renderers own presentation.
 
 ## 1. Runtime boundaries
 
@@ -34,7 +34,8 @@ src/index.mjs exposes the supported programmatic surface.
 | `formats/registry` | Leading-byte signature recognition and supported-format metadata | Extension-based proof or parser behavior |
 | `formats/*` | Format-specific field offsets, endianness, count and range validation | Filesystem access, execution, network or report output |
 | `analyzer/walk` | Deterministic inventory, ignored directories, no-follow traversal, depth and count limits | Parsing file contents |
-| `analyzer/scan` | Concurrency, per-file isolation, aggregate counts and coverage | Reinterpreting parser fields |
+| `analyzer/scan` | Concurrency, per-file isolation, aggregate counts, indicator counts and coverage | Reinterpreting parser fields |
+| `analyzer/indicators` | Deterministic rule evaluation over parser output and bounded metrics | Executing samples, network lookups, opaque scoring or final malware verdicts |
 | `core/evidence` | Evidence identity, provenance, confidence labels and details | User-facing verdicts |
 | `reports/*` | JSON and Markdown rendering | New analysis or silent data loss |
 | `cli/*` | Arguments, command routing, output destination selection | Parser implementation |
@@ -66,7 +67,7 @@ A direct parser call may throw `OrixError`. `analyze_known_format` catches parse
 
 ## 5. Parsing pipeline
 
-The registry identifies a candidate format from a leading signature. A parser is selected only when a corresponding parser is registered. A signature can be forged, truncated or embedded in unrelated content; parsers therefore validate the relevant structures again.
+The registry identifies a candidate format from a leading signature. A parser is selected only when a corresponding parser is registered. After parsing, the indicator engine evaluates an explicit set of bounded rules against the parser result, entropy metrics, selected extracted strings and file-stability metadata. The engine emits rule IDs, severity, confidence and evidence references; it never executes the artifact. A signature can be forged, truncated or embedded in unrelated content; parsers therefore validate the relevant structures again.
 
 Implemented structural parsers:
 
@@ -78,7 +79,13 @@ Implemented structural parsers:
 
 Parser output contains `notes` describing unimplemented work. The absence of a field is not evidence that the field or structure is absent from the original artifact.
 
-## 6. Evidence model
+## 6. Static indicator model
+
+The initial indicator rules are intentionally transparent. They cover PE sections marked both writable and executable, PE section raw ranges outside supplied bytes, ZIP absolute/parent-traversal or symbolic-link entries, encrypted ZIP entries, high-entropy samples above a documented minimum size, selected process-memory and credential-access API-name strings, parser rejection, and metadata changes during acquisition.
+
+Severity is triage priority, not a probability. High entropy is low severity because compression and encryption are common in benign data. API strings are heuristic because their presence does not prove an import or call. Parser rejection is an observed structural result, not a maliciousness verdict. The rules sort deterministically so the same report data yields the same finding order.
+
+## 7. Evidence model
 
 Evidence is emitted with:
 
@@ -92,7 +99,7 @@ Evidence is emitted with:
 
 The model is intended to evolve into persisted, cross-tool evidence without coupling parsers to a database. Future identifiers should be stable across process restarts, and evidence should gain artifact identity, tool version and parent-evidence references before cross-session reuse.
 
-## 7. Directory scanning
+## 8. Directory scanning
 
 The walker uses `Dirent` data, sorts entries deterministically and does not follow symlinks. Common generated directories are excluded. It returns both discovered files and skipped-entry reasons. Limits apply to file count and depth.
 
@@ -100,13 +107,13 @@ The scanner uses a bounded worker pool. Each file is inspected independently; on
 
 The current design is sequential at directory-inventory time and bounded-concurrent at file-analysis time. Do not add unbounded `Promise.all` over user-controlled directory contents.
 
-## 8. Reports and compatibility
+## 9. Reports and compatibility
 
 JSON is the canonical machine-readable output. Markdown is a view over the same report object. If a new report field is added, update schema/version documentation and both renderers where needed. Renderers must not invent fields or claim certainty beyond report evidence.
 
 Report schema identifiers are currently `orix.artifact.v1`, `orix.scan.v1` and `orix.formats.v1`. Breaking output changes require a schema version change and migration notes.
 
-## 9. Extension strategy
+## 10. Extension strategy
 
 New analyzers should be independent modules with explicit resource budgets and typed output. New external engines should be implemented behind optional adapters that describe version detection, capability probing, input/output mapping, process ownership, timeouts, cancellation and cleanup. The core must remain useful when no external engine is installed.
 

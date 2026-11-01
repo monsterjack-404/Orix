@@ -12,7 +12,9 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - Streaming SHA-256, entropy, bounded string extraction and evidence records.
 - Symlink-safe directory inventory and bounded concurrent inspection.
 - JSON and Markdown report renderers.
-- Malformed input, filesystem and CLI integration tests.
+- Deterministic static indicator rules with severity, confidence, rule IDs and supporting evidence.
+- Aggregated indicator counts in directory scans.
+- Malformed input, parser, indicator, report, filesystem and CLI integration tests.
 
 ## 0.3 — Structural Analysis Expansion
 

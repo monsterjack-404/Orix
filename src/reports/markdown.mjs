@@ -32,7 +32,14 @@ export function render_inspection_markdown(report) {
     `- Shannon entropy: **${report.metrics.entropy.bits_per_byte} bits/byte** (${report.metrics.entropy.scope})`,
     `- Extracted strings: **${report.metrics.strings.count}**`,
     `- Hex preview: \`${report.metrics.hex_preview || '(empty)'}\``,
-    '', '## Extracted strings', '',
+    '', '## Static indicators', '');
+  if (report.indicators?.length) {
+    lines.push('| Severity | Rule | Confidence | Finding |', '|---|---|---|---|');
+    for (const indicator of report.indicators) lines.push(`| ${indicator.severity} | ${indicator.rule_id} | ${indicator.confidence} | ${escape_cell(indicator.summary)} |`);
+  } else {
+    lines.push('No built-in static indicator rules matched the analyzed sample.');
+  }
+  lines.push('', '## Extracted strings', '',
     '| Offset | Encoding | Length | Value |', '|---:|---|---:|---|');
   for (const item of report.metrics.strings.values) lines.push(`| ${item.offset} | ${item.encoding} | ${item.length} | ${escape_cell(item.value)} |`);
   lines.push('', '## Evidence', '', '| ID | Kind | Confidence | Offset | Summary |', '|---|---|---|---:|---|');
@@ -48,7 +55,9 @@ export function render_scan_markdown(report) {
     `- **Root:** \`${report.scan.root}\``,
     `- **Files analyzed:** ${report.scan.files_analyzed}`,
     `- **Files skipped:** ${report.scan.files_skipped}`,
+    `- **Files with indicators:** ${report.scan.files_with_indicators ?? 0}`,
     `- **Bytes analyzed:** ${byte_size(report.scan.total_bytes_analyzed)}`,
+    `- **Indicator counts:** ${Object.entries(report.scan.indicator_counts ?? {}).map(([key, value]) => `${key}=${value}`).join(', ') || 'none'}`,
     `- **Duration:** ${report.scan.duration_ms} ms`, '',
     '## Format distribution', '', '| Format | Files |', '|---|---:|',
   ];
@@ -56,6 +65,11 @@ export function render_scan_markdown(report) {
   lines.push('', '## Artifacts', '', '| File | Format | Size | SHA-256 | Parser |', '|---|---|---:|---|---|');
   for (const artifact of report.artifacts) {
     lines.push(`| \`${escape_cell(artifact.artifact.path)}\` | ${artifact.detection.format} | ${byte_size(artifact.artifact.size_bytes)} | \`${artifact.integrity.digest}\` | ${artifact.parser.status} |`);
+  }
+  const indicators = report.artifacts.flatMap(artifact => (artifact.indicators ?? []).map(indicator => ({ path: artifact.artifact.path, ...indicator })));
+  if (indicators.length) {
+    lines.push('', '## Static indicators', '', '| Severity | Rule | File | Finding |', '|---|---|---|---|');
+    for (const indicator of indicators) lines.push(`| ${indicator.severity} | ${indicator.rule_id} | \`${escape_cell(indicator.path)}\` | ${escape_cell(indicator.summary)} |`);
   }
   if (report.errors.length) {
     lines.push('', '## File errors', '');

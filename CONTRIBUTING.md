@@ -4,7 +4,7 @@ ORIX welcomes focused contributions that make inspection more correct, explainab
 
 ## Before changing code
 
-1. Read `docs/ARCHITECTURE.md`, `docs/FORMATS.md` and `docs/SECURITY_MODEL.md`.
+1. Read `docs/ARCHITECTURE.md`, `docs/FORMATS.md`, `docs/INDICATORS.md` and `docs/SECURITY_MODEL.md`.
 2. Identify the component that owns the behavior. Do not duplicate interpretation in downstream layers.
 3. Search existing tests and report contracts before adding a parallel abstraction.
 4. For third-party engines, libraries, fixtures or copied snippets, record the source and license before implementation.
@@ -41,6 +41,8 @@ npm test
 - [ ] Count-limit and integer-overflow tests.
 - [ ] Unsupported version or extension behavior is explicit.
 - [ ] Parser notes document structures that are not yet decoded.
+- [ ] Indicator rules include a stable ID, severity, confidence, bounded evidence and false-positive notes.
+- [ ] No heuristic is phrased as a malware verdict.
 - [ ] Format support matrix and README are updated.
 - [ ] Tests and syntax checks pass locally.
 

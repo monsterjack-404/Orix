@@ -4,7 +4,7 @@
 
 ORIX is a local-first engineering intelligence workbench for inspecting software artifacts, reconstructing file-format structure, and preserving the evidence behind every conclusion. It is designed as a serious, extensible foundation for authorized reverse engineering and software research—not a wrapper that hides its methods and not a collection of aspirational feature folders.
 
-> Current release line: **0.2.0 — Artifact Intelligence Core**  
+> Current release line: **0.2.1 — Artifact Intelligence Core + Static Indicator Layer**  
 > Runtime: **Node.js 20.11 or newer**  
 > Dependencies: **Node.js built-ins only**  
 > Execution model: **local, static, read-only analysis**
@@ -25,9 +25,12 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Mach-O parser | Thin 32-bit/64-bit header and bounded load-command framing | Does not expand universal containers or decode command-specific payloads |
 | WebAssembly parser | Module version, bounded section framing and custom section names | Does not validate instruction semantics or decompile code |
 | Static metrics | Shannon entropy, ASCII/UTF-16LE string extraction and bounded hex preview | Metrics are descriptive, not malware verdicts |
+| Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
 | Evidence model | Stable evidence records with source, offsets, confidence and structured details | Evidence is local to the generated report; no database is required |
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
-| Reports | JSON and Markdown for single-file and directory results | No hosted dashboard yet |
+| Reports | JSON and Markdown for single-file and directory results, including indicator severity and rule IDs | No hosted dashboard or persistent case store yet |
+
+Static indicator rules operate only on already-parsed metadata and bounded extracted strings. Each finding includes a rule ID, severity, confidence and supporting evidence. A clean report means only that the built-in rules did not match; it is not a safety certification.
 
 Formats without a parser are still identified where their signatures are recognized. They are reported as `not-supported`, rather than pretending that a header was decoded.
 
@@ -120,6 +123,7 @@ const artifact = await inspect_file('./sample.bin', {
 
 console.log(artifact.detection.format);
 console.log(artifact.integrity.digest);
+console.log(artifact.indicators);
 console.log(render_inspection_markdown(artifact));
 
 const inventory = await scan_directory('./artifacts', {
@@ -129,6 +133,23 @@ console.log(inventory.scan.formats);
 ```
 
 All parser entry points accept a `Buffer` and return plain JSON-compatible data. Malformed input is represented by typed `OrixError` values at direct parser boundaries; the format dispatcher preserves detection metadata and returns a structured parser rejection instead of losing the original signature result.
+
+## Static indicator layer
+
+Every artifact report includes an `indicators` array. The current rules are transparent and deterministic:
+
+| Rule family | What is surfaced | Why it is not a verdict |
+|---|---|---|
+| PE section permissions | Sections marked both writable and executable | Some runtimes and specialized binaries legitimately use this combination |
+| PE section ranges | Raw section ranges outside the analyzed bytes | Truncation and unsupported layouts can produce structural mismatches |
+| ZIP entry metadata | Absolute paths, parent traversal, symbolic-link markers and encrypted entries | Risk depends on how another program handles extraction; ORIX does not extract |
+| Entropy | Samples at or above 7.2 bits/byte with at least 1 KiB of data | Compression and encryption commonly have high entropy |
+| Selected API strings | Exact names associated with process-memory or credential-access APIs | A string does not prove an import, call or behavior |
+| Acquisition/parser state | Parser rejection and file metadata changes during reading | These are quality and integrity warnings, not maliciousness findings |
+
+Findings carry a stable `rule_id`, severity, confidence and bounded supporting evidence. The scan command aggregates findings by severity and counts files that produced at least one result. Full trigger logic and false-positive notes live in [`docs/INDICATORS.md`](docs/INDICATORS.md). Versioned JSON Schema documents are in [`schemas/`](schemas/).
+
+A report with no indicators means only that the current built-in rules did not match. It does not certify an artifact as safe.
 
 ## Architecture
 
@@ -146,6 +167,7 @@ CLI / Programmatic API
         │     ├── streaming SHA-256
         │     ├── binary reader and typed errors
         │     ├── entropy and strings
+        │     ├── deterministic static indicator rules
         │     ├── limits and evidence provenance
         │     └── report schema assembly
         │
@@ -158,11 +180,11 @@ CLI / Programmatic API
         └── JSON / Markdown renderers
 ```
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for ownership boundaries, data flow and extension rules. See [`docs/FORMATS.md`](docs/FORMATS.md) for parser coverage and known limitations.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for ownership boundaries, data flow and extension rules; [`docs/FORMATS.md`](docs/FORMATS.md) for parser coverage; and [`docs/INDICATORS.md`](docs/INDICATORS.md) for every built-in static triage rule.
 
 ## Evidence, not unsupported certainty
 
-Every report separates direct observations from interpretation:
+Every report separates direct observations from interpretation. Static indicators are rule-addressable findings with explicit severity and confidence; evidence remains attached to the exact input feature that triggered the rule:
 
 - **Observed**: directly read from the file, such as a signature or hash.
 - **Derived**: calculated from observed bytes, such as a parsed section table.
@@ -173,6 +195,8 @@ Evidence records retain a source path and, when meaningful, byte offsets and len
 ## Safety model
 
 ORIX's current analysis pipeline is static and read-only. It does not execute samples, load target libraries, attach to processes, inject code, alter binaries, bypass access controls, harvest credentials, persist in a host, or contact remote infrastructure. It does not label a file safe or malicious solely from entropy, strings, a file extension or a header signature.
+
+Built-in indicators never execute a sample. API-name matches can be false positives, high entropy can mean ordinary compression, and a writable/executable section can have legitimate uses. Rule output must be independently reviewed.
 
 The input path is treated as untrusted. File size, prefix size, scan depth, file count, concurrency, parser section counts and retained strings are bounded. Symlinks are rejected by the file inspector and skipped during directory traversal. See [`SECURITY.md`](SECURITY.md) and [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md).
 
