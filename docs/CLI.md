@@ -1,0 +1,73 @@
+# CLI and Automation Guide
+
+The CLI is the supported human and automation entry point for ORIX 0.2.0. It is a thin command layer over the same programmatic functions exported from `src/index.mjs`.
+
+## Commands
+
+### Inspect one artifact
+
+```bash
+node src/cli.mjs inspect ./artifact.bin
+node src/cli.mjs inspect ./artifact.bin --json
+node src/cli.mjs inspect ./artifact.bin --format json --out ./artifact-report.json
+```
+
+An inspection report contains:
+
+- `artifact`: resolved path, name, extension, size, modification time, number of bytes parsed and whether the full file was parsed;
+- `integrity`: SHA-256 digest and a stability indicator;
+- `detection`: signature candidate, description and confidence;
+- `parser`: one of `parsed`, `rejected` or `not-supported`, plus parser result or structured error;
+- `metrics`: byte entropy, extracted printable strings and a bounded hex preview;
+- `evidence`: provenance records with offsets and confidence;
+- `warnings`: limits, parser rejection and consistency warnings.
+
+### Scan a directory
+
+```bash
+node src/cli.mjs scan ./release
+node src/cli.mjs scan ./release --json --max-files 2000 --max-depth 12
+node src/cli.mjs scan ./release --concurrency 2 --no-strings
+```
+
+A scan report stores the aggregate summary separately from each artifact result. Per-file errors are isolated. The inventory has a `truncated` flag and skipped-entry list; consumers must inspect these before claiming full coverage.
+
+### List known signatures
+
+```bash
+node src/cli.mjs formats
+```
+
+This command lists both recognized signatures and, by implication, formats that still need structural parsers. Use the format support matrix for the precise parser state.
+
+## Output contracts
+
+`--json` is intended for scripts and downstream tools. Do not parse the human Markdown table output as an API. The top-level `schema_version` field identifies the current report contract. Unknown fields should be ignored by consumers so the contract can grow without breaking compatible readers.
+
+`--out` is create-only: if the destination already exists, ORIX refuses to overwrite it. This prevents an output typo from replacing existing evidence. Parent directories must exist before a report is written.
+
+## Exit status
+
+- `0`: command completed and report was produced.
+- `1`: command, input, validation or output failure. The error is printed to standard error with a stable `ORIX_*` code when the failure is a typed ORIX error.
+
+A scan that contains some per-file failures still returns a report and exits successfully; inspect `errors` and `inventory_skips` to evaluate coverage.
+
+## Resource controls
+
+| Option | Default | Range |
+|---|---:|---:|
+| `--max-files` | 10,000 | 1–1,000,000 |
+| `--max-directories` | 10,000 | 1–1,000,000 |
+| `--max-entries` | 100,000 | 1–10,000,000 |
+| `--max-depth` | 24 | 0–256 |
+| `--max-read-mib` | 16 MiB | 1–512 MiB |
+| `--max-file-mib` | 128 MiB | 1–2,048 MiB |
+| `--concurrency` | 4 | 1–32 |
+| `--strings-limit` | 2,000 | 0–100,000 |
+
+`max-read-mib` cannot exceed `max-file-mib`. Programmatic callers can supply the same limits in the `limits` object, where byte values are expressed in bytes rather than MiB.
+
+## Reproducibility
+
+For reproducible reports, preserve the exact artifact bytes, ORIX version, Node.js version, command-line options and report schema version. Modification time is informational and can change when files are copied. SHA-256 is the content identity field in the current report schema.

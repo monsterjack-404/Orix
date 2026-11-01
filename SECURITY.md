@@ -1,25 +1,17 @@
 # Security Policy
 
-## Scope
+## Supported versions
 
-ORIX is intended for authorized software engineering, defensive security, and reverse-engineering research.
+ORIX is under active development. Security fixes are applied to the current `main` branch and current release line. Older snapshots may not receive backports.
 
 ## Reporting a vulnerability
 
-Do not publish exploit details or sensitive artifacts in a public issue. Use GitHub's private vulnerability reporting feature for this repository if enabled. Include the affected commit, reproduction steps, impact, and a minimal proof of concept.
+Please use GitHub's private vulnerability reporting or Security Advisories for sensitive reports. Include the affected commit or release, Node.js version, operating system, exact command, a minimal non-sensitive reproducer and observed impact. Allow maintainers a reasonable opportunity to investigate before public disclosure.
 
-## Safe-use guarantees and limits
+Do not attach credentials, proprietary binaries, personal data or private target information to a public issue. If the sample itself is sensitive, provide a hash and a sanitized reproducer first.
 
-- The current artifact inspector is read-only and does not execute inspected files.
-- File signatures are hints, not proof that a file is valid or safe.
-- Hashes identify byte content; they do not establish trust.
-- Do not analyze systems, accounts, or software without authorization.
-- Future dynamic analysis must be isolated, opt-in, resource-limited, and separately reviewed before release.
+## Security design
 
-## Maintainer checklist
+The current product is a local, static, read-only inspector. It rejects symlinks, limits file sizes and parser counts, uses bounded directory traversal and concurrency, and does not execute analyzed artifacts. These controls reduce risk but do not prove the absence of vulnerabilities.
 
-- Treat all input artifacts as untrusted.
-- Bound parser memory, recursion, and processing time.
-- Avoid shell-string execution; pass executable arguments separately.
-- Keep credentials and private artifacts out of logs and test fixtures.
-- Add regression tests for every security-relevant bug.
+See [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) for threats, mitigations, residual risks and requirements for any future dynamic-analysis subsystem.

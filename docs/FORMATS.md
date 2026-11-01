@@ -1,0 +1,58 @@
+# Format Support Matrix
+
+ORIX distinguishes **signature recognition** from **structural parsing**. Recognition answers which known leading-byte pattern matched. Parsing answers which structures were decoded and validated. Neither step proves that the file is safe, complete, authentic or semantically valid.
+
+## Recognition and parser coverage
+
+| Format | Signature recognized | Structural parser | Implemented coverage | Not implemented yet |
+|---|---:|---:|---|---|
+| PE / COFF | Yes (`MZ`) | Yes | PE pointer, signature, COFF, PE32/PE32+, selected optional fields, data directories, section records | Import/export resolution, relocations, resources, certificate validation, RVA-to-file mapping, CLR metadata |
+| ELF | Yes | Yes | ELF32/ELF64 identification, endianness, core header, section table and section names | Program segment decoding, dynamic symbols, relocations, notes, DWARF and versioned symbol resolution |
+| Thin Mach-O | Yes | Yes | 32/64-bit header, CPU metadata and bounded load-command framing | Universal/fat expansion, command-specific payloads, chained fixups, code signatures and Objective-C metadata |
+| Universal Mach-O | Yes | No | Container signature only | Architecture table parsing and slice selection |
+| WebAssembly | Yes | Yes | Version, section boundaries and custom section names | Type validation, instruction decoding, imports/exports semantics and decompilation |
+| ZIP | Yes | Yes | End-of-central-directory discovery, bounded central-directory entries, method/flag metadata, unsafe path and symlink markers, local-header range checks | ZIP64, multi-disk, decompression, CRC verification and archive-bomb analysis |
+| PDF | Yes | No | `%PDF-` prefix | Cross-reference parsing, object graph, incremental updates, embedded files and JavaScript inspection |
+| PNG | Yes | No | Eight-byte PNG signature | Chunk validation, decompression and metadata |
+| JPEG | Yes | No | JPEG SOI marker | Marker/segment parsing and image decoding |
+| SQLite | Yes | No | Sixteen-byte database signature | Page layout, schema, WAL and freelist parsing |
+| GZIP | Yes | No | GZIP magic | Header flags, decompression and trailer validation |
+
+## Parser behavior
+
+### PE/COFF
+
+The parser supports PE32 and PE32+ optional-header layouts. It retains raw machine identifiers, reports known architecture names, identifies selected DLL characteristics and checks each section's raw byte range against the supplied buffer. The security directory is identified as a file-offset directory; other data directories are reported as RVAs. No directory is dereferenced in this release.
+
+The registry initially treats the `MZ` prefix as a PE candidate. A DOS executable without a PE signature is therefore detected as candidate `PE` but correctly rejected by the PE parser.
+
+### ELF
+
+The parser validates class and byte order before selecting ELF32 or ELF64 offsets. It reads the section-header table only when declared, checks entry size and table extent, and resolves names only when the section-name table is valid. Large 64-bit offsets that cannot be represented as safe JavaScript numbers are not silently rounded.
+
+### Mach-O
+
+Only thin Mach-O headers are parsed. Magic determines byte order and 32/64-bit header size. Each load command must fit inside the declared command region, have a size of at least eight bytes and stay within the file. Command-specific payloads remain opaque.
+
+### ZIP
+
+The parser locates the end-of-central-directory record in the permitted trailing window, validates single-disk metadata and reads each central-directory record within its declared range. It reports entry names, compression methods, encryption flags, size ratios, local-header range status and suspicious absolute or parent-traversal paths. It never extracts or decompresses content. ZIP64 sentinel values and multi-disk archives are rejected explicitly.
+
+### WebAssembly
+
+The parser validates the eight-byte preamble, reads section identifiers and bounded unsigned LEB128 payload lengths, and resolves custom-section names within their own section boundary. It does not parse code instructions or assert module validity according to the full WebAssembly validation algorithm.
+
+## Adding a parser
+
+A parser is ready for registration only after it has:
+
+1. A direct Buffer API with no filesystem side effects.
+2. Signature and version checks that reject unsupported variants.
+3. Bounds-checked field reads and offset arithmetic.
+4. A configured ceiling for every count-driven structure.
+5. A valid minimal fixture and malformed/truncated fixtures.
+6. Tests for endianness and bitness variants supported by the implementation.
+7. Explicit notes for structures not decoded.
+8. A documented distinction between raw offsets, virtual addresses, RVAs and indices.
+
+Do not use file extensions as a substitute for signature recognition. Extensions may be useful contextual metadata, but they are user-controlled labels.

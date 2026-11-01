@@ -1,13 +1,17 @@
-name: CI
+name: ORIX CI
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: orix-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -18,13 +22,19 @@ jobs:
       matrix:
         node-version: [20, 22, 24]
     steps:
-      - name: Check out repository
+      - name: Check out source
         uses: actions/checkout@v4
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      - name: Syntax check
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Validate JavaScript syntax
         run: npm run check
       - name: Run tests
         run: npm test
+      - name: Generate coverage summary
+        if: matrix.node-version == 22
+        run: npm run test:coverage

@@ -1,31 +1,61 @@
-# Contributing
+# Contributing to ORIX
 
-Thanks for helping improve ORIX.
+ORIX welcomes focused contributions that make inspection more correct, explainable, bounded and reproducible. The project is early-stage; review favors working vertical slices over large unverified feature branches.
 
-## Development requirements
+## Before changing code
 
-- Node.js 20+
-- Git
+1. Read `docs/ARCHITECTURE.md`, `docs/FORMATS.md` and `docs/SECURITY_MODEL.md`.
+2. Identify the component that owns the behavior. Do not duplicate interpretation in downstream layers.
+3. Search existing tests and report contracts before adding a parallel abstraction.
+4. For third-party engines, libraries, fixtures or copied snippets, record the source and license before implementation.
 
-## Local checks
+## Development setup
+
+- Node.js 20.11 or newer.
+- npm compatible with the selected Node.js release.
+- No external runtime dependencies are currently required.
 
 ```bash
+npm ci
 npm run check
 npm test
 ```
 
-## Pull requests
-
-1. Describe the problem and intended behavior.
-2. Keep changes focused and document new interfaces.
-3. Add tests for normal, malformed, and boundary inputs.
-4. Preserve read-only behavior unless a separately reviewed feature explicitly requires otherwise.
-5. Do not add dependencies without explaining why they are needed.
-6. Do not include private binaries, credentials, or user data.
-
 ## Code conventions
 
-- ECMAScript modules.
-- Four-space indentation.
-- Descriptive names and explicit errors.
-- Prefer streaming and bounded reads for untrusted artifacts.
+- Use ECMAScript modules and Node.js built-ins unless a reviewed dependency is justified.
+- Use `snake_case` for functions and variables, and `PascalCase` for classes.
+- Prefer pure parser functions over `Buffer` input.
+- Use `BinaryReader` for format field access and `OrixError` for stable boundary failures.
+- Do not silently turn unknown fields into zero, empty strings or success states.
+- Preserve raw values when normalization could lose information.
+- Put resource ceilings next to the operation that consumes the resource.
+- Keep command-line rendering out of parser modules.
+- Do not execute inspected content or invoke package/build scripts during an ordinary scan.
+
+## Parser contribution checklist
+
+- [ ] Valid minimal fixture for each supported class/endianness.
+- [ ] Truncated-header and invalid-signature tests.
+- [ ] Out-of-range offset and length tests.
+- [ ] Count-limit and integer-overflow tests.
+- [ ] Unsupported version or extension behavior is explicit.
+- [ ] Parser notes document structures that are not yet decoded.
+- [ ] Format support matrix and README are updated.
+- [ ] Tests and syntax checks pass locally.
+
+## Reports and public API
+
+Treat JSON report fields and `src/index.mjs` exports as public interfaces. Add or change report schema versions when a change is breaking. Update Markdown and JSON behavior together. Never remove evidence provenance or coverage information merely to shorten output.
+
+## Pull requests
+
+Use a Conventional Commit style title where practical, for example `feat(pe): parse import directory` or `fix(scan): preserve truncated inventory state`. A pull request should explain:
+
+- the observable problem or capability;
+- the owning component and design choice;
+- limits and failure behavior;
+- tests executed and their results;
+- any parser/provider behavior not verified with real-world samples.
+
+Do not claim benchmarks, provider compatibility or human review that did not occur. Small, independently reviewable pull requests are preferred.

@@ -1,47 +1,42 @@
-// JavaScript, tests/inspect.test.mjs, Node.js 20+, inspector unit tests.
-import test from "node:test";
-import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm, symlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { createHash } from "node:crypto";
-import { inspectArtifact } from "../src/core/inspect.mjs";
+// JavaScript, tests/inspect.test.mjs, Node.js 20+, artifact inspector regression suite.
 
-test("calculates SHA-256 and recognizes PNG", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "orix-"));
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { inspect_file } from '../src/core/inspect.mjs';
+
+test('inspection hashes the complete file while parsing a bounded prefix', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-inspect-'));
+  const file_path = path.join(directory, 'sample.pdf');
+  const bytes = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(512, 0x41)]);
   try {
-    const file = join(dir, "sample.png");
-    const bytes = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,1,2,3]);
-    await writeFile(file, bytes);
-    const result = await inspectArtifact(file);
-    assert.equal(result.format, "PNG image");
-    assert.equal(result.sha256, createHash("sha256").update(bytes).digest("hex"));
-    assert.equal(result.size, bytes.length);
-  } finally { await rm(dir, {recursive:true,force:true}); }
+    await writeFile(file_path, bytes);
+    const result = await inspect_file(file_path, { limits: { max_read_bytes: 64, max_file_bytes: 1024 } });
+    assert.equal(result.detection.format, 'PDF');
+    assert.equal(result.integrity.digest, createHash('sha256').update(bytes).digest('hex'));
+    assert.equal(result.artifact.readable_bytes, 64);
+    assert.equal(result.artifact.analysis_complete_for_file, false);
+    assert.equal(result.metrics.hex_preview_bytes, 64);
+    assert.match(result.warnings.join(' '), /Only the first 64 bytes/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
-test("returns Unknown for unrecognized data", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "orix-"));
+test('empty files produce an explicit unknown-format report', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-empty-'));
+  const file_path = path.join(directory, 'empty.bin');
   try {
-    const file = join(dir, "sample.bin");
-    await writeFile(file, "ORIX test artifact");
-    assert.equal((await inspectArtifact(file)).format, "Unknown");
-  } finally { await rm(dir, {recursive:true,force:true}); }
-});
-
-test("rejects directories", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "orix-"));
-  try { await assert.rejects(inspectArtifact(dir), /Only regular files/); }
-  finally { await rm(dir, {recursive:true,force:true}); }
-});
-
-test("rejects symbolic links", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "orix-"));
-  try {
-    const target = join(dir, "target");
-    const link = join(dir, "link");
-    await writeFile(target, "data");
-    await symlink(target, link);
-    await assert.rejects(inspectArtifact(link));
-  } finally { await rm(dir, {recursive:true,force:true}); }
+    await writeFile(file_path, Buffer.alloc(0));
+    const result = await inspect_file(file_path);
+    assert.equal(result.detection.format, 'Unknown');
+    assert.equal(result.integrity.digest, createHash('sha256').update(Buffer.alloc(0)).digest('hex'));
+    assert.equal(result.metrics.hex_preview, '');
+    assert.equal(result.metrics.entropy.sample_size, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

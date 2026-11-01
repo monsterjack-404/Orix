@@ -1,13 +1,22 @@
 {
   "name": "@orix/cli",
-  "version": "0.1.0",
-  "private": true,
-  "description": "ORIX — Open Research & Intelligence eXplorer",
+  "version": "0.2.0",
+  "description": "ORIX — Open Research & Intelligence eXplorer: local-first artifact intelligence and reverse-engineering foundations",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "private": true,
+  "engines": { "node": ">=20.11" },
+  "bin": { "orix": "./src/cli.mjs" },
+  "exports": {
+    ".": "./src/index.mjs",
+    "./formats/pe": "./src/formats/pe.mjs",
+    "./formats/elf": "./src/formats/elf.mjs"
+  },
   "scripts": {
-    "check": "node --check src/cli.mjs && node --check src/core/inspect.mjs",
-    "test": "node --test"
+    "start": "node ./src/cli.mjs",
+    "orix": "node ./src/cli.mjs",
+    "check": "node --check src/cli.mjs && node --check src/index.mjs && node --check src/core/inspect.mjs && node --check src/formats/pe.mjs && node --check src/formats/elf.mjs",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage"
   },
   "license": "Apache-2.0"
 }

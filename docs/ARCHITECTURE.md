@@ -1,32 +1,113 @@
 # ORIX Architecture
 
-## Design principles
+This document describes the 0.2.0 implementation and the constraints new modules must preserve. The architecture is intentionally layered: file acquisition owns filesystem facts, the binary reader owns offset validation, format parsers own format interpretation, analyzers own orchestration, evidence owns provenance, and renderers own presentation.
 
-1. **Read-only by default:** inspection never executes or mutates the target artifact.
-2. **Evidence before inference:** preserve hashes, parser versions, offsets, and provenance with analysis results.
-3. **Adapters over assumptions:** external disassemblers, decompilers, debuggers, and scanners integrate behind explicit provider interfaces.
-4. **Capability isolation:** risky operations require an explicit, separately sandboxed execution boundary.
-5. **Reproducibility:** inputs, tool versions, configuration, and outputs should be recorded in each analysis session.
+## 1. Runtime boundaries
 
-## Current vertical slice
+ORIX currently runs as a Node.js command-line application and a small programmatic library. There is no daemon, server, database, browser UI, plugin loader or remote service in the current release. Those boundaries must not be implied by package names or roadmap documents.
 
-- Node.js 20+ ESM CLI.
-- Core inspector streams file bytes to SHA-256 and retains only the first 64 bytes for signature detection and preview.
-- Supported signatures: ELF, DOS/PE marker, ZIP, PDF, PNG, JPEG, WebAssembly, GZIP, SQLite, and Mach-O.
-- Node's built-in test runner; no runtime dependencies.
+The public call graph is:
 
-The DOS MZ marker is not sufficient to prove that a file is a valid PE image. A future PE parser must validate the DOS header, `e_lfanew`, and PE signature before reporting a confirmed PE format.
+```text
+src/cli.mjs
+  └─ src/cli/main.mjs
+       ├─ src/cli/arguments.mjs
+       ├─ src/core/inspect.mjs
+       │    ├─ src/core/binary-reader.mjs
+       │    ├─ src/core/hash.mjs
+       │    ├─ src/core/entropy.mjs
+       │    ├─ src/core/strings.mjs
+       │    ├─ src/core/evidence.mjs
+       │    └─ src/formats/index.mjs
+       └─ src/analyzer/scan.mjs
+            └─ src/analyzer/walk.mjs
 
-## Target architecture (planned)
+src/index.mjs exposes the supported programmatic surface.
+```
 
-- **Application layer:** web dashboard and desktop shell.
-- **API layer:** typed project, artifact, analysis-session, and report APIs.
-- **Core engine:** format registry, bounded parsers, normalized evidence model.
-- **Provider layer:** adapters for approved disassemblers, decompilers, debuggers, and scanners.
-- **Intelligence layer:** retrieval-grounded codebase explanations and optional model providers.
-- **Storage:** local SQLite for single-user mode; PostgreSQL for multi-user deployments.
-- **Isolation:** disposable containers or VMs for any future dynamic analysis.
+## 2. Ownership rules
 
-## Trust boundaries
+| Component | Owns | Must not own |
+|---|---|---|
+| `core/inspect` | Path validation, file identity, bounded acquisition, complete-file hash, report assembly | Format-specific offset tables or user-facing Markdown |
+| `core/binary-reader` | Buffer-relative bounds checks, typed reads, structured parse failures | Format guesses or high-level conclusions |
+| `formats/registry` | Leading-byte signature recognition and supported-format metadata | Extension-based proof or parser behavior |
+| `formats/*` | Format-specific field offsets, endianness, count and range validation | Filesystem access, execution, network or report output |
+| `analyzer/walk` | Deterministic inventory, ignored directories, no-follow traversal, depth and count limits | Parsing file contents |
+| `analyzer/scan` | Concurrency, per-file isolation, aggregate counts and coverage | Reinterpreting parser fields |
+| `core/evidence` | Evidence identity, provenance, confidence labels and details | User-facing verdicts |
+| `reports/*` | JSON and Markdown rendering | New analysis or silent data loss |
+| `cli/*` | Arguments, command routing, output destination selection | Parser implementation |
 
-Untrusted files are data, never instructions. Parsers must enforce size, recursion, and time limits. External tool invocations must use argument arrays rather than shell interpolation. Secrets must never be written into analysis artifacts or logs.
+Consumers must use the owning component's normalized facts. Do not duplicate parsing logic in a report renderer or CLI command.
+
+## 3. Acquisition and consistency
+
+The inspector first obtains `lstat` metadata. It rejects symbolic links and non-regular files. It then opens the path read-only, requests no-follow behavior where the runtime exposes it, and compares opened-file identity metadata with the original lookup. This reduces path substitution risk but is not a universal guarantee against every filesystem race on every platform.
+
+The inspector reads a bounded prefix for parsing and computes SHA-256 over the complete file in fixed-size chunks. It compares file metadata after reading and reports `stable_during_read`. A file that changes during inspection must not be treated as a stable forensic input. For high-assurance work, analyze a preserved copy acquired through a trusted evidence workflow.
+
+`max_file_bytes` bounds the total file size eligible for hashing. `max_read_bytes` bounds the prefix retained for structural parsing and metrics. A full-file hash with prefix-only parsing is explicitly represented by `analysis_complete_for_file: false`.
+
+## 4. Binary reader contract
+
+`BinaryReader` wraps one immutable Buffer view and provides unsigned/signed integer reads, byte slices, ASCII reads and bounded C strings. Every read validates integer offsets and lengths before accessing the underlying `DataView` or Buffer.
+
+Parser code must:
+
+- Use file-relative offsets consistently.
+- Validate `offset <= total` before evaluating `length <= total - offset`.
+- Reject multiplication/offset overflow before deriving table ranges.
+- Respect declared header lengths rather than assuming optional records exist.
+- Keep unsupported values visible as `unknown-*` or explicit parser notes.
+- Avoid converting 64-bit values to JavaScript numbers when precision would be lost.
+
+A direct parser call may throw `OrixError`. `analyze_known_format` catches parser failures and returns the detected format together with `parser_status: rejected` and a stable error object.
+
+## 5. Parsing pipeline
+
+The registry identifies a candidate format from a leading signature. A parser is selected only when a corresponding parser is registered. A signature can be forged, truncated or embedded in unrelated content; parsers therefore validate the relevant structures again.
+
+Implemented structural parsers:
+
+- **PE/COFF:** DOS header pointer, PE signature, COFF fields, PE32/PE32+ fixed fields, data-directory bounds and section headers.
+- **ELF:** class, byte order, fixed header, section-header table and optional section-name table.
+- **Mach-O:** thin header, CPU metadata and load-command framing.
+- **WebAssembly:** version and section framing, including bounded custom-section names.
+- **ZIP:** end-of-central-directory lookup and bounded central-directory entry metadata; no extraction or decompression.
+
+Parser output contains `notes` describing unimplemented work. The absence of a field is not evidence that the field or structure is absent from the original artifact.
+
+## 6. Evidence model
+
+Evidence is emitted with:
+
+- a generated identifier;
+- a kind, such as `file-hash` or `format-structure`;
+- a concise summary;
+- a source path;
+- an optional byte offset and length;
+- one of `observed`, `derived` or `heuristic` confidence;
+- structured details containing the source values needed to inspect the result.
+
+The model is intended to evolve into persisted, cross-tool evidence without coupling parsers to a database. Future identifiers should be stable across process restarts, and evidence should gain artifact identity, tool version and parent-evidence references before cross-session reuse.
+
+## 7. Directory scanning
+
+The walker uses `Dirent` data, sorts entries deterministically and does not follow symlinks. Common generated directories are excluded. It returns both discovered files and skipped-entry reasons. Limits apply to file count and depth.
+
+The scanner uses a bounded worker pool. Each file is inspected independently; one file's malformed content does not abort the scan. Per-file failures are retained as structured errors. Aggregate coverage must never imply that a truncated inventory is complete.
+
+The current design is sequential at directory-inventory time and bounded-concurrent at file-analysis time. Do not add unbounded `Promise.all` over user-controlled directory contents.
+
+## 8. Reports and compatibility
+
+JSON is the canonical machine-readable output. Markdown is a view over the same report object. If a new report field is added, update schema/version documentation and both renderers where needed. Renderers must not invent fields or claim certainty beyond report evidence.
+
+Report schema identifiers are currently `orix.artifact.v1`, `orix.scan.v1` and `orix.formats.v1`. Breaking output changes require a schema version change and migration notes.
+
+## 9. Extension strategy
+
+New analyzers should be independent modules with explicit resource budgets and typed output. New external engines should be implemented behind optional adapters that describe version detection, capability probing, input/output mapping, process ownership, timeouts, cancellation and cleanup. The core must remain useful when no external engine is installed.
+
+Planned components such as databases, MCP, browser UI, collaboration and worker fleets should be added as vertical slices with end-to-end tests—not as disconnected empty folders.
