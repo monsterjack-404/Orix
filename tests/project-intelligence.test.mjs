@@ -239,7 +239,7 @@ test('project intelligence integrates NuGet and Gradle lock inventories', async 
       },
     },
   }));
-  await writeFile(path.join(root, 'gradle.lockfile'), 'com.google.guava:guava:32.1.2-jre=compileClasspath,runtimeClasspath\\n');
+  await writeFile(path.join(root, 'gradle.lockfile'), 'com.google.guava:guava:32.1.2-jre=compileClasspath,runtimeClasspath\n');
   const report = await scan_project(root);
   assert.equal(report.lockfiles.length, 2);
   assert.ok(report.lockfiles.some(item => item.format === 'nuget-packages-lock'));
