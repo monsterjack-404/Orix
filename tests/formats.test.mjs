@@ -944,3 +944,46 @@ test('Mach-O parser bounds symbol count and rejects invalid string indexes', () 
   malformed.writeUInt32LE(0xffff, 56);
   assert.throws(() => parse_macho(malformed), error => error.code === 'ORIX_MACHO_SYMBOL_STRING_INDEX');
 });
+
+
+function create_elf_gnu_hash_fixture() {
+  const buffer = create_elf_version_fixture();
+  buffer.writeUInt16LE(6, 60);
+  const section = 256 + 5 * 64;
+  buffer.writeUInt32LE(0x6ffffff6, section + 4);
+  buffer.writeBigUInt64LE(944n, section + 24);
+  buffer.writeBigUInt64LE(32n, section + 32);
+  buffer.writeUInt32LE(2, section + 40);
+  buffer.writeBigUInt64LE(8n, section + 48);
+  buffer.writeUInt32LE(1, 944);
+  buffer.writeUInt32LE(1, 948);
+  buffer.writeUInt32LE(1, 952);
+  buffer.writeUInt32LE(5, 956);
+  buffer.writeBigUInt64LE(0x1001n, 960);
+  buffer.writeUInt32LE(1, 968);
+  buffer.writeUInt32LE(0x1235, 972);
+  return buffer;
+}
+
+test('ELF parser decodes GNU hash bloom words, buckets and terminal chain entries', () => {
+  const parsed = parse_elf(create_elf_gnu_hash_fixture());
+  assert.equal(parsed.gnu_hash_tables.length, 1);
+  const table = parsed.gnu_hash_tables[0];
+  assert.equal(table.symbol_table_section_index, 2);
+  assert.equal(table.bucket_count, 1);
+  assert.equal(table.symbol_offset, 1);
+  assert.equal(table.bloom_shift, 5);
+  assert.deepEqual(table.bloom_words, ['4097']);
+  assert.equal(table.buckets[0].first_symbol, 1);
+  assert.deepEqual(table.buckets[0].chain, [{ symbol_index: 1, hash: 0x1235, terminal: true }]);
+});
+
+test('ELF parser rejects GNU hash buckets outside DYNSYM and truncated chains', () => {
+  const bad_bucket = create_elf_gnu_hash_fixture();
+  bad_bucket.writeUInt32LE(99, 968);
+  assert.throws(() => parse_elf(bad_bucket), error => error.code === 'ORIX_ELF_GNU_HASH_BUCKET_SYMBOL');
+  const short_chain = create_elf_gnu_hash_fixture();
+  short_chain.writeBigUInt64LE(28n, 256 + 5 * 64 + 32);
+  assert.throws(() => parse_elf(short_chain), error => error.code === 'ORIX_ELF_GNU_HASH_CHAIN_RANGE');
+  assert.throws(() => parse_elf(create_elf_gnu_hash_fixture(), { max_gnu_hash_buckets: 0 }), error => error.code === 'ORIX_ELF_GNU_HASH_LIMIT');
+});
