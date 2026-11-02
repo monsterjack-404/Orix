@@ -4,6 +4,7 @@ import { inspect_file } from '../core/inspect.mjs';
 import { resolve_limits } from '../core/limits.mjs';
 import { walk_directory } from './walk.mjs';
 import { normalize_error } from '../core/errors.mjs';
+import { append_evidence_event } from '../core/evidence-ledger.mjs';
 
 async function run_pool(items, concurrency, worker) {
   const results = new Array(items.length);
@@ -48,7 +49,7 @@ export async function scan_directory(root_path, options = {}) {
       indicator_counts[indicator.severity] = (indicator_counts[indicator.severity] ?? 0) + 1;
     }
   }
-  return {
+  const report = {
     schema_version: 'orix.scan.v1',
     scan: {
       root: inventory.root,
@@ -72,4 +73,29 @@ export async function scan_directory(root_path, options = {}) {
       'Per-file parser and byte limits are recorded in each artifact result.',
     ],
   };
+  if (options.evidence_ledger) {
+    const maximum = options.max_ledger_artifacts ?? 1000;
+    if (!Number.isSafeInteger(maximum) || maximum < 0 || maximum > 10000) throw new TypeError('max_ledger_artifacts must be between 0 and 10000');
+    const evidence = analyzed.slice(0, maximum).map(item => ({
+      path: item.path,
+      sha256: item.artifact.artifact.sha256,
+      size_bytes: item.artifact.artifact.size_bytes,
+      format: item.artifact.detection.format,
+      indicator_count: item.artifact.indicators?.length ?? 0,
+    }));
+    const record = await append_evidence_event(options.evidence_ledger, 'scan.completed', {
+      root: inventory.root,
+      started_at: report.scan.started_at,
+      completed_at: report.scan.completed_at,
+      files_analyzed: report.scan.files_analyzed,
+      files_skipped: report.scan.files_skipped,
+      total_bytes_analyzed: report.scan.total_bytes_analyzed,
+      formats: report.scan.formats,
+      indicator_counts: report.scan.indicator_counts,
+      artifacts: evidence,
+      artifacts_omitted: Math.max(0, analyzed.length - evidence.length),
+    });
+    report.evidence_ledger = { path: options.evidence_ledger, sequence: record.sequence, hash: record.hash, artifacts_recorded: evidence.length, artifacts_omitted: Math.max(0, analyzed.length - evidence.length) };
+  }
+  return report;
 }
