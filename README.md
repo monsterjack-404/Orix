@@ -21,7 +21,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Integrity | Streaming SHA-256 over the complete file using a bounded buffer | Does not authenticate the publisher or establish trust |
 | Format registry | Signature recognition for ELF, PE/MZ, Mach-O, universal Mach-O, WebAssembly, PDF, PNG, JPEG, SQLite and GZIP | Signature recognition is not a complete format parser |
 | PE parser | PE32/PE32+ headers, data directories, section records, file-backed RVA mapping, import DLLs and name/ordinal thunks, named/ordinal exports and forwarder markers | Delay imports, relocations, resources, CLR metadata and certificate trust validation are not implemented |
-| ELF parser | ELF32/ELF64 identification, endianness, core header fields and bounded section records with names | Program-header records are range-checked, not decoded into load segments |
+| ELF parser | ELF32/ELF64 headers, bounded program segments, PT_INTERP, PT_DYNAMIC tags, GNU build IDs, symbol tables and REL/RELA relocation records | Does not apply relocations, resolve GNU symbol versions or decode DWARF |
 | Mach-O parser | Thin 32-bit/64-bit header and bounded load-command framing | Does not expand universal containers or decode command-specific payloads |
 | WebAssembly parser | Module version, bounded section framing and custom section names | Does not validate instruction semantics or decompile code |
 | Static metrics | Shannon entropy, ASCII/UTF-16LE string extraction and bounded hex preview | Metrics are descriptive, not malware verdicts |
