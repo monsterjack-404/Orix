@@ -200,3 +200,55 @@ test('pnpm v9 lockfile merges package metadata with snapshot dependency edges', 
   assert.equal(report.edges[0].resolved_version, '2.3.0');
   assert.equal(report.packages.find(item => item.name === 'alpha').peer, true);
 });
+
+
+test('pnpm v9 lockfile resolves importer and snapshot dependency edges', () => {
+  const input = [
+    "lockfileVersion: '9.0'",
+    'importers:',
+    '  .:',
+    '    dependencies:',
+    '      alpha:',
+    '        specifier: ^1.0.0',
+    '        version: 1.2.0',
+    'packages:',
+    '  alpha@1.2.0:',
+    '    resolution:',
+    '      integrity: sha512-alpha',
+    '  beta@2.3.0:',
+    '    resolution: {integrity: sha512-beta}',
+    'snapshots:',
+    '  alpha@1.2.0:',
+    '    dependencies:',
+    '      beta: 2.3.0',
+    '  beta@2.3.0: {}',
+  ].join('\\n');
+  const report = parse_lockfile('pnpm-lock.yaml', input);
+  assert.equal(report.format, 'pnpm-lock');
+  assert.equal(report.lockfile_version, 9);
+  assert.equal(report.packages.length, 2);
+  assert.equal(report.root_edges.length, 1);
+  assert.equal(report.root_edges[0].name, 'alpha');
+  assert.equal(report.edges.length, 1);
+  assert.equal(report.edges[0].name, 'beta');
+  assert.equal(report.edges[0].resolved_version, '2.3.0');
+  assert.equal(report.packages.find(item => item.name === 'alpha').integrity, 'sha512-alpha');
+});
+
+test('pnpm v6 lockfile reads legacy root dependency maps', () => {
+  const input = [
+    "lockfileVersion: '6.0'",
+    'dependencies:',
+    '  alpha:',
+    '    specifier: ^1.0.0',
+    '    version: 1.2.0',
+    'packages:',
+    '  /alpha@1.2.0:',
+    '    resolution: {integrity: sha512-alpha}',
+  ].join('\\n');
+  const report = parse_lockfile('pnpm-lock.yaml', input);
+  assert.equal(report.lockfile_version, 6);
+  assert.equal(report.packages.length, 1);
+  assert.equal(report.root_edges.length, 1);
+  assert.equal(report.root_edges[0].to, '/alpha@1.2.0');
+});
