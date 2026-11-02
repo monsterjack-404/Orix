@@ -135,11 +135,11 @@ test('PE parser maps RVAs and decodes named imports and exports', () => {
   expanded.writeUInt32LE(0x1160, import_offset);
   expanded.writeUInt32LE(0x1150, import_offset + 12);
   expanded.writeUInt32LE(0x1168, import_offset + 16);
-  expanded.write('KERNEL32.dll\\0', raw + 0x150, 'ascii');
+  expanded.write('KERNEL32.dll\0', raw + 0x150, 'ascii');
   expanded.writeUInt32LE(0x1180, raw + 0x160);
   expanded.writeUInt32LE(0, raw + 0x164);
   expanded.writeUInt16LE(7, raw + 0x180);
-  expanded.write('CreateFileW\\0', raw + 0x182, 'ascii');
+  expanded.write('CreateFileW\0', raw + 0x182, 'ascii');
 
   const export_offset = raw + 0x200;
   expanded.writeUInt32LE(0, export_offset);
@@ -156,8 +156,8 @@ test('PE parser maps RVAs and decodes named imports and exports', () => {
   expanded.writeUInt32LE(0x1000, raw + 0x240);
   expanded.writeUInt32LE(0x1260, raw + 0x244);
   expanded.writeUInt16LE(0, raw + 0x248);
-  expanded.write('sample.dll\\0', raw + 0x250, 'ascii');
-  expanded.write('ExportedEntry\\0', raw + 0x260, 'ascii');
+  expanded.write('sample.dll\0', raw + 0x250, 'ascii');
+  expanded.write('ExportedEntry\0', raw + 0x260, 'ascii');
 
   const parsed = parse_pe(expanded);
   assert.equal(parsed.imports.length, 1);
