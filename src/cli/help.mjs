@@ -1,7 +1,7 @@
 // JavaScript, src/cli/help.mjs, Node.js 20+, canonical CLI help text.
 export const HELP_TEXT = [
 'ORIX — Open Research & Intelligence eXplorer','Understand. Analyze. Engineer.','',
-'USAGE','  orix inspect <file> [options]','  orix scan <directory> [options]','  orix project <directory> [options]','  orix formats',
+'USAGE','  orix inspect <file> [options]','  orix scan <directory> [options]','  orix project <directory> [options]',\n'  orix compare <baseline.json> <current.json> [options]','  orix formats','  orix compare ./baseline.json ./current.json --markdown',
 '  orix ledger verify <path>',
 '  orix ledger list <path>','  orix help','',
 'COMMANDS','  inspect <file>       Hash and statically inspect one regular file.','  scan <directory>     Inventory a directory and inspect discovered artifacts.','  project <directory>  Build a bounded source, manifest, dependency and import index.','  formats              List recognized signatures and structural parser availability.','  ledger verify        Verify every record in a SHA-256 chained evidence ledger.','  ledger list          List verified evidence ledger records.','  help                 Print this help text.','',
