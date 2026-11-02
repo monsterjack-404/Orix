@@ -47,7 +47,7 @@ node src/cli.mjs project ./source-tree --json
 node src/cli.mjs project ./source-tree --format cyclonedx --out ./sbom.cdx.json
 ```
 
-It records file hashes, language counts, selected dependency declarations, npm package-lock v1-v3 and Yarn classic/Berry resolved package graphs, source import edges, symbol candidates, redacted credential-shaped findings and bounded Git repository metadata (refs, tags, sanitized remotes and loose HEAD commit identity). Packed Git objects and linked-worktree gitdir targets are not decoded or followed. CycloneDX export includes resolved lockfile components and package relationships when supported lockfiles are present; otherwise it reports declared dependencies only. See [`docs/PROJECT_INTELLIGENCE.md`](docs/PROJECT_INTELLIGENCE.md) for parser boundaries and resource limits.
+It records file hashes, language counts, selected dependency declarations, npm package-lock v1-v3, Yarn classic/Berry and pnpm v5/v6/v9 resolved package graphs, source import edges, symbol candidates, redacted credential-shaped findings and bounded Git repository metadata (refs, tags, sanitized remotes and loose HEAD commit identity). Packed Git objects and linked-worktree gitdir targets are not decoded or followed. CycloneDX export includes resolved lockfile components and package relationships when supported lockfiles are present; otherwise it reports declared dependencies only. See [`docs/PROJECT_INTELLIGENCE.md`](docs/PROJECT_INTELLIGENCE.md) for parser boundaries and resource limits.
 
 ## Quick start
 
