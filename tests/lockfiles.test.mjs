@@ -253,3 +253,30 @@ test('pnpm v6 lockfile reads legacy root dependency maps', () => {
   assert.equal(report.root_edges.length, 1);
   assert.equal(report.root_edges[0].to, '/alpha@1.2.0');
 });
+
+
+test('Composer lockfile resolves runtime and development packages without retaining source URLs', () => {
+  const manifests = [{
+    ecosystem: 'composer',
+    dependencies: [
+      { name: 'vendor/app', version: '^1.0', dependency_type: 'require' },
+      { name: 'phpunit/phpunit', version: '^10.0', dependency_type: 'require-dev' },
+    ],
+  }];
+  const input = JSON.stringify({
+    packages: [
+      { name: 'vendor/app', version: '1.4.0', source: { type: 'git', url: 'https://user:secret@example.invalid/vendor/app.git', reference: 'abc123' }, require: { 'vendor/lib': '^2.0', php: '^8.1' } },
+      { name: 'vendor/lib', version: '2.3.0', dist: { shasum: 'a'.repeat(40) }, require: {} },
+    ],
+    'packages-dev': [{ name: 'phpunit/phpunit', version: '10.2.0', require: {} }],
+  });
+  const report = parse_lockfile('composer.lock', input, {}, manifests);
+  assert.equal(report.format, 'composer-lock');
+  assert.equal(report.packages.length, 3);
+  assert.equal(report.root_edges.length, 2);
+  assert.equal(report.edges.length, 1);
+  assert.equal(report.edges[0].to, 'vendor/lib@2.3.0');
+  assert.equal(report.packages.find(item => item.name === 'vendor/app').resolved, 'git:abc123');
+  assert.equal(JSON.stringify(report).includes('secret'), false);
+  assert.equal(report.complete, true);
+});
