@@ -68,7 +68,7 @@ function parse_classic_xref(text, offset, file_size, limits) {
       const object_number = start + index;
       if (in_use && object_offset >= file_size) fail('ORIX_PDF_XREF_OBJECT_RANGE', 'In-use xref entry points outside the file', { object_number, object_offset, file_size });
       if (in_use) {
-        const object_header = /^([0-9]+)\\s+([0-9]+)\\s+obj\\b/.exec(text.slice(object_offset, Math.min(file_size, object_offset + 64)));
+        const object_header = /^([0-9]+)\s+([0-9]+)\s+obj\b/.exec(text.slice(object_offset, Math.min(file_size, object_offset + 64)));
         if (!object_header || Number(object_header[1]) !== object_number || Number(object_header[2]) !== generation) {
           fail('ORIX_PDF_XREF_OBJECT_MISMATCH', 'In-use xref entry does not point to its declared object number and generation', { object_number, generation, object_offset, actual_object_number: object_header ? Number(object_header[1]) : null, actual_generation: object_header ? Number(object_header[2]) : null });
         }
