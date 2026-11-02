@@ -31,9 +31,12 @@ function canonical_value(value, seen = new Set()) {
   } else {
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) fail('ORIX_LEDGER_UNSAFE_OBJECT', 'Ledger payload must contain plain objects and arrays');
-    result = {};
+    result = Object.create(null);
+    const descriptors = Object.getOwnPropertyDescriptors(value);
     for (const key of Object.keys(value).sort()) {
-      const item = value[key];
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value')) fail('ORIX_LEDGER_ACCESSOR_VALUE', 'Ledger payload must not contain getters or setters', { key });
+      const item = descriptor.value;
       if (item === undefined) fail('ORIX_LEDGER_UNDEFINED_VALUE', 'Ledger payload contains an undefined property', { key });
       result[key] = canonical_value(item, seen);
     }
@@ -126,9 +129,12 @@ function validate_chain(records) {
     const record = records[index];
     const expected_sequence = index + 1;
     if (!record || typeof record !== 'object' || Array.isArray(record)) fail('ORIX_LEDGER_RECORD_SHAPE', 'Ledger record must be an object', { line: expected_sequence });
+    const expected_keys = ['event','format','hash','payload','previous_hash','record_id','sequence','timestamp'];
+    const actual_keys = Object.keys(record).sort();
+    if (actual_keys.length !== expected_keys.length || actual_keys.some((key, key_index) => key !== expected_keys[key_index])) fail('ORIX_LEDGER_RECORD_SHAPE', 'Ledger record contains missing or unexpected fields', { line: expected_sequence, actual_keys });
     if (record.format !== LEDGER_FORMAT) fail('ORIX_LEDGER_FORMAT_MISMATCH', 'Ledger record has an unsupported format identifier', { line: expected_sequence, format: record.format });
     if (record.sequence !== expected_sequence) fail('ORIX_LEDGER_SEQUENCE_MISMATCH', 'Ledger sequence is not contiguous', { line: expected_sequence, actual: record.sequence });
-    if (typeof record.record_id !== 'string' || typeof record.timestamp !== 'string' || Number.isNaN(Date.parse(record.timestamp))) fail('ORIX_LEDGER_RECORD_METADATA', 'Ledger record metadata is invalid', { line: expected_sequence });
+    if (typeof record.record_id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(record.record_id) || typeof record.timestamp !== 'string' || Number.isNaN(Date.parse(record.timestamp))) fail('ORIX_LEDGER_RECORD_METADATA', 'Ledger record metadata is invalid', { line: expected_sequence });
     if (typeof record.event !== 'string' || !/^[a-z][a-z0-9_.-]{1,79}$/.test(record.event)) fail('ORIX_LEDGER_EVENT_INVALID', 'Ledger event name is invalid', { line: expected_sequence });
     if (record.previous_hash !== previous_hash) fail('ORIX_LEDGER_CHAIN_BROKEN', 'Ledger previous-hash link does not match', { line: expected_sequence, expected: previous_hash, actual: record.previous_hash });
     const expected_hash = record_digest(record);
