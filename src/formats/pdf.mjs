@@ -28,24 +28,6 @@ function read_line(text, offset, limit) {
   return { line: text.slice(offset, end), next };
 }
 
-function read_object_header(text, offset) {
-  let cursor = offset;
-  const read_integer = () => {
-    const start = cursor;
-    while (cursor < text.length && text.charCodeAt(cursor) >= 48 && text.charCodeAt(cursor) <= 57) cursor += 1;
-    if (cursor === start) return null;
-    const value = Number(text.slice(start, cursor));
-    while (cursor < text.length && [0, 9, 10, 12, 13, 32].includes(text.charCodeAt(cursor))) cursor += 1;
-    return Number.isSafeInteger(value) ? value : null;
-  };
-  const object_number = read_integer();
-  const generation = read_integer();
-  if (object_number === null || generation === null || text.slice(cursor, cursor + 3) !== 'obj') return null;
-  const next = text.charCodeAt(cursor + 3);
-  if (cursor + 3 < text.length && ![0, 9, 10, 12, 13, 32].includes(next)) return null;
-  return { object_number, generation };
-}
-
 function parse_classic_xref(text, offset, file_size, limits) {
   const first = read_line(text, offset, file_size);
   if (!/^xref(?:\s|$)/.test(first.line)) {
