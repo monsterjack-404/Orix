@@ -19,6 +19,10 @@ function encode_segment(value) {
   return encodeURIComponent(String(value)).replaceAll('%3A', ':').replaceAll('%40', '%40');
 }
 
+function is_pinned_version(value) {
+  return typeof value === 'string' && /^v?\\d+(?:\\.\\d+){0,3}(?:[-+][0-9A-Za-z.-]+)?$/.test(value);
+}
+
 function package_url(dependency) {
   const type = TYPES[dependency.ecosystem];
   if (!type) return null;
@@ -33,7 +37,7 @@ function package_url(dependency) {
   } else {
     path = name.split('/').map(encode_segment).join('/');
   }
-  const version = dependency.version && dependency.version !== '*' ? '@' + encode_segment(dependency.version) : '';
+  const version = is_pinned_version(dependency.version) ? '@' + encode_segment(dependency.version) : '';
   return 'pkg:' + type + '/' + path + version;
 }
 
@@ -56,15 +60,16 @@ export function render_cyclonedx(report, options = {}) {
     const existing = components.get(purl);
     const property_set = new Map((existing?.properties ?? []).map(item => [item.name, item.value]));
     property_set.set('orix:ecosystem', dependency.ecosystem);
+    if (dependency.version && dependency.version !== '*') property_set.set('orix:declared-version', dependency.version);
     property_set.set('orix:dependency-type:' + dependency.dependency_type, 'true');
     property_set.set('orix:manifest:' + dependency.manifest, 'true');
     components.set(purl, {
       type: 'library',
       'bom-ref': purl,
       name: dependency.name,
-      ...(dependency.version && dependency.version !== '*' ? { version: dependency.version } : {}),
+      ...(is_pinned_version(dependency.version) ? { version: dependency.version } : {}),
       purl,
-      scope: ['devDependencies', 'require-dev', 'dev-dependencies', 'build-dependencies'].includes(dependency.dependency_type) ? 'optional' : 'required',
+      scope: existing?.scope === 'required' || !['devDependencies', 'require-dev', 'dev-dependencies', 'build-dependencies'].includes(dependency.dependency_type) ? 'required' : 'optional',
       properties: [...property_set].map(([name, value]) => ({ name, value })).sort((a, b) => a.name.localeCompare(b.name)),
     });
   }
@@ -86,7 +91,7 @@ export function render_cyclonedx(report, options = {}) {
     version: 1,
     metadata: {
       timestamp: report.project.scanned_at,
-      tools: { components: [{ type: 'application', name: 'ORIX', version: options.orix_version ?? '0.4.0' }] },
+      tools: [{ vendor: 'ORIX', name: 'ORIX', version: options.orix_version ?? '0.4.0' }],
       component: {
         type: 'application',
         'bom-ref': root_purl,
