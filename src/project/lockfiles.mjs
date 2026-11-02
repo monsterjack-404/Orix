@@ -464,7 +464,7 @@ function parse_pnpm_lock(file, text, limits) {
     }
     if (['dependencies', 'devDependencies', 'optionalDependencies'].includes(section)) {
       if (indent === 2) {
-        const dependency = /^(.+?):(?:\\s*(.*))?$/.exec(body);
+        const dependency = /^(.+?):(?:\s*(.*))?$/.exec(body);
         if (dependency) {
           current_top_level_dependency = { name: parse_pnpm_scalar(dependency[1]), specifier: null, version: parse_pnpm_scalar(dependency[2] ?? ''), dependency_type: section };
           top_level_dependencies.push(current_top_level_dependency);
@@ -472,7 +472,7 @@ function parse_pnpm_lock(file, text, limits) {
         continue;
       }
       if (indent >= 4 && current_top_level_dependency) {
-        const field = /^([A-Za-z][A-Za-z0-9_-]*):\\s*(.*)$/.exec(body);
+        const field = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(body);
         if (field && ['specifier', 'version'].includes(field[1])) current_top_level_dependency[field[1]] = parse_pnpm_scalar(field[2]);
       }
       continue;

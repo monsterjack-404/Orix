@@ -57,7 +57,7 @@ test('Yarn classic lock parser reads selectors, versions, integrity and dependen
 });
 
 test('unsupported lockfile names are ignored and limits are validated', () => {
-  assert.equal(parse_lockfile('pnpm-lock.yaml', 'lockfileVersion: 9'), null);
+  assert.equal(parse_lockfile('pnpm-lock.yaml.backup', 'lockfileVersion: 9'), null);
   assert.throws(() => parse_lockfile('package-lock.json', '{}', { max_lockfile_edges: 0 }), error => error.code === 'ORIX_LOCKFILE_BAD_LIMIT');
 });
 
@@ -223,7 +223,7 @@ test('pnpm v9 lockfile resolves importer and snapshot dependency edges', () => {
     '    dependencies:',
     '      beta: 2.3.0',
     '  beta@2.3.0: {}',
-  ].join('\\n');
+  ].join('\n');
   const report = parse_lockfile('pnpm-lock.yaml', input);
   assert.equal(report.format, 'pnpm-lock');
   assert.equal(report.lockfile_version, 9);
@@ -246,7 +246,7 @@ test('pnpm v6 lockfile reads legacy root dependency maps', () => {
     'packages:',
     '  /alpha@1.2.0:',
     '    resolution: {integrity: sha512-alpha}',
-  ].join('\\n');
+  ].join('\n');
   const report = parse_lockfile('pnpm-lock.yaml', input);
   assert.equal(report.lockfile_version, 6);
   assert.equal(report.packages.length, 1);

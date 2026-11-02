@@ -129,7 +129,7 @@ test('project intelligence indexes pnpm lockfile package graph', async () => wit
     '    dependencies:',
     '      beta: 2.3.0',
     '  beta@2.3.0: {}',
-  ].join('\\n'));
+  ].join('\n'));
   const report = await scan_project(root);
   assert.equal(report.lockfiles.length, 1);
   assert.equal(report.lockfiles[0].format, 'pnpm-lock');
