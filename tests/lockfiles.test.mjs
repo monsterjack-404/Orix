@@ -375,3 +375,58 @@ test('Pipfile.lock inventories resolved versions and root requirements without i
   assert.equal(report.complete, false);
   assert.ok(report.warnings.some(item => item.code === 'ORIX_LOCKFILE_DEPENDENCY_EDGES_UNAVAILABLE'));
 });
+
+
+test('Gemfile.lock resolves registry packages and nested gem dependencies', () => {
+  const input = [
+    'GEM',
+    '  remote: https://rubygems.org/',
+    '  specs:',
+    '    rails (7.1.0)',
+    '      actionpack (= 7.1.0)',
+    '    actionpack (7.1.0)',
+    '      rack (>= 2.2.4)',
+    '    rack (3.0.8)',
+    '',
+    'PLATFORMS',
+    '  ruby',
+    '',
+    'DEPENDENCIES',
+    '  rails (~> 7.1)',
+    '',
+    'BUNDLED WITH',
+    '   2.5.10',
+  ].join('\n');
+  const report = parse_lockfile('Gemfile.lock', input);
+  assert.equal(report.format, 'gemfile-lock');
+  assert.equal(report.packages.length, 3);
+  assert.equal(report.root_edges.length, 1);
+  assert.equal(report.root_edges[0].name, 'rails');
+  assert.equal(report.edges.length, 2);
+  assert.ok(report.edges.some(edge => edge.name === 'actionpack' && edge.resolved_version === '7.1.0'));
+  assert.ok(report.edges.some(edge => edge.name === 'rack' && edge.resolved_version === '3.0.8'));
+  assert.equal(report.complete, true);
+});
+
+test('Gemfile.lock supports multiple sources and reports ambiguous versions', () => {
+  const input = [
+    'GEM',
+    '  specs:',
+    '    rack (2.2.8)',
+    '    rack (3.0.8)',
+    '',
+    'GIT',
+    '  remote: https://example.invalid/gem.git',
+    '  revision: abc123',
+    '  specs:',
+    '    custom-gem (1.0.0)',
+    '',
+    'DEPENDENCIES',
+    '  rack (>= 2.0)',
+    '  custom-gem!',
+  ].join('\n');
+  const report = parse_lockfile('Gemfile.lock', input);
+  assert.equal(report.packages.length, 3);
+  assert.ok(report.warnings.some(item => item.code === 'ORIX_LOCKFILE_AMBIGUOUS_DEPENDENCY'));
+  assert.equal(report.root_edges.some(item => item.name === 'custom-gem'), true);
+});
