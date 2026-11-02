@@ -43,7 +43,8 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [ ] Extended ELF numbering, GNU symbol-version resolution and DWARF decoding.
 - [x] Mach-O FAT/FAT64 architecture tables, bounded slices, segment/section commands and CodeDirectory metadata.
 - [ ] Chained fixups, cryptographic trust verification and Objective-C metadata.
-- ZIP64 parser, decompression-bomb safeguards and safe entry streaming; no extraction by default.
+- [x] ZIP64 EOCD/locator and per-entry extended size/offset parsing with safe-integer and central-directory bounds.
+- [ ] Decompression-bomb safeguards and bounded safe entry streaming; extraction remains opt-in.
 - PDF object and cross-reference parser with object-count and recursion budgets.
 - Versioned JSON Schema documents and golden report fixtures.
 
