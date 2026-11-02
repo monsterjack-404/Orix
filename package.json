@@ -22,7 +22,8 @@
     "./analyzer/compare": "./src/analyzer/compare.mjs",
     "./reports/comparison": "./src/reports/comparison.mjs",
     "./mcp": "./src/mcp/server.mjs",
-    "./reports/cyclonedx": "./src/reports/cyclonedx.mjs"
+    "./reports/cyclonedx": "./src/reports/cyclonedx.mjs",
+    "./core/evidence-ledger": "./src/core/evidence-ledger.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
