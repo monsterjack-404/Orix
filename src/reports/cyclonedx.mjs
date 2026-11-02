@@ -20,7 +20,7 @@ function encode_segment(value) {
 }
 
 function is_pinned_version(value) {
-  return typeof value === 'string' && /^v?\\d+(?:\\.\\d+){0,3}(?:[-+][0-9A-Za-z.-]+)?$/.test(value);
+  return typeof value === 'string' && /^v?\d+(?:\.\d+){0,3}(?:[-+][0-9A-Za-z.-]+)?$/.test(value);
 }
 
 function package_url(dependency) {
