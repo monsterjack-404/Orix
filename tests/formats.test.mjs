@@ -500,8 +500,8 @@ test('PE parser rejects cyclic resource trees and out-of-range certificate table
   const optional = 0x80 + 4 + 20;
   const section = optional + 224;
   const raw = section + 40;
-  const buffer = Buffer.concat([base, Buffer.alloc(0x100)]);
-  buffer.writeUInt32LE(0x100, section + 16);
+  const buffer = Buffer.concat([base, Buffer.alloc(0x200)]);
+  buffer.writeUInt32LE(0x200, section + 16);
   const directories = optional + 96;
   buffer.writeUInt32LE(0x1100, directories + 16);
   buffer.writeUInt32LE(40, directories + 20);
