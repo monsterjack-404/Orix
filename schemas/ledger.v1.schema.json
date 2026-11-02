@@ -3,15 +3,54 @@
   "$id": "orix.ledger.v1.schema.json",
   "title": "ORIX Evidence Ledger Record v1",
   "type": "object",
-  "required": ["ledger_version", "sequence", "timestamp", "type", "previous_hash", "payload", "record_hash"],
+  "required": [
+    "format",
+    "sequence",
+    "record_id",
+    "timestamp",
+    "event",
+    "payload",
+    "previous_hash",
+    "hash"
+  ],
   "properties": {
-    "ledger_version": { "const": 1 },
-    "sequence": { "type": "integer", "minimum": 1 },
-    "timestamp": { "type": "string", "format": "date-time" },
-    "type": { "type": "string", "pattern": "^[a-z][a-z0-9.-]{0,63}$" },
-    "previous_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-    "payload": { "type": "object" },
-    "record_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+    "format": {
+      "const": "orix.evidence-ledger.v1"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "record_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "event": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{1,79}$"
+    },
+    "payload": {
+      "type": [
+        "object",
+        "array",
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ]
+    },
+    "previous_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
   },
   "additionalProperties": false
 }
