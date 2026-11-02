@@ -90,6 +90,16 @@ endobj
   assert.equal(parsed.revisions[0].entries_decoded, false);
 });
 
+test('PDF parser validates each in-use xref offset against its object header', () => {
+  const fixture = make_pdf(['1 0 obj\n<< /Type /Catalog >>\nendobj']);
+  const tampered = Buffer.from(fixture.buffer);
+  const original = String(fixture.offsets[0]).padStart(10, '0') + ' 00000 n ';
+  const entry_offset = tampered.indexOf(Buffer.from(original, 'ascii'));
+  assert.notEqual(entry_offset, -1);
+  tampered.write('0000000001', entry_offset, 'ascii');
+  assert.throws(() => parse_pdf(tampered), error => error.code === 'ORIX_PDF_XREF_OBJECT_MISMATCH');
+});
+
 test('PDF parser enforces count limits and rejects invalid limit configuration', () => {
   const fixture = make_pdf([`1 0 obj
 << /Type /Catalog >>
