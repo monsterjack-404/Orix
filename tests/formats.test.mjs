@@ -1009,7 +1009,7 @@ test('Mach-O parser decodes LC_DYSYMTAB symbol groups and indirect-symbol marker
   buffer[140] = 0x0f;
   buffer[141] = 1;
   buffer.writeBigUInt64LE(0x1000n, 144);
-  buffer.write(Buffer.from('\\0_main\\0', 'ascii'), 152);
+  buffer.write(Buffer.from('\0_main\0', 'ascii'), 152);
 
   const dynamic = 56;
   buffer.writeUInt32LE(0xb, dynamic);
@@ -1061,7 +1061,7 @@ test('Mach-O parser rejects invalid dynamic-symbol index groups and indirect ref
   buffer.writeUInt32LE(1, 136);
   buffer[140] = 0x0f;
   buffer.writeBigUInt64LE(0x1000n, 144);
-  buffer.write(Buffer.from('\\0_main\\0', 'ascii'), 152);
+  buffer.write(Buffer.from('\0_main\0', 'ascii'), 152);
   const dynamic = 56;
   buffer.writeUInt32LE(0xb, dynamic);
   buffer.writeUInt32LE(80, dynamic + 4);
