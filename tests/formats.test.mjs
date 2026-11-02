@@ -187,7 +187,7 @@ test('PE parser enforces configured section and import limits', () => {
 
 
 function create_elf_analysis_fixture() {
-  const buffer = Buffer.alloc(800);
+  const buffer = Buffer.alloc(896);
   buffer.set([0x7f,0x45,0x4c,0x46,2,1,1,0]);
   buffer.writeUInt16LE(2, 16);
   buffer.writeUInt16LE(62, 18);
@@ -207,8 +207,8 @@ function create_elf_analysis_fixture() {
   buffer.writeBigUInt64LE(0n, 72);
   buffer.writeBigUInt64LE(0x400000n, 80);
   buffer.writeBigUInt64LE(0x400000n, 88);
-  buffer.writeBigUInt64LE(800n, 96);
-  buffer.writeBigUInt64LE(800n, 104);
+  buffer.writeBigUInt64LE(896n, 96);
+  buffer.writeBigUInt64LE(896n, 104);
   buffer.writeBigUInt64LE(0x1000n, 112);
 
   buffer.writeUInt32LE(4, 120);
@@ -225,13 +225,20 @@ function create_elf_analysis_fixture() {
   buffer.writeBigUInt64LE(720n, 184);
   buffer.writeBigUInt64LE(0x4002d0n, 192);
   buffer.writeBigUInt64LE(0x4002d0n, 200);
-  buffer.writeBigUInt64LE(32n, 208);
-  buffer.writeBigUInt64LE(32n, 216);
+  buffer.writeBigUInt64LE(80n, 208);
+  buffer.writeBigUInt64LE(80n, 216);
   buffer.writeBigUInt64LE(8n, 224);
-  buffer.writeBigInt64LE(1n, 720);
-  buffer.writeBigUInt64LE(1n, 728);
-  buffer.writeBigInt64LE(0n, 736);
-  buffer.writeBigUInt64LE(0n, 744);
+  buffer.writeBigInt64LE(5n, 720);
+  buffer.writeBigUInt64LE(0x400340n, 728);
+  buffer.writeBigInt64LE(10n, 736);
+  buffer.writeBigUInt64LE(16n, 744);
+  buffer.writeBigInt64LE(1n, 752);
+  buffer.writeBigUInt64LE(1n, 760);
+  buffer.writeBigInt64LE(14n, 768);
+  buffer.writeBigUInt64LE(9n, 776);
+  buffer.writeBigInt64LE(0n, 784);
+  buffer.writeBigUInt64LE(0n, 792);
+  buffer.write('\\0libc.so\\0app.so\\0', 832, 'binary');
   buffer.writeUInt32LE(4, 600);
   buffer.writeUInt32LE(4, 604);
   buffer.writeUInt32LE(3, 608);
@@ -279,7 +286,9 @@ test('ELF parser decodes load segments, GNU build ID and dynamic symbols', () =>
   assert.equal(parsed.program_headers[0].flags.execute, true);
   assert.equal(parsed.program_headers[0].file_range_valid, true);
   assert.equal(parsed.gnu_build_id, 'deadbeef');
-  assert.equal(parsed.dynamic_entries[0].name, 'NEEDED');
+  assert.equal(parsed.dynamic_entries[2].name, 'NEEDED');
+  assert.deepEqual(parsed.dynamic_strings.needed_libraries, ['libc.so']);
+  assert.equal(parsed.dynamic_strings.soname, 'app.so');
   assert.equal(parsed.relocations.length, 1);
   assert.equal(parsed.relocations[0].symbol_index, 1);
   assert.equal(parsed.relocations[0].type, 7);
