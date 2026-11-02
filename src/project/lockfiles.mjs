@@ -428,6 +428,7 @@ function parse_pnpm_lock(file, text, limits) {
   let current_record = null;
   let current_importer = null;
   let record_dependency_field = null;
+  let record_section = null;
   let importer_dependency_field = null;
   let current_dependency = null;
   let current_dependency_target = null;
@@ -452,6 +453,7 @@ function parse_pnpm_lock(file, text, limits) {
       current_record = null;
       current_importer = null;
       record_dependency_field = null;
+      record_section = null;
       importer_dependency_field = null;
       current_dependency = null;
       if (section === 'lockfileVersion') lockfile_version = Number(parse_pnpm_scalar(header[2] ?? ''));
@@ -498,6 +500,7 @@ function parse_pnpm_lock(file, text, limits) {
       current_record = { key: parse_pnpm_scalar(body.slice(0, -1)), dependencies: [], optional_dependencies: [], integrity: null, resolved: null, dev: false, optional: false, license: null };
       target_records.push(current_record);
       record_dependency_field = null;
+      record_section = null;
       current_dependency = null;
       if (target_records.length > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'pnpm lockfile package count exceeds configured limit', { file, maximum: limits.max_packages });
       continue;
@@ -507,11 +510,18 @@ function parse_pnpm_lock(file, text, limits) {
       const field = /^([A-Za-z][A-Za-z0-9_-]*):(?:\s*(.*))?$/.exec(body);
       if (!field) continue;
       record_dependency_field = ['dependencies', 'optionalDependencies'].includes(field[1]) ? field[1] : null;
+      record_section = field[1] === 'resolution' && !(field[2] ?? '').trim() ? 'resolution' : null;
       current_dependency = null;
       if (field[1] === 'resolution') read_inline_resolution(current_record, field[2] ?? '');
       else if (field[1] === 'dev') current_record.dev = parse_pnpm_scalar(field[2] ?? '') === 'true';
       else if (field[1] === 'optional') current_record.optional = parse_pnpm_scalar(field[2] ?? '') === 'true';
       else if (field[1] === 'license') current_record.license = parse_pnpm_scalar(field[2] ?? '');
+      continue;
+    }
+    if (indent === 6 && record_section === 'resolution') {
+      const resolution_field = /^([A-Za-z][A-Za-z0-9_-]*):\\s*(.*)$/.exec(body);
+      if (resolution_field && resolution_field[1] === 'integrity') current_record.integrity = parse_pnpm_scalar(resolution_field[2]);
+      if (resolution_field && resolution_field[1] === 'tarball') current_record.resolved = parse_pnpm_scalar(resolution_field[2]);
       continue;
     }
     if (indent === 6 && record_dependency_field) {
@@ -527,6 +537,7 @@ function parse_pnpm_lock(file, text, limits) {
       if (field && field[1] === 'version') current_dependency.version = parse_pnpm_scalar(field[2]);
     }
   }
+  if (![5, 6, 9].includes(lockfile_version)) warnings.push({ code: 'ORIX_LOCKFILE_UNSUPPORTED_VERSION', lockfile_version });
   if (package_records.length === 0) warnings.push({ code: 'ORIX_LOCKFILE_NO_PACKAGE_TABLE' });
   const packages = [];
   const by_name_version = new Map();
