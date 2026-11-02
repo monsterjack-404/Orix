@@ -1012,6 +1012,9 @@ test('ELF parser rejects GNU hash buckets outside DYNSYM and truncated chains', 
   short_chain.writeBigUInt64LE(28n, 256 + 5 * 64 + 32);
   assert.throws(() => parse_elf(short_chain), error => error.code === 'ORIX_ELF_GNU_HASH_CHAIN_RANGE');
   assert.throws(() => parse_elf(create_elf_gnu_hash_fixture(), { max_gnu_hash_buckets: 0 }), error => error.code === 'ORIX_ELF_GNU_HASH_LIMIT');
+  const bad_shift = create_elf_gnu_hash_fixture();
+  bad_shift.writeUInt32LE(32, 956);
+  assert.throws(() => parse_elf(bad_shift), error => error.code === 'ORIX_ELF_GNU_HASH_BLOOM_SHIFT');
 });
 
 
