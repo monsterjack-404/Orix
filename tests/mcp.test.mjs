@@ -74,3 +74,50 @@ test('MCP stdio transport reads and writes newline-delimited JSON-RPC messages',
   assert.deepEqual(messages[0].result, {});
   assert.equal(messages[1].result.tools.length, ORIX_MCP_TOOLS.length);
 });
+
+
+test('MCP comparison tool reads bounded reports and returns artifact deltas', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-compare-'));
+  try {
+    const baseline_path = path.join(directory, 'baseline.json');
+    const current_path = path.join(directory, 'current.json');
+    const baseline = {
+      schema_version: 'orix.artifact.v1',
+      artifact: { path: path.join(directory, 'sample.bin') },
+      integrity: { digest: 'a'.repeat(64) },
+      detection: { format: 'Unknown' },
+      indicators: [],
+    };
+    const current = structuredClone(baseline);
+    current.integrity.digest = 'b'.repeat(64);
+    await writeFile(baseline_path, JSON.stringify(baseline));
+    await writeFile(current_path, JSON.stringify(current));
+    const response = await handle_mcp_message({
+      jsonrpc: '2.0', id: 20, method: 'tools/call',
+      params: { name: 'orix.compare_reports', arguments: { baseline_path, current_path } },
+    });
+    assert.equal(response.result.isError, false);
+    const comparison = JSON.parse(response.result.content[0].text);
+    assert.equal(comparison.schema_version, 'orix.comparison.v1');
+    assert.equal(comparison.comparison.modified, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('MCP comparison tool rejects unsupported report shapes', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-compare-invalid-'));
+  try {
+    const baseline_path = path.join(directory, 'baseline.json');
+    const current_path = path.join(directory, 'current.json');
+    await writeFile(baseline_path, JSON.stringify({ schema_version: 'orix.unknown.v1' }));
+    await writeFile(current_path, JSON.stringify({ schema_version: 'orix.unknown.v1' }));
+    const response = await handle_mcp_message({
+      jsonrpc: '2.0', id: 21, method: 'tools/call',
+      params: { name: 'orix.compare_reports', arguments: { baseline_path, current_path } },
+    });
+    assert.equal(response.result.isError, true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
