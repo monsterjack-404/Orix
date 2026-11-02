@@ -145,8 +145,8 @@ test('MCP ledger tools verify and list existing evidence without write access', 
   try {
     const ledger_path = path.join(directory, 'evidence.jsonl');
     await append_ledger(ledger_path, { type: 'test.completed', payload: { safe: true } });
-    const verified = await call_orix_tool('orix.ledger.verify', { path: ledger_path });
-    const listed = await call_orix_tool('orix.ledger.list', { path: ledger_path });
+    const verified = await call_orix_tool('orix.ledger.verify', { path: ledger_path }, { roots: [directory] });
+    const listed = await call_orix_tool('orix.ledger.list', { path: ledger_path }, { roots: [directory] });
     assert.equal(verified.valid, true);
     assert.equal(verified.records_verified, 1);
     assert.equal(listed.records.length, 1);
