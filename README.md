@@ -119,7 +119,17 @@ Comparison classifies added, removed, modified and unchanged artifacts by normal
 
 Use `--format json` or `--json` for automation, `--format sarif` for GitHub code-scanning-compatible static findings, and Markdown for review and sharing. SARIF is supported by `inspect` and `scan`; project reports remain JSON/Markdown. `--out` creates a new report file with restrictive permissions; it refuses to overwrite an existing path. Report output is not written into the target artifact or directory unless the caller explicitly names that location.
 
-## MCP server\n\nORIX includes an optional stdio Model Context Protocol server. It exposes bounded artifact inspection, directory/project scans, format capabilities, report comparison, and workspace-confined evidence-ledger operations.\n\n```bash\nnode ./src/mcp.mjs\n```\n\nConfigure workspace roots with `ORIX_MCP_ROOTS` (path-delimited). If unset, the process working directory is the only workspace root. The transport caps input frames at 4 MiB and tool responses at 2 MiB. See [MCP integration](docs/MCP.md).\n\n## Programmatic API
+## MCP server
+
+ORIX includes an optional stdio Model Context Protocol server. It exposes bounded artifact inspection, directory/project scans, format capabilities, report comparison, and workspace-confined evidence-ledger operations.
+
+```bash
+node ./src/mcp.mjs
+```
+
+Configure workspace roots with `ORIX_MCP_ROOTS` (path-delimited). If unset, the process working directory is the only workspace root. The transport caps input frames at 4 MiB and tool responses at 2 MiB. See [MCP integration](docs/MCP.md).
+
+## Programmatic API
 
 The public API is exported from `src/index.mjs` and declared in `package.json#exports`.
 
