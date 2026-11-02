@@ -180,7 +180,7 @@ test('project intelligence resolves Poetry lock packages and dependency groups',
     'requests = "^2.31.0"',
     '[tool.poetry.group.dev.dependencies]',
     'pytest = "^7.0"',
-  ].join('\\n'));
+  ].join('\n'));
   await writeFile(path.join(root, 'poetry.lock'), [
     '[[package]]',
     'name = "requests"',
@@ -201,7 +201,7 @@ test('project intelligence resolves Poetry lock packages and dependency groups',
     '',
     '[metadata]',
     'lock-version = "2.0"',
-  ].join('\\n'));
+  ].join('\n'));
   const report = await scan_project(root);
   assert.equal(report.lockfiles[0].format, 'poetry-lock');
   assert.equal(report.summary.locked_packages, 3);
@@ -216,7 +216,7 @@ test('project intelligence integrates Pipfile.lock with declared runtime and dev
     'requests = "==2.31.0"',
     '[dev-packages]',
     'pytest = "==7.4.0"',
-  ].join('\\n'));
+  ].join('\n'));
   await writeFile(path.join(root, 'Pipfile.lock'), JSON.stringify({
     _meta: { pipfile_spec: 6 },
     default: { requests: { version: '==2.31.0', hashes: [] } },
