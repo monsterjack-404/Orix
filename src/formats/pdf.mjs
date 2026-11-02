@@ -6,6 +6,7 @@ const MAX_TAIL_BYTES = 1024 * 1024;
 const MAX_REVISIONS = 64;
 const MAX_XREF_ENTRIES = 1_000_000;
 const MAX_OBJECTS = 250_000;
+const MAX_OBJECT_SCAN_BYTES = 64 * 1024 * 1024;
 
 function fail(code, message, details = null) {
   throw new OrixError(code, message, { details, recoverable: true });
@@ -18,7 +19,7 @@ function safe_integer(value, label) {
 }
 
 function read_line(text, offset, limit) {
-  if (offset < 0 || offset >= limit) fail('ORIX_PDF_XREF_RANGE', 'Cross-reference offset is outside the file', { offset, limit });
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset >= limit) fail('ORIX_PDF_XREF_RANGE', 'Cross-reference offset is outside the file', { offset, limit });
   let end = offset;
   while (end < limit && text.charCodeAt(end) !== 10 && text.charCodeAt(end) !== 13) end += 1;
   let next = end;
@@ -32,7 +33,6 @@ function parse_classic_xref(text, offset, file_size, limits) {
   if (!/^xref(?:\s|$)/.test(first.line)) {
     const object_match = /^(\d+)\s+(\d+)\s+obj\b/.exec(first.line.trim());
     if (!object_match) fail('ORIX_PDF_XREF_UNSUPPORTED', 'startxref does not point to a classic xref table or an indirect xref-stream object', { offset, line: first.line.slice(0, 80) });
-    const object = new RegExp('^' + object_match[1] + '\\s+' + object_match[2] + '\\s+obj\\b');
     const dictionary_start = text.indexOf('<<', offset);
     const stream_marker = text.indexOf('stream', dictionary_start);
     const dictionary = dictionary_start >= 0 && stream_marker >= 0 ? text.slice(dictionary_start, stream_marker) : '';
@@ -45,10 +45,11 @@ function parse_classic_xref(text, offset, file_size, limits) {
   let cursor = first.next;
   const entries = [];
   let subsections = 0;
+  let trailer_start = -1;
   while (cursor < file_size) {
     const row = read_line(text, cursor, file_size);
     cursor = row.next;
-    if (row.line.trim() === 'trailer') break;
+    if (row.line.trim() === 'trailer') { trailer_start = cursor; break; }
     const subsection = /^(\d+)\s+(\d+)\s*$/.exec(row.line.trim());
     if (!subsection) fail('ORIX_PDF_XREF_SUBSECTION', 'Malformed xref subsection header', { offset: cursor, line: row.line.slice(0, 100) });
     const start = safe_integer(subsection[1], 'xref subsection start');
@@ -67,10 +68,11 @@ function parse_classic_xref(text, offset, file_size, limits) {
       entries.push({ object_number: start + index, offset: object_offset, generation, in_use });
     }
   }
-  const trailer_start = text.indexOf('<<', cursor);
-  const trailer_end = trailer_start >= 0 ? text.indexOf('>>', trailer_start + 2) : -1;
-  if (trailer_start < 0 || trailer_end < 0 || trailer_start - cursor > 64) fail('ORIX_PDF_TRAILER_MISSING', 'Trailer dictionary is missing or malformed', { offset: cursor });
-  const trailer = text.slice(trailer_start, trailer_end + 2);
+  if (trailer_start < 0) fail('ORIX_PDF_TRAILER_MISSING', 'Classic xref table is not followed by a trailer dictionary', { offset: cursor });
+  const dictionary_start = text.indexOf('<<', trailer_start);
+  const dictionary_end = dictionary_start >= 0 ? text.indexOf('>>', dictionary_start + 2) : -1;
+  if (dictionary_start < 0 || dictionary_end < 0 || dictionary_start - trailer_start > 64) fail('ORIX_PDF_TRAILER_MISSING', 'Trailer dictionary is missing or malformed', { offset: trailer_start });
+  const trailer = text.slice(dictionary_start, dictionary_end + 2);
   const prev_match = /\/Prev\s+(\d+)\b/.exec(trailer);
   const size_match = /\/Size\s+(\d+)\b/.exec(trailer);
   const root_match = /\/Root\s+(\d+)\s+(\d+)\s+R/.exec(trailer);
@@ -87,13 +89,50 @@ function parse_classic_xref(text, offset, file_size, limits) {
   };
 }
 
+function scan_objects(text, limits) {
+  const object_pattern = /(?:^|[\r\n])([0-9]{1,10})\s+([0-9]{1,5})\s+obj\b/g;
+  const objects = [];
+  let match;
+  while ((match = object_pattern.exec(text)) !== null) {
+    if (objects.length >= limits.max_objects) fail('ORIX_PDF_OBJECT_LIMIT', 'Indirect object count exceeds configured limit', { maximum: limits.max_objects });
+    const object_offset = match.index + (match[0].length - match[0].trimStart().length);
+    const body_start = object_pattern.lastIndex;
+    const end_object = text.indexOf('endobj', body_start);
+    if (end_object < 0) {
+      objects.push({ object_number: Number(match[1]), generation: Number(match[2]), offset: object_offset, end_offset: null, complete: false });
+      continue;
+    }
+    const body = text.slice(body_start, Math.min(end_object, body_start + limits.max_object_scan_bytes));
+    objects.push({
+      object_number: Number(match[1]), generation: Number(match[2]), offset: object_offset,
+      end_offset: end_object + 6, complete: true,
+      has_stream: /stream(?:\r\n|\n|\r)/.test(body),
+      markers: {
+        javascript: /\/(?:JavaScript|JS)\b/.test(body),
+        embedded_file: /\/EmbeddedFile\b/.test(body),
+        file_specification: /\/Filespec\b/.test(body),
+        open_action: /\/OpenAction\b/.test(body),
+        additional_actions: /\/AA\b/.test(body),
+        launch_action: /\/Launch\b/.test(body),
+      },
+    });
+    object_pattern.lastIndex = end_object + 6;
+  }
+  return objects;
+}
+
 export function parse_pdf(buffer, options = {}) {
   if (!Buffer.isBuffer(buffer)) throw new TypeError('parse_pdf requires a Buffer');
   const limits = {
     max_xref_entries: options.max_xref_entries ?? MAX_XREF_ENTRIES,
     max_revisions: options.max_revisions ?? MAX_REVISIONS,
     max_objects: options.max_objects ?? MAX_OBJECTS,
+    max_object_scan_bytes: options.max_object_scan_bytes ?? MAX_OBJECT_SCAN_BYTES,
+    max_marker_scan_bytes: options.max_marker_scan_bytes ?? MAX_OBJECT_SCAN_BYTES,
   };
+  for (const [name, value] of Object.entries(limits)) {
+    if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(name + ' must be a positive safe integer');
+  }
   if (buffer.length < 8) fail('ORIX_PDF_TRUNCATED_HEADER', 'PDF input is too short to contain a header');
   const text = buffer.toString('latin1');
   const header = /^%PDF-(\d)\.(\d)/.exec(text);
@@ -117,36 +156,8 @@ export function parse_pdf(buffer, options = {}) {
     xref_offset = revision.kind === 'table' ? revision.prev_offset : null;
     if (xref_offset !== null && xref_offset >= revisions[revisions.length - 1].offset) fail('ORIX_PDF_PREV_ORDER', 'Incremental xref /Prev pointer must refer to an earlier byte offset', { previous: xref_offset, current: revisions[revisions.length - 1].offset });
   }
-
-  const object_pattern = /(?:^|[\r\n])([0-9]{1,10})\s+([0-9]{1,5})\s+obj\b/g;
-  const objects = [];
-  let match;
-  while ((match = object_pattern.exec(text)) !== null) {
-    if (objects.length >= limits.max_objects) fail('ORIX_PDF_OBJECT_LIMIT', 'Indirect object count exceeds configured limit', { maximum: limits.max_objects });
-    const object_offset = match.index + (match[0].length - match[0].trimStart().length);
-    const body_start = object_pattern.lastIndex;
-    const end_object = text.indexOf('endobj', body_start);
-    if (end_object < 0) {
-      objects.push({ object_number: Number(match[1]), generation: Number(match[2]), offset: object_offset, end_offset: null, complete: false });
-      continue;
-    }
-    const body = text.slice(body_start, Math.min(end_object, body_start + 1024 * 1024));
-    objects.push({
-      object_number: Number(match[1]), generation: Number(match[2]), offset: object_offset,
-      end_offset: end_object + 6, complete: true,
-      has_stream: /\bstream(?:\r\n|\n|\r)/.test(body),
-      markers: {
-        javascript: /\/(?:JavaScript|JS)\b/.test(body),
-        embedded_file: /\/EmbeddedFile\b/.test(body),
-        file_specification: /\/Filespec\b/.test(body),
-        open_action: /\/OpenAction\b/.test(body),
-        additional_actions: /\/AA\b/.test(body),
-        launch_action: /\/Launch\b/.test(body),
-      },
-    });
-  }
-
-  const marker_text = text.slice(0, Math.min(text.length, options.max_marker_scan_bytes ?? 64 * 1024 * 1024));
+  const objects = scan_objects(text, limits);
+  const marker_text = text.slice(0, Math.min(text.length, limits.max_marker_scan_bytes));
   const active_content = {
     javascript: /\/(?:JavaScript|JS)\b/.test(marker_text),
     embedded_files: /\/EmbeddedFile\b/.test(marker_text),
