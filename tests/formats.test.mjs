@@ -524,3 +524,95 @@ test('PE parser rejects cyclic resource trees and out-of-range certificate table
   malformed.writeUInt32LE(32, optional + 96 + 36);
   assert.throws(() => parse_pe(malformed), error => error.code === 'ORIX_PE_CERTIFICATE_RANGE');
 });
+
+
+function create_zip64_fixture() {
+  const name = Buffer.from('big.bin', 'ascii');
+  const buffer = Buffer.alloc(217);
+  buffer.writeUInt32LE(0x04034b50, 0);
+  buffer.writeUInt16LE(45, 4);
+  buffer.writeUInt16LE(0, 6);
+  buffer.writeUInt16LE(0, 8);
+  buffer.writeUInt32LE(0, 14);
+  buffer.writeUInt32LE(1, 18);
+  buffer.writeUInt32LE(1, 22);
+  buffer.writeUInt16LE(name.length, 26);
+  buffer.writeUInt16LE(0, 28);
+  name.copy(buffer, 30);
+  buffer[37] = 0x41;
+
+  const central = 38;
+  buffer.writeUInt32LE(0x02014b50, central);
+  buffer.writeUInt16LE(45, central + 4);
+  buffer.writeUInt16LE(45, central + 6);
+  buffer.writeUInt16LE(0, central + 8);
+  buffer.writeUInt16LE(0, central + 10);
+  buffer.writeUInt32LE(0, central + 16);
+  buffer.writeUInt32LE(0xffffffff, central + 20);
+  buffer.writeUInt32LE(0xffffffff, central + 24);
+  buffer.writeUInt16LE(name.length, central + 28);
+  buffer.writeUInt16LE(28, central + 30);
+  buffer.writeUInt16LE(0, central + 32);
+  buffer.writeUInt16LE(0, central + 34);
+  buffer.writeUInt32LE(0, central + 38);
+  buffer.writeUInt32LE(0xffffffff, central + 42);
+  name.copy(buffer, central + 46);
+  const extra = central + 46 + name.length;
+  buffer.writeUInt16LE(0x0001, extra);
+  buffer.writeUInt16LE(24, extra + 2);
+  buffer.writeBigUInt64LE(1n, extra + 4);
+  buffer.writeBigUInt64LE(1n, extra + 12);
+  buffer.writeBigUInt64LE(0n, extra + 20);
+
+  const zip64_eocd = 119;
+  buffer.writeUInt32LE(0x06064b50, zip64_eocd);
+  buffer.writeBigUInt64LE(44n, zip64_eocd + 4);
+  buffer.writeUInt16LE(45, zip64_eocd + 12);
+  buffer.writeUInt16LE(45, zip64_eocd + 14);
+  buffer.writeUInt32LE(0, zip64_eocd + 16);
+  buffer.writeUInt32LE(0, zip64_eocd + 20);
+  buffer.writeBigUInt64LE(1n, zip64_eocd + 24);
+  buffer.writeBigUInt64LE(1n, zip64_eocd + 32);
+  buffer.writeBigUInt64LE(81n, zip64_eocd + 40);
+  buffer.writeBigUInt64LE(38n, zip64_eocd + 48);
+
+  const locator = zip64_eocd + 56;
+  buffer.writeUInt32LE(0x07064b50, locator);
+  buffer.writeUInt32LE(0, locator + 4);
+  buffer.writeBigUInt64LE(BigInt(zip64_eocd), locator + 8);
+  buffer.writeUInt32LE(1, locator + 16);
+
+  const eocd = locator + 20;
+  buffer.writeUInt32LE(0x06054b50, eocd);
+  buffer.writeUInt16LE(0, eocd + 4);
+  buffer.writeUInt16LE(0, eocd + 6);
+  buffer.writeUInt16LE(0xffff, eocd + 8);
+  buffer.writeUInt16LE(0xffff, eocd + 10);
+  buffer.writeUInt32LE(0xffffffff, eocd + 12);
+  buffer.writeUInt32LE(0xffffffff, eocd + 16);
+  buffer.writeUInt16LE(0, eocd + 20);
+  return buffer;
+}
+
+test('ZIP64 parser resolves 64-bit directory and per-entry size/offset fields', async () => {
+  const { parse_zip } = await import('../src/formats/zip.mjs');
+  const parsed = parse_zip(create_zip64_fixture());
+  assert.equal(parsed.archive.zip64, true);
+  assert.equal(parsed.archive.total_entries, 1);
+  assert.equal(parsed.entries[0].name, 'big.bin');
+  assert.equal(parsed.entries[0].compressed_size, 1);
+  assert.equal(parsed.entries[0].uncompressed_size, 1);
+  assert.equal(parsed.entries[0].local_header_offset, 0);
+  assert.equal(parsed.entries[0].local_data_range_valid, true);
+});
+
+test('ZIP64 parser rejects missing locators and malformed extended fields', async () => {
+  const { parse_zip } = await import('../src/formats/zip.mjs');
+  const missing_locator = create_zip64_fixture();
+  missing_locator.fill(0, missing_locator.length - 42, missing_locator.length - 22);
+  assert.throws(() => parse_zip(missing_locator), error => error.code === 'ORIX_ZIP64_LOCATOR_MISSING');
+
+  const malformed_extra = create_zip64_fixture();
+  malformed_extra.writeUInt16LE(8, 38 + 46 + 7 + 2);
+  assert.throws(() => parse_zip(malformed_extra), error => error.code === 'ORIX_ZIP64_EXTRA_TRUNCATED');
+});
