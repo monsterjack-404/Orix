@@ -75,10 +75,10 @@ test('project intelligence indexes npm lockfile packages without executing insta
 test('project intelligence inventories Git metadata without traversing .git objects', async () => with_project(async root => {
   const git = path.join(root, '.git');
   await mkdir(path.join(git, 'refs', 'heads'), { recursive: true });
-  await writeFile(path.join(git, 'HEAD'), 'ref: refs/heads/main\\n');
-  await writeFile(path.join(git, 'refs', 'heads', 'main'), 'a'.repeat(40) + '\\n');
-  await writeFile(path.join(git, 'config'), '[core]\\n repositoryformatversion = 0\\n[remote "origin"]\\n url = git@github.com:monsterjack-404/Orix.git\\n');
-  await writeFile(path.join(root, 'src.js'), 'export const value = 1;\\n');
+  await writeFile(path.join(git, 'HEAD'), 'ref: refs/heads/main\n');
+  await writeFile(path.join(git, 'refs', 'heads', 'main'), 'a'.repeat(40) + '\n');
+  await writeFile(path.join(git, 'config'), '[core]\n repositoryformatversion = 0\n[remote "origin"]\n url = git@github.com:monsterjack-404/Orix.git\n');
+  await writeFile(path.join(root, 'src.js'), 'export const value = 1;\n');
   const report = await scan_project(root);
   assert.equal(report.git.present, true);
   assert.equal(report.git.branch, 'main');
@@ -104,5 +104,5 @@ test('project Markdown includes lockfile graph status and resolved package prove
   assert.match(markdown, /npm-package-lock/);
   assert.match(markdown, /## Resolved package sample/);
   assert.match(markdown, /alpha/);
-  assert.doesNotMatch(markdown, /\\\\n/);
+  assert.doesNotMatch(markdown, /\\\n/);
 }));
