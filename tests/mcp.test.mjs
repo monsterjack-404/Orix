@@ -65,11 +65,11 @@ test('MCP stdio transport reads and writes newline-delimited JSON-RPC messages',
   output.setEncoding('utf8');
   output.on('data', chunk => { captured += chunk; });
   const running = start_mcp_server({ input, output, error_output: errors });
-  input.write(JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'ping' }) + '\\n');
-  input.write(JSON.stringify({ jsonrpc: '2.0', id: 11, method: 'tools/list' }) + '\\n');
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'ping' }) + '\n');
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 11, method: 'tools/list' }) + '\n');
   input.end();
   await running;
-  const messages = captured.trim().split('\\n').map(line => JSON.parse(line));
+  const messages = captured.trim().split('\n').map(line => JSON.parse(line));
   assert.equal(messages.length, 2);
   assert.deepEqual(messages[0].result, {});
   assert.equal(messages[1].result.tools.length, ORIX_MCP_TOOLS.length);
