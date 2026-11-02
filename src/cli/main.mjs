@@ -8,7 +8,8 @@ import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project, render_project_markdown } from '../project/intelligence.mjs';
 import { list_format_capabilities } from '../formats/index.mjs';
 import { render_json } from '../reports/json.mjs';
-import { render_inspection_markdown, render_scan_markdown } from '../reports/markdown.mjs';\nimport { render_sarif } from '../reports/sarif.mjs';
+import { render_inspection_markdown, render_scan_markdown } from '../reports/markdown.mjs';
+import { render_sarif } from '../reports/sarif.mjs';
 import { normalize_error } from '../core/errors.mjs';
 import { append_ledger, list_ledger, verify_ledger } from '../evidence/ledger.mjs';
 async function write_or_print(content,output_path) {
@@ -32,7 +33,8 @@ export async function main(argv=process.argv.slice(2)) {
   if(parsed.command==='formats'){if(parsed.target)throw new Error('The formats command does not accept a target');await write_or_print(render_json({schema_version:'orix.formats.v1',formats:list_format_capabilities()}),parsed.flags.out);return 0;}
   if(!['inspect','scan','project'].includes(parsed.command))throw new Error('Unknown command: '+parsed.command);
   if(!parsed.target)throw new Error(parsed.command+' requires a target path');
-  const options={...parsed.flags,limits:parsed.flags};\n  if(parsed.flags.format==='sarif'&&parsed.command==='project')throw new Error('SARIF output currently supports inspect and scan reports, not project reports');
+  const options={...parsed.flags,limits:parsed.flags};
+  if(parsed.flags.format==='sarif'&&parsed.command==='project')throw new Error('SARIF output currently supports inspect and scan reports, not project reports');
   let report,renderer;
   if(parsed.command==='inspect'){report=await inspect_file(parsed.target,options);renderer=render_inspection_markdown;}
   else if(parsed.command==='scan'){report=await scan_directory(parsed.target,options);renderer=render_scan_markdown;}
