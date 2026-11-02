@@ -897,7 +897,7 @@ test('Mach-O parser decodes bounded 64-bit nlist symbols and names', () => {
   buffer[61] = 1;
   buffer.writeUInt16LE(0, 62);
   buffer.writeBigUInt64LE(0x1000n, 64);
-  buffer.write(Buffer.from('\\0_main\\0_unused\\0', 'ascii'), 72);
+  buffer.write(Buffer.from('\0_main\0_unused\0', 'ascii'), 72);
   const parsed = parse_macho(buffer);
   assert.equal(parsed.symbol_table.symbol_count, 1);
   assert.equal(parsed.symbol_table.entry_size, 16);
@@ -932,7 +932,7 @@ test('Mach-O parser bounds symbol count and rejects invalid string indexes', () 
   buffer.writeUInt32LE(1, 56);
   buffer[60] = 0x0f;
   buffer.writeBigUInt64LE(0x1000n, 64);
-  buffer.write(Buffer.from('\\0_main\\0_unused\\0', 'ascii'), 72);
+  buffer.write(Buffer.from('\0_main\0_unused\0', 'ascii'), 72);
   assert.throws(() => parse_macho(buffer, { max_symbols: 0 }), error => error.code === 'ORIX_MACHO_SYMBOL_LIMIT');
   const malformed = Buffer.from(buffer);
   malformed.writeUInt32LE(0xffff, 56);
