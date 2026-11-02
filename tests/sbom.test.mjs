@@ -76,6 +76,7 @@ test('CycloneDX export uses exact locked npm versions and preserves package depe
     path: 'package-lock.json',
     ecosystem: 'npm',
     format: 'npm-package-lock',
+    complete: true,
     packages: [
       { name: 'alpha', version: '1.2.0', ecosystem: 'npm', location: 'node_modules/alpha', dependency_type: 'direct-or-hoisted', integrity: 'sha512-YQ==' },
       { name: 'beta', version: '2.3.0', ecosystem: 'npm', location: 'node_modules/alpha/node_modules/beta', dependency_type: 'transitive' },
@@ -91,6 +92,7 @@ test('CycloneDX export uses exact locked npm versions and preserves package depe
   const root = bom.dependencies.find(item => item.ref === bom.metadata.component['bom-ref']);
   assert.deepEqual(root.dependsOn, ['pkg:npm/alpha@1.2.0']);
   assert.equal(bom.properties.find(item => item.name === 'orix:transitive-resolution-performed').value, 'true');
+  for (const component of bom.components) assert.ok(bom.dependencies.some(item => item.ref === component['bom-ref']));
 });
 
 
@@ -133,4 +135,22 @@ test('CycloneDX exports Go module purls and checksum provenance', () => {
   const component = bom.components.find(item => item.name === 'github.com/acme/direct');
   assert.equal(component.purl, 'pkg:golang/github.com/acme/direct@v1.2.3');
   assert.ok(component.properties.some(item => item.name === 'orix:checksum-kind' && item.value === 'module'));
+});
+
+
+test('CycloneDX does not claim transitive resolution for Pipfile.lock inventories', () => {
+  const report = project_report();
+  report.lockfiles = [{
+    path: 'Pipfile.lock',
+    ecosystem: 'python',
+    format: 'pipfile-lock',
+    complete: false,
+    packages: [{ name: 'requests', version: '2.31.0', ecosystem: 'python', location: 'requests@2.31.0', dev: false }],
+    edges: [],
+    root_edges: [{ name: 'requests', to: 'requests@2.31.0' }],
+  }];
+  const bom = JSON.parse(render_cyclonedx(report));
+  assert.equal(bom.properties.find(item => item.name === 'orix:lockfile-graph-complete').value, 'false');
+  assert.equal(bom.properties.find(item => item.name === 'orix:transitive-resolution-performed').value, 'false');
+  assert.ok(bom.dependencies.some(item => item.ref === 'pkg:pypi/requests@2.31.0'));
 });
