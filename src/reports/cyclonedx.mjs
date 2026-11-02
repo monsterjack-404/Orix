@@ -53,10 +53,13 @@ export function render_cyclonedx(report, options = {}) {
   if (report?.schema_version !== 'orix.project.v1' || !report.project || !Array.isArray(report.dependencies)) {
     throw new TypeError('CycloneDX export requires an ORIX project-intelligence report');
   }
+  const source_dependencies = report.resolved_dependencies?.length ? report.resolved_dependencies : report.dependencies;
   const components = new Map();
-  for (const dependency of report.dependencies) {
+  const package_refs = new Map();
+  for (const dependency of source_dependencies) {
     const purl = package_url(dependency);
     if (!purl) continue;
+    package_refs.set(dependency.id ?? (dependency.name + '@' + dependency.version), purl);
     const existing = components.get(purl);
     const property_set = new Map((existing?.properties ?? []).map(item => [item.name, item.value]));
     property_set.set('orix:ecosystem', dependency.ecosystem);
@@ -69,7 +72,7 @@ export function render_cyclonedx(report, options = {}) {
       name: dependency.name,
       ...(is_pinned_version(dependency.version) ? { version: dependency.version } : {}),
       purl,
-      scope: existing?.scope === 'required' || !['devDependencies', 'require-dev', 'dev-dependencies', 'build-dependencies'].includes(dependency.dependency_type) ? 'required' : 'optional',
+      scope: existing?.scope === 'required' || !['dev', 'devDependencies', 'require-dev', 'dev-dependencies', 'build-dependencies'].includes(dependency.dependency_type) ? 'required' : 'optional',
       properties: [...property_set].map(([name, value]) => ({ name, value })).sort((a, b) => a.name.localeCompare(b.name)),
     });
   }
@@ -91,7 +94,7 @@ export function render_cyclonedx(report, options = {}) {
     version: 1,
     metadata: {
       timestamp: report.project.scanned_at,
-      tools: [{ vendor: 'ORIX', name: 'ORIX', version: options.orix_version ?? '0.4.0' }],
+      tools: [{ vendor: 'ORIX', name: 'ORIX', version: options.orix_version ?? '0.5.0' }],
       component: {
         type: 'application',
         'bom-ref': root_purl,
@@ -105,11 +108,11 @@ export function render_cyclonedx(report, options = {}) {
       },
     },
     components: ordered,
-    dependencies: [{ ref: root_purl, dependsOn: ordered.map(item => item['bom-ref']) }],
+    dependencies: (() => {\n      const graph_edges = report.dependency_graph?.edges ?? [];\n      if (!report.resolved_dependencies?.length || graph_edges.length === 0) return [{ ref: root_purl, dependsOn: ordered.map(item => item['bom-ref']) }];\n      const grouped = new Map();\n      for (const edge of graph_edges) {\n        const from = edge.from === 'root' ? root_purl : package_refs.get(edge.from);\n        const to = package_refs.get(edge.to);\n        if (!from || !to) continue;\n        const values = grouped.get(from) ?? new Set(); values.add(to); grouped.set(from, values);\n      }\n      if (!grouped.has(root_purl)) grouped.set(root_purl, new Set());\n      return [...grouped].map(([ref, values]) => ({ ref, dependsOn: [...values].sort() })).sort((a, b) => a.ref.localeCompare(b.ref));\n    })(),
     properties: [
-      { name: 'orix:dependency-declarations', value: String(report.dependencies.length) },
+      { name: 'orix:dependency-declarations', value: String(report.dependencies.length) },\n      { name: 'orix:locked-packages', value: String(report.resolved_dependencies?.length ?? 0) },
       { name: 'orix:components-emitted', value: String(ordered.length) },
-      { name: 'orix:transitive-resolution-performed', value: 'false' },
+      { name: 'orix:transitive-resolution-performed', value: String((report.resolved_dependencies?.length ?? 0) > 0) },
     ],
   };
   return JSON.stringify(bom, null, options.compact ? 0 : 2) + '\n';
