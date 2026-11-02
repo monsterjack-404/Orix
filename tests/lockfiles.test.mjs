@@ -60,3 +60,42 @@ test('unsupported lockfile names are ignored and limits are validated', () => {
   assert.equal(parse_lockfile('pnpm-lock.yaml', 'lockfileVersion: 9'), null);
   assert.throws(() => parse_lockfile('package-lock.json', '{}', { max_lockfile_edges: 0 }), error => error.code === 'ORIX_LOCKFILE_BAD_LIMIT');
 });
+
+
+test('npm v1 lockfiles resolve nested requirements and root package edges', () => {
+  const input = JSON.stringify({
+    lockfileVersion: 1,
+    dependencies: {
+      alpha: { version: '1.0.0', requires: { beta: '^2.0.0' }, dependencies: { beta: { version: '2.4.0' } } },
+    },
+  });
+  const report = parse_lockfile('package-lock.json', input);
+  assert.equal(report.packages.length, 2);
+  assert.equal(report.root_edges[0].to, 'node_modules/alpha');
+  assert.ok(report.edges.some(edge => edge.name === 'beta' && edge.resolved_version === '2.4.0'));
+});
+
+test('Yarn Berry lockfiles skip metadata and parse resolution and colon fields', () => {
+  const input = [
+    '__metadata:',
+    '  version: 8',
+    '  cacheKey: 10c0',
+    '',
+    '"alpha@npm:^1.0.0":',
+    '  version: 1.2.0',
+    '  resolution: "alpha@npm:1.2.0"',
+    '  checksum: abc123',
+    '  dependencies:',
+    '    beta: "npm:^2.0.0"',
+    '',
+    '"beta@npm:^2.0.0":',
+    '  version: 2.3.0',
+    '  resolution: "beta@npm:2.3.0"',
+  ].join('\n');
+  const report = parse_lockfile('yarn.lock', input);
+  assert.equal(report.packages.length, 2);
+  assert.equal(report.packages.find(item => item.name === 'alpha').version, '1.2.0');
+  assert.equal(report.packages.find(item => item.name === 'alpha').integrity, 'abc123');
+  assert.equal(report.edges.length, 1);
+  assert.equal(report.edges[0].resolved_version, '2.3.0');
+});
