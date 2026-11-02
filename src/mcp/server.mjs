@@ -6,6 +6,8 @@ import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project } from '../project/intelligence.mjs';
 import { list_format_capabilities } from '../formats/index.mjs';
 import { verify_ledger, list_ledger } from '../evidence/ledger.mjs';
+import { compare_reports } from '../analyzer/compare.mjs';
+import { read_json_report } from '../core/read-report.mjs';
 import { normalize_error } from '../core/errors.mjs';
 
 export const MCP_PROTOCOL_VERSION = '2025-03-26';
@@ -52,6 +54,14 @@ export const ORIX_MCP_TOOLS = Object.freeze([
     name: 'orix.formats',
     description: 'List recognized signatures and structural parser capabilities.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'orix.compare_reports',
+    description: 'Compare two previously generated artifact or directory-scan JSON reports by normalized path, SHA-256 and indicator deltas. Does not rescan either path.',
+    inputSchema: { type: 'object', properties: {
+      baseline_path: { type: 'string', minLength: 1 },
+      current_path: { type: 'string', minLength: 1 },
+    }, required: ['baseline_path', 'current_path'], additionalProperties: false },
   },
   {
     name: 'orix.ledger.verify',
@@ -128,6 +138,11 @@ export async function call_orix_tool(name, args = {}) {
     }
     case 'orix.formats':
       return { schema_version: 'orix.formats.v1', formats: list_format_capabilities() };
+    case 'orix.compare_reports': {
+      const baseline = await read_json_report(args.baseline_path);
+      const current = await read_json_report(args.current_path);
+      return compare_reports(baseline, current);
+    }
     case 'orix.ledger.verify':
       return verify_ledger(args.path);
     case 'orix.ledger.list':
