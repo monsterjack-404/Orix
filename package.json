@@ -17,7 +17,9 @@
     "./project": "./src/project/intelligence.mjs",
     "./formats/pdf": "./src/formats/pdf.mjs",
     "./reports/sarif": "./src/reports/sarif.mjs",
-    "./evidence/ledger": "./src/evidence/ledger.mjs"
+    "./evidence/ledger": "./src/evidence/ledger.mjs",
+    "./analyzer/compare": "./src/analyzer/compare.mjs",
+    "./reports/comparison": "./src/reports/comparison.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
