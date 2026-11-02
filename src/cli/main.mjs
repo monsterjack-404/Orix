@@ -10,6 +10,7 @@ import { list_format_capabilities } from '../formats/index.mjs';
 import { render_json } from '../reports/json.mjs';
 import { render_inspection_markdown, render_scan_markdown } from '../reports/markdown.mjs';\nimport { render_sarif } from '../reports/sarif.mjs';
 import { normalize_error } from '../core/errors.mjs';
+import { append_ledger, list_ledger, verify_ledger } from '../evidence/ledger.mjs';
 async function write_or_print(content,output_path) {
   if(!output_path){process.stdout.write(content.endsWith('\n')?content:content+'\n');return;}
   const destination=path.resolve(output_path);
@@ -21,6 +22,13 @@ function select_report(report,format,renderer){if(format==='json')return render_
 export async function main(argv=process.argv.slice(2)) {
   const parsed=parse_arguments(argv);
   if(parsed.flags.help||parsed.command==='help'||!parsed.command){process.stdout.write(HELP_TEXT);return 0;}
+  if(parsed.command==='ledger'){
+    const result=parsed.flags.ledger_operation==='verify'
+      ? await verify_ledger(parsed.flags.ledger_path)
+      : await list_ledger(parsed.flags.ledger_path);
+    await write_or_print(render_json(result),parsed.flags.out);
+    return 0;
+  }
   if(parsed.command==='formats'){if(parsed.target)throw new Error('The formats command does not accept a target');await write_or_print(render_json({schema_version:'orix.formats.v1',formats:list_format_capabilities()}),parsed.flags.out);return 0;}
   if(!['inspect','scan','project'].includes(parsed.command))throw new Error('Unknown command: '+parsed.command);
   if(!parsed.target)throw new Error(parsed.command+' requires a target path');
@@ -36,6 +44,14 @@ export async function main(argv=process.argv.slice(2)) {
     };
     report=await scan_project(parsed.target,project_limits);
     renderer=render_project_markdown;
+  }
+  if(parsed.flags.ledger){
+    const payload=parsed.command==='inspect'
+      ? { path:report.artifact.path, sha256:report.integrity.digest, size_bytes:report.artifact.size_bytes, format:report.detection.format, parser_status:report.parser.status, indicators:report.indicators, evidence:report.evidence }
+      : parsed.command==='scan'
+        ? { root:report.scan.root, files_analyzed:report.scan.files_analyzed, files_skipped:report.scan.files_skipped, coverage:report.scan.coverage, artifacts:report.artifacts.map(item=>({ path:item.artifact.path, sha256:item.integrity.digest, format:item.detection.format, indicators:item.indicators })) }
+        : { root:parsed.target, schema_version:report.schema_version, report };
+    report.ledger_receipt=await append_ledger(parsed.flags.ledger,{type:parsed.command+'.completed',payload});
   }
   await write_or_print(select_report(report,parsed.flags.format??'markdown',renderer),parsed.flags.out);
   return 0;
