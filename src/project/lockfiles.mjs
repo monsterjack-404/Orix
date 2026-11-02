@@ -261,11 +261,143 @@ function parse_yarn_lock(file, text, limits) {
   return { path: file, ecosystem: 'npm', format: 'yarn-lock', lockfile_version: null, packages: resolved, edges, root_dependencies: [], root_edges: [], warnings, complete: warnings.length === 0 };
 }
 
+function decode_toml_string(value) {
+  const token = value.trim();
+  if (token.startsWith('"')) {
+    try { return JSON.parse(token); } catch { return null; }
+  }
+  if (token.startsWith("'") && token.endsWith("'")) return token.slice(1, -1);
+  return null;
+}
+
+function parse_cargo_dependency(value) {
+  const match = /^(.+?)\s+([^\s(]+)(?:\s+\((.+)\))?$/.exec(value.trim());
+  if (!match) return null;
+  const name = clean_string(match[1], MAX_NAME, 'dependency name');
+  const version = clean_string(match[2], MAX_VERSION, 'dependency version');
+  const source = clean_string(match[3] ?? '', 4096, 'dependency source');
+  return name && version ? { name, version, source } : null;
+}
+
+function parse_cargo_lock(file, text, limits) {
+  const blocks = [];
+  let lockfile_version = null;
+  let current = null;
+  let reading_dependencies = false;
+  let dependency_buffer = '';
+  const read_dependency_values = value => {
+    const matches = value.match(/"(?:\\.|[^"\\])*"|'[^']*'/g) ?? [];
+    for (const token of matches) {
+      const decoded = decode_toml_string(token);
+      if (decoded !== null) current.dependencies.push(decoded);
+    }
+  };
+  for (const line of text.split(/\r?\n/)) {
+    if (/^\s*version\s*=/.test(line) && !current) {
+      const match = /^\s*version\s*=\s*(\d+)/.exec(line);
+      if (match) lockfile_version = Number(match[1]);
+      continue;
+    }
+    if (/^\s*\[\[package\]\]\s*(?:#.*)?$/.test(line)) {
+      current = { name: null, version: null, source: null, checksum: null, dependencies: [] };
+      blocks.push(current);
+      reading_dependencies = false;
+      if (blocks.length > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'Cargo.lock package count exceeds configured limit', { file, maximum: limits.max_packages });
+      continue;
+    }
+    if (!current) continue;
+    if (reading_dependencies) {
+      dependency_buffer += ' ' + line;
+      read_dependency_values(line);
+      if (line.includes(']')) reading_dependencies = false;
+      continue;
+    }
+    const dependencies_match = /^\s*dependencies\s*=\s*\[(.*)$/.exec(line);
+    if (dependencies_match) {
+      current.dependencies = [];
+      dependency_buffer = dependencies_match[1];
+      read_dependency_values(dependencies_match[1]);
+      reading_dependencies = !dependencies_match[1].includes(']');
+      continue;
+    }
+    const field = /^\s*(name|version|source|checksum)\s*=\s*(.+?)\s*(?:#.*)?$/.exec(line);
+    if (!field) continue;
+    const value = decode_toml_string(field[2]);
+    if (field[1] === 'name') current.name = value;
+    else if (field[1] === 'version') current.version = value;
+    else if (field[1] === 'source') current.source = value;
+    else if (field[1] === 'checksum') current.checksum = value;
+  }
+  const warnings = [];
+  const package_map = new Map();
+  const packages = [];
+  const local_packages = [];
+  for (const block of blocks) {
+    const name = clean_string(block.name, MAX_NAME, 'package name');
+    const version = clean_string(block.version, MAX_VERSION, 'package version');
+    if (!name || !version) {
+      warnings.push({ code: 'ORIX_LOCKFILE_PACKAGE_IDENTITY' });
+      continue;
+    }
+    const location = name + '@' + version + (block.source ? '#' + block.source : '#workspace');
+    const item = {
+      name, version, ecosystem: 'cargo', location,
+      dependency_type: block.source ? 'runtime' : 'workspace',
+      dev: false, optional: false, peer: false,
+      integrity: clean_string(block.checksum, 2048, 'checksum'),
+      resolved: clean_string(block.source, 4096, 'source'),
+      license: null,
+      dependencies: block.dependencies.map(parse_cargo_dependency).filter(Boolean),
+    };
+    if (block.source) {
+      packages.push(item);
+      const key = name + '@' + version;
+      const values = package_map.get(key) ?? [];
+      values.push(item);
+      package_map.set(key, values);
+    } else {
+      local_packages.push(item);
+    }
+  }
+  const edges = [];
+  const root_dependencies = [];
+  const root_edges = [];
+  const resolve = dependency => {
+    const candidates = package_map.get(dependency.name + '@' + dependency.version) ?? [];
+    if (dependency.source) return candidates.find(item => item.resolved === dependency.source) ?? null;
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) warnings.push({ code: 'ORIX_LOCKFILE_AMBIGUOUS_DEPENDENCY', name: dependency.name, version: dependency.version });
+    return null;
+  };
+  for (const item of packages) {
+    for (const dependency of item.dependencies) {
+      const target = resolve(dependency);
+      if (target) edges.push({ from: item.location, to: target.location, name: dependency.name, requirement: dependency.version, resolved_version: target.version });
+      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_EDGE', from: item.location, dependency: dependency.name, version: dependency.version });
+      if (edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Cargo.lock dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+    }
+  }
+  for (const item of local_packages) {
+    for (const dependency of item.dependencies) {
+      root_dependencies.push({ name: dependency.name, requirement: dependency.version, dependency_type: 'runtime' });
+      const target = resolve(dependency);
+      if (target) root_edges.push({ name: dependency.name, requirement: dependency.version, to: target.location, resolved_version: target.version });
+      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_ROOT_EDGE', package: item.name, dependency: dependency.name, version: dependency.version });
+      if (root_edges.length + edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Cargo.lock total dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+    }
+  }
+  return {
+    path: file, ecosystem: 'cargo', format: 'cargo-lock', lockfile_version,
+    packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0,
+  };
+}
+
 export function parse_lockfile(file, text, options = {}) {
   if (typeof file !== 'string' || typeof text !== 'string') throw new TypeError('parse_lockfile requires a file path and text');
   const limits = validate_limits(options);
   const base = file.split('/').at(-1);
   if (base === 'package-lock.json') return parse_npm_package_lock(file, text, limits);
   if (base === 'yarn.lock') return parse_yarn_lock(file, text, limits);
+  if (base === 'Cargo.lock') return parse_cargo_lock(file, text, limits);
   return null;
 }
