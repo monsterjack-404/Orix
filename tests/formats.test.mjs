@@ -1041,7 +1041,6 @@ test('Mach-O parser decodes LC_DYSYMTAB symbol groups and indirect-symbol marker
   buffer.writeUInt32LE(0, dynamic + 48);
   buffer.writeUInt32LE(160, dynamic + 56);
   buffer.writeUInt32LE(2, dynamic + 60);
-  buffer.writeUInt32LE(0, dynamic + 60);
   buffer.writeUInt32LE(0, dynamic + 64);
   buffer.writeUInt32LE(0, dynamic + 68);
   buffer.writeUInt32LE(0, dynamic + 72);
