@@ -521,6 +521,7 @@ export function parse_elf(buffer, options = {}) {
     header: {
       type: TYPES.get(type) ?? `UNKNOWN_${type}`, machine, version, entry_point: entry,
       program_header_offset, program_header_entry_size, program_header_count,
+      extended_numbering: { section_count: has_extended_section_count, program_header_count: has_extended_program_count, section_name_index: has_extended_name_index },
       program_table_valid: program_result.valid, section_header_offset, section_header_entry_size,
       section_header_count, section_name_index, header_size, flags,
     },
