@@ -624,3 +624,68 @@ test('ELF parser rejects relocations that reference missing symbols', () => {
   assert.throws(() => parse_elf(buffer), error => error.code === 'ORIX_ELF_RELOCATION_SYMBOL_INDEX');
 });
 
+
+
+test('PE parser decodes RVA-based delay imports and named thunks', () => {
+  const buffer = create_pe_fixture();
+  const pe = 0x80;
+  const optional = pe + 4 + 20;
+  const section = optional + 224;
+  const raw = section + 40;
+  const expanded = Buffer.concat([buffer, Buffer.alloc(0x300)]);
+  expanded.writeUInt32LE(0x300, section + 16);
+  const delay_directory = optional + 96 + 13 * 8;
+  expanded.writeUInt32LE(0x1100, delay_directory);
+  expanded.writeUInt32LE(64, delay_directory + 4);
+
+  const descriptor = raw + 0x100;
+  expanded.writeUInt32LE(1, descriptor);
+  expanded.writeUInt32LE(0x1150, descriptor + 4);
+  expanded.writeUInt32LE(0, descriptor + 8);
+  expanded.writeUInt32LE(0x1168, descriptor + 12);
+  expanded.writeUInt32LE(0x1170, descriptor + 16);
+  expanded.writeUInt32LE(0, descriptor + 20);
+  expanded.writeUInt32LE(0, descriptor + 24);
+  expanded.writeUInt32LE(0x65a1b2c3, descriptor + 28);
+  expanded.write('TESTDLL.dll\\0', raw + 0x150, 'ascii');
+  expanded.writeUInt32LE(0x1180, raw + 0x170);
+  expanded.writeUInt32LE(0, raw + 0x174);
+  expanded.writeUInt16LE(3, raw + 0x180);
+  expanded.write('DelayLoadFunc\\0', raw + 0x182, 'ascii');
+
+  const parsed = parse_pe(expanded);
+  assert.equal(parsed.delay_imports.length, 1);
+  assert.equal(parsed.delay_imports_truncated, false);
+  assert.equal(parsed.delay_imports[0].library, 'TESTDLL.dll');
+  assert.equal(parsed.delay_imports[0].rva_mode, true);
+  assert.equal(parsed.delay_imports[0].iat_rva, 0x1168);
+  assert.equal(parsed.delay_imports[0].timestamp, 0x65a1b2c3);
+  assert.deepEqual(parsed.delay_imports[0].symbols[0], {
+    kind: 'name', ordinal: null, hint: 3, name: 'DelayLoadFunc',
+  });
+});
+
+test('PE parser converts VA-based delay-import fields and rejects invalid thunk mappings', () => {
+  const buffer = create_pe_fixture();
+  const pe = 0x80;
+  const optional = pe + 4 + 20;
+  const section = optional + 224;
+  const raw = section + 40;
+  const expanded = Buffer.concat([buffer, Buffer.alloc(0x300)]);
+  expanded.writeUInt32LE(0x300, section + 16);
+  const directory = optional + 96 + 13 * 8;
+  expanded.writeUInt32LE(0x1100, directory);
+  expanded.writeUInt32LE(32, directory + 4);
+  const descriptor = raw + 0x100;
+  expanded.writeUInt32LE(0, descriptor);
+  expanded.writeUInt32LE(0x401150, descriptor + 4);
+  expanded.writeUInt32LE(0, descriptor + 8);
+  expanded.writeUInt32LE(0x401168, descriptor + 12);
+  expanded.writeUInt32LE(0x401170, descriptor + 16);
+  expanded.writeUInt32LE(0, descriptor + 20);
+  expanded.writeUInt32LE(0, descriptor + 24);
+  expanded.writeUInt32LE(0, descriptor + 28);
+  expanded.write('TESTDLL.dll\\0', raw + 0x150, 'ascii');
+  expanded.writeUInt32LE(0xfffffff0, raw + 0x170);
+  assert.throws(() => parse_pe(expanded), error => error.code === 'ORIX_PE_INVALID_DELAY_IMPORT_NAME');
+});
