@@ -66,8 +66,17 @@ export async function read_workspace_json(input_path, roots = configured_workspa
     handle = await fs.open(resolved.path, fs_constants.O_RDONLY | (fs_constants.O_NOFOLLOW ?? 0));
     const opened = await handle.stat();
     if (!opened.isFile() || opened.dev !== resolved.stats.dev || opened.ino !== resolved.stats.ino) fail('ORIX_MCP_FILE_CHANGED', 'JSON report identity changed between lookup and open', { path: resolved.path });
-    const text = await handle.readFile({ encoding: 'utf8' });
-    if (Buffer.byteLength(text, 'utf8') > maximum) fail('ORIX_MCP_INPUT_LIMIT', 'JSON report grew beyond configured input limit', { maximum });
+    if (!Number.isSafeInteger(opened.size) || opened.size > maximum) fail('ORIX_MCP_INPUT_LIMIT', 'JSON report exceeds configured input limit', { size: opened.size, maximum });
+    const bytes = Buffer.alloc(opened.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset);
+      if (bytesRead === 0) fail('ORIX_MCP_FILE_CHANGED', 'JSON report ended during bounded read', { path: resolved.path });
+      offset += bytesRead;
+    }
+    const after = await handle.stat();
+    if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) fail('ORIX_MCP_FILE_CHANGED', 'JSON report changed during bounded read', { path: resolved.path });
+    const text = bytes.toString('utf8');
     try { return JSON.parse(text); }
     catch (error) { fail('ORIX_MCP_INVALID_JSON', 'Workspace report is not valid JSON', { path: resolved.path }, error); }
   } catch (error) {
