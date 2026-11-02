@@ -18,6 +18,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - Hash-chained append-only evidence ledger with writer lock, bounded records, tamper detection and verify/list commands.
 - SARIF 2.1.0 output for artifact and directory-scan findings.
 - Baseline/current report comparison with artifact change classes and indicator deltas.
+- CycloneDX 1.5 SBOM export from recognized direct dependency declarations, package URLs and manifest provenance.
 - Malformed input, parser, indicator, report, filesystem and CLI integration tests.
 
 ## 0.3 — Repository and Source Intelligence
