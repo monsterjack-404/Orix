@@ -39,3 +39,13 @@ test('invalid manifest remains a warning and markdown renders',async()=>with_pro
  assert.equal(report.manifests.length,1);assert.equal(report.manifests[0].warnings.length,1);
  assert.match(render_project_markdown(report),/ORIX Project Intelligence Report/);
 }));
+
+test('project CLI emits the versioned JSON report without executing scripts',async()=>with_project(async root=>{
+ await writeFile(path.join(root,'package.json'),JSON.stringify({name:'cli-fixture',scripts:{postinstall:'throw new Error("must not execute")'}}));
+ const {spawnSync}=await import('node:child_process');
+ const result=spawnSync(process.execPath,['src/cli.mjs','project',root,'--json'],{cwd:path.resolve(path.dirname(new URL(import.meta.url).pathname),'..'),encoding:'utf8'});
+ assert.equal(result.status,0,result.stderr);
+ const report=JSON.parse(result.stdout);
+ assert.equal(report.schema_version,'orix.project.v1');
+ assert.equal(report.manifests[0].scripts[0].name,'postinstall');
+}));
