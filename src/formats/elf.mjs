@@ -254,6 +254,162 @@ function parse_symbol_tables(reader, buffer, raw_sections, is_64, little, option
   return { symbols, tables };
 }
 
+function parse_gnu_symbol_versions(reader, raw_sections, symbol_result, is_64, little, options) {
+  const maximum_records = options.max_version_records ?? 8192;
+  const maximum_symbols = options.max_version_symbols ?? 100000;
+  if (!Number.isSafeInteger(maximum_records) || maximum_records < 1) {
+    throw new OrixError('ORIX_ELF_VERSION_RECORD_LIMIT', 'ELF version-record limit must be a positive safe integer', { recoverable: true });
+  }
+  if (!Number.isSafeInteger(maximum_symbols) || maximum_symbols < 1) {
+    throw new OrixError('ORIX_ELF_VERSION_SYMBOL_LIMIT', 'ELF version-symbol limit must be a positive safe integer', { recoverable: true });
+  }
+  const version_map = new Map();
+  const requirements = [];
+  const definitions = [];
+  let records_seen = 0;
+
+  const get_strings = section => {
+    const linked = raw_sections[section.link];
+    if (!linked || linked.raw_type !== 3 || !linked.raw_range_valid || typeof linked.file_offset !== 'number' || typeof linked.size !== 'number') {
+      throw new OrixError('ORIX_ELF_VERSION_STRTAB', 'ELF GNU version section does not link to a valid string table', { details: { section_index: section.index, link: section.link }, recoverable: true });
+    }
+    return reader.bytes(linked.file_offset, linked.size, 'GNU version string table');
+  };
+  const require_section_range = (section, relative_offset, length, label) => {
+    if (!Number.isSafeInteger(relative_offset) || relative_offset < 0 || relative_offset > section.size || length > section.size - relative_offset) {
+      throw new OrixError('ORIX_ELF_VERSION_RANGE', 'GNU version structure exceeds its containing section', { details: { section_index: section.index, relative_offset, length, section_size: section.size, label }, recoverable: true });
+    }
+    return section.file_offset + relative_offset;
+  };
+
+  for (const section of raw_sections) {
+    if (section.raw_type !== 0x6ffffffe && section.raw_type !== 0x6ffffffd) continue;
+    if (!section.raw_range_valid || typeof section.file_offset !== 'number' || typeof section.size !== 'number') {
+      throw new OrixError('ORIX_ELF_VERSION_SECTION_RANGE', 'GNU version section is outside the file', { details: { section_index: section.index }, recoverable: true });
+    }
+    const strings = get_strings(section);
+    let cursor = 0;
+    const seen_records = new Set();
+    while (cursor < section.size) {
+      if (records_seen >= maximum_records) throw new OrixError('ORIX_ELF_VERSION_RECORD_LIMIT', 'GNU version record count exceeds configured limit', { details: { maximum_records }, recoverable: true });
+      if (seen_records.has(cursor)) throw new OrixError('ORIX_ELF_VERSION_CYCLE', 'GNU version linked-record chain contains a cycle', { details: { section_index: section.index, cursor }, recoverable: true });
+      seen_records.add(cursor);
+      const is_need = section.raw_type === 0x6ffffffe;
+      const header_size = is_need ? 16 : 20;
+      const at = require_section_range(section, cursor, header_size, is_need ? 'Verneed' : 'Verdef');
+      records_seen += 1;
+      if (is_need) {
+        const version = reader.u16(at, little, 'Verneed version');
+        const count = reader.u16(at + 2, little, 'Verneed auxiliary count');
+        const file_name_offset = reader.u32(at + 4, little, 'Verneed file string offset');
+        const aux_offset = reader.u32(at + 8, little, 'Verneed auxiliary offset');
+        const next_offset = reader.u32(at + 12, little, 'Verneed next offset');
+        const library = read_elf_string(reader, strings, file_name_offset, 'Verneed library');
+        const record = { section_index: section.index, version, library, auxiliary_count: count, auxiliary: [] };
+        if (count > maximum_records - records_seen) throw new OrixError('ORIX_ELF_VERSION_RECORD_LIMIT', 'GNU version auxiliary count exceeds configured limit', { recoverable: true });
+        if (count > 0 && aux_offset === 0) throw new OrixError('ORIX_ELF_VERSION_AUX_OFFSET', 'Verneed record has auxiliaries but no auxiliary offset', { details: { section_index: section.index, cursor }, recoverable: true });
+        let aux_cursor = cursor + aux_offset;
+        const seen_aux = new Set();
+        for (let index = 0; index < count; index += 1) {
+          if (seen_aux.has(aux_cursor)) throw new OrixError('ORIX_ELF_VERSION_CYCLE', 'Verneed auxiliary chain contains a cycle', { details: { section_index: section.index, aux_cursor }, recoverable: true });
+          seen_aux.add(aux_cursor);
+          const aux_at = require_section_range(section, aux_cursor, 16, 'Vernaux');
+          records_seen += 1;
+          if (records_seen > maximum_records) throw new OrixError('ORIX_ELF_VERSION_RECORD_LIMIT', 'GNU version record count exceeds configured limit', { details: { maximum_records }, recoverable: true });
+          const hash = reader.u32(aux_at, little, 'Vernaux hash');
+          const flags = reader.u16(aux_at + 4, little, 'Vernaux flags');
+          const other = reader.u16(aux_at + 6, little, 'Vernaux version index');
+          const name_offset = reader.u32(aux_at + 8, little, 'Vernaux name offset');
+          const next_aux = reader.u32(aux_at + 12, little, 'Vernaux next offset');
+          const name = read_elf_string(reader, strings, name_offset, 'Vernaux version name');
+          const version_index = other & 0x7fff;
+          const auxiliary = { hash, flags, version_index, name };
+          record.auxiliary.push(auxiliary);
+          if (version_index > 1) version_map.set(version_index, { name, source: 'need', library });
+          if (index + 1 < count) {
+            if (next_aux === 0) throw new OrixError('ORIX_ELF_VERSION_AUX_CHAIN', 'Verneed auxiliary chain ends before its declared count', { details: { section_index: section.index, index, count }, recoverable: true });
+            aux_cursor += next_aux;
+          }
+        }
+        requirements.push(record);
+        if (next_offset === 0) break;
+        cursor += next_offset;
+      } else {
+        const version = reader.u16(at, little, 'Verdef version');
+        const flags = reader.u16(at + 2, little, 'Verdef flags');
+        const version_index = reader.u16(at + 4, little, 'Verdef index') & 0x7fff;
+        const count = reader.u16(at + 6, little, 'Verdef auxiliary count');
+        const hash = reader.u32(at + 8, little, 'Verdef hash');
+        const aux_offset = reader.u32(at + 12, little, 'Verdef auxiliary offset');
+        const next_offset = reader.u32(at + 16, little, 'Verdef next offset');
+        if (count === 0 || aux_offset === 0) throw new OrixError('ORIX_ELF_VERSION_AUX_OFFSET', 'Verdef record has no primary auxiliary name', { details: { section_index: section.index, cursor }, recoverable: true });
+        if (count > maximum_records - records_seen) throw new OrixError('ORIX_ELF_VERSION_RECORD_LIMIT', 'Verdef auxiliary count exceeds configured limit', { recoverable: true });
+        let aux_cursor = cursor + aux_offset;
+        const names = [];
+        const seen_aux = new Set();
+        for (let index = 0; index < count; index += 1) {
+          if (seen_aux.has(aux_cursor)) throw new OrixError('ORIX_ELF_VERSION_CYCLE', 'Verdef auxiliary chain contains a cycle', { details: { section_index: section.index, aux_cursor }, recoverable: true });
+          seen_aux.add(aux_cursor);
+          const aux_at = require_section_range(section, aux_cursor, 8, 'Verdaux');
+          records_seen += 1;
+          if (records_seen > maximum_records) throw new OrixError('ORIX_ELF_VERSION_RECORD_LIMIT', 'GNU version record count exceeds configured limit', { details: { maximum_records }, recoverable: true });
+          const name_offset = reader.u32(aux_at, little, 'Verdaux name offset');
+          const next_aux = reader.u32(aux_at + 4, little, 'Verdaux next offset');
+          names.push(read_elf_string(reader, strings, name_offset, 'Verdaux version name'));
+          if (index + 1 < count) {
+            if (next_aux === 0) throw new OrixError('ORIX_ELF_VERSION_AUX_CHAIN', 'Verdef auxiliary chain ends before its declared count', { details: { section_index: section.index, index, count }, recoverable: true });
+            aux_cursor += next_aux;
+          }
+        }
+        const name = names[0] ?? '';
+        const record = { section_index: section.index, version, flags, version_index, hash, names };
+        definitions.push(record);
+        if (version_index > 1) version_map.set(version_index, { name, source: 'definition', library: null });
+        if (next_offset === 0) break;
+        cursor += next_offset;
+      }
+    }
+  }
+
+  const symbol_versions = [];
+  for (const section of raw_sections) {
+    if (section.raw_type !== 0x6fffffff) continue;
+    if (!section.raw_range_valid || typeof section.file_offset !== 'number' || typeof section.size !== 'number' || section.size % 2 !== 0) {
+      throw new OrixError('ORIX_ELF_VERSYM_RANGE', 'GNU version-symbol table has an invalid file range or byte size', { details: { section_index: section.index, size: section.size }, recoverable: true });
+    }
+    const symbol_section = raw_sections[section.link];
+    if (!symbol_section || symbol_section.raw_type !== 11 || !symbol_section.raw_range_valid || typeof symbol_section.size !== 'number') {
+      throw new OrixError('ORIX_ELF_VERSYM_LINK', 'GNU version-symbol table must link to a valid DYNSYM section', { details: { section_index: section.index, link: section.link }, recoverable: true });
+    }
+    const symbol_entry_size = number_field(symbol_section.entry_size, 'Dynamic symbol entry size');
+    const expected_symbol_size = is_64 ? 24 : 16;
+    if (symbol_entry_size < expected_symbol_size || symbol_section.size % symbol_entry_size !== 0) {
+      throw new OrixError('ORIX_ELF_VERSYM_SYMBOL_LAYOUT', 'Linked dynamic symbol table has an invalid entry layout', { details: { section_index: symbol_section.index }, recoverable: true });
+    }
+    const symbol_count = symbol_section.size / symbol_entry_size;
+    const count = section.size / 2;
+    if (count > maximum_symbols || count !== symbol_count) {
+      throw new OrixError('ORIX_ELF_VERSYM_COUNT', 'GNU version-symbol count does not match its linked dynamic symbol table', { details: { section_index: section.index, count, symbol_count, maximum_symbols }, recoverable: true });
+    }
+    const symbols_by_index = new Map(symbol_result.symbols.filter(symbol => symbol.table_section_index === symbol_section.index).map(symbol => [symbol.index, symbol]));
+    for (let index = 0; index < count; index += 1) {
+      const raw_value = reader.u16(section.file_offset + index * 2, little, 'GNU version-symbol entry');
+      const version_index = raw_value & 0x7fff;
+      const hidden = (raw_value & 0x8000) !== 0;
+      const mapped = version_map.get(version_index) ?? null;
+      const symbol = symbols_by_index.get(index) ?? null;
+      symbol_versions.push({
+        version_table_section_index: section.index, symbol_table_section_index: symbol_section.index,
+        symbol_index: index, symbol_name: symbol?.name ?? null, version_index, hidden,
+        version_name: version_index === 0 ? 'LOCAL' : version_index === 1 ? 'GLOBAL' : mapped?.name ?? null,
+        source: mapped?.source ?? (version_index <= 1 ? 'reserved' : 'unresolved'),
+        library: mapped?.library ?? null,
+      });
+    }
+  }
+  return { requirements, definitions, symbol_versions };
+}
+
 export function parse_elf(buffer, options = {}) {
   const reader = new BinaryReader(buffer, { label: 'ELF image' });
   if (reader.ascii(0, 4, 'ELF magic') !== '\x7fELF') throw new OrixError('ORIX_ELF_BAD_MAGIC', 'Input does not contain an ELF signature', { recoverable: true });
@@ -327,6 +483,7 @@ export function parse_elf(buffer, options = {}) {
   const program_result = parse_program_headers(reader, buffer, is_64, little, program_header_offset, program_header_entry_size, program_header_count, options);
   const symbol_result = parse_symbol_tables(reader, buffer, raw_sections, is_64, little, options);
   const relocation_result = parse_relocations(reader, raw_sections, is_64, little, options);
+  const version_result = parse_gnu_symbol_versions(reader, raw_sections, symbol_result, is_64, little, options);
   const dynamic_strings = resolve_dynamic_strings(program_result.dynamic, program_result.segments, buffer);
   return {
     format: 'ELF', bitness: is_64 ? 64 : 32, endianness: little ? 'little' : 'big',
@@ -347,6 +504,9 @@ export function parse_elf(buffer, options = {}) {
     symbol_tables: symbol_result.tables,
     relocations: relocation_result.relocations,
     relocation_tables: relocation_result.tables,
-    notes: ['Section names are resolved only when the section-name string table is present and fully in range.', 'Program headers, PT_INTERP, PT_NOTE GNU build IDs, PT_DYNAMIC entries, SHT_SYMTAB/SHT_DYNSYM symbols and SHT_REL/SHT_RELA relocation records are decoded when their file ranges and entry layouts are valid.', 'Extended ELF numbering, relocation application, GNU symbol version resolution and DWARF decoding are not implemented.'],
+    version_requirements: version_result.requirements,
+    version_definitions: version_result.definitions,
+    symbol_versions: version_result.symbol_versions,
+    notes: ['Section names are resolved only when the section-name string table is present and fully in range.', 'Program headers, PT_INTERP, PT_NOTE GNU build IDs, PT_DYNAMIC entries, SHT_SYMTAB/SHT_DYNSYM symbols and SHT_REL/SHT_RELA relocation records are decoded when their file ranges and entry layouts are valid.', 'Extended ELF numbering, relocation application, GNU hash decoding and DWARF decoding are not implemented.'],
   };
 }
