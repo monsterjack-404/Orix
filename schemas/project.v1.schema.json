@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orix.dev/schemas/project.v1.schema.json",
+  "title": "ORIX Project Intelligence Report",
+  "type": "object",
+  "required": ["schema_version", "project", "summary", "detection", "manifests", "dependencies", "files", "symbols", "graph", "findings", "coverage", "warnings"],
+  "properties": {
+    "schema_version": {"const": "orix.project.v1"},
+    "project": {"type": "object", "required": ["root", "name", "scanned_at"]},
+    "summary": {"type": "object", "required": ["files_analyzed", "entries_seen", "bytes_analyzed", "languages", "declared_dependencies", "source_symbols", "source_import_edges", "secret_pattern_matches"]},
+    "detection": {"type": "object", "required": ["package_managers", "has_readme", "has_license", "has_ci", "has_tests", "has_container"]},
+    "manifests": {"type": "array", "items": {"type": "object"}},
+    "dependencies": {"type": "array", "items": {"type": "object"}},
+    "files": {"type": "array", "items": {"type": "object", "required": ["path", "size_bytes", "sha256", "language", "extension", "text_analyzed"]}},
+    "symbols": {"type": "array", "items": {"type": "object"}},
+    "graph": {"type": "object", "required": ["nodes", "edges"]},
+    "findings": {"type": "array", "items": {"type": "object", "required": ["rule_id", "severity", "confidence", "file", "line", "label", "evidence"]}},
+    "coverage": {"type": "object", "required": ["complete", "truncated", "limits", "skipped", "skipped_entries"]},
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}
