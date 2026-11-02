@@ -127,7 +127,7 @@ Traversal is deterministic and does not follow symlinks. Common generated/depend
 orix compare <baseline-report.json> <current-report.json> [--json|--markdown] [--out <path>]
 ```
 
-Comparison classifies added, removed, modified and unchanged artifacts by normalized report-relative path and SHA-256. Project reports can be exported with `--format cyclonedx` as a CycloneDX 1.5 SBOM. Supported npm and Yarn lockfiles contribute resolved package versions, integrity metadata and package-to-package dependency relationships; projects without supported lockfiles fall back to declared dependencies. It also reports introduced/resolved static indicators. Renames appear as removal plus addition; the command compares supplied snapshots and does not access original artifact trees.
+Comparison classifies added, removed, modified and unchanged artifacts by normalized report-relative path and SHA-256. Project reports can be exported with `--format cyclonedx` as a CycloneDX 1.5 SBOM. Supported npm, Yarn, pnpm and Cargo lockfiles contribute resolved package versions, integrity metadata and package-to-package dependency relationships; projects without supported lockfiles fall back to declared dependencies. It also reports introduced/resolved static indicators. Renames appear as removal plus addition; the command compares supplied snapshots and does not access original artifact trees.
 
 ### Reports and safe output files
 
