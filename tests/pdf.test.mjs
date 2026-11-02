@@ -1,30 +1,34 @@
-// JavaScript, tests/pdf.test.mjs, Node.js 20+, PDF parser fixtures and malformed-boundary coverage.
+// JavaScript, tests/pdf.test.mjs, Node.js 20+, PDF structural parser regression coverage.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parse_pdf } from '../src/formats/pdf.mjs';
 import { analyze_known_format } from '../src/formats/index.mjs';
 
-function make_pdf(objects, trailer = '<< /Size 3 /Root 1 0 R >>', options = {}) {
-  const chunks = [Buffer.from('%PDF-1.7\n', 'ascii')];
+function make_pdf(objects, trailer = '<< /Size 3 /Root 1 0 R >>') {
+  const chunks = [Buffer.from('%PDF-1.7\\n', 'ascii')];
   const offsets = [];
   for (const object of objects) {
     offsets.push(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
-    chunks.push(Buffer.from(object + '\n', 'latin1'));
+    chunks.push(Buffer.from(object + '\\n', 'latin1'));
   }
   const xref_offset = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const rows = ['xref', '0 ' + (objects.length + 1), '0000000000 65535 f '];
   for (const offset of offsets) rows.push(String(offset).padStart(10, '0') + ' 00000 n ');
   rows.push('trailer', trailer, 'startxref', String(xref_offset), '%%EOF');
-  chunks.push(Buffer.from(rows.join('\n') + '\n', 'ascii'));
+  chunks.push(Buffer.from(rows.join('\\n') + '\\n', 'ascii'));
   return { buffer: Buffer.concat(chunks), xref_offset, offsets };
 }
 
 test('PDF parser indexes classic xref entries, trailer and indirect objects', () => {
   const fixture = make_pdf([
-    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj',
-    '2 0 obj\n<< /Type /Pages /Count 0 >>\nendobj',
-  ], '<< /Size 3 /Root 1 0 R >>');
+    `1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj`,
+    `2 0 obj
+<< /Type /Pages /Count 0 >>
+endobj`,
+  ]);
   const parsed = parse_pdf(fixture.buffer);
   assert.equal(parsed.version, '1.7');
   assert.equal(parsed.object_count, 2);
@@ -37,8 +41,12 @@ test('PDF parser indexes classic xref entries, trailer and indirect objects', ()
 
 test('PDF parser reports encryption and active-content markers without executing them', () => {
   const fixture = make_pdf([
-    '1 0 obj\n<< /Type /Catalog /OpenAction 2 0 R /Names << /JavaScript 3 0 R >> >>\nendobj',
-    '2 0 obj\n<< /S /JavaScript /JS (app.alert\\(1\\)) >>\nendobj',
+    `1 0 obj
+<< /Type /Catalog /OpenAction 2 0 R /Names << /JavaScript 3 0 R >> >>
+endobj`,
+    `2 0 obj
+<< /S /JavaScript /JS (app.alert) >>
+endobj`,
   ], '<< /Size 4 /Root 1 0 R /Encrypt 4 0 R >>');
   const parsed = parse_pdf(fixture.buffer);
   assert.equal(parsed.encrypted, true);
@@ -48,49 +56,66 @@ test('PDF parser reports encryption and active-content markers without executing
 });
 
 test('PDF parser follows incremental /Prev links in descending offset order', () => {
-  const base = make_pdf(['1 0 obj\n<< /Type /Catalog >>\nendobj'], '<< /Size 2 /Root 1 0 R >>');
-  const prefix = base.buffer.subarray(0, base.buffer.length - Buffer.byteLength('startxref\n' + base.xref_offset + '\n%%EOF\n'));
+  const base = make_pdf([`1 0 obj
+<< /Type /Catalog >>
+endobj`], '<< /Size 2 /Root 1 0 R >>');
+  const footer = Buffer.from('startxref\\n' + base.xref_offset + '\\n%%EOF\\n', 'ascii');
+  const prefix = base.buffer.subarray(0, base.buffer.length - footer.length);
   const updated_xref_offset = prefix.length;
   const update = Buffer.from([
     'xref', '0 2', '0000000000 65535 f ', String(base.offsets[0]).padStart(10, '0') + ' 00000 n ',
     'trailer', '<< /Size 2 /Root 1 0 R /Prev ' + base.xref_offset + ' >>',
     'startxref', String(updated_xref_offset), '%%EOF', '',
-  ].join('\n'), 'ascii');
+  ].join('\\n'), 'ascii');
   const parsed = parse_pdf(Buffer.concat([prefix, update]));
   assert.equal(parsed.revisions.length, 2);
   assert.equal(parsed.revisions[0].offset, updated_xref_offset);
   assert.equal(parsed.revisions[1].offset, base.xref_offset);
 });
 
-test('PDF parser recognizes an xref-stream object but does not decode its entries', () => {
-  const prefix = Buffer.from('%PDF-1.7\n7 0 obj\n<< /Type /XRef /Size 1 /W [1 2 1] /Length 4 >>\nstream\nabcd\nendstream\nendobj\n', 'ascii');
+test('PDF parser recognizes xref-stream framing without decoding its entries', () => {
+  const prefix = Buffer.from(`%PDF-1.7
+7 0 obj
+<< /Type /XRef /Size 1 /W [1 2 1] /Length 4 >>
+stream
+abcd
+endstream
+endobj
+`, 'ascii');
   const xref_offset = prefix.indexOf('7 0 obj');
-  const pdf = Buffer.concat([prefix, Buffer.from('startxref\n' + xref_offset + '\n%%EOF\n', 'ascii')]);
+  const pdf = Buffer.concat([prefix, Buffer.from('startxref\\n' + xref_offset + '\\n%%EOF\\n', 'ascii')]);
   const parsed = parse_pdf(pdf);
   assert.equal(parsed.revisions[0].kind, 'stream');
   assert.equal(parsed.revisions[0].object_number, 7);
   assert.equal(parsed.revisions[0].entries_decoded, false);
 });
 
-test('PDF parser enforces object, xref-entry and revision limits', () => {
-  const fixture = make_pdf(['1 0 obj\n<< /Type /Catalog >>\nendobj']);
-  assert.throws(() => parse_pdf(fixture.buffer, { max_objects: 0 }), TypeError);
+test('PDF parser enforces object, xref-entry and revision limits with typed errors', () => {
+  const fixture = make_pdf([`1 0 obj
+<< /Type /Catalog >>
+endobj`]);
+  assert.throws(() => parse_pdf(fixture.buffer, { max_objects: 0 }), error => error.code === 'ORIX_PDF_OBJECT_LIMIT');
   assert.throws(() => parse_pdf(fixture.buffer, { max_xref_entries: 1 }), error => error.code === 'ORIX_PDF_XREF_LIMIT');
-  assert.throws(() => parse_pdf(fixture.buffer, { max_revisions: 0 }), TypeError);
+  assert.throws(() => parse_pdf(fixture.buffer, { max_revisions: 0 }), error => error.code === 'ORIX_PDF_REVISION_LIMIT');
 });
 
 test('PDF parser rejects invalid headers, missing EOF and invalid xref offsets', () => {
   assert.throws(() => parse_pdf(Buffer.from('not a pdf')), error => error.code === 'ORIX_PDF_BAD_HEADER');
-  const fixture = make_pdf(['1 0 obj\n<< /Type /Catalog >>\nendobj']);
-  const no_eof = Buffer.from(fixture.buffer.toString('latin1').replace(/%%EOF\n$/, ''), 'latin1');
+  const fixture = make_pdf([`1 0 obj
+<< /Type /Catalog >>
+endobj`]);
+  const no_eof = Buffer.from(fixture.buffer.toString('latin1').replace(/%%EOF\\n$/, ''), 'latin1');
   assert.throws(() => parse_pdf(no_eof), error => error.code === 'ORIX_PDF_EOF_MISSING');
   const invalid_offset = Buffer.from(fixture.buffer);
-  invalid_offset.write('999999', invalid_offset.length - Buffer.byteLength('%%EOF\n') - 7, 'ascii');
-  assert.throws(() => parse_pdf(invalid_offset), error => error.code.startsWith('ORIX_PDF_'));
+  const marker = invalid_offset.lastIndexOf(Buffer.from('startxref\\n')) + Buffer.byteLength('startxref\\n');
+  invalid_offset.write('9999999999', marker, 'ascii');
+  assert.throws(() => parse_pdf(invalid_offset), error => error.code === 'ORIX_PDF_XREF_RANGE');
 });
 
 test('PDF format dispatcher returns structural parser output', () => {
-  const fixture = make_pdf(['1 0 obj\n<< /Type /Catalog >>\nendobj']);
+  const fixture = make_pdf([`1 0 obj
+<< /Type /Catalog >>
+endobj`]);
   const result = analyze_known_format(fixture.buffer);
   assert.equal(result.detection.format, 'PDF');
   assert.equal(result.parser_status, 'parsed');
