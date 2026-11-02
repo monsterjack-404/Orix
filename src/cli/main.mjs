@@ -35,8 +35,21 @@ async function read_json_report(file_path) {
   let text;
   try {
     const opened = await handle.stat();
-    if (!opened.isFile() || opened.size !== before.size) throw new OrixError('ORIX_COMPARE_FILE_CHANGED', 'Comparison report changed between metadata lookup and open', { recoverable: true });
-    text = await handle.readFile({ encoding: 'utf8' });
+    if (!opened.isFile() || opened.size !== before.size || String(opened.ino) !== String(before.ino)) {
+      throw new OrixError('ORIX_COMPARE_FILE_CHANGED', 'Comparison report changed between metadata lookup and open', { recoverable: true });
+    }
+    const bytes = Buffer.alloc(opened.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset);
+      if (bytesRead === 0) throw new OrixError('ORIX_COMPARE_FILE_CHANGED', 'Comparison report ended during bounded read', { recoverable: true });
+      offset += bytesRead;
+    }
+    const after = await handle.stat();
+    if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) {
+      throw new OrixError('ORIX_COMPARE_FILE_CHANGED', 'Comparison report changed during bounded read', { recoverable: true });
+    }
+    text = bytes.toString('utf8');
   } finally { await handle.close(); }
   try { return JSON.parse(text); }
   catch (error) { throw new OrixError('ORIX_COMPARE_INVALID_JSON', 'Comparison input is not valid JSON: ' + absolute, { cause: error, details: { path: absolute }, recoverable: true }); }
