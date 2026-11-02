@@ -48,7 +48,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [x] ELF program headers, PT_INTERP, PT_DYNAMIC tags, GNU build identifiers, symbol tables and REL/RELA relocation records.
 - [x] GNU version requirements, definitions and version-symbol table mapping.
 - [ ] Extended ELF numbering, GNU hash decoding and DWARF decoding.
-- [x] Mach-O FAT/FAT64 architecture tables, bounded slices, segment/section commands and CodeDirectory metadata.
+- [x] Mach-O FAT/FAT64 architecture tables, bounded slices, segment/section commands, bounded LC_SYMTAB nlist decoding and CodeDirectory metadata.
 - [ ] Chained fixups, cryptographic trust verification and Objective-C metadata.
 - [x] ZIP64 EOCD/locator and per-entry extended size/offset parsing with safe-integer and central-directory bounds.
 - [ ] Decompression-bomb safeguards and bounded safe entry streaming; extraction remains opt-in.
