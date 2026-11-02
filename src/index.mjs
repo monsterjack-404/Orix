@@ -27,3 +27,4 @@ export { read_json_report } from './core/read-report.mjs';
 
 export { create_evidence_ledger, append_evidence_event, verify_evidence_ledger, read_evidence_ledger } from './core/evidence-ledger.mjs';
 export { parse_lockfile } from './project/lockfiles.mjs';
+export { scan_git_metadata } from './project/git-metadata.mjs';
