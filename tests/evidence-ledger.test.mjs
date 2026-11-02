@@ -76,3 +76,17 @@ test('ledger serializes concurrent appends through an exclusive directory lock',
   const loaded = await read_evidence_ledger(file);
   assert.deepEqual(loaded.records.map(record => record.sequence), [1,2,3,4,5,6,7,8]);
 });
+
+
+test('ledger rejects accessor payloads and records with unhashed extension fields', async t => {
+  const { file } = await fixture(t);
+  const payload = {};
+  Object.defineProperty(payload, 'secret', { enumerable: true, get() { throw new Error('getter must not run'); } });
+  await assert.rejects(append_evidence_event(file, 'scan.completed', payload), error => error.code === 'ORIX_LEDGER_ACCESSOR_VALUE');
+  await append_evidence_event(file, 'scan.completed', { safe: true });
+  const original = await readFile(file, 'utf8');
+  const record = JSON.parse(original);
+  record.unhashed_claim = 'must be rejected';
+  await writeFile(file, JSON.stringify(record) + '\\n');
+  await assert.rejects(verify_evidence_ledger(file), error => error.code === 'ORIX_LEDGER_RECORD_SHAPE');
+});
