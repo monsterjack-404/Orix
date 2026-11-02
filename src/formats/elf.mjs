@@ -445,6 +445,7 @@ function parse_gnu_hash_tables(reader, raw_sections, symbol_result, is_64, littl
     const symbol_offset = reader.u32(offset + 4, little, 'GNU hash symbol offset');
     const bloom_count = reader.u32(offset + 8, little, 'GNU hash bloom word count');
     const bloom_shift = reader.u32(offset + 12, little, 'GNU hash bloom shift');
+    if (bloom_shift > 31) throw new OrixError('ORIX_ELF_GNU_HASH_BLOOM_SHIFT', 'GNU hash bloom shift must be between 0 and 31', { details: { bloom_shift }, recoverable: true });
     if (bucket_count < 1 || bucket_count > maximum_buckets) throw new OrixError('ORIX_ELF_GNU_HASH_BUCKET_LIMIT', 'GNU hash bucket count is outside configured bounds', { details: { bucket_count, maximum_buckets }, recoverable: true });
     if (bloom_count < 1 || bloom_count > maximum_bloom_words) throw new OrixError('ORIX_ELF_GNU_HASH_BLOOM_LIMIT', 'GNU hash bloom word count is outside configured bounds', { details: { bloom_count, maximum_bloom_words }, recoverable: true });
     if (symbol_offset > symbol_count) throw new OrixError('ORIX_ELF_GNU_HASH_SYMBOL_OFFSET', 'GNU hash symbol offset exceeds linked dynamic symbol count', { details: { symbol_offset, symbol_count }, recoverable: true });
