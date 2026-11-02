@@ -47,7 +47,8 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [ ] CLR metadata and Authenticode trust verification.
 - [x] ELF program headers, PT_INTERP, PT_DYNAMIC tags, GNU build identifiers, symbol tables and REL/RELA relocation records.
 - [x] GNU version requirements, definitions and version-symbol table mapping.
-- [x] GNU hash bloom filters, bucket arrays and terminal-bit chain decoding with aggregate work limits.\n- [ ] Extended ELF numbering and DWARF decoding.
+- [x] GNU hash bloom filters, bucket arrays and terminal-bit chain decoding with aggregate work limits.
+- [ ] Extended ELF numbering and DWARF decoding.
 - [x] Mach-O FAT/FAT64 architecture tables, bounded slices, segment/section commands, bounded LC_SYMTAB nlist decoding and CodeDirectory metadata.
 - [ ] Chained fixups, cryptographic trust verification and Objective-C metadata.
 - [x] ZIP64 EOCD/locator and per-entry extended size/offset parsing with safe-integer and central-directory bounds.
