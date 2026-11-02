@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { constants as fs_constants, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { parse_lockfile } from './lockfiles.mjs';
-import { parse_lockfile } from './lockfiles.mjs';
 
 const DEFAULTS={max_files:50000,max_entries:200000,max_depth:24,max_file_bytes:1048576,max_total_bytes:134217728,max_symbols_per_file:100,max_imports_per_file:200,max_lockfile_packages:100000,max_lockfile_edges:500000,include_hidden:false};
 const IGNORED=new Set(['.git','.hg','.svn','node_modules','vendor','dist','build','coverage','.next','.nuxt','.turbo','.cache','.venv','venv','__pycache__','target','bin','obj']);
