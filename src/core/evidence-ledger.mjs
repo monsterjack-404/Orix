@@ -104,7 +104,7 @@ async function read_ledger_file(file_path, options = {}) {
 
 function parse_records(buffer, max_record_bytes) {
   if (buffer.length === 0) return [];
-  if (buffer[buffer.length - 1] !== 0x0a) fail('ORIX_LEDGER_PARTIAL_RECORD', 'Evidence ledger ends with an incomplete record');
+  if (buffer[buffer.length - 1] !== 0x0a) fail('ORIX_LEDGER_PARTIAL_TAIL', 'Evidence ledger ends with an incomplete record');
   const lines = buffer.toString('utf8').split('\n');
   lines.pop();
   const records = [];
@@ -217,6 +217,7 @@ export async function verify_evidence_ledger(file_path, options = {}) {
     format: LEDGER_FORMAT,
     path: loaded.absolute,
     records: records.length,
+    first_hash: records[0]?.hash ?? null,
     bytes: loaded.buffer.length,
     head_hash,
     first_timestamp: records[0]?.timestamp ?? null,
