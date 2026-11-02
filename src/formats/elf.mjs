@@ -148,6 +148,7 @@ function parse_relocations(reader, raw_sections, is_64, little, options) {
   const maximum = options.max_relocations ?? 100000;
   const relocations = [];
   const tables = [];
+  let total_chain_entries = 0;
   for (const section of raw_sections) {
     if (section.raw_type !== 4 && section.raw_type !== 9) continue;
     if (!section.raw_range_valid || typeof section.file_offset !== 'number' || typeof section.size !== 'number') {
@@ -469,7 +470,6 @@ function parse_gnu_hash_tables(reader, raw_sections, symbol_result, is_64, littl
     const bucket_base = offset + 16 + bloom_bytes;
     const buckets = [];
     const chain_cache = new Map();
-    let total_chain_entries = 0;
     for (let index = 0; index < bucket_count; index += 1) {
       const first_symbol = reader.u32(bucket_base + index * 4, little, 'GNU hash bucket');
       if (first_symbol === 0) {
