@@ -24,6 +24,15 @@ export function analyze_known_format(buffer, options = {}) {
 }
 
 export { detect_format, list_supported_formats } from './registry.mjs';
+
+import { list_supported_formats } from './registry.mjs';
+
+export function list_format_capabilities() {
+  return list_supported_formats().map(item => ({
+    ...item,
+    parser_status: PARSERS.has(item.format) ? 'available' : 'signature-only',
+  }));
+}
 export { parse_pe } from './pe.mjs';
 export { parse_elf } from './elf.mjs';
 export { parse_macho, parse_macho_fat } from './macho.mjs';
