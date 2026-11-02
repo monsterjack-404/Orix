@@ -6,7 +6,7 @@ import { HELP_TEXT } from './help.mjs';
 import { inspect_file } from '../core/inspect.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project, render_project_markdown } from '../project/intelligence.mjs';
-import { list_supported_formats } from '../formats/registry.mjs';
+import { list_format_capabilities } from '../formats/index.mjs';
 import { render_json } from '../reports/json.mjs';
 import { render_inspection_markdown, render_scan_markdown } from '../reports/markdown.mjs';
 import { normalize_error } from '../core/errors.mjs';
@@ -21,7 +21,7 @@ function select_report(report,format,renderer){return format==='json'?render_jso
 export async function main(argv=process.argv.slice(2)) {
   const parsed=parse_arguments(argv);
   if(parsed.flags.help||parsed.command==='help'||!parsed.command){process.stdout.write(HELP_TEXT);return 0;}
-  if(parsed.command==='formats'){if(parsed.target)throw new Error('The formats command does not accept a target');await write_or_print(render_json({schema_version:'orix.formats.v1',formats:list_supported_formats()}),parsed.flags.out);return 0;}
+  if(parsed.command==='formats'){if(parsed.target)throw new Error('The formats command does not accept a target');await write_or_print(render_json({schema_version:'orix.formats.v1',formats:list_format_capabilities()}),parsed.flags.out);return 0;}
   if(!['inspect','scan','project'].includes(parsed.command))throw new Error('Unknown command: '+parsed.command);
   if(!parsed.target)throw new Error(parsed.command+' requires a target path');
   const options={...parsed.flags,limits:parsed.flags};
