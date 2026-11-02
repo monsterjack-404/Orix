@@ -449,3 +449,69 @@ test('Universal Mach-O parser rejects overlapping architecture slices', () => {
   fat.writeUInt32BE(0, 44);
   assert.throws(() => parse_macho_fat(fat), error => error.code === 'ORIX_MACHO_FAT_OVERLAPPING_SLICES');
 });
+
+
+test('PE parser decodes bounded resource trees and WIN_CERTIFICATE framing', () => {
+  const base = create_pe_fixture();
+  const pe = 0x80;
+  const optional = pe + 4 + 20;
+  const section = optional + 224;
+  const raw = section + 40;
+  const buffer = Buffer.concat([base, Buffer.alloc(0x300)]);
+  buffer.writeUInt32LE(0x300, section + 16);
+  const directories = optional + 96;
+  buffer.writeUInt32LE(0x1100, directories + 16);
+  buffer.writeUInt32LE(80, directories + 20);
+  buffer.writeUInt32LE(raw + 0x250, directories + 32);
+  buffer.writeUInt32LE(16, directories + 36);
+
+  const root = raw + 0x100;
+  buffer.writeUInt16LE(1, root + 14);
+  buffer.writeUInt32LE(10, root + 16);
+  buffer.writeUInt32LE(0x80000020, root + 20);
+  buffer.writeUInt16LE(1, root + 32 + 14);
+  buffer.writeUInt32LE(1, root + 32 + 16);
+  buffer.writeUInt32LE(0x40, root + 32 + 20);
+  buffer.writeUInt32LE(0x1180, root + 64);
+  buffer.writeUInt32LE(4, root + 68);
+  buffer.writeUInt32LE(1200, root + 72);
+  buffer.set([0xde,0xad,0xbe,0xef], raw + 0x180);
+
+  const certificate = raw + 0x250;
+  buffer.writeUInt32LE(12, certificate);
+  buffer.writeUInt16LE(0x0200, certificate + 4);
+  buffer.writeUInt16LE(2, certificate + 6);
+  buffer.set([1,2,3,4], certificate + 8);
+
+  const parsed = parse_pe(buffer);
+  assert.equal(parsed.resources.length, 1);
+  assert.equal(parsed.resources[0].id, 10);
+  assert.equal(parsed.resources[0].entries[0].id, 1);
+  assert.equal(parsed.resources[0].entries[0].data_rva, 0x1180);
+  assert.equal(parsed.resources[0].entries[0].file_range_valid, true);
+  assert.equal(parsed.certificates.length, 1);
+  assert.equal(parsed.certificates[0].revision, '0x200');
+  assert.equal(parsed.certificates[0].type, 2);
+  assert.equal(parsed.certificates[0].payload_size, 4);
+});
+
+test('PE parser rejects cyclic resource trees and out-of-range certificate tables', () => {
+  const base = create_pe_fixture();
+  const optional = 0x80 + 4 + 20;
+  const section = optional + 224;
+  const raw = section + 40;
+  const buffer = Buffer.concat([base, Buffer.alloc(0x100)]);
+  buffer.writeUInt32LE(0x100, section + 16);
+  const directories = optional + 96;
+  buffer.writeUInt32LE(0x1100, directories + 16);
+  buffer.writeUInt32LE(40, directories + 20);
+  buffer.writeUInt16LE(1, raw + 0x100 + 14);
+  buffer.writeUInt32LE(1, raw + 0x100 + 16);
+  buffer.writeUInt32LE(0x80000000, raw + 0x100 + 20);
+  assert.throws(() => parse_pe(buffer), error => error.code === 'ORIX_PE_RESOURCE_CYCLE');
+
+  const malformed = create_pe_fixture();
+  malformed.writeUInt32LE(0xfffffff0, optional + 96 + 32);
+  malformed.writeUInt32LE(32, optional + 96 + 36);
+  assert.throws(() => parse_pe(malformed), error => error.code === 'ORIX_PE_CERTIFICATE_RANGE');
+});
