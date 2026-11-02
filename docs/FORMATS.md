@@ -12,7 +12,7 @@ ORIX distinguishes **signature recognition** from **structural parsing**. Recogn
 | Universal Mach-O | Yes | Yes | 32/64-bit fat architecture tables, bounded non-overlapping slices and per-slice thin Mach-O parsing | Architecture-specific semantic analysis beyond supported thin commands |
 | WebAssembly | Yes | Yes | Version, section boundaries and custom section names | Type validation, instruction decoding, imports/exports semantics and decompilation |
 | ZIP | Yes | Yes | EOCD and ZIP64 EOCD/locator, 64-bit central-directory metadata, ZIP64 per-entry sizes/offsets, extra-field bounds, path/symlink flags and local data ranges | Multi-disk, decompression, CRC verification and streaming extraction |
-| PDF | Yes | No | `%PDF-` prefix | Cross-reference parsing, object graph, incremental updates, embedded files and JavaScript inspection |
+| PDF | Yes | Yes | PDF 1.x header, classic xref tables, trailer metadata, incremental /Prev chain, indirect-object framing, encryption and active-content marker triage | Xref-stream entry decoding, object streams, filters/decompression, page-tree semantics, embedded-file extraction and signature verification |
 | PNG | Yes | No | Eight-byte PNG signature | Chunk validation, decompression and metadata |
 | JPEG | Yes | No | JPEG SOI marker | Marker/segment parsing and image decoding |
 | SQLite | Yes | No | Sixteen-byte database signature | Page layout, schema, WAL and freelist parsing |
@@ -62,3 +62,8 @@ Do not use file extensions as a substitute for signature recognition. Extensions
 ## Indicator integration
 
 Format parsers return structural facts only. A separate analyzer evaluates selected parsed fields without changing parser output. For PE, it reviews section permission combinations and raw-file ranges. For ZIP, it inspects entry path and symlink metadata. The static indicator catalogue is maintained in [`INDICATORS.md`](INDICATORS.md); those findings are triage leads and do not extend the parser's semantic coverage.
+
+
+### PDF
+
+The PDF parser validates the version header, locates the final bounded `startxref` / `%%EOF` pair, indexes classic cross-reference subsections and trailer metadata, follows bounded incremental-update `/Prev` links, and scans bounded indirect-object framing. It reports encryption and lexical markers for JavaScript, embedded files, file specifications, open/additional actions and launch actions. It does not execute JavaScript, decompress streams, extract attachments, decode xref-stream entries or object streams, validate page-tree semantics, or verify digital signatures. Marker matches are triage hints, not proof of reachability or execution.
