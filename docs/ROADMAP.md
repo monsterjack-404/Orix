@@ -46,7 +46,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [x] ZIP64 EOCD/locator and per-entry extended size/offset parsing with safe-integer and central-directory bounds.
 - [ ] Decompression-bomb safeguards and bounded safe entry streaming; extraction remains opt-in.
 - [x] Deterministic malformed-input mutation and truncation smoke corpus for all registered binary parsers.
-- PDF object and cross-reference parser with object-count and recursion budgets.
+- [x] PDF classic xref tables, trailer metadata, bounded incremental /Prev chain, xref-stream recognition and indirect-object index with explicit active-content triage; compressed xref/object streams remain unsupported.
 - Versioned JSON Schema documents and golden report fixtures.
 
 **Exit criteria:** each parser has valid and malformed fixtures, explicit unsupported cases, resource bounds, and format documentation. Fuzz harnesses must demonstrate bounded failures before release.
