@@ -2,7 +2,7 @@
 
 import { OrixError } from '../core/errors.mjs';
 
-const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-read-mib','--max-file-mib','--concurrency','--strings-limit']);
+const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-read-mib','--max-file-mib','--concurrency','--strings-limit']);
 const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--help','-h']);
 
 function positive_integer(value, option, minimum, maximum) {
@@ -34,6 +34,7 @@ export function parse_arguments(argv) {
         if (!['json','markdown','sarif'].includes(raw)) throw new OrixError('ORIX_CLI_BAD_FORMAT', '--format must be json, markdown or sarif', { details: { value: raw }, recoverable: true });
         result.flags.format = raw;
       } else if (token === '--out') result.flags.out = raw;
+      else if (token === '--ledger') result.flags.evidence_ledger = raw;
       else if (token === '--ledger') result.flags.ledger = raw;
       else if (token === '--max-files') result.flags.max_scan_files = positive_integer(raw, token, 1, 1_000_000);
       else if (token === '--max-directories') result.flags.max_scan_directories = positive_integer(raw, token, 1, 1_000_000);
