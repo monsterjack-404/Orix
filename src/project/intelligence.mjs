@@ -95,4 +95,94 @@ raw.push({path:relative,size_bytes:buffer.length,sha256:digest(buffer),language:
  const paths=files.map(x=>x.path),counts={};for(const file of files)counts[file.language]=(counts[file.language]??0)+1;
  return{schema_version:'orix.project.v1',project:{root,name:path.basename(root),scanned_at:new Date().toISOString()},git,summary:{git_present:git.present,files_analyzed:files.length,entries_seen,bytes_analyzed:total_bytes,languages:Object.fromEntries(Object.entries(counts).sort(([a],[b])=>a.localeCompare(b))),manifests:manifests.length,declared_dependencies:dependencies.length,locked_packages:resolved_dependencies.length,dependency_edges:dependency_edges.length,lockfile_edges:lockfiles.reduce((total,item)=>total+(item.edges?.length??0),0),source_symbols:symbols.length,source_import_edges:edges.length,secret_pattern_matches:findings.length},detection:signals(paths),manifests,dependencies:dependencies.sort((a,b)=>a.ecosystem.localeCompare(b.ecosystem)||a.name.localeCompare(b.name)),lockfiles,resolved_dependencies:resolved_dependencies.sort((a,b)=>a.ecosystem.localeCompare(b.ecosystem)||a.name.localeCompare(b.name)||String(a.version).localeCompare(String(b.version))),dependency_graph:{nodes:resolved_dependencies.map(item=>({id:item.id,name:item.name,version:item.version,ecosystem:item.ecosystem})),edges:dependency_edges.sort((a,b)=>a.from.localeCompare(b.from)||a.to.localeCompare(b.to))},files:files.sort((a,b)=>a.path.localeCompare(b.path)),symbols:symbols.sort((a,b)=>a.file.localeCompare(b.file)||a.line-b.line),graph:{nodes:files.map(x=>({id:x.path,type:'file',language:x.language})),edges:edges.sort((a,b)=>a.from.localeCompare(b.from)||a.to.localeCompare(b.to))},findings:findings.sort((a,b)=>a.file.localeCompare(b.file)||a.line-b.line),coverage:{complete:!truncated,truncated,limits,skipped:skipped.length,skipped_entries:skipped.slice(0,500)},warnings:lockfiles.flatMap(item=>item.warnings??[])};
 }
-export function render_project_markdown(report){const lines=['# ORIX Project Intelligence Report','', '- **Project:** '+report.project.name,'- **Root:** '+report.project.root,'- **Files analyzed:** '+report.summary.files_analyzed,'- **Bytes analyzed:** '+report.summary.bytes_analyzed,'- **Complete inventory:** '+(report.coverage.complete?'yes':'no — limit reached'),'- **Dependencies:** '+report.summary.declared_dependencies,'- **Source symbols:** '+report.summary.source_symbols,'- **Secret-pattern matches:** '+report.summary.secret_pattern_matches,'','## Project signals','', '- **Package managers:** '+(report.detection.package_managers.join(', ')||'not detected'),'- **README:** '+(report.detection.has_readme?'present':'not detected'),'- **License:** '+(report.detection.has_license?'present':'not detected'),'- **CI:** '+(report.detection.has_ci?'present':'not detected'),'- **Tests:** '+(report.detection.has_tests?'present':'not detected'),'- **Container:** '+(report.detection.has_container?'present':'not detected'),'','## Languages','','| Language | Files |','|---|---:|',...Object.entries(report.summary.languages).map(([key,value])=>'| '+key+' | '+value+' |'),'','## Dependency manifests','','| Path | Ecosystem | Dependencies |','|---|---|---:|',...report.manifests.map(x=>'| '+x.path+' | '+(x.ecosystem??'unknown')+' | '+x.dependencies.length+' |'),'','## Source graph','','- Nodes: '+report.graph.nodes.length,'- Resolved local import edges: '+report.graph.edges.length,'','## Findings',''];if(report.findings.length){lines.push('| Severity | Rule | File | Line | Description |','|---|---|---|---:|---|');for(const item of report.findings)lines.push('| '+item.severity+' | '+item.rule_id+' | '+item.file+' | '+item.line+' | '+item.label+' — value redacted |');}else lines.push('No built-in credential-shaped patterns matched.');lines.push('','## Coverage','','- Skipped: '+report.coverage.skipped,'- Truncated: '+(report.coverage.truncated?'yes':'no'),'','Project scripts, builds, tests, binaries and source files are never executed. Import and symbol extraction are heuristic. Dependency declarations are not vulnerability findings. Credential matches are redacted and require manual review.','');return lines.join('\n');}
+function markdown_cell(value) {
+  return String(value ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function render_project_markdown(report) {
+  const lines = [
+    '# ORIX Project Intelligence Report',
+    '',
+    '- **Project:** ' + markdown_cell(report.project.name),
+    '- **Root:** ' + markdown_cell(report.project.root),
+    '- **Scanned at:** ' + markdown_cell(report.project.scanned_at),
+    '- **Files analyzed:** ' + report.summary.files_analyzed,
+    '- **Bytes analyzed:** ' + report.summary.bytes_analyzed,
+    '- **Complete inventory:** ' + (report.coverage.complete ? 'yes' : 'no — limits or unreadable entries affected coverage'),
+    '- **Declared dependencies:** ' + report.summary.declared_dependencies,
+    '- **Resolved lockfile packages:** ' + (report.summary.locked_packages ?? report.resolved_dependencies?.length ?? 0),
+    '- **Dependency edges:** ' + (report.summary.dependency_edges ?? report.dependency_graph?.edges?.length ?? 0),
+    '- **Source symbols:** ' + report.summary.source_symbols,
+    '- **Source import edges:** ' + report.summary.source_import_edges,
+    '- **Credential-shaped matches:** ' + report.summary.secret_pattern_matches,
+    '',
+    '## Project signals',
+    '',
+    '- **Package managers:** ' + (report.detection.package_managers.join(', ') || 'not detected'),
+    '- **README:** ' + (report.detection.has_readme ? 'present' : 'not detected'),
+    '- **License:** ' + (report.detection.has_license ? 'present' : 'not detected'),
+    '- **CI:** ' + (report.detection.has_ci ? 'present' : 'not detected'),
+    '- **Tests:** ' + (report.detection.has_tests ? 'present' : 'not detected'),
+    '- **Container:** ' + (report.detection.has_container ? 'present' : 'not detected'),
+    '',
+    '## Languages',
+    '',
+    '| Language | Files |',
+    '|---|---:|',
+    ...Object.entries(report.summary.languages).map(([name, count]) => '| ' + markdown_cell(name) + ' | ' + count + ' |'),
+    '',
+    '## Dependency manifests',
+    '',
+    '| Path | Ecosystem | Declarations | Warnings |',
+    '|---|---|---:|---:|',
+    ...(report.manifests ?? []).map(item => '| ' + markdown_cell(item.path) + ' | ' + markdown_cell(item.ecosystem ?? 'unknown') + ' | ' + item.dependencies.length + ' | ' + item.warnings.length + ' |'),
+    '',
+    '## Lockfile inventory',
+    '',
+    '| Path | Format | Packages | Package edges | Root edges | Status |',
+    '|---|---|---:|---:|---:|---|',
+    ...(report.lockfiles ?? []).map(item => '| ' + markdown_cell(item.path) + ' | ' + markdown_cell(item.format) + ' | ' + (item.packages?.length ?? 0) + ' | ' + (item.edges?.length ?? 0) + ' | ' + (item.root_edges?.length ?? 0) + ' | ' + (item.complete ? 'complete' : 'partial') + ' |'),
+    '',
+    '## Resolved package sample',
+    '',
+    '| Ecosystem | Package | Version | Classification | Source lockfile |',
+    '|---|---|---|---|---|',
+    ...(report.resolved_dependencies ?? []).slice(0, 100).map(item => '| ' + markdown_cell(item.ecosystem) + ' | ' + markdown_cell(item.name) + ' | ' + markdown_cell(item.version) + ' | ' + markdown_cell(item.dependency_type) + ' | ' + markdown_cell(item.lockfile_path ?? item.manifest) + ' |'),
+    '',
+    '## Source graph',
+    '',
+    '- File nodes: ' + report.graph.nodes.length,
+    '- Resolved local import edges: ' + report.graph.edges.length,
+    '- Package nodes: ' + (report.dependency_graph?.nodes?.length ?? 0),
+    '- Package dependency edges: ' + (report.dependency_graph?.edges?.length ?? 0),
+    '',
+    '## Findings',
+    '',
+  ];
+  if (report.findings.length) {
+    lines.push('| Severity | Rule | File | Line | Description |', '|---|---|---|---:|---|');
+    for (const item of report.findings) {
+      lines.push('| ' + markdown_cell(item.severity) + ' | ' + markdown_cell(item.rule_id) + ' | ' + markdown_cell(item.file) + ' | ' + item.line + ' | ' + markdown_cell(item.label) + ' — matched value redacted |');
+    }
+  } else {
+    lines.push('No built-in credential-shaped patterns matched.');
+  }
+  if ((report.warnings ?? []).length) {
+    lines.push('', '## Lockfile and parser warnings', '');
+    for (const warning of report.warnings.slice(0, 100)) {
+      lines.push('- \`' + markdown_cell(warning.code ?? 'ORIX_WARNING') + '\` — ' + markdown_cell(warning.file ?? warning.path ?? warning.dependency ?? warning.name ?? 'review lockfile metadata'));
+    }
+  }
+  lines.push(
+    '',
+    '## Coverage',
+    '',
+    '- Skipped entries: ' + report.coverage.skipped,
+    '- Truncated: ' + (report.coverage.truncated ? 'yes' : 'no'),
+    '- Complete: ' + (report.coverage.complete ? 'yes' : 'no'),
+    '',
+    'Project scripts, builds, tests, binaries, package managers, registries and plugins are never executed. Import and symbol extraction are heuristic. Dependency declarations and lockfile metadata are inventory, not vulnerability findings or publisher-authenticity proof. Credential matches are redacted and require manual review.',
+    '',
+  );
+  return lines.join('\\n');
+}
