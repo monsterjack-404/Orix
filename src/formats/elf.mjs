@@ -155,6 +155,13 @@ function parse_relocations(reader, raw_sections, is_64, little, options) {
       continue;
     }
     const rela = section.raw_type === 4;
+    const linked_symbols = raw_sections[section.link];
+    if (!linked_symbols || (linked_symbols.raw_type !== 2 && linked_symbols.raw_type !== 11)) {
+      tables.push({ section_index: section.index, type: section.type, status: 'invalid-symbol-table-link', relocation_count: 0 });
+      continue;
+    }
+    const symbol_entry_size = number_field(linked_symbols.entry_size, 'Linked symbol entry size');
+    const symbol_count = symbol_entry_size > 0 ? Math.floor(linked_symbols.size / symbol_entry_size) : 0;
     const expected = is_64 ? (rela ? 24 : 16) : (rela ? 12 : 8);
     const entry_size = number_field(section.entry_size, 'Relocation entry size');
     if (entry_size < expected || section.size % entry_size !== 0) {
@@ -184,9 +191,10 @@ function parse_relocations(reader, raw_sections, is_64, little, options) {
         relocation_type = info & 0xff;
         if (rela) addend = reader.view.getInt32(at + 8, little);
       }
+      if (symbol_index >= symbol_count) throw new OrixError('ORIX_ELF_RELOCATION_SYMBOL_INDEX', 'ELF relocation references a symbol outside its linked symbol table', { details: { section_index: section.index, index, symbol_index, symbol_count, symbol_table_index: section.link }, recoverable: true });
       relocations.push({ table_section_index: section.index, index, target_section_index: section.info, symbol_table_index: section.link, offset, symbol_index, type: relocation_type, addend });
     }
-    tables.push({ section_index: section.index, type: section.type, status: 'parsed', relocation_count: count, linked_symbol_table_index: section.link, target_section_index: section.info });
+    tables.push({ section_index: section.index, type: section.type, status: 'parsed', relocation_count: count, linked_symbol_table_index: section.link, linked_symbol_count: symbol_count, target_section_index: section.info });
   }
   return { relocations, tables };
 }
