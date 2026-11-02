@@ -170,7 +170,7 @@ export function render_project_markdown(report) {
   if ((report.warnings ?? []).length) {
     lines.push('', '## Lockfile and parser warnings', '');
     for (const warning of report.warnings.slice(0, 100)) {
-      lines.push('- \`' + markdown_cell(warning.code ?? 'ORIX_WARNING') + '\` — ' + markdown_cell(warning.file ?? warning.path ?? warning.dependency ?? warning.name ?? 'review lockfile metadata'));
+      lines.push('- ' + markdown_cell(warning.code ?? 'ORIX_WARNING') + ' — ' + markdown_cell(warning.file ?? warning.path ?? warning.dependency ?? warning.name ?? 'review lockfile metadata'));
     }
   }
   lines.push(
@@ -184,5 +184,5 @@ export function render_project_markdown(report) {
     'Project scripts, builds, tests, binaries, package managers, registries and plugins are never executed. Import and symbol extraction are heuristic. Dependency declarations and lockfile metadata are inventory, not vulnerability findings or publisher-authenticity proof. Credential matches are redacted and require manual review.',
     '',
   );
-  return lines.join('\\n');
+  return lines.join('\n');
 }
