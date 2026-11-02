@@ -139,3 +139,64 @@ test('Cargo.lock resolves registry packages, checksums and workspace dependency 
   assert.equal(report.packages.find(item => item.name === 'serde').integrity, 'abc123');
   assert.equal(report.complete, true);
 });
+
+
+test('pnpm v6 lockfile resolves nested package metadata and importer root edges', () => {
+  const input = [
+    "lockfileVersion: '6.0'",
+    'importers:',
+    '  .:',
+    '    dependencies:',
+    '      alpha:',
+    '        specifier: ^1.0.0',
+    '        version: 1.2.0',
+    'packages:',
+    '  /alpha/1.2.0:',
+    '    resolution:',
+    '      integrity: sha512-YQ==',
+    '    dependencies:',
+    '      beta: 2.3.0',
+    '  /beta/2.3.0:',
+    '    resolution: {integrity: sha512-ZA==}',
+  ].join('\n');
+  const report = parse_lockfile('pnpm-lock.yaml', input);
+  assert.equal(report.format, 'pnpm-lock');
+  assert.equal(report.lockfile_version, 6);
+  assert.equal(report.packages.length, 2);
+  assert.equal(report.root_edges.length, 1);
+  assert.equal(report.root_edges[0].name, 'alpha');
+  assert.equal(report.edges.length, 1);
+  assert.equal(report.edges[0].resolved_version, '2.3.0');
+  assert.equal(report.packages.find(item => item.name === 'alpha').integrity, 'sha512-YQ==');
+  assert.equal(report.complete, true);
+});
+
+test('pnpm v9 lockfile merges package metadata with snapshot dependency edges', () => {
+  const input = [
+    "lockfileVersion: '9.0'",
+    'importers:',
+    '  .:',
+    '    devDependencies:',
+    '      alpha:',
+    '        specifier: ^1.0.0',
+    '        version: 1.2.0(peer@4.0.0)',
+    'packages:',
+    '  alpha@1.2.0(peer@4.0.0):',
+    '    resolution: {integrity: sha512-YQ==}',
+    '  beta@2.3.0:',
+    '    resolution: {integrity: sha512-ZA==}',
+    'snapshots:',
+    '  alpha@1.2.0(peer@4.0.0):',
+    '    dependencies:',
+    '      beta: 2.3.0',
+    '  beta@2.3.0:',
+  ].join('\n');
+  const report = parse_lockfile('pnpm-lock.yaml', input);
+  assert.equal(report.lockfile_version, 9);
+  assert.equal(report.packages.length, 2);
+  assert.equal(report.root_edges.length, 1);
+  assert.equal(report.root_edges[0].dependency_type, 'devDependencies');
+  assert.equal(report.edges.length, 1);
+  assert.equal(report.edges[0].resolved_version, '2.3.0');
+  assert.equal(report.packages.find(item => item.name === 'alpha').peer, true);
+});
