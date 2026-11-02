@@ -34,7 +34,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 ## 0.4 — Structural Analysis Expansion
 
-- PE import/export tables, RVA mapping, resource directory and certificate metadata.
+- [x] PE import/export tables and file-backed RVA mapping, including named/ordinal imports, named exports and forwarded-export markers.\n- [ ] PE resource directory and certificate metadata.
 - ELF program headers, dynamic section, symbol tables, relocations and GNU build identifiers.
 - Mach-O universal/fat architecture table, segment/section commands and code-signature metadata.
 - ZIP64 parser, decompression-bomb safeguards and safe entry streaming; no extraction by default.
