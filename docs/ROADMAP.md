@@ -38,7 +38,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 - [x] PE import/export tables and file-backed RVA mapping, including named/ordinal imports, named exports and forwarded-export markers.
 - [x] PE resource directory traversal and WIN_CERTIFICATE record framing.
-- [ ] Base relocations, CLR metadata and Authenticode trust verification.
+- [x] PE base-relocation block and entry parsing (metadata only; no relocation application).\n- [ ] CLR metadata and Authenticode trust verification.
 - [x] ELF program headers, PT_INTERP, PT_DYNAMIC tags, GNU build identifiers, symbol tables and REL/RELA relocation records.
 - [ ] Extended ELF numbering, GNU symbol-version resolution and DWARF decoding.
 - [x] Mach-O FAT/FAT64 architecture tables, bounded slices, segment/section commands and CodeDirectory metadata.
