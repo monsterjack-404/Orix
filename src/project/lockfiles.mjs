@@ -1098,6 +1098,136 @@ function parse_gradle_lock(file, text, limits) {
   };
 }
 
+function parse_nuget_lock(file, text, limits) {
+  let document;
+  try { document = JSON.parse(text); }
+  catch (error) { fail('ORIX_LOCKFILE_INVALID_JSON', 'NuGet packages.lock.json is not valid JSON', { file, reason: error.message.slice(0, 160) }); }
+  if (!document || typeof document !== 'object' || Array.isArray(document)) fail('ORIX_LOCKFILE_DOCUMENT', 'NuGet lockfile root must be an object', { file });
+  const frameworks = document.dependencies && typeof document.dependencies === 'object' && !Array.isArray(document.dependencies) ? document.dependencies : {};
+  const package_map = new Map();
+  const warnings = [];
+  let seen = 0;
+  for (const [framework, entries] of Object.entries(frameworks)) {
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
+    for (const [name, metadata] of Object.entries(entries)) {
+      seen += 1;
+      if (seen > limits.max_packages * 10) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'NuGet framework package entries exceed configured limit', { file, maximum: limits.max_packages * 10 });
+      const version = clean_string(metadata?.resolved, MAX_VERSION, 'resolved package version');
+      if (!version) { warnings.push({ code: 'ORIX_LOCKFILE_PACKAGE_IDENTITY', framework, name }); continue; }
+      const key = name.toLowerCase() + '@' + version.toLowerCase();
+      let item = package_map.get(key);
+      if (!item) {
+        if (package_map.size >= limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'NuGet unique package count exceeds configured limit', { file, maximum: limits.max_packages });
+        item = {
+          name, version, ecosystem: 'nuget', location: name + '@' + version,
+          dependency_type: 'transitive', dev: false, optional: false, peer: false,
+          integrity: clean_string(metadata.contentHash, 4096, 'NuGet content hash'),
+          checksum_kind: 'nuget-content-hash',
+          resolved: null, license: null, dependencies: [], frameworks: [],
+        };
+        package_map.set(key, item);
+      }
+      if (String(metadata.type ?? '').toLowerCase() === 'direct') item.dependency_type = 'direct';
+      item.frameworks.push(framework);
+      if (metadata.dependencies && typeof metadata.dependencies === 'object' && !Array.isArray(metadata.dependencies)) {
+        for (const [dependency_name, requirement] of Object.entries(metadata.dependencies)) {
+          item.dependencies.push({ name: dependency_name, requirement: String(requirement).slice(0, MAX_VERSION) });
+        }
+      }
+    }
+  }
+  const packages = [...package_map.values()];
+  for (const item of packages) {
+    item.frameworks = [...new Set(item.frameworks)].sort();
+    item.dependencies = [...new Map(item.dependencies.map(dep => [dep.name.toLowerCase() + '@' + dep.requirement, dep])).values()];
+  }
+  const by_name = new Map();
+  for (const item of packages) {
+    const values = by_name.get(item.name.toLowerCase()) ?? [];
+    values.push(item);
+    by_name.set(item.name.toLowerCase(), values);
+  }
+  const resolve = (name, requirement, context) => {
+    const candidates = by_name.get(name.toLowerCase()) ?? [];
+    const exact = /(?:^|[,\\s[(])=?\\s*([0-9]+(?:\\.[0-9A-Za-z-]+){1,4})/.exec(requirement ?? '');
+    if (exact) {
+      const match = candidates.find(item => item.version === exact[1]);
+      if (match) return match;
+    }
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) warnings.push({ code: 'ORIX_LOCKFILE_AMBIGUOUS_DEPENDENCY', name, requirement, context });
+    return null;
+  };
+  const edges = [];
+  for (const item of packages) {
+    for (const dependency of item.dependencies) {
+      const target = resolve(dependency.name, dependency.requirement, item.location);
+      if (target) edges.push({ from: item.location, to: target.location, name: dependency.name, requirement: dependency.requirement, resolved_version: target.version });
+      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_EDGE', from: item.location, dependency: dependency.name });
+      if (edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'NuGet lockfile dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+    }
+  }
+  const root_dependencies = packages.filter(item => item.dependency_type === 'direct').map(item => ({ name: item.name, requirement: item.version, dependency_type: 'runtime' }));
+  const root_edges = packages.filter(item => item.dependency_type === 'direct').map(item => ({ name: item.name, requirement: item.version, dependency_type: 'runtime', to: item.location, resolved_version: item.version }));
+  if (edges.length + root_edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'NuGet lockfile total dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+  if (packages.length === 0) warnings.push({ code: 'ORIX_LOCKFILE_NO_PACKAGE_TABLE' });
+  return { path: file, ecosystem: 'nuget', format: 'nuget-packages-lock', lockfile_version: document.version ?? null, packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0 };
+}
+
+function parse_gradle_lock(file, text, limits, manifests) {
+  const packages = [];
+  const warnings = [];
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    const value = line.trim();
+    if (!value || value.startsWith('#') || value === 'empty=') continue;
+    const match = /^([^:\s]+):([^:\s]+):([^=\s]+)(?:=(.*))?$/.exec(value);
+    if (!match) {
+      warnings.push({ code: 'ORIX_LOCKFILE_GRADLE_LINE', line: index + 1 });
+      continue;
+    }
+    if (packages.length >= limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'Gradle lockfile package count exceeds configured limit', { file, maximum: limits.max_packages });
+    const configurations = (match[4] ?? '').split(',').map(item => item.trim()).filter(Boolean);
+    packages.push({
+      name: match[1] + ':' + match[2],
+      version: match[3],
+      ecosystem: 'maven',
+      location: match[1] + ':' + match[2] + ':' + match[3],
+      dependency_type: 'resolved',
+      dev: configurations.some(item => /test|testCompile|testRuntime/i.test(item)),
+      optional: false,
+      peer: false,
+      integrity: null,
+      resolved: null,
+      license: null,
+      dependencies: [],
+      configurations,
+    });
+  }
+  const by_name = new Map();
+  for (const item of packages) {
+    const values = by_name.get(item.name) ?? [];
+    values.push(item);
+    by_name.set(item.name, values);
+  }
+  const root_dependencies = [];
+  const root_edges = [];
+  for (const manifest of manifests) {
+    if (manifest.ecosystem !== 'maven') continue;
+    for (const dependency of manifest.dependencies ?? []) {
+      root_dependencies.push({ name: dependency.name, requirement: dependency.version, dependency_type: dependency.dependency_type });
+      const candidates = by_name.get(dependency.name) ?? [];
+      const exact = candidates.find(item => item.version === dependency.version);
+      const target = exact ?? (candidates.length === 1 ? candidates[0] : null);
+      if (target) root_edges.push({ name: dependency.name, requirement: dependency.version, dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version });
+      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_ROOT_EDGE', dependency: dependency.name, version: dependency.version, manifest: manifest.path });
+    }
+  }
+  warnings.push({ code: 'ORIX_LOCKFILE_DEPENDENCY_EDGES_UNAVAILABLE', detail: 'Gradle lockfiles record resolved coordinates and configurations, not package-to-package dependency edges.' });
+  if (packages.length === 0) warnings.push({ code: 'ORIX_LOCKFILE_NO_PACKAGE_TABLE' });
+  if (root_edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Gradle lockfile root edge count exceeds configured limit', { file, maximum: limits.max_edges });
+  return { path: file, ecosystem: 'maven', format: 'gradle-lock', lockfile_version: null, packages, edges: [], root_dependencies, root_edges, warnings, complete: false };
+}
+
 export function parse_lockfile(file, text, options = {}, manifests = []) {
   if (typeof file !== 'string' || typeof text !== 'string') throw new TypeError('parse_lockfile requires a file path and text');
   const limits = validate_limits(options);
@@ -1113,5 +1243,7 @@ export function parse_lockfile(file, text, options = {}, manifests = []) {
   if (base === 'gradle.lockfile') return parse_gradle_lock(file, text, limits);
   if (base === 'go.sum') return parse_go_sum(file, text, limits, manifests);
   if (base === 'Gemfile.lock') return parse_gemfile_lock(file, text, limits, manifests);
+  if (base === 'packages.lock.json') return parse_nuget_lock(file, text, limits);
+  if (base === 'gradle.lockfile') return parse_gradle_lock(file, text, limits, manifests);
   return null;
 }
