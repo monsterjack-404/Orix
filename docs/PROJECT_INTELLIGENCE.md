@@ -33,7 +33,7 @@ The lockfile reader currently supports:
 - Composer `composer.lock` runtime/development packages, package requirements, checksums and root manifest edges.
 - Poetry `poetry.lock` package groups, dependency requirements, package hashes and root edges derived from `pyproject.toml`.
 - Pipenv `Pipfile.lock` resolved versions and hashes, matched to `Pipfile` root declarations. Pipfile.lock does not encode package-to-package edges, so ORIX explicitly marks that graph incomplete.
-- Go `go.sum` module checksums, matched against exact `go.mod` declarations where available.
+- Go `go.sum` module checksums, matched against exact `go.mod` declarations where available.\n- Ruby `Gemfile.lock` specs, platforms, source metadata and dependency edges.\n- NuGet `packages.lock.json` direct/transitive package records, target-framework aggregation, content hashes and dependency edges.\n- Gradle `gradle.lockfile` module versions and configuration memberships. Gradle lockfiles do not encode package-to-package edges, so ORIX marks the graph incomplete.
 
 The project report records lockfile format, path, package inventory, root edges, package-to-package edges, warnings and completeness. Package locations are kept distinct so nested versions of the same package do not collapse in the dependency graph. Lockfile package records are not registry lookups: ORIX does not download packages or validate their integrity hashes against remote content.
 
