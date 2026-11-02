@@ -16,7 +16,23 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - Aggregated indicator counts in directory scans.
 - Malformed input, parser, indicator, report, filesystem and CLI integration tests.
 
-## 0.3 — Structural Analysis Expansion
+## 0.3 — Repository and Source Intelligence
+
+**Status: first vertical slice implemented**
+
+- Deterministic local project inventory with symlink rejection and bounded traversal.
+- Language classification and per-file SHA-256 identity.
+- Selected dependency manifests for npm, Python, Cargo, Go, Composer, Maven, NuGet and Ruby.
+- Dependency declaration inventory, script metadata and source-manifest provenance.
+- Best-effort source import extraction, local import edges and symbol candidates.
+- Project structure signals for README, license, CI, tests and container files.
+- Redacted credential-shaped indicators and versioned project report schema.
+
+**Remaining:** lockfile transitive graph parsing, compiler-backed symbol resolution, incremental cache, workspace persistence and deeper language parsers.
+
+**Exit criteria:** deterministic results, explicit coverage, cache invalidation tests and no implicit build or package scripts.
+
+## 0.4 — Structural Analysis Expansion
 
 - PE import/export tables, RVA mapping, resource directory and certificate metadata.
 - ELF program headers, dynamic section, symbol tables, relocations and GNU build identifiers.
