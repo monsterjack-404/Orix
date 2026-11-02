@@ -92,7 +92,7 @@ function parse_symbol_table(reader, command, is_64, little, options) {
   reader.require(symbol_offset, symbol_bytes, 'Mach-O nlist table');
   reader.require(string_offset, string_size, 'Mach-O symbol string table');
   const string_table = reader.bytes(string_offset, string_size, 'Mach-O symbol string table');
-  const type_names = new Map([[0, 'UNDEFINED'], [2, 'ABSOLUTE'], [8, 'SECTION'], [10, 'PREBOUND_UNDEFINED'], [12, 'INDIRECT']]);
+  const type_names = new Map([[0, 'UNDEFINED'], [2, 'ABSOLUTE'], [10, 'INDIRECT'], [12, 'PREBOUND_UNDEFINED'], [14, 'SECTION']]);
   const symbols = [];
   for (let index = 0; index < symbol_count; index += 1) {
     const at = symbol_offset + index * entry_size;
