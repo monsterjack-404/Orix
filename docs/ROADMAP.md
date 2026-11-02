@@ -11,7 +11,8 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - Bounded PE32/PE32+, ELF, thin Mach-O, WebAssembly and ZIP structural parsing.
 - Streaming SHA-256, entropy, bounded string extraction and evidence records.
 - Symlink-safe directory inventory and bounded concurrent inspection.
-- JSON and Markdown report renderers.\n- SARIF 2.1.0 renderer for artifact and directory-scan findings, with rule metadata, severity mapping, byte ranges and artifact hashes.
+- JSON and Markdown report renderers.
+- SARIF 2.1.0 renderer for artifact and directory-scan findings, with rule metadata, severity mapping, byte ranges and artifact hashes.
 - Deterministic static indicator rules with severity, confidence, rule IDs and supporting evidence.
 - Aggregated indicator counts in directory scans.
 - Malformed input, parser, indicator, report, filesystem and CLI integration tests.
@@ -38,16 +39,19 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 - [x] PE import/export tables and file-backed RVA mapping, including named/ordinal imports, named exports and forwarded-export markers.
 - [x] PE resource directory traversal and WIN_CERTIFICATE record framing.
-- [x] PE base-relocation block and entry parsing (metadata only; no relocation application).\n- [ ] CLR metadata and Authenticode trust verification.
+- [x] PE base-relocation block and entry parsing (metadata only; no relocation application).
+- [ ] CLR metadata and Authenticode trust verification.
 - [x] ELF program headers, PT_INTERP, PT_DYNAMIC tags, GNU build identifiers, symbol tables and REL/RELA relocation records.
-- [x] GNU version requirements, definitions and version-symbol table mapping.\n- [ ] Extended ELF numbering, GNU hash decoding and DWARF decoding.
+- [x] GNU version requirements, definitions and version-symbol table mapping.
+- [ ] Extended ELF numbering, GNU hash decoding and DWARF decoding.
 - [x] Mach-O FAT/FAT64 architecture tables, bounded slices, segment/section commands and CodeDirectory metadata.
 - [ ] Chained fixups, cryptographic trust verification and Objective-C metadata.
 - [x] ZIP64 EOCD/locator and per-entry extended size/offset parsing with safe-integer and central-directory bounds.
 - [ ] Decompression-bomb safeguards and bounded safe entry streaming; extraction remains opt-in.
 - [x] Deterministic malformed-input mutation and truncation smoke corpus for all registered binary parsers.
 - [x] PDF classic xref tables, trailer metadata, bounded incremental /Prev chain, xref-stream recognition and indirect-object index with explicit active-content triage; compressed xref/object streams remain unsupported.
-- Versioned JSON Schema documents and golden report fixtures.\n- [x] SARIF 2.1.0 export for artifact and directory reports.
+- Versioned JSON Schema documents and golden report fixtures.
+- [x] SARIF 2.1.0 export for artifact and directory reports.
 
 **Exit criteria:** each parser has valid and malformed fixtures, explicit unsupported cases, resource bounds, and format documentation. Fuzz harnesses must demonstrate bounded failures before release.
 
