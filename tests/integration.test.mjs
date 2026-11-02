@@ -153,3 +153,33 @@ test('CLI emits SARIF 2.1 for an inspected artifact', async () => {
     assert.ok(sarif.runs[0].results.some(item => item.ruleId === 'ORIX-PE-WRITABLE-EXECUTABLE-001'));
   });
 });
+
+
+test('CLI inspection appends a durable receipt and ledger verification reads it back', async () => {
+  await with_temp_dir(async directory => {
+    const file = path.join(directory, 'sample.bin');
+    const ledger = path.join(directory, '.orix', 'evidence.jsonl');
+    await writeFile(file, Buffer.from('integration evidence sample'));
+    const inspect = spawnSync(process.execPath, ['src/cli.mjs', 'inspect', file, '--json', '--ledger', ledger], { encoding: 'utf8', cwd: path.resolve('.') });
+    assert.equal(inspect.status, 0, inspect.stderr);
+    const report = JSON.parse(inspect.stdout);
+    assert.equal(report.ledger_receipt.sequence, 1);
+    assert.equal(report.ledger_receipt.record_hash.length, 64);
+    const verify = spawnSync(process.execPath, ['src/cli.mjs', 'ledger', 'verify', ledger], { encoding: 'utf8', cwd: path.resolve('.') });
+    assert.equal(verify.status, 0, verify.stderr);
+    const result = JSON.parse(verify.stdout);
+    assert.equal(result.valid, true);
+    assert.equal(result.records_verified, 1);
+    const list = spawnSync(process.execPath, ['src/cli.mjs', 'ledger', 'list', ledger], { encoding: 'utf8', cwd: path.resolve('.') });
+    assert.equal(list.status, 0, list.stderr);
+    assert.equal(JSON.parse(list.stdout).records[0].type, 'inspect.completed');
+  });
+});
+
+test('CLI parser accepts ledger operations and validates missing paths', () => {
+  const parsed = parse_arguments(['ledger', 'verify', './evidence.jsonl']);
+  assert.equal(parsed.command, 'ledger');
+  assert.equal(parsed.flags.ledger_operation, 'verify');
+  assert.equal(parsed.flags.ledger_path, './evidence.jsonl');
+  assert.throws(() => parse_arguments(['ledger', 'verify']), error => error.code === 'ORIX_CLI_LEDGER_PATH');
+});
