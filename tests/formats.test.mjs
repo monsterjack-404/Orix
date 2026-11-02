@@ -114,3 +114,73 @@ test('ZIP parser flags parent-traversal paths and rejects ZIP64 sentinels', asyn
   zip64.writeUInt16LE(0xffff, eocd + 10);
   assert.throws(() => parse_zip(zip64), error => error.code === 'ORIX_ZIP64_UNSUPPORTED');
 });
+
+
+test('PE parser maps RVAs and decodes named imports and exports', () => {
+  const buffer = create_pe_fixture();
+  const pe = 0x80;
+  const optional = pe + 4 + 20;
+  const section = optional + 224;
+  const raw = section + 40;
+  const expanded = Buffer.concat([buffer, Buffer.alloc(0x300)]);
+  expanded.writeUInt32LE(0x300, section + 16);
+
+  const directory_table = optional + 96;
+  expanded.writeUInt32LE(0x1200, directory_table);
+  expanded.writeUInt32LE(0x80, directory_table + 4);
+  expanded.writeUInt32LE(0x1100, directory_table + 8);
+  expanded.writeUInt32LE(40, directory_table + 12);
+
+  const import_offset = raw + 0x100;
+  expanded.writeUInt32LE(0x1160, import_offset);
+  expanded.writeUInt32LE(0x1150, import_offset + 12);
+  expanded.writeUInt32LE(0x1168, import_offset + 16);
+  expanded.write('KERNEL32.dll\\0', raw + 0x150, 'ascii');
+  expanded.writeUInt32LE(0x1180, raw + 0x160);
+  expanded.writeUInt32LE(0, raw + 0x164);
+  expanded.writeUInt16LE(7, raw + 0x180);
+  expanded.write('CreateFileW\\0', raw + 0x182, 'ascii');
+
+  const export_offset = raw + 0x200;
+  expanded.writeUInt32LE(0, export_offset);
+  expanded.writeUInt32LE(0, export_offset + 4);
+  expanded.writeUInt16LE(1, export_offset + 8);
+  expanded.writeUInt16LE(0, export_offset + 10);
+  expanded.writeUInt32LE(0x1250, export_offset + 12);
+  expanded.writeUInt32LE(1, export_offset + 16);
+  expanded.writeUInt32LE(1, export_offset + 20);
+  expanded.writeUInt32LE(1, export_offset + 24);
+  expanded.writeUInt32LE(0x1240, export_offset + 28);
+  expanded.writeUInt32LE(0x1244, export_offset + 32);
+  expanded.writeUInt32LE(0x1248, export_offset + 36);
+  expanded.writeUInt32LE(0x1000, raw + 0x240);
+  expanded.writeUInt32LE(0x1260, raw + 0x244);
+  expanded.writeUInt16LE(0, raw + 0x248);
+  expanded.write('sample.dll\\0', raw + 0x250, 'ascii');
+  expanded.write('ExportedEntry\\0', raw + 0x260, 'ascii');
+
+  const parsed = parse_pe(expanded);
+  assert.equal(parsed.imports.length, 1);
+  assert.equal(parsed.imports[0].library, 'KERNEL32.dll');
+  assert.equal(parsed.imports[0].symbols[0].name, 'CreateFileW');
+  assert.equal(parsed.imports[0].symbols[0].hint, 7);
+  assert.equal(parsed.exports.length, 1);
+  assert.equal(parsed.exports[0].name, 'ExportedEntry');
+  assert.equal(parsed.exports[0].ordinal, 1);
+  assert.equal(parsed.exports[0].rva, 0x1000);
+  assert.equal(parsed.export_module_name, 'sample.dll');
+});
+
+test('PE parser rejects import descriptors whose RVA cannot map to file data', () => {
+  const buffer = create_pe_fixture();
+  const optional = 0x80 + 4 + 20;
+  const directories = optional + 96;
+  buffer.writeUInt32LE(0xfffffff0, directories + 8);
+  buffer.writeUInt32LE(40, directories + 12);
+  assert.throws(() => parse_pe(buffer), error => error.code === 'ORIX_PE_INVALID_IMPORT_DESCRIPTOR');
+});
+
+test('PE parser enforces configured section and import limits', () => {
+  const buffer = create_pe_fixture();
+  assert.throws(() => parse_pe(buffer, { max_sections: 0 }), error => error.code === 'ORIX_PE_SECTION_LIMIT');
+});
