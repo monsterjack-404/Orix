@@ -195,3 +195,25 @@ test('MCP exposes an explicit append operation for hash-chained evidence', async
     assert.match(verified.result.content[0].text, /"valid":true/);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+
+test('MCP transport discards oversized frames and continues with the next request', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const errors = new PassThrough();
+  let captured = '';
+  let diagnostics = '';
+  output.setEncoding('utf8');
+  errors.setEncoding('utf8');
+  output.on('data', chunk => { captured += chunk; });
+  errors.on('data', chunk => { diagnostics += chunk; });
+  const running = start_mcp_server({ input, output, error_output: errors });
+  input.write('x'.repeat(4 * 1024 * 1024 + 1) + '\n');
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'ping' }) + '\n');
+  input.end();
+  await running;
+  const messages = captured.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].id, 99);
+  assert.match(diagnostics, /input line exceeded/);
+});
