@@ -106,7 +106,7 @@ function scan_objects(text, limits) {
     objects.push({
       object_number: Number(match[1]), generation: Number(match[2]), offset: object_offset,
       end_offset: end_object + 6, complete: true,
-      has_stream: /stream(?:\r\n|\n|\r)/.test(body),
+      has_stream: /\bstream(?:\r\n|\n|\r)/.test(body),
       markers: {
         javascript: /\/(?:JavaScript|JS)\b/.test(body),
         embedded_file: /\/EmbeddedFile\b/.test(body),
