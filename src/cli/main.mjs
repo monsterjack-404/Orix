@@ -14,7 +14,6 @@ import { normalize_error } from '../core/errors.mjs';
 import { append_ledger, list_ledger, verify_ledger } from '../evidence/ledger.mjs';
 import { compare_reports } from '../analyzer/compare.mjs';
 import { render_comparison_markdown } from '../reports/comparison.mjs';
-import { OrixError } from '../core/errors.mjs';
 import { read_json_report } from '../core/read-report.mjs';
 import { hash_buffer } from '../core/hash.mjs';
 import { render_cyclonedx } from '../reports/cyclonedx.mjs';
