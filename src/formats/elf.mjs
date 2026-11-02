@@ -457,7 +457,10 @@ export function parse_elf(buffer, options = {}) {
       : reader.u32(section_header_offset + 20, little, 'extended section count');
     const section_zero_link = reader.u32(section_header_offset + (is_64 ? 40 : 24), little, 'extended section-name index');
     const section_zero_info = reader.u32(section_header_offset + (is_64 ? 44 : 28), little, 'extended program-header count');
-    if (has_extended_section_count) section_header_count = number_field(section_zero_size, 'Extended section count');
+    if (has_extended_section_count) {
+      section_header_count = number_field(section_zero_size, 'Extended section count');
+      if (section_header_count === 0) throw new OrixError('ORIX_ELF_EXTENDED_SECTION_COUNT', 'ELF section-header zero declares an empty extended section table', { recoverable: true });
+    }
     if (has_extended_name_index) section_name_index = section_zero_link;
     if (has_extended_program_count) program_header_count = section_zero_info;
   }
