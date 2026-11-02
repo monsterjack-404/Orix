@@ -38,7 +38,7 @@ test('ledger detects content tampering and refuses incomplete trailing records',
     await writeFile(file, original.replace('"count":1', '"count":2'));
     await assert.rejects(verify_ledger(file), error => error.code === 'ORIX_LEDGER_HASH_MISMATCH');
     await writeFile(file, original.trimEnd());
-    await assert.rejects(verify_ledger(file), error => error.code === 'ORIX_LEDGER_PARTIAL_TAIL');
+    await assert.rejects(verify_ledger(file), error => error.code === 'ORIX_LEDGER_PARTIAL_RECORD');
   });
 });
 
@@ -49,7 +49,7 @@ test('ledger rejects symlinks and malformed record sizes', async () => {
     await writeFile(target, '');
     await symlink(target, link);
     await assert.rejects(verify_ledger(link), error => error.code === 'ORIX_LEDGER_UNSAFE_PATH');
-    await assert.rejects(append_ledger(path.join(directory, 'small.jsonl'), { type: 'test', payload: { data: 'x'.repeat(100) } }, { max_record_bytes: 40 }), error => error.code === 'ORIX_LEDGER_RECORD_LIMIT');
+    await assert.rejects(append_ledger(path.join(directory, 'small.jsonl'), { type: 'test', payload: { data: 'x'.repeat(400) } }, { max_record_bytes: 256 }), error => error.code === 'ORIX_LEDGER_RECORD_LIMIT');
   });
 });
 
