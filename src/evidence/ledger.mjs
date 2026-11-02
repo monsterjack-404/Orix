@@ -54,7 +54,13 @@ async function read_records(file_path, options = {}) {
   if (!Number.isSafeInteger(stats.size) || stats.size > max_bytes) {
     fail('ORIX_LEDGER_SIZE_LIMIT', 'Evidence ledger exceeds configured read limit', { size: stats.size, max_bytes });
   }
-  const raw = await fs.readFile(file_path);
+  const handle = await fs.open(file_path, FS_CONSTANTS.O_RDONLY | (FS_CONSTANTS.O_NOFOLLOW ?? 0));
+  let raw;
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.size > max_bytes) fail('ORIX_LEDGER_SIZE_LIMIT', 'Evidence ledger changed or exceeds configured read limit', { size: opened.size, max_bytes });
+    raw = await handle.readFile();
+  } finally { await handle.close(); }
   if (raw.length === 0) return [];
   if (raw[raw.length - 1] !== 0x0a) fail('ORIX_LEDGER_PARTIAL_TAIL', 'Evidence ledger ends with an incomplete record; no automatic repair was attempted');
   const lines = raw.toString('utf8').split('\n');
