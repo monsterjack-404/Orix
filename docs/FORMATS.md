@@ -7,7 +7,7 @@ ORIX distinguishes **signature recognition** from **structural parsing**. Recogn
 | Format | Signature recognized | Structural parser | Implemented coverage | Not implemented yet |
 |---|---:|---:|---|---|
 | PE / COFF | Yes (`MZ`) | Yes | PE pointer, signature, COFF, PE32/PE32+, selected optional fields, data directories, section records, file-backed RVA mapping, import descriptors/thunks, named and ordinal exports, forwarded-export markers | Delay imports, relocations, resources, certificate validation, CLR metadata |
-| ELF | Yes | Yes | ELF32/ELF64 identification, endianness, core header, section table and section names | Program segment decoding, dynamic symbols, relocations, notes, DWARF and versioned symbol resolution |
+| ELF | Yes | Yes | ELF32/ELF64 headers, endianness, section names, PT_LOAD and other program headers, PT_INTERP, PT_DYNAMIC tags, GNU build IDs, SHT_SYMTAB/SHT_DYNSYM symbols and SHT_REL/SHT_RELA relocation records | Extended numbering, relocation application, GNU symbol-version resolution, DWARF and architecture-specific relocation-name catalogs |
 | Thin Mach-O | Yes | Yes | 32/64-bit header, CPU metadata and bounded load-command framing | Universal/fat expansion, command-specific payloads, chained fixups, code signatures and Objective-C metadata |
 | Universal Mach-O | Yes | No | Container signature only | Architecture table parsing and slice selection |
 | WebAssembly | Yes | Yes | Version, section boundaries and custom section names | Type validation, instruction decoding, imports/exports semantics and decompilation |
@@ -28,7 +28,7 @@ The registry initially treats the `MZ` prefix as a PE candidate. A DOS executabl
 
 ### ELF
 
-The parser validates class and byte order before selecting ELF32 or ELF64 offsets. It reads the section-header table only when declared, checks entry size and table extent, and resolves names only when the section-name table is valid. Large 64-bit offsets that cannot be represented as safe JavaScript numbers are not silently rounded.
+The parser validates class and byte order before selecting ELF32 or ELF64 layouts. It decodes bounded program-header tables and reports segment permissions, virtual and physical addresses, file/memory sizes and file-range validity. PT_INTERP strings, PT_DYNAMIC tags and GNU build IDs in PT_NOTE are extracted when their ranges are valid. SHT_SYMTAB and SHT_DYNSYM entries are decoded with linked string-table names; SHT_REL and SHT_RELA records retain target section, symbol index, relocation type and explicit addend where present. All count-driven tables have configurable limits. Section names are resolved only when the section-name table is valid. Large 64-bit offsets that cannot be represented as safe JavaScript numbers are not silently rounded. The parser does not apply relocations, resolve GNU symbol versions, interpret architecture-specific relocation names or decode DWARF.
 
 ### Mach-O
 
