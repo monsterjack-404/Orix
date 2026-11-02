@@ -24,7 +24,8 @@
     "./mcp": "./src/mcp/server.mjs",
     "./reports/cyclonedx": "./src/reports/cyclonedx.mjs",
     "./core/evidence-ledger": "./src/core/evidence-ledger.mjs",
-    "./project/lockfiles": "./src/project/lockfiles.mjs"
+    "./project/lockfiles": "./src/project/lockfiles.mjs",
+    "./project/git-metadata": "./src/project/git-metadata.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
