@@ -259,3 +259,10 @@ node src/cli.mjs project ./my-repository --json --out ./project-report.json
 The scanner recognizes npm-compatible `package.json`, Python `requirements.txt` and basic `pyproject.toml`, Cargo, Go modules, Composer, Maven, NuGet and Gemfile declarations. It does not install dependencies, execute scripts, run builds or tests, query package registries, or claim vulnerability status. Source parsing is syntax-pattern based, not a compiler front-end.
 
 A small set of credential-shaped patterns is reported with file and line metadata; matched values are never included in the report. False positives require manual review. Traversal, file, byte, symbol and import work is bounded. Symlinks are skipped, generated/dependency directories are excluded, and reports mark incomplete coverage when limits are reached. See [Project Intelligence](docs/PROJECT_INTELLIGENCE.md).
+
+
+## Persistent evidence ledger
+
+ORIX can append compact inspection, scan and project records to a local SHA-256 hash-chained JSONL ledger. Use `orix inspect ./sample.exe --ledger ./.orix/evidence.jsonl` to record an inspection. Verify the chain with `orix ledger verify ./.orix/evidence.jsonl` or list verified records with `orix ledger list ./.orix/evidence.jsonl`.
+
+The ledger detects content changes, broken ordering and partial writes. It is tamper-evident, not tamper-proof: it is not a digital signature, trusted timestamp authority, remote transparency log or write-once medium.
