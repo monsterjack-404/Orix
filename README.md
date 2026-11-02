@@ -25,7 +25,6 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Mach-O parser | Thin and FAT/FAT64 universal images, per-slice parsing, segment/section commands and CodeDirectory metadata | Does not cryptographically verify signatures or decode chained fixups and Objective-C metadata |
 | ZIP parser | ZIP32/ZIP64 central-directory indexing, extended entry sizes and offsets, unsafe path and symlink metadata | Multi-disk archives, extraction, decompression and CRC verification are not implemented |
 | PDF parser | Classic xref tables, trailer metadata, incremental /Prev chain, indirect-object framing, encryption and active-content marker triage | Xref-stream entries, object streams, filters, attachment extraction, page-tree semantics and signature verification are not implemented |
-| PDF parser | Classic xref tables, trailer metadata, incremental revisions, indirect-object framing, encryption and active-content marker triage | Xref-stream decoding, object streams, decompression, attachment extraction, page-tree validation and signature verification are not implemented |
 | WebAssembly parser | Module version, bounded section framing and custom section names | Does not validate instruction semantics or decompile code |
 | Static metrics | Shannon entropy, ASCII/UTF-16LE string extraction and bounded hex preview | Metrics are descriptive, not malware verdicts |
 | Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
@@ -189,7 +188,8 @@ CLI / Programmatic API
         │     ├── PE / COFF
         │     ├── ELF
         │     ├── thin Mach-O
-        │     └── WebAssembly
+        │     ├── WebAssembly
+        │     └── PDF (classic xref + object index)
         │
         └── JSON / Markdown renderers
 ```
