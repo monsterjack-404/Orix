@@ -1,23 +1,28 @@
 {
-  "name":"@orix/cli",
-  "version":"0.4.0",
-  "description":"ORIX — Open Research & Intelligence eXplorer: local-first artifact and repository intelligence",
-  "type":"module",
-  "private":true,
-  "engines":{"node":">=20.11"},
-  "bin":{"orix":"./src/cli.mjs"},
-  "exports":{
-    ".":"./src/index.mjs",
-    "./formats/pe":"./src/formats/pe.mjs",
-    "./formats/elf":"./src/formats/elf.mjs",
-    "./project":"./src/project/intelligence.mjs"
+  "name": "@orix/cli",
+  "version": "0.4.0",
+  "description": "ORIX — Open Research & Intelligence eXplorer: local-first artifact and repository intelligence",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20.11"
   },
-  "scripts":{
-    "start":"node ./src/cli.mjs",
-    "orix":"node ./src/cli.mjs",
-    "check":"node scripts/check-syntax.mjs",
-    "test":"node --test",
-    "test:coverage":"node --test --experimental-test-coverage"
+  "bin": {
+    "orix": "./src/cli.mjs"
   },
-  "license":"Apache-2.0"
+  "exports": {
+    ".": "./src/index.mjs",
+    "./formats/pe": "./src/formats/pe.mjs",
+    "./formats/elf": "./src/formats/elf.mjs",
+    "./project": "./src/project/intelligence.mjs",
+    "./formats/pdf": "./src/formats/pdf.mjs"
+  },
+  "scripts": {
+    "start": "node ./src/cli.mjs",
+    "orix": "node ./src/cli.mjs",
+    "check": "node scripts/check-syntax.mjs",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage"
+  },
+  "license": "Apache-2.0"
 }
