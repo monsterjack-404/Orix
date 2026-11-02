@@ -63,6 +63,35 @@ test('string heuristics are exact and preserve extracted offsets', () => {
   assert.equal(indicators[0].confidence, 'heuristic');
 });
 
+
+test('PDF active content, embedded files and encryption produce separate triage findings', () => {
+  const indicators = evaluate_indicators({
+    ...base,
+    format: 'PDF',
+    parser_status: 'parsed',
+    parsed: {
+      encrypted: true,
+      active_content: {
+        javascript: true,
+        embedded_files: true,
+        file_specifications: true,
+        open_actions: true,
+        additional_actions: false,
+        launch_actions: false,
+      },
+    },
+  });
+  assert.deepEqual(indicators.map(item => item.rule_id), [
+    'ORIX-PDF-ACTIVE-CONTENT-001',
+    'ORIX-PDF-EMBEDDED-CONTENT-001',
+    'ORIX-PDF-ENCRYPTED-001',
+  ]);
+  assert.equal(indicators[0].severity, 'medium');
+  assert.equal(indicators[1].severity, 'info');
+  assert.equal(indicators[2].severity, 'info');
+  assert.match(indicators[0].summary, /do not prove/);
+});
+
 test('parser rejection and changing file metadata produce observable findings', () => {
   const indicators = evaluate_indicators({
     ...base,
