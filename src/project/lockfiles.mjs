@@ -756,6 +756,7 @@ function parse_poetry_lock(file, text, limits, manifests) {
   let metadata_version = null;
   let current = null;
   let section = '';
+  let reading_files = false;
   const parse_array_strings = value => (value.match(/"(?:\\.|[^"\\])*"|'[^']*'/g) ?? []).map(decode_toml_string).filter(Boolean);
   const parse_toml_dependency_version = value => {
     const inline = /\bversion\s*=\s*("(?:\\.|[^"\\])*"|'[^']*')/.exec(value);
@@ -774,6 +775,13 @@ function parse_poetry_lock(file, text, limits, manifests) {
     const table = /^\s*\[([^\]]+)\]\s*(?:#.*)?$/.exec(line);
     if (table) {
       section = table[1];
+      reading_files = false;
+      continue;
+    }
+    if (section === 'package' && reading_files) {
+      const hashes = [...line.matchAll(/hash\\s*=\\s*(\"(?:\\\\.|[^\"\\\\])*\"|'[^']*')/g)].map(match => decode_toml_string(match[1]));
+      current?.files.push(...hashes);
+      if (line.includes(']')) reading_files = false;
       continue;
     }
     const field = /^\s*([A-Za-z0-9_.-]+)\s*=\s*(.*?)\s*(?:#.*)?$/.exec(line);
@@ -810,7 +818,7 @@ function parse_poetry_lock(file, text, limits, manifests) {
     const version = clean_string(block.version, MAX_VERSION, 'package version');
     if (!name || !version) { warnings.push({ code: 'ORIX_LOCKFILE_PACKAGE_IDENTITY' }); continue; }
     const normalized_groups = block.groups.map(value => value.toLowerCase());
-    const dev = normalized_groups.length > 0 && normalized_groups.every(value => value !== 'main');
+    const dev = (normalized_groups.length > 0 && normalized_groups.every(value => value !== 'main')) || block.category === 'dev';
     const item = {
       name, version, ecosystem: 'python', location: name + '@' + version,
       dependency_type: dev ? 'development' : 'runtime', dev, optional: block.optional, peer: false,
