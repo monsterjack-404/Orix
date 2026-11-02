@@ -846,7 +846,7 @@ test('ELF parser resolves GNU version definitions for exported dynamic symbols',
   const buffer = create_elf_version_fixture();
   buffer.writeUInt16LE(3, 922);
   buffer.writeBigUInt64LE(37n, 256 + 64 + 32);
-  Buffer.from('ORIX_1.0\\0', 'ascii').copy(buffer, 828);
+  Buffer.from('ORIX_1.0\0', 'ascii').copy(buffer, 828);
   buffer.writeUInt16LE(6, 60);
 
   const verdef = 256 + 5 * 64;
