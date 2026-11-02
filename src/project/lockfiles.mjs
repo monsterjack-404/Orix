@@ -621,7 +621,11 @@ function parse_pnpm_lock(file, text, limits) {
     for (const dependency of importer.dependencies) {
       root_dependencies.push({ name: dependency.name, requirement: dependency.specifier ?? '*', dependency_type: dependency.dependency_type });
       const target = resolve_package(dependency.name, dependency.version);
-      if (target) root_edges.push({ name: dependency.name, requirement: dependency.specifier ?? '*', dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version, importer: importer.path });
+      if (target) {
+        if (dependency.dependency_type === 'devDependencies') target.dev = true;
+        if (dependency.dependency_type === 'optionalDependencies') target.optional = true;
+        root_edges.push({ name: dependency.name, requirement: dependency.specifier ?? '*', dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version, importer: importer.path });
+      }
       else if (!String(dependency.version ?? '').startsWith('link:')) warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_ROOT_EDGE', importer: importer.path, dependency: dependency.name, version: dependency.version });
       if (edges.length + root_edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'pnpm lockfile total dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
     }
