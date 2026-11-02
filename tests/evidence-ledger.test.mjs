@@ -87,6 +87,6 @@ test('ledger rejects accessor payloads and records with unhashed extension field
   const original = await readFile(file, 'utf8');
   const record = JSON.parse(original);
   record.unhashed_claim = 'must be rejected';
-  await writeFile(file, JSON.stringify(record) + '\\n');
+  await writeFile(file, JSON.stringify(record) + '\n');
   await assert.rejects(verify_evidence_ledger(file), error => error.code === 'ORIX_LEDGER_RECORD_SHAPE');
 });
