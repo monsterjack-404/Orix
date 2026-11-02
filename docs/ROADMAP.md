@@ -35,7 +35,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - Project structure signals for README, license, CI, tests and container files.
 - Redacted credential-shaped indicators and versioned project report schema.
 
-**Remaining:** pnpm/Composer/Python/Go lockfile parsers, packed Git object and commit-history indexing, compiler-backed symbol resolution, incremental cache, workspace persistence and deeper language parsers.
+**Remaining:** Composer/Python/Go lockfile parsers, packed Git object and commit-history indexing, compiler-backed symbol resolution, incremental cache, workspace persistence and deeper language parsers.
 
 **Exit criteria:** deterministic results, explicit coverage, cache invalidation tests and no implicit build or package scripts.
 
