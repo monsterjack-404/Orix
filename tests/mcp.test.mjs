@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool } from '../src/mcp/server.mjs';
+import { PassThrough } from 'node:stream';
+import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool, start_mcp_server } from '../src/mcp/server.mjs';
 
 test('MCP initialize negotiates protocol and advertises tool capability', async () => {
   const response = await handle_mcp_message({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26' } });
@@ -47,4 +48,29 @@ test('MCP maps tool errors to isError and unknown methods to JSON-RPC errors', a
 test('MCP direct tool invocation validates argument objects', async () => {
   await assert.rejects(call_orix_tool('orix.formats', null), /Tool arguments/);
   await assert.rejects(call_orix_tool('orix.formats', []), /Tool arguments/);
+});
+
+
+test('MCP server enforces advertised argument schemas', async () => {
+  await assert.rejects(call_orix_tool('orix.formats', { unexpected: true }), /Unknown tool argument/);
+  await assert.rejects(call_orix_tool('orix.inspect_file', { path: 'x', max_strings: -1 }), /between/);
+  await assert.rejects(call_orix_tool('orix.inspect_file', {}), /Missing required/);
+});
+
+test('MCP stdio transport reads and writes newline-delimited JSON-RPC messages', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const errors = new PassThrough();
+  let captured = '';
+  output.setEncoding('utf8');
+  output.on('data', chunk => { captured += chunk; });
+  const running = start_mcp_server({ input, output, error_output: errors });
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'ping' }) + '\\n');
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 11, method: 'tools/list' }) + '\\n');
+  input.end();
+  await running;
+  const messages = captured.trim().split('\\n').map(line => JSON.parse(line));
+  assert.equal(messages.length, 2);
+  assert.deepEqual(messages[0].result, {});
+  assert.equal(messages[1].result.tools.length, ORIX_MCP_TOOLS.length);
 });
