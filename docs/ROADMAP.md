@@ -40,7 +40,8 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [ ] PE resource directory and certificate metadata.
 - [x] ELF program headers, PT_INTERP, PT_DYNAMIC tags, GNU build identifiers, symbol tables and REL/RELA relocation records.
 - [ ] Extended ELF numbering, GNU symbol-version resolution and DWARF decoding.
-- Mach-O universal/fat architecture table, segment/section commands and code-signature metadata.
+- [x] Mach-O FAT/FAT64 architecture tables, bounded slices, segment/section commands and CodeDirectory metadata.
+- [ ] Chained fixups, cryptographic trust verification and Objective-C metadata.
 - ZIP64 parser, decompression-bomb safeguards and safe entry streaming; no extraction by default.
 - PDF object and cross-reference parser with object-count and recursion budgets.
 - Versioned JSON Schema documents and golden report fixtures.
