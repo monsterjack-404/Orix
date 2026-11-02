@@ -5,7 +5,7 @@ import { OrixError } from '../core/errors.mjs';
 
 const MACHINES = new Map([[3,'x86'],[8,'MIPS'],[20,'PowerPC'],[21,'PowerPC64'],[40,'ARM'],[62,'x86-64'],[183,'AArch64'],[243,'RISC-V']]);
 const TYPES = new Map([[0,'NONE'],[1,'REL'],[2,'EXEC'],[3,'DYN'],[4,'CORE']]);
-const SECTION_TYPES = new Map([[0,'NULL'],[1,'PROGBITS'],[2,'SYMTAB'],[3,'STRTAB'],[4,'RELA'],[5,'HASH'],[6,'DYNAMIC'],[7,'NOTE'],[8,'NOBITS'],[9,'REL'],[11,'DYNSYM'],[14,'INIT_ARRAY'],[15,'FINI_ARRAY'],[16,'PREINIT_ARRAY'],[17,'GROUP'],[18,'SYMTAB_SHNDX']]);
+const SECTION_TYPES = new Map([[0,'NULL'],[1,'PROGBITS'],[2,'SYMTAB'],[3,'STRTAB'],[4,'RELA'],[5,'HASH'],[6,'DYNAMIC'],[7,'NOTE'],[8,'NOBITS'],[9,'REL'],[11,'DYNSYM'],[14,'INIT_ARRAY'],[15,'FINI_ARRAY'],[16,'PREINIT_ARRAY'],[17,'GROUP'],[18,'SYMTAB_SHNDX'],[0x6ffffff6,'GNU_HASH']]);
 
 
 const PROGRAM_TYPES = new Map([[0,'NULL'],[1,'LOAD'],[2,'DYNAMIC'],[3,'INTERP'],[4,'NOTE'],[5,'SHLIB'],[6,'PHDR'],[7,'TLS'],[0x6474e550,'GNU_EH_FRAME'],[0x6474e551,'GNU_STACK'],[0x6474e552,'GNU_RELRO']]);
@@ -415,6 +415,97 @@ function parse_gnu_symbol_versions(reader, raw_sections, symbol_result, is_64, l
   return { requirements, definitions, symbol_versions };
 }
 
+function parse_gnu_hash_tables(reader, raw_sections, symbol_result, is_64, little, options) {
+  const maximum_buckets = options.max_gnu_hash_buckets ?? 1_000_000;
+  const maximum_bloom_words = options.max_gnu_hash_bloom_words ?? 65_536;
+  const maximum_chains = options.max_gnu_hash_chains ?? 1_000_000;
+  for (const [name, value] of [['max_gnu_hash_buckets', maximum_buckets], ['max_gnu_hash_bloom_words', maximum_bloom_words], ['max_gnu_hash_chains', maximum_chains]]) {
+    if (!Number.isSafeInteger(value) || value < 1) throw new OrixError('ORIX_ELF_GNU_HASH_LIMIT', name + ' must be a positive safe integer', { details: { name, value }, recoverable: true });
+  }
+  const tables = [];
+  for (const section of raw_sections) {
+    if (section.raw_type !== 0x6ffffff6) continue;
+    if (!section.raw_range_valid) throw new OrixError('ORIX_ELF_GNU_HASH_RANGE', 'GNU hash section is outside file-backed input', { details: { section_index: section.index }, recoverable: true });
+    const offset = number_field(section.file_offset, 'GNU hash file offset');
+    const size = number_field(section.size, 'GNU hash section size');
+    if (size < 16) throw new OrixError('ORIX_ELF_GNU_HASH_HEADER', 'GNU hash section is smaller than its fixed header', { details: { section_index: section.index, size }, recoverable: true });
+    const linked = raw_sections[section.link];
+    if (!linked || linked.raw_type !== 11 || !linked.raw_range_valid) {
+      throw new OrixError('ORIX_ELF_GNU_HASH_LINK', 'GNU hash section must link to a valid DYNSYM section', { details: { section_index: section.index, link: section.link }, recoverable: true });
+    }
+    const symbol_size = number_field(linked.size, 'GNU hash linked symbol table size');
+    const symbol_entry_size = number_field(linked.entry_size, 'GNU hash linked symbol entry size');
+    const minimum_symbol_size = is_64 ? 24 : 16;
+    if (symbol_entry_size < minimum_symbol_size || symbol_size % symbol_entry_size !== 0) {
+      throw new OrixError('ORIX_ELF_GNU_HASH_SYMBOL_LAYOUT', 'GNU hash linked dynamic symbol table has an invalid entry layout', { details: { section_index: section.index, symbol_entry_size, symbol_size }, recoverable: true });
+    }
+    const symbol_count = symbol_size / symbol_entry_size;
+    const bucket_count = reader.u32(offset, little, 'GNU hash bucket count');
+    const symbol_offset = reader.u32(offset + 4, little, 'GNU hash symbol offset');
+    const bloom_count = reader.u32(offset + 8, little, 'GNU hash bloom word count');
+    const bloom_shift = reader.u32(offset + 12, little, 'GNU hash bloom shift');
+    if (bucket_count < 1 || bucket_count > maximum_buckets) throw new OrixError('ORIX_ELF_GNU_HASH_BUCKET_LIMIT', 'GNU hash bucket count is outside configured bounds', { details: { bucket_count, maximum_buckets }, recoverable: true });
+    if (bloom_count < 1 || bloom_count > maximum_bloom_words) throw new OrixError('ORIX_ELF_GNU_HASH_BLOOM_LIMIT', 'GNU hash bloom word count is outside configured bounds', { details: { bloom_count, maximum_bloom_words }, recoverable: true });
+    if (symbol_offset > symbol_count) throw new OrixError('ORIX_ELF_GNU_HASH_SYMBOL_OFFSET', 'GNU hash symbol offset exceeds linked dynamic symbol count', { details: { symbol_offset, symbol_count }, recoverable: true });
+    const word_size = is_64 ? 8 : 4;
+    const bloom_bytes = bloom_count * word_size;
+    const bucket_bytes = bucket_count * 4;
+    const chain_offset = 16 + bloom_bytes + bucket_bytes;
+    if (!Number.isSafeInteger(chain_offset) || chain_offset > size || (size - chain_offset) % 4 !== 0) {
+      throw new OrixError('ORIX_ELF_GNU_HASH_LAYOUT', 'GNU hash bloom, bucket and chain arrays exceed or misalign the declared section', { details: { section_index: section.index, size, chain_offset }, recoverable: true });
+    }
+    const chain_count = (size - chain_offset) / 4;
+    if (chain_count > maximum_chains) throw new OrixError('ORIX_ELF_GNU_HASH_CHAIN_LIMIT', 'GNU hash chain array exceeds configured limit', { details: { chain_count, maximum_chains }, recoverable: true });
+    reader.require(offset, size, 'GNU hash section');
+    const bloom_words = [];
+    for (let index = 0; index < bloom_count; index += 1) {
+      const value = is_64
+        ? reader.view.getBigUint64(offset + 16 + index * word_size, little)
+        : BigInt(reader.u32(offset + 16 + index * word_size, little, 'GNU hash bloom word'));
+      bloom_words.push(value.toString());
+    }
+    const bucket_base = offset + 16 + bloom_bytes;
+    const buckets = [];
+    for (let index = 0; index < bucket_count; index += 1) {
+      const first_symbol = reader.u32(bucket_base + index * 4, little, 'GNU hash bucket');
+      if (first_symbol === 0) {
+        buckets.push({ index, first_symbol: 0, chain: [] });
+        continue;
+      }
+      if (first_symbol < symbol_offset || first_symbol >= symbol_count) {
+        throw new OrixError('ORIX_ELF_GNU_HASH_BUCKET_SYMBOL', 'GNU hash bucket points outside its linked dynamic symbol table', { details: { section_index: section.index, bucket: index, first_symbol, symbol_offset, symbol_count }, recoverable: true });
+      }
+      const chain = [];
+      let symbol_index = first_symbol;
+      while (symbol_index < symbol_count) {
+        const chain_index = symbol_index - symbol_offset;
+        if (chain_index >= chain_count) throw new OrixError('ORIX_ELF_GNU_HASH_CHAIN_RANGE', 'GNU hash chain is truncated before its terminal bit', { details: { section_index: section.index, bucket: index, symbol_index, chain_index, chain_count }, recoverable: true });
+        const hash = reader.u32(offset + chain_offset + chain_index * 4, little, 'GNU hash chain entry');
+        chain.push({ symbol_index, hash, terminal: (hash & 1) !== 0 });
+        if ((hash & 1) !== 0) break;
+        symbol_index += 1;
+      }
+      if (chain.length === 0 || !chain.at(-1).terminal) {
+        throw new OrixError('ORIX_ELF_GNU_HASH_CHAIN_UNTERMINATED', 'GNU hash chain does not contain a terminal entry', { details: { section_index: section.index, bucket: index }, recoverable: true });
+      }
+      buckets.push({ index, first_symbol, chain });
+    }
+    tables.push({
+      section_index: section.index,
+      symbol_table_section_index: linked.index,
+      bucket_count,
+      symbol_offset,
+      bloom_count,
+      bloom_shift,
+      word_size,
+      bloom_words,
+      buckets,
+      chain_count,
+    });
+  }
+  return tables;
+}
+
 export function parse_elf(buffer, options = {}) {
   const reader = new BinaryReader(buffer, { label: 'ELF image' });
   if (reader.ascii(0, 4, 'ELF magic') !== '\x7fELF') throw new OrixError('ORIX_ELF_BAD_MAGIC', 'Input does not contain an ELF signature', { recoverable: true });
@@ -514,6 +605,7 @@ export function parse_elf(buffer, options = {}) {
   const symbol_result = parse_symbol_tables(reader, buffer, raw_sections, is_64, little, options);
   const relocation_result = parse_relocations(reader, raw_sections, is_64, little, options);
   const version_result = parse_gnu_symbol_versions(reader, raw_sections, symbol_result, is_64, little, options);
+  const gnu_hash_tables = parse_gnu_hash_tables(reader, raw_sections, symbol_result, is_64, little, options);
   const dynamic_strings = resolve_dynamic_strings(program_result.dynamic, program_result.segments, buffer);
   return {
     format: 'ELF', bitness: is_64 ? 64 : 32, endianness: little ? 'little' : 'big',
@@ -538,6 +630,7 @@ export function parse_elf(buffer, options = {}) {
     version_requirements: version_result.requirements,
     version_definitions: version_result.definitions,
     symbol_versions: version_result.symbol_versions,
-    notes: ['Section names are resolved only when the section-name string table is present and fully in range.', 'Program headers, PT_INTERP, PT_NOTE GNU build IDs, PT_DYNAMIC entries, SHT_SYMTAB/SHT_DYNSYM symbols and SHT_REL/SHT_RELA relocation records are decoded when their file ranges and entry layouts are valid.', 'Extended ELF numbering, relocation application, GNU hash decoding and DWARF decoding are not implemented.'],
+    gnu_hash_tables,
+    notes: ['Section names are resolved only when the section-name string table is present and fully in range.', 'Program headers, PT_INTERP, PT_NOTE GNU build IDs, PT_DYNAMIC entries, SHT_SYMTAB/SHT_DYNSYM symbols and SHT_REL/SHT_RELA relocation records are decoded when their file ranges and entry layouts are valid.', 'Relocation application and DWARF decoding are not implemented.'],
   };
 }
