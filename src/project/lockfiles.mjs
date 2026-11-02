@@ -435,6 +435,9 @@ function parse_pnpm_lock(file, text, limits) {
   const package_records = [];
   const snapshot_records = [];
   const importer_records = [];
+  const top_level_dependencies = [];
+  let top_level_dependency_field = null;
+  let current_top_level_dependency = null;
   const warnings = [];
   const read_inline_resolution = (record, value) => {
     const integrity = /(?:^|[,{]\s*)integrity:\s*([^,}]+)/.exec(value);
@@ -457,6 +460,21 @@ function parse_pnpm_lock(file, text, limits) {
       importer_dependency_field = null;
       current_dependency = null;
       if (section === 'lockfileVersion') lockfile_version = Number(parse_pnpm_scalar(header[2] ?? ''));
+      continue;
+    }
+    if (['dependencies', 'devDependencies', 'optionalDependencies'].includes(section)) {
+      if (indent === 2) {
+        const dependency = /^(.+?):(?:\\s*(.*))?$/.exec(body);
+        if (dependency) {
+          current_top_level_dependency = { name: parse_pnpm_scalar(dependency[1]), specifier: null, version: parse_pnpm_scalar(dependency[2] ?? ''), dependency_type: section };
+          top_level_dependencies.push(current_top_level_dependency);
+        }
+        continue;
+      }
+      if (indent >= 4 && current_top_level_dependency) {
+        const field = /^([A-Za-z][A-Za-z0-9_-]*):\\s*(.*)$/.exec(body);
+        if (field && ['specifier', 'version'].includes(field[1])) current_top_level_dependency[field[1]] = parse_pnpm_scalar(field[2]);
+      }
       continue;
     }
     if (section === 'importers') {
@@ -592,6 +610,13 @@ function parse_pnpm_lock(file, text, limits) {
   }
   const root_dependencies = [];
   const root_edges = [];
+  for (const dependency of top_level_dependencies) {
+    const requirement = dependency.specifier ?? dependency.version ?? '*';
+    root_dependencies.push({ name: dependency.name, requirement, dependency_type: dependency.dependency_type });
+    const target = resolve_package(dependency.name, dependency.version);
+    if (target) root_edges.push({ name: dependency.name, requirement, dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version, importer: '.' });
+    else if (!String(dependency.version ?? '').startsWith('link:')) warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_ROOT_EDGE', importer: '.', dependency: dependency.name, version: dependency.version });
+  }
   for (const importer of importer_records) {
     for (const dependency of importer.dependencies) {
       root_dependencies.push({ name: dependency.name, requirement: dependency.specifier ?? '*', dependency_type: dependency.dependency_type });
