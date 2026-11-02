@@ -22,10 +22,10 @@ function fixed_name(buffer, offset, length) {
   return bytes.toString('utf8', 0, end < 0 ? bytes.length : end);
 }
 
-function decode_code_signature(reader, command_offset, command_size, file_size) {
+function decode_code_signature(reader, command_offset, command_size, file_size, little) {
   if (command_size < 16) throw new OrixError('ORIX_MACHO_BAD_CODE_SIGNATURE_COMMAND', 'Mach-O code-signature command is truncated', { recoverable: true });
-  const data_offset = reader.u32(command_offset + 8, true, 'code-signature data offset');
-  const data_size = reader.u32(command_offset + 12, true, 'code-signature data size');
+  const data_offset = reader.u32(command_offset + 8, little, 'code-signature data offset');
+  const data_size = reader.u32(command_offset + 12, little, 'code-signature data size');
   const range_valid = data_offset <= file_size && data_size <= file_size - data_offset;
   const result = { data_offset, data_size, range_valid, blob_magic: null, blob_length: null, slot_count: 0, slots: [], code_directories: [] };
   if (!range_valid || data_size < 12) return result;
@@ -65,7 +65,7 @@ function decode_code_signature(reader, command_offset, command_size, file_size) 
     const hash_type = reader.u8(blob + 37, 'CodeDirectory hash type');
     const platform = reader.u8(blob + 38, 'CodeDirectory platform');
     const page_size = reader.u8(blob + 39, 'CodeDirectory page size');
-    const identifier = identifier_offset < blob_length ? reader.c_string(blob + identifier_offset, blob_length - identifier_offset, 'CodeDirectory identifier') : '';
+    const identifier = identifier_offset >= 44 && identifier_offset < blob_length ? reader.c_string(blob + identifier_offset, blob_length - identifier_offset, 'CodeDirectory identifier') : '';
     result.code_directories.push({ version, flags, hash_offset, identifier, special_slots, code_slots, code_limit, hash_size, hash_type, platform, page_size });
   }
   return result;
@@ -162,7 +162,7 @@ export function parse_macho(buffer, options = {}) {
       const numeric_file_size = typeof file_size === 'number' ? file_size : null;
       segments.push({ name: segment_name, vm_address, vm_size, file_offset, file_size, max_protection, initial_protection, flags: segment_flags, file_range_valid: numeric_file_offset !== null && numeric_file_size !== null && numeric_file_offset <= buffer.length && numeric_file_size <= buffer.length - numeric_file_offset, sections });
     } else if (command === LC_CODE_SIGNATURE) {
-      code_signature = decode_code_signature(reader, cursor, size, buffer.length);
+      code_signature = decode_code_signature(reader, cursor, size, buffer.length, spec.little);
     }
     cursor += size;
   }
