@@ -747,6 +747,148 @@ function parse_go_sum(file, text, limits, manifests) {
   };
 }
 
+function python_package_key(value) {
+  return String(value ?? '').toLowerCase().replace(/[-_.]+/g, '-');
+}
+
+function parse_poetry_lock(file, text, limits, manifests) {
+  const blocks = [];
+  let metadata_version = null;
+  let current = null;
+  let section = '';
+  const parse_array_strings = value => (value.match(/"(?:\\.|[^"\\])*"|'[^']*'/g) ?? []).map(decode_toml_string).filter(Boolean);
+  const parse_toml_dependency_version = value => {
+    const inline = /\bversion\s*=\s*("(?:\\.|[^"\\])*"|'[^']*')/.exec(value);
+    if (inline) return decode_toml_string(inline[1]);
+    return decode_toml_string(value) ?? value.trim().replace(/^['"]|['"]$/g, '');
+  };
+  for (const line of text.split(/\r?\n/)) {
+    const header = /^\s*\[\[package\]\]\s*(?:#.*)?$/.exec(line);
+    if (header) {
+      current = { name: null, version: null, optional: false, groups: [], source: null, files: [], dependencies: [] };
+      blocks.push(current);
+      section = 'package';
+      if (blocks.length > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'Poetry lockfile package count exceeds configured limit', { file, maximum: limits.max_packages });
+      continue;
+    }
+    const table = /^\s*\[([^\]]+)\]\s*(?:#.*)?$/.exec(line);
+    if (table) {
+      section = table[1];
+      continue;
+    }
+    const field = /^\s*([A-Za-z0-9_.-]+)\s*=\s*(.*?)\s*(?:#.*)?$/.exec(line);
+    if (!field) continue;
+    const key = field[1];
+    const value = field[2];
+    if (section === 'metadata' && key === 'lock-version') {
+      metadata_version = decode_toml_string(value) ?? value;
+      continue;
+    }
+    if (!current) continue;
+    if (section === 'package') {
+      if (key === 'name') current.name = decode_toml_string(value);
+      else if (key === 'version') current.version = decode_toml_string(value);
+      else if (key === 'optional') current.optional = value === 'true';
+      else if (key === 'groups') current.groups = parse_array_strings(value);
+      else if (key === 'files') {
+        const hashes = [...value.matchAll(/hash\s*=\s*("(?:\\.|[^"\\])*"|'[^']*')/g)].map(match => decode_toml_string(match[1]));
+        current.files.push(...hashes);
+      }
+    } else if (section === 'package.dependencies') {
+      const dependency_name = key.replace(/^['"]|['"]$/g, '');
+      current.dependencies.push({ name: dependency_name, requirement: parse_toml_dependency_version(value) });
+    } else if (section === 'package.source') {
+      if (key === 'type') current.source_type = decode_toml_string(value);
+      else if (key === 'reference') current.source_reference = decode_toml_string(value);
+    }
+  }
+  const warnings = [];
+  const packages = [];
+  const by_name = new Map();
+  for (const block of blocks) {
+    const name = clean_string(block.name, MAX_NAME, 'package name');
+    const version = clean_string(block.version, MAX_VERSION, 'package version');
+    if (!name || !version) { warnings.push({ code: 'ORIX_LOCKFILE_PACKAGE_IDENTITY' }); continue; }
+    const normalized_groups = block.groups.map(value => value.toLowerCase());
+    const dev = normalized_groups.length > 0 && normalized_groups.every(value => value !== 'main');
+    const item = {
+      name, version, ecosystem: 'python', location: name + '@' + version,
+      dependency_type: dev ? 'development' : 'runtime', dev, optional: block.optional, peer: false,
+      integrity: clean_string(block.files.find(value => /^sha256:[a-f0-9]{64}$/i.test(value))?.slice(7) ?? '', 128, 'file hash'),
+      resolved: block.source_type && block.source_reference ? block.source_type + ':' + block.source_reference : null,
+      license: null, dependencies: block.dependencies,
+    };
+    packages.push(item);
+    const candidates = by_name.get(python_package_key(name)) ?? [];
+    candidates.push(item);
+    by_name.set(python_package_key(name), candidates);
+  }
+  const resolve = name => {
+    const candidates = by_name.get(python_package_key(name)) ?? [];
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) warnings.push({ code: 'ORIX_LOCKFILE_AMBIGUOUS_DEPENDENCY', name });
+    return null;
+  };
+  const edges = [];
+  for (const item of packages) {
+    for (const dependency of item.dependencies) {
+      const target = resolve(dependency.name);
+      if (target) edges.push({ from: item.location, to: target.location, name: dependency.name, requirement: dependency.requirement, resolved_version: target.version });
+      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_EDGE', from: item.location, dependency: dependency.name });
+      if (edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Poetry lockfile dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+    }
+  }
+  const manifest = manifests.find(item => item.ecosystem === 'python' && item.path.endsWith('pyproject.toml'));
+  const root_dependencies = (manifest?.dependencies ?? []).map(item => ({ name: item.name, requirement: item.version, dependency_type: item.dependency_type === 'dev' ? 'development' : 'runtime' }));
+  const root_edges = [];
+  for (const dependency of root_dependencies) {
+    const target = resolve(dependency.name);
+    if (target) root_edges.push({ name: dependency.name, requirement: dependency.requirement, dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version });
+    else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_ROOT_EDGE', dependency: dependency.name });
+  }
+  if (edges.length + root_edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Poetry lockfile total dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+  return { path: file, ecosystem: 'python', format: 'poetry-lock', lockfile_version: metadata_version, packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0 };
+}
+
+function parse_pipfile_lock(file, text, limits, manifests) {
+  let document;
+  try { document = JSON.parse(text); }
+  catch (error) { fail('ORIX_LOCKFILE_INVALID_JSON', 'Pipfile.lock is not valid JSON', { file, reason: error.message.slice(0, 160) }); }
+  if (!document || typeof document !== 'object' || Array.isArray(document)) fail('ORIX_LOCKFILE_DOCUMENT', 'Pipfile.lock root must be an object', { file });
+  const packages = [];
+  const by_name = new Map();
+  for (const [section, dependency_type] of [['default', 'runtime'], ['develop', 'development']]) {
+    const entries = document[section] && typeof document[section] === 'object' && !Array.isArray(document[section]) ? Object.entries(document[section]) : [];
+    for (const [name, metadata] of entries) {
+      if (packages.length >= limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'Pipfile.lock package count exceeds configured limit', { file, maximum: limits.max_packages });
+      const raw_version = clean_string(metadata?.version, MAX_VERSION, 'package version');
+      if (!raw_version) continue;
+      const version = raw_version.replace(/^(?:===|==|=)/, '');
+      const hashes = Array.isArray(metadata.hashes) ? metadata.hashes.filter(value => typeof value === 'string') : [];
+      const integrity = hashes.map(value => /^sha256:([a-f0-9]{64})$/i.exec(value)?.[1]).find(Boolean) ?? null;
+      const item = {
+        name, version, ecosystem: 'python', location: name + '@' + version,
+        dependency_type, dev: dependency_type === 'development', optional: false, peer: false,
+        integrity, resolved: null, license: null, dependencies: [],
+      };
+      packages.push(item);
+      const candidates = by_name.get(python_package_key(name)) ?? [];
+      candidates.push(item);
+      by_name.set(python_package_key(name), candidates);
+    }
+  }
+  const manifest = manifests.find(item => item.ecosystem === 'python' && item.path.endsWith('Pipfile'));
+  const root_dependencies = (manifest?.dependencies ?? []).map(item => ({ name: item.name, requirement: item.version, dependency_type: item.dependency_type === 'dev' ? 'development' : 'runtime' }));
+  const root_edges = [];
+  for (const dependency of root_dependencies) {
+    const candidates = by_name.get(python_package_key(dependency.name)) ?? [];
+    if (candidates.length === 1) root_edges.push({ name: dependency.name, requirement: dependency.requirement, dependency_type: dependency.dependency_type, to: candidates[0].location, resolved_version: candidates[0].version });
+  }
+  const warnings = [{ code: 'ORIX_LOCKFILE_DEPENDENCY_EDGES_UNAVAILABLE', detail: 'Pipfile.lock records resolved package versions and hashes but not package-to-package dependency edges.' }];
+  if (packages.length === 0) warnings.push({ code: 'ORIX_LOCKFILE_NO_PACKAGE_TABLE' });
+  return { path: file, ecosystem: 'python', format: 'pipfile-lock', lockfile_version: document._meta?.pipfile_spec ?? null, packages, edges: [], root_dependencies, root_edges, warnings, complete: false };
+}
+
 export function parse_lockfile(file, text, options = {}, manifests = []) {
   if (typeof file !== 'string' || typeof text !== 'string') throw new TypeError('parse_lockfile requires a file path and text');
   const limits = validate_limits(options);
@@ -756,6 +898,8 @@ export function parse_lockfile(file, text, options = {}, manifests = []) {
   if (base === 'Cargo.lock') return parse_cargo_lock(file, text, limits);
   if (base === 'pnpm-lock.yaml') return parse_pnpm_lock(file, text, limits);
   if (base === 'composer.lock') return parse_composer_lock(file, text, limits, manifests);
+  if (base === 'poetry.lock') return parse_poetry_lock(file, text, limits, manifests);
+  if (base === 'Pipfile.lock') return parse_pipfile_lock(file, text, limits, manifests);
   if (base === 'go.sum') return parse_go_sum(file, text, limits, manifests);
   return null;
 }
