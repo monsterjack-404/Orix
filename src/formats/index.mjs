@@ -3,12 +3,12 @@
 import { detect_format } from './registry.mjs';
 import { parse_pe } from './pe.mjs';
 import { parse_elf } from './elf.mjs';
-import { parse_macho } from './macho.mjs';
+import { parse_macho, parse_macho_fat } from './macho.mjs';
 import { parse_wasm } from './wasm.mjs';
 import { parse_zip } from './zip.mjs';
 
 const PARSERS = new Map([
-  ['PE', parse_pe], ['ELF', parse_elf], ['Mach-O', parse_macho], ['WebAssembly', parse_wasm], ['ZIP', parse_zip],
+  ['PE', parse_pe], ['ELF', parse_elf], ['Mach-O', parse_macho], ['Mach-O Universal', parse_macho_fat], ['WebAssembly', parse_wasm], ['ZIP', parse_zip],
 ]);
 
 export function analyze_known_format(buffer, options = {}) {
@@ -25,6 +25,6 @@ export function analyze_known_format(buffer, options = {}) {
 export { detect_format, list_supported_formats } from './registry.mjs';
 export { parse_pe } from './pe.mjs';
 export { parse_elf } from './elf.mjs';
-export { parse_macho } from './macho.mjs';
+export { parse_macho, parse_macho_fat } from './macho.mjs';
 export { parse_wasm } from './wasm.mjs';
 export { parse_zip } from './zip.mjs';
