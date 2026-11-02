@@ -1013,6 +1013,91 @@ function parse_gemfile_lock(file, text, limits, manifests) {
   return { path: file, ecosystem: 'rubygems', format: 'gemfile-lock', lockfile_version: null, packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0 };
 }
 
+function parse_nuget_packages_lock(file, text, limits) {
+  let document;
+  try { document = JSON.parse(text); }
+  catch (error) { fail('ORIX_LOCKFILE_INVALID_JSON', 'NuGet packages.lock.json is not valid JSON', { file, reason: error.message.slice(0, 160) }); }
+  if (!document || typeof document !== 'object' || Array.isArray(document)) fail('ORIX_LOCKFILE_DOCUMENT', 'NuGet lockfile root must be an object', { file });
+  const package_map = new Map();
+  const warnings = [];
+  let entries_seen = 0;
+  for (const [framework, entries] of Object.entries(document.dependencies ?? {})) {
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
+    for (const [name, metadata] of Object.entries(entries)) {
+      entries_seen += 1;
+      if (entries_seen > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'NuGet lockfile package count exceeds configured limit', { file, maximum: limits.max_packages });
+      const version = clean_string(metadata?.resolved, MAX_VERSION, 'resolved package version');
+      if (!version) { warnings.push({ code: 'ORIX_LOCKFILE_PACKAGE_IDENTITY', name, framework }); continue; }
+      const key = name + '@' + version;
+      let item = package_map.get(key);
+      if (!item) {
+        item = {
+          name, version, ecosystem: 'nuget', location: key,
+          dependency_type: metadata.type === 'Direct' ? 'runtime' : 'transitive',
+          dev: false, optional: false, peer: false,
+          integrity: clean_string(metadata.contentHash, 2048, 'content hash'),
+          resolved: null, license: null, dependencies: [], target_frameworks: [],
+        };
+        package_map.set(key, item);
+      }
+      if (!item.target_frameworks.includes(framework)) item.target_frameworks.push(framework);
+      if (metadata.type === 'Direct') item.dependency_type = 'runtime';
+      const declared = metadata.dependencies && typeof metadata.dependencies === 'object' && !Array.isArray(metadata.dependencies) ? metadata.dependencies : {};
+      for (const [dependency_name, dependency_version] of Object.entries(declared)) {
+        const candidate = { name: dependency_name, version: String(dependency_version).slice(0, MAX_VERSION) };
+        if (!item.dependencies.some(value => value.name === candidate.name && value.version === candidate.version)) item.dependencies.push(candidate);
+      }
+    }
+  }
+  const packages = [...package_map.values()].sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
+  const by_identity = new Map(packages.map(item => [item.name + '@' + item.version, item]));
+  const edges = [];
+  const root_edges = [];
+  for (const item of packages) {
+    if (item.dependency_type === 'runtime') root_edges.push({ name: item.name, requirement: item.version, dependency_type: 'runtime', to: item.location, resolved_version: item.version });
+    for (const dependency of item.dependencies) {
+      const target = by_identity.get(dependency.name + '@' + dependency.version);
+      if (target) edges.push({ from: item.location, to: target.location, name: dependency.name, requirement: dependency.version, resolved_version: target.version });
+      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_EDGE', from: item.location, dependency: dependency.name, version: dependency.version });
+      if (edges.length + root_edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'NuGet lockfile dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+    }
+  }
+  return { path: file, ecosystem: 'nuget', format: 'nuget-packages-lock', lockfile_version: document.version ?? null, packages, edges, root_dependencies: root_edges.map(item => ({ name: item.name, requirement: item.requirement, dependency_type: 'runtime' })), root_edges, warnings, complete: warnings.length === 0 };
+}
+
+function parse_gradle_lock(file, text, limits) {
+  const package_map = new Map();
+  const warnings = [];
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    const value = line.trim();
+    if (!value || value.startsWith('#')) continue;
+    const match = /^([^:]+):([^:]+):([^=]+)=(.*)$/.exec(value);
+    if (!match) { warnings.push({ code: 'ORIX_LOCKFILE_GRADLE_LINE', line: index + 1 }); continue; }
+    const group = clean_string(match[1], MAX_NAME, 'group');
+    const artifact = clean_string(match[2], MAX_NAME, 'artifact');
+    const version = clean_string(match[3], MAX_VERSION, 'version');
+    if (!group || !artifact || !version) { warnings.push({ code: 'ORIX_LOCKFILE_PACKAGE_IDENTITY', line: index + 1 }); continue; }
+    const name = group + ':' + artifact;
+    const key = name + '@' + version;
+    const configurations = match[4].split(',').map(value => clean_string(value, 128, 'configuration')).filter(Boolean).sort();
+    const existing = package_map.get(key);
+    if (existing) existing.configurations = [...new Set([...existing.configurations, ...configurations])].sort();
+    else package_map.set(key, {
+      name, version, ecosystem: 'maven', location: key,
+      dependency_type: 'resolved', dev: false, optional: false, peer: false,
+      integrity: null, resolved: null, license: null, dependencies: [], configurations,
+    });
+    if (package_map.size > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'Gradle lockfile package count exceeds configured limit', { file, maximum: limits.max_packages });
+  }
+  const packages = [...package_map.values()].sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
+  return {
+    path: file, ecosystem: 'maven', format: 'gradle-lock', lockfile_version: null,
+    packages, edges: [], root_dependencies: [], root_edges: [],
+    warnings: [...warnings, { code: 'ORIX_LOCKFILE_DEPENDENCY_EDGES_UNAVAILABLE', detail: 'Gradle lockfiles pin modules per configuration but do not encode package-to-package dependency edges.' }],
+    complete: false,
+  };
+}
+
 export function parse_lockfile(file, text, options = {}, manifests = []) {
   if (typeof file !== 'string' || typeof text !== 'string') throw new TypeError('parse_lockfile requires a file path and text');
   const limits = validate_limits(options);
@@ -1024,6 +1109,8 @@ export function parse_lockfile(file, text, options = {}, manifests = []) {
   if (base === 'composer.lock') return parse_composer_lock(file, text, limits, manifests);
   if (base === 'poetry.lock') return parse_poetry_lock(file, text, limits, manifests);
   if (base === 'Pipfile.lock') return parse_pipfile_lock(file, text, limits, manifests);
+  if (base === 'packages.lock.json') return parse_nuget_packages_lock(file, text, limits);
+  if (base === 'gradle.lockfile') return parse_gradle_lock(file, text, limits);
   if (base === 'go.sum') return parse_go_sum(file, text, limits, manifests);
   if (base === 'Gemfile.lock') return parse_gemfile_lock(file, text, limits, manifests);
   return null;
