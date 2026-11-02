@@ -4,6 +4,13 @@ The CLI is the supported human and automation entry point for ORIX 0.2.1. It is 
 
 ## Commands
 
+```bash
+node src/cli.mjs compare ./baseline.json ./current.json --json
+node src/cli.mjs inspect ./sample.exe --ledger ./.orix/evidence.jsonl
+node src/cli.mjs ledger verify ./.orix/evidence.jsonl
+node src/cli.mjs ledger list ./.orix/evidence.jsonl
+```
+
 ### Inspect one artifact
 
 ```bash
@@ -72,3 +79,23 @@ A scan that contains some per-file failures still returns a report and exits suc
 ## Reproducibility
 
 For reproducible reports, preserve the exact artifact bytes, ORIX version, Node.js version, command-line options and report schema version. Modification time is informational and can change when files are copied. SHA-256 is the content identity field in the current report schema.
+
+
+### Report comparison
+
+`compare` consumes two previously saved JSON artifact or directory-scan reports. It matches normalized report-relative paths and SHA-256 digests, then reports added, removed, modified and unchanged artifacts plus introduced and resolved indicator findings.
+
+Comparison is report-to-report; it does not access or rescan the original directories. A rename appears as a removal and an addition. The Markdown renderer is the default; `--json` emits the versioned `orix.comparison.v1` contract. SARIF is not defined for comparison output.
+
+### Evidence ledger
+
+`--ledger` appends a compact report record to a local JSONL ledger after inspection, scan or project analysis. The first append creates the file and parent directory. Records are sequence-numbered and SHA-256 chained; a writer lock prevents concurrent appends from interleaving. The ledger stores a report summary and artifact hashes rather than raw sample bytes.
+
+```bash
+node src/cli.mjs inspect ./artifact.exe --ledger ./.orix/evidence.jsonl
+node src/cli.mjs scan ./release --ledger ./.orix/evidence.jsonl
+node src/cli.mjs ledger verify ./.orix/evidence.jsonl
+node src/cli.mjs ledger list ./.orix/evidence.jsonl
+```
+
+The chain detects edits, deletion, reordering and incomplete final records. It is tamper-evident, not tamper-proof: anyone able to rewrite the entire ledger can recompute its hashes. Preserve signed or externally timestamped checkpoints when independent chain-of-custody proof is required.
