@@ -129,10 +129,10 @@ test('MCP directory and project tools reuse bounded ORIX analysis services', asy
   try {
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ name: 'fixture', version: '1.0.0' }));
     await writeFile(path.join(directory, 'index.js'), 'export function run() { return 7; }');
-    const scan = await call_orix_tool('orix.scan_directory', { path: directory, max_files: 20, concurrency: 1 });
+    const scan = await call_orix_tool('orix.scan_directory', { path: directory, max_files: 20, concurrency: 1 }, { roots: [directory] });
     assert.equal(scan.schema_version, 'orix.scan.v1');
     assert.equal(scan.scan.files_analyzed, 2);
-    const project = await call_orix_tool('orix.scan_project', { path: directory, max_files: 20 });
+    const project = await call_orix_tool('orix.scan_project', { path: directory, max_files: 20 }, { roots: [directory] });
     assert.equal(project.schema_version, 'orix.project.v1');
     assert.ok(project.inventory || project.files || project.summary);
   } finally {
