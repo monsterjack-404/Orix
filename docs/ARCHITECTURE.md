@@ -122,7 +122,7 @@ Report schema identifiers are currently `orix.artifact.v1`, `orix.scan.v1` and `
 
 New analyzers should be independent modules with explicit resource budgets and typed output. New external engines should be implemented behind optional adapters that describe version detection, capability probing, input/output mapping, process ownership, timeouts, cancellation and cleanup. The core must remain useful when no external engine is installed.
 
-Planned components such as databases, MCP, browser UI, collaboration and worker fleets should be added as vertical slices with end-to-end tests—not as disconnected empty folders.
+Planned components such as databases, browser UI, collaboration and worker fleets should be added as vertical slices with end-to-end tests—not as disconnected empty folders. The local stdio MCP interface is implemented as a separate adapter over the same analysis services.
 
 
 ## 11. Persistent evidence ledger
@@ -132,3 +132,10 @@ The optional local ledger stores compact inspection, directory-scan or project-r
 Use `orix inspect ./sample.exe --ledger ./.orix/evidence.jsonl` to append an inspection receipt. Use `orix ledger verify ./.orix/evidence.jsonl` to verify the chain and `orix ledger list ./.orix/evidence.jsonl` to display verified records.
 
 The ledger is tamper-evident, not tamper-proof. A local administrator can replace both records and hashes. It is not a trusted timestamp authority, digital signature, remote transparency log, or write-once medium. Back up the ledger and preserve its head hash independently for stronger chain-of-custody workflows. An incomplete final line is rejected; ORIX never silently repairs or truncates evidence.
+
+
+## 12. MCP boundary
+
+`src/mcp/server.mjs` owns JSON-RPC framing and tool dispatch. `src/mcp/tools.mjs` owns the advertised tool catalog, argument contracts, resource ceilings and calls into existing analysis modules. `src/mcp/security.mjs` confines file and directory paths to configured workspace roots and performs bounded no-follow report reads. `src/mcp.mjs` is the stdio executable. The default root is the process working directory; `ORIX_MCP_ROOTS` supplies an explicit platform-delimited allowlist.
+
+The MCP adapter does not fork a second parser implementation. It reuses `inspect_file`, `scan_directory`, `scan_project`, `compare_reports` and the evidence ledger. Responses have a 2 MiB ceiling; incoming lines have a 4 MiB ceiling. The current implementation exposes tools only; HTTP transport, prompt/resource subscriptions, remote authentication and a hosted service are not implemented.
