@@ -16,7 +16,7 @@ const TYPES = Object.freeze({
 });
 
 function encode_segment(value) {
-  return encodeURIComponent(String(value)).replaceAll('%3A', ':').replaceAll('%40', '%40');
+  return encodeURIComponent(String(value)).replace(/[!'()*]/g, character => '%' + character.charCodeAt(0).toString(16).toUpperCase());
 }
 
 function is_pinned_version(value) {
