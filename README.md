@@ -30,7 +30,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
 | Evidence model | Stable evidence records with source, offsets, confidence and structured details | Evidence is local to the generated report; no database is required |
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
-| Reports | JSON and Markdown for single-file and directory results, including indicator severity and rule IDs | No hosted dashboard or persistent case store yet |
+| Reports | JSON and Markdown for artifact, directory and project reports; SARIF 2.1.0 for artifact and directory findings | No hosted dashboard or persistent case store yet |
 
 Static indicator rules operate only on already-parsed metadata and bounded extracted strings. Each finding includes a rule ID, severity, confidence and supporting evidence. A clean report means only that the built-in rules did not match; it is not a safety certification.
 
@@ -89,7 +89,7 @@ orix help
 ### `inspect`
 
 ```text
-orix inspect <file> [--json|--markdown] [--out <path>]
+orix inspect <file> [--json|--markdown|--format sarif] [--out <path>]
                   [--no-strings] [--strings-limit <n>]
                   [--max-read-mib <n>] [--max-file-mib <n>]
 ```
@@ -99,7 +99,7 @@ The inspector rejects directories, symlinks, non-regular files, files larger tha
 ### `scan`
 
 ```text
-orix scan <directory> [--json|--markdown] [--out <path>]
+orix scan <directory> [--json|--markdown|--format sarif] [--out <path>]
                  [--max-files <n>] [--max-directories <n>] [--max-entries <n>] [--max-depth <n>]
                  [--max-read-mib <n>] [--max-file-mib <n>]
                  [--concurrency <n>] [--no-strings]
@@ -109,7 +109,7 @@ Traversal is deterministic and does not follow symlinks. Common generated/depend
 
 ### Reports and safe output files
 
-Use `--format json` or `--json` for automation. Use Markdown for review and sharing. `--out` creates a new report file with restrictive permissions; it refuses to overwrite an existing path. Report output is not written into the target artifact or directory unless the caller explicitly names that location.
+Use `--format json` or `--json` for automation, `--format sarif` for GitHub code-scanning-compatible static findings, and Markdown for review and sharing. SARIF is supported by `inspect` and `scan`; project reports remain JSON/Markdown. `--out` creates a new report file with restrictive permissions; it refuses to overwrite an existing path. Report output is not written into the target artifact or directory unless the caller explicitly names that location.
 
 ## Programmatic API
 
@@ -191,7 +191,7 @@ CLI / Programmatic API
         │     ├── WebAssembly
         │     └── PDF (classic xref + object index)
         │
-        └── JSON / Markdown renderers
+        └── JSON / Markdown / SARIF 2.1 renderers
 ```
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for ownership boundaries, data flow and extension rules; [`docs/FORMATS.md`](docs/FORMATS.md) for parser coverage; and [`docs/INDICATORS.md`](docs/INDICATORS.md) for every built-in static triage rule.
