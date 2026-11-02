@@ -89,9 +89,11 @@ function parse_program_headers(reader, buffer, is_64, little, table_offset_value
         const descsz = reader.u32(cursor + 4, little, 'note descriptor size');
         const note_type = reader.u32(cursor + 8, little, 'note type');
         const name_start = cursor + 12;
-        const desc_start = name_start + ((namesz + 3) & ~3);
-        const next = desc_start + ((descsz + 3) & ~3);
-        if (next > end || desc_start < name_start) break;
+        const padded_name_size = Math.ceil(namesz / 4) * 4;
+        const padded_desc_size = Math.ceil(descsz / 4) * 4;
+        const desc_start = name_start + padded_name_size;
+        const next = desc_start + padded_desc_size;
+        if (!Number.isSafeInteger(next) || padded_name_size > end - name_start || padded_desc_size > end - desc_start || next > end) break;
         const note_name = reader.bytes(name_start, namesz, 'note name').toString('ascii').replace(/\0+$/, '');
         if (note_name === 'GNU' && note_type === 3 && descsz > 0 && descsz <= 64) {
           build_id = reader.bytes(desc_start, descsz, 'GNU build ID').toString('hex');
@@ -112,6 +114,54 @@ function parse_program_headers(reader, buffer, is_64, little, table_offset_value
     }
   }
   return { valid: true, segments, interpreter, build_id, dynamic };
+}
+
+
+function parse_relocations(reader, raw_sections, is_64, little, options) {
+  const maximum = options.max_relocations ?? 100000;
+  const relocations = [];
+  const tables = [];
+  for (const section of raw_sections) {
+    if (section.raw_type !== 4 && section.raw_type !== 9) continue;
+    if (!section.raw_range_valid || typeof section.file_offset !== 'number' || typeof section.size !== 'number') {
+      tables.push({ section_index: section.index, type: section.type, status: 'invalid-range', relocation_count: 0 });
+      continue;
+    }
+    const rela = section.raw_type === 4;
+    const expected = is_64 ? (rela ? 24 : 16) : (rela ? 12 : 8);
+    const entry_size = number_field(section.entry_size, 'Relocation entry size');
+    if (entry_size < expected || section.size % entry_size !== 0) {
+      tables.push({ section_index: section.index, type: section.type, status: 'invalid-entry-size', relocation_count: 0 });
+      continue;
+    }
+    const count = section.size / entry_size;
+    if (count > maximum || relocations.length + count > maximum) {
+      throw new OrixError('ORIX_ELF_RELOCATION_LIMIT', 'ELF relocation count exceeds configured parser limit', { details: { count, accumulated: relocations.length, maximum }, recoverable: true });
+    }
+    for (let index = 0; index < count; index += 1) {
+      const at = section.file_offset + index * entry_size;
+      let offset, info, addend = null, symbol_index, relocation_type;
+      if (is_64) {
+        offset = reader.u64(at, little, 'relocation offset');
+        info = reader.view.getBigUint64(at + 8, little);
+        symbol_index = Number(info >> 32n);
+        relocation_type = Number(info & 0xffffffffn);
+        if (rela) {
+          const raw_addend = reader.view.getBigInt64(at + 16, little);
+          addend = raw_addend <= BigInt(Number.MAX_SAFE_INTEGER) && raw_addend >= BigInt(Number.MIN_SAFE_INTEGER) ? Number(raw_addend) : raw_addend.toString();
+        }
+      } else {
+        offset = reader.u32(at, little, 'relocation offset');
+        info = reader.u32(at + 4, little, 'relocation info');
+        symbol_index = info >>> 8;
+        relocation_type = info & 0xff;
+        if (rela) addend = reader.view.getInt32(at + 8, little);
+      }
+      relocations.push({ table_section_index: section.index, index, target_section_index: section.info, symbol_table_index: section.link, offset, symbol_index, type: relocation_type, addend });
+    }
+    tables.push({ section_index: section.index, type: section.type, status: 'parsed', relocation_count: count, linked_symbol_table_index: section.link, target_section_index: section.info });
+  }
+  return { relocations, tables };
 }
 
 function parse_symbol_tables(reader, buffer, raw_sections, is_64, little, options) {
@@ -241,6 +291,7 @@ export function parse_elf(buffer, options = {}) {
 
   const program_result = parse_program_headers(reader, buffer, is_64, little, program_header_offset, program_header_entry_size, program_header_count, options);
   const symbol_result = parse_symbol_tables(reader, buffer, raw_sections, is_64, little, options);
+  const relocation_result = parse_relocations(reader, raw_sections, is_64, little, options);
   return {
     format: 'ELF', bitness: is_64 ? 64 : 32, endianness: little ? 'little' : 'big',
     architecture: MACHINES.get(machine) ?? `unknown-${machine}`,
@@ -257,6 +308,8 @@ export function parse_elf(buffer, options = {}) {
     dynamic_entries: program_result.dynamic,
     symbols: symbol_result.symbols,
     symbol_tables: symbol_result.tables,
-    notes: ['Section names are resolved only when the section-name string table is present and fully in range.', 'Program headers, PT_INTERP, PT_NOTE GNU build IDs, PT_DYNAMIC entries and SHT_SYMTAB/SHT_DYNSYM symbols are decoded when their file ranges and entry layouts are valid.', 'Extended ELF numbering, relocation application, GNU symbol version resolution and DWARF decoding are not implemented.'],
+    relocations: relocation_result.relocations,
+    relocation_tables: relocation_result.tables,
+    notes: ['Section names are resolved only when the section-name string table is present and fully in range.', 'Program headers, PT_INTERP, PT_NOTE GNU build IDs, PT_DYNAMIC entries, SHT_SYMTAB/SHT_DYNSYM symbols and SHT_REL/SHT_RELA relocation records are decoded when their file ranges and entry layouts are valid.', 'Extended ELF numbering, relocation application, GNU symbol version resolution and DWARF decoding are not implemented.'],
   };
 }
