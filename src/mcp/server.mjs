@@ -1,6 +1,5 @@
 // JavaScript, src/mcp/server.mjs, Node.js 20+, bounded read-only Model Context Protocol stdio server.
 
-import readline from 'node:readline';
 import { inspect_file } from '../core/inspect.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project } from '../project/intelligence.mjs';
@@ -270,6 +269,18 @@ export async function handle_mcp_message(message, options = {}) {
   return jsonrpc_error(id, -32601, 'Method not found: ' + message.method);
 }
 
+async function process_input_line(line, output, options) {
+  if (line.length === 0) return;
+  let message;
+  try { message = JSON.parse(line.toString('utf8')); }
+  catch {
+    output.write(JSON.stringify(jsonrpc_error(null, -32700, 'Parse error')) + '\n');
+    return;
+  }
+  const response = await handle_mcp_message(message, options);
+  if (response !== null) output.write(JSON.stringify(response) + '\n');
+}
+
 export async function start_mcp_server({
   input = process.stdin,
   output = process.stdout,
@@ -277,20 +288,46 @@ export async function start_mcp_server({
   roots,
   environment,
 } = {}) {
-  const lines = readline.createInterface({ input, crlfDelay: Infinity });
-  for await (const line of lines) {
-    if (Buffer.byteLength(line, 'utf8') > MCP_MAX_LINE_BYTES) {
-      error_output.write('ORIX MCP input line exceeded the configured limit.\n');
-      continue;
+  const options = { roots, environment };
+  let pending = Buffer.alloc(0);
+  let discarding = false;
+  for await (const chunk of input) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    let cursor = 0;
+    while (cursor < bytes.length) {
+      const newline = bytes.indexOf(0x0a, cursor);
+      const end = newline < 0 ? bytes.length : newline;
+      const part = bytes.subarray(cursor, end);
+      if (discarding) {
+        if (newline < 0) break;
+        discarding = false;
+        pending = Buffer.alloc(0);
+        cursor = newline + 1;
+        continue;
+      }
+      if (pending.length + part.length > MCP_MAX_LINE_BYTES) {
+        error_output.write('ORIX MCP input line exceeded the configured limit.\n');
+        pending = Buffer.alloc(0);
+        if (newline < 0) {
+          discarding = true;
+          break;
+        }
+        cursor = newline + 1;
+        continue;
+      }
+      if (newline < 0) {
+        pending = part.length ? Buffer.concat([pending, part]) : pending;
+        break;
+      }
+      const line = part.length ? Buffer.concat([pending, part]) : pending;
+      pending = Buffer.alloc(0);
+      await process_input_line(line, output, options);
+      cursor = newline + 1;
     }
-    let message;
-    try { message = JSON.parse(line); }
-    catch {
-      output.write(JSON.stringify(jsonrpc_error(null, -32700, 'Parse error')) + '\n');
-      continue;
-    }
-    const response = await handle_mcp_message(message, { roots, environment });
-    if (response !== null) output.write(JSON.stringify(response) + '\n');
+  }
+  if (!discarding && pending.length > 0) {
+    if (pending.length <= MCP_MAX_LINE_BYTES) await process_input_line(pending, output, options);
+    else error_output.write('ORIX MCP input line exceeded the configured limit.\n');
   }
   return 0;
 }
