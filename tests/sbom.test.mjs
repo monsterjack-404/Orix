@@ -28,8 +28,11 @@ test('CycloneDX export maps ecosystems to purls and preserves dependency provena
   assert.match(bom.serialNumber, /^urn:uuid:/);
   assert.equal(bom.metadata.component.name, 'demo-app');
   assert.equal(bom.metadata.component.version, '1.2.3');
-  assert.ok(bom.components.some(item => item.purl === 'pkg:npm/%40scope/core@%5E2.1.0'));
+  assert.ok(bom.components.some(item => item.purl === 'pkg:npm/%40scope/core'));
   assert.ok(bom.components.some(item => item.purl === 'pkg:pypi/requests@2.31.0'));
+  assert.equal(bom.components.find(item => item.name === '@scope/core').version, undefined);
+  assert.ok(bom.components.find(item => item.name === '@scope/core').properties.some(item => item.name === 'orix:declared-version' && item.value === '^2.1.0'));
+  assert.deepEqual(bom.metadata.tools[0], { vendor: 'ORIX', name: 'ORIX', version: '0.4.0' });
   assert.ok(bom.components.some(item => item.purl === 'pkg:maven/org/example/codec@4.0'));
   assert.equal(bom.components.find(item => item.name === 'jest').scope, 'optional');
   assert.equal(bom.components.some(item => item.name === 'unknown-lib'), false);
