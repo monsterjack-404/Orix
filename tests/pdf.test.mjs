@@ -6,17 +6,17 @@ import { parse_pdf } from '../src/formats/pdf.mjs';
 import { analyze_known_format } from '../src/formats/index.mjs';
 
 function make_pdf(objects, trailer = '<< /Size 3 /Root 1 0 R >>') {
-  const chunks = [Buffer.from('%PDF-1.7\\n', 'ascii')];
+  const chunks = [Buffer.from('%PDF-1.7\n', 'ascii')];
   const offsets = [];
   for (const object of objects) {
     offsets.push(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
-    chunks.push(Buffer.from(object + '\\n', 'latin1'));
+    chunks.push(Buffer.from(object + '\n', 'latin1'));
   }
   const xref_offset = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const rows = ['xref', '0 ' + (objects.length + 1), '0000000000 65535 f '];
   for (const offset of offsets) rows.push(String(offset).padStart(10, '0') + ' 00000 n ');
   rows.push('trailer', trailer, 'startxref', String(xref_offset), '%%EOF');
-  chunks.push(Buffer.from(rows.join('\\n') + '\\n', 'ascii'));
+  chunks.push(Buffer.from(rows.join('\n') + '\n', 'ascii'));
   return { buffer: Buffer.concat(chunks), xref_offset, offsets };
 }
 
@@ -59,14 +59,14 @@ test('PDF parser follows incremental /Prev links in descending offset order', ()
   const base = make_pdf([`1 0 obj
 << /Type /Catalog >>
 endobj`], '<< /Size 2 /Root 1 0 R >>');
-  const footer = Buffer.from('startxref\\n' + base.xref_offset + '\\n%%EOF\\n', 'ascii');
+  const footer = Buffer.from('startxref\n' + base.xref_offset + '\n%%EOF\n', 'ascii');
   const prefix = base.buffer.subarray(0, base.buffer.length - footer.length);
   const updated_xref_offset = prefix.length;
   const update = Buffer.from([
     'xref', '0 2', '0000000000 65535 f ', String(base.offsets[0]).padStart(10, '0') + ' 00000 n ',
     'trailer', '<< /Size 2 /Root 1 0 R /Prev ' + base.xref_offset + ' >>',
     'startxref', String(updated_xref_offset), '%%EOF', '',
-  ].join('\\n'), 'ascii');
+  ].join('\n'), 'ascii');
   const parsed = parse_pdf(Buffer.concat([prefix, update]));
   assert.equal(parsed.revisions.length, 2);
   assert.equal(parsed.revisions[0].offset, updated_xref_offset);
@@ -83,7 +83,7 @@ endstream
 endobj
 `, 'ascii');
   const xref_offset = prefix.indexOf('7 0 obj');
-  const pdf = Buffer.concat([prefix, Buffer.from('startxref\\n' + xref_offset + '\\n%%EOF\\n', 'ascii')]);
+  const pdf = Buffer.concat([prefix, Buffer.from('startxref\n' + xref_offset + '\n%%EOF\n', 'ascii')]);
   const parsed = parse_pdf(pdf);
   assert.equal(parsed.revisions[0].kind, 'stream');
   assert.equal(parsed.revisions[0].object_number, 7);
@@ -104,10 +104,10 @@ test('PDF parser rejects invalid headers, missing EOF and invalid xref offsets',
   const fixture = make_pdf([`1 0 obj
 << /Type /Catalog >>
 endobj`]);
-  const no_eof = Buffer.from(fixture.buffer.toString('latin1').replace(/%%EOF\\n$/, ''), 'latin1');
+  const no_eof = Buffer.from(fixture.buffer.toString('latin1').replace(/%%EOF\n$/, ''), 'latin1');
   assert.throws(() => parse_pdf(no_eof), error => error.code === 'ORIX_PDF_EOF_MISSING');
   const invalid_offset = Buffer.from(fixture.buffer);
-  const marker = invalid_offset.lastIndexOf(Buffer.from('startxref\\n')) + Buffer.byteLength('startxref\\n');
+  const marker = invalid_offset.lastIndexOf(Buffer.from('startxref\n')) + Buffer.byteLength('startxref\n');
   invalid_offset.write('9999999999', marker, 'ascii');
   assert.throws(() => parse_pdf(invalid_offset), error => error.code === 'ORIX_PDF_XREF_RANGE');
 });
