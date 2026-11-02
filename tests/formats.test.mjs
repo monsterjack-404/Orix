@@ -187,7 +187,7 @@ test('PE parser enforces configured section and import limits', () => {
 
 
 function create_elf_analysis_fixture() {
-  const buffer = Buffer.alloc(512);
+  const buffer = Buffer.alloc(768);
   buffer.set([0x7f,0x45,0x4c,0x46,2,1,1,0]);
   buffer.writeUInt16LE(2, 16);
   buffer.writeUInt16LE(62, 18);
@@ -207,40 +207,40 @@ function create_elf_analysis_fixture() {
   buffer.writeBigUInt64LE(0n, 72);
   buffer.writeBigUInt64LE(0x400000n, 80);
   buffer.writeBigUInt64LE(0x400000n, 88);
-  buffer.writeBigUInt64LE(512n, 96);
-  buffer.writeBigUInt64LE(512n, 104);
+  buffer.writeBigUInt64LE(768n, 96);
+  buffer.writeBigUInt64LE(768n, 104);
   buffer.writeBigUInt64LE(0x1000n, 112);
 
   buffer.writeUInt32LE(4, 120);
   buffer.writeUInt32LE(4, 124);
-  buffer.writeBigUInt64LE(400n, 128);
+  buffer.writeBigUInt64LE(600n, 128);
   buffer.writeBigUInt64LE(0n, 136);
   buffer.writeBigUInt64LE(0n, 144);
   buffer.writeBigUInt64LE(20n, 152);
   buffer.writeBigUInt64LE(20n, 160);
   buffer.writeBigUInt64LE(4n, 168);
-  buffer.writeUInt32LE(4, 400);
-  buffer.writeUInt32LE(4, 404);
-  buffer.writeUInt32LE(3, 408);
-  buffer.write('GNU\\0', 412, 'ascii');
-  buffer.set([0xde,0xad,0xbe,0xef], 416);
+  buffer.writeUInt32LE(4, 600);
+  buffer.writeUInt32LE(4, 604);
+  buffer.writeUInt32LE(3, 608);
+  buffer.write('GNU\\0', 612, 'ascii');
+  buffer.set([0xde,0xad,0xbe,0xef], 616);
 
   const strtab = 320;
   buffer.writeUInt32LE(3, strtab + 4);
-  buffer.writeBigUInt64LE(420n, strtab + 24);
+  buffer.writeBigUInt64LE(620n, strtab + 24);
   buffer.writeBigUInt64LE(6n, strtab + 32);
   buffer.writeBigUInt64LE(1n, strtab + 48);
-  buffer.write('\0func\\0', 420, 'binary');
+  buffer.write('\0func\\0', 620, 'binary');
 
   const symtab = 384;
   buffer.writeUInt32LE(11, symtab + 4);
-  buffer.writeBigUInt64LE(440n, symtab + 24);
+  buffer.writeBigUInt64LE(640n, symtab + 24);
   buffer.writeBigUInt64LE(48n, symtab + 32);
   buffer.writeUInt32LE(1, symtab + 40);
   buffer.writeBigUInt64LE(8n, symtab + 48);
   buffer.writeBigUInt64LE(24n, symtab + 56);
-  buffer.writeUInt32LE(1, 464);
-  buffer[468] = 0x12;
+  buffer.writeUInt32LE(1, 664);
+  buffer[668] = 0x12;
   buffer.writeUInt16LE(1, 470);
   buffer.writeBigUInt64LE(0x401000n, 472);
   buffer.writeBigUInt64LE(4n, 480);
