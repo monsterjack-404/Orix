@@ -50,9 +50,13 @@ function parse_npm_package_lock(file, text, limits) {
   const root_edges_placeholder = [];
   if (document.packages && typeof document.packages === 'object' && !Array.isArray(document.packages)) {
     const root_metadata = document.packages[''] ?? {};
+    const root_dependency_map = new Map();
     for (const [kind, field] of [['runtime', 'dependencies'], ['development', 'devDependencies'], ['optional', 'optionalDependencies']]) {
-      for (const [name, requirement] of Object.entries(root_metadata[field] ?? {})) root_dependencies.push({ name, requirement: String(requirement).slice(0, MAX_VERSION), dependency_type: kind });
+      for (const [name, requirement] of Object.entries(root_metadata[field] ?? {})) {
+        if (!root_dependency_map.has(name)) root_dependency_map.set(name, { name, requirement: String(requirement).slice(0, MAX_VERSION), dependency_type: kind });
+      }
     }
+    root_dependencies.push(...root_dependency_map.values());
     const entries = Object.entries(document.packages).filter(([location]) => location !== '').sort(([a], [b]) => a.localeCompare(b));
     if (entries.length > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'npm lockfile package count exceeds configured limit', { file, count: entries.length, maximum: limits.max_packages });
     for (const [location, metadata] of entries) {
