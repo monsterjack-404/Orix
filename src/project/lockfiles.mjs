@@ -49,7 +49,10 @@ function parse_npm_package_lock(file, text, limits) {
   const root_dependencies = [];
   if (document.packages && typeof document.packages === 'object' && !Array.isArray(document.packages)) {
     const root_metadata = document.packages[''] ?? {};
-    for (const [kind, field] of [['runtime', 'dependencies'], ['development', 'devDependencies'], ['optional', 'optionalDependencies']]) {\n      for (const [name, requirement] of Object.entries(root_metadata[field] ?? {})) root_dependencies.push({ name, requirement: String(requirement).slice(0, MAX_VERSION), dependency_type: kind });\n    }\n    const entries = Object.entries(document.packages).filter(([location]) => location !== '').sort(([a], [b]) => a.localeCompare(b));
+    for (const [kind, field] of [['runtime', 'dependencies'], ['development', 'devDependencies'], ['optional', 'optionalDependencies']]) {
+      for (const [name, requirement] of Object.entries(root_metadata[field] ?? {})) root_dependencies.push({ name, requirement: String(requirement).slice(0, MAX_VERSION), dependency_type: kind });
+    }
+    const entries = Object.entries(document.packages).filter(([location]) => location !== '').sort(([a], [b]) => a.localeCompare(b));
     if (entries.length > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'npm lockfile package count exceeds configured limit', { file, count: entries.length, maximum: limits.max_packages });
     for (const [location, metadata] of entries) {
       if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue;
@@ -115,7 +118,14 @@ function parse_npm_package_lock(file, text, limits) {
   } else {
     warnings.push({ code: 'ORIX_LOCKFILE_NO_PACKAGE_TABLE' });
   }
-  const root_edges = root_dependencies.map(dependency => {\n    const target = package_map.get('node_modules/' + dependency.name);\n    return target ? { name: dependency.name, requirement: dependency.requirement, dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version } : null;\n  }).filter(Boolean);\n  return {\n    path: file,\n    ecosystem: 'npm',\n    format: 'npm-package-lock',
+  const root_edges = root_dependencies.map(dependency => {
+    const target = package_map.get('node_modules/' + dependency.name);
+    return target ? { name: dependency.name, requirement: dependency.requirement, dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version } : null;
+  }).filter(Boolean);
+  return {
+    path: file,
+    ecosystem: 'npm',
+    format: 'npm-package-lock',
     lockfile_version: version,
     packages,
     edges,
