@@ -38,7 +38,7 @@ test('ledger detects content tampering and refuses incomplete trailing records',
     await writeFile(file, original.replace('"count":1', '"count":2'));
     await assert.rejects(verify_ledger(file), error => error.code === 'ORIX_LEDGER_HASH_MISMATCH');
     await writeFile(file, original.trimEnd());
-    await assert.rejects(verify_ledger(file), error => error.code === 'ORIX_LEDGER_PARTIAL_RECORD');
+    await assert.rejects(verify_ledger(file), error => error.code === 'ORIX_LEDGER_PARTIAL_TAIL');
   });
 });
 
@@ -48,7 +48,7 @@ test('ledger rejects symlinks and malformed record sizes', async () => {
     const link = path.join(directory, 'link.jsonl');
     await writeFile(target, '');
     await symlink(target, link);
-    await assert.rejects(verify_ledger(link), error => error.code === 'ORIX_LEDGER_UNSAFE_PATH');
+    await assert.rejects(verify_ledger(link), error => error.code === 'ORIX_LEDGER_NOT_REGULAR_FILE');
     await assert.rejects(append_ledger(path.join(directory, 'small.jsonl'), { type: 'test', payload: { data: 'x'.repeat(400) } }, { max_record_bytes: 256 }), error => error.code === 'ORIX_LEDGER_RECORD_LIMIT');
   });
 });
@@ -56,7 +56,7 @@ test('ledger rejects symlinks and malformed record sizes', async () => {
 test('ledger rejects concurrent writer lock rather than interleaving records', async () => {
   await with_temp_dir(async directory => {
     const file = path.join(directory, 'locked.jsonl');
-    await writeFile(file + '.lock', 'active writer\n');
-    await assert.rejects(append_ledger(file, { type: 'test', payload: { ok: true } }), error => error.code === 'ORIX_LEDGER_LOCKED');
+    await import('node:fs/promises').then(({ mkdir }) => mkdir(file + '.lock'));
+    await assert.rejects(append_ledger(file, { type: 'test', payload: { ok: true } }, { lock_wait_ms: 0 }), error => error.code === 'ORIX_LEDGER_LOCK_TIMEOUT');
   });
 });
