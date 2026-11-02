@@ -15,6 +15,9 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - SARIF 2.1.0 renderer for artifact and directory-scan findings, with rule metadata, severity mapping, byte ranges and artifact hashes.
 - Deterministic static indicator rules with severity, confidence, rule IDs and supporting evidence.
 - Aggregated indicator counts in directory scans.
+- Hash-chained append-only evidence ledger with writer lock, bounded records, tamper detection and verify/list commands.
+- SARIF 2.1.0 output for artifact and directory-scan findings.
+- Baseline/current report comparison with artifact change classes and indicator deltas.
 - Malformed input, parser, indicator, report, filesystem and CLI integration tests.
 
 ## 0.3 — Repository and Source Intelligence
@@ -51,6 +54,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [x] Deterministic malformed-input mutation and truncation smoke corpus for all registered binary parsers.
 - [x] PDF classic xref tables, trailer metadata, bounded incremental /Prev chain, xref-stream recognition and indirect-object index with explicit active-content triage; compressed xref/object streams remain unsupported.
 - Versioned JSON Schema documents and golden report fixtures.
+- [x] SARIF 2.1.0 export and baseline/current report comparison.
 - [x] SARIF 2.1.0 export for artifact and directory reports.
 
 **Exit criteria:** each parser has valid and malformed fixtures, explicit unsupported cases, resource bounds, and format documentation. Fuzz harnesses must demonstrate bounded failures before release.
