@@ -243,7 +243,7 @@ export async function handle_mcp_message(message, options = {}) {
       result: {
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'orix', version: '0.4.0' },
+        serverInfo: { name: 'orix', version: '0.5.0' },
         instructions: 'ORIX performs local static analysis only. Tool calls do not execute samples, project scripts, build hooks or tests.',
       },
     };
