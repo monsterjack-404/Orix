@@ -87,6 +87,7 @@ export function render_cyclonedx(report, options = {}) {
   const root_name = manifest.name ?? report.project.name ?? 'unknown-project';
   const root_purl = 'pkg:generic/' + encode_segment(root_name) + (manifest.version ? '@' + encode_segment(manifest.version) : '');
   const ordered = [...components.values()].sort((a, b) => a.purl.localeCompare(b.purl));
+  const lockfile_graph_complete = (report.lockfiles ?? []).some(item => item.complete === true && (item.edges?.length ?? 0) > 0);
   const identity = JSON.stringify({
     root: report.project.root,
     name: root_name,
@@ -145,6 +146,7 @@ export function render_cyclonedx(report, options = {}) {
           for (const item of ordered) add_edge(root_purl, item['bom-ref']);
         }
       }
+      for (const item of ordered) if (!grouped.has(item['bom-ref'])) grouped.set(item['bom-ref'], new Set());
       if (!grouped.has(root_purl)) grouped.set(root_purl, new Set());
       return [...grouped].map(([ref, values]) => ({ ref, dependsOn: [...values].sort() })).sort((a, b) => a.ref.localeCompare(b.ref));
     })(),
@@ -152,7 +154,8 @@ export function render_cyclonedx(report, options = {}) {
       { name: 'orix:dependency-declarations', value: String(report.dependencies.length) },
       { name: 'orix:locked-packages', value: String(report.resolved_dependencies?.length ?? lockfile_packages.length) },
       { name: 'orix:components-emitted', value: String(ordered.length) },
-      { name: 'orix:transitive-resolution-performed', value: String((report.resolved_dependencies?.length ?? lockfile_packages.length) > 0) },
+      { name: 'orix:lockfile-graph-complete', value: String(lockfile_graph_complete) },
+      { name: 'orix:transitive-resolution-performed', value: String(lockfile_graph_complete) },
     ],
   };
   return JSON.stringify(bom, null, options.compact ? 0 : 2) + '\n';
