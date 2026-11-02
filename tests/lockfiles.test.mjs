@@ -450,7 +450,7 @@ test('NuGet packages.lock.json resolves direct and transitive packages across ta
   assert.equal(report.packages.length, 2);
   assert.equal(report.root_edges.length, 1);
   assert.equal(report.edges.length, 1);
-  assert.deepEqual(report.packages.find(item => item.name === 'Newtonsoft.Json').target_frameworks, ['.NETCoreApp,Version=v8.0', '.NETCoreApp,Version=v9.0']);
+  assert.deepEqual(report.packages.find(item => item.name === 'Newtonsoft.Json').frameworks, ['.NETCoreApp,Version=v8.0', '.NETCoreApp,Version=v9.0']);
   assert.equal(report.edges[0].to, 'System.Runtime.CompilerServices.Unsafe@6.0.0');
   assert.equal(report.complete, true);
 });
