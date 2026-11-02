@@ -694,6 +694,59 @@ function parse_composer_lock(file, text, limits, manifests) {
   return { path: file, ecosystem: 'composer', format: 'composer-lock', lockfile_version: null, packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0 };
 }
 
+function parse_go_sum(file, text, limits, manifests) {
+  const records = new Map();
+  const warnings = [];
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    const value = line.trim();
+    if (!value || value.startsWith('//')) continue;
+    const fields = value.split(/\s+/);
+    if (fields.length !== 3) {
+      warnings.push({ code: 'ORIX_LOCKFILE_GO_SUM_LINE', line: index + 1 });
+      continue;
+    }
+    const name = clean_string(fields[0], MAX_NAME, 'module path');
+    const checksum = clean_string(fields[2], 256, 'module checksum');
+    const go_mod_only = fields[1].endsWith('/go.mod');
+    const version = clean_string(go_mod_only ? fields[1].slice(0, -7) : fields[1], MAX_VERSION, 'module version');
+    if (!name || !version || !checksum || !/^h1:[A-Za-z0-9+/=]+$/.test(checksum)) {
+      warnings.push({ code: 'ORIX_LOCKFILE_GO_SUM_ENTRY', line: index + 1 });
+      continue;
+    }
+    const key = name + '@' + version;
+    const existing = records.get(key);
+    if (!existing || (!go_mod_only && existing.checksum_kind === 'go.mod')) {
+      records.set(key, {
+        name, version, ecosystem: 'go', location: key,
+        dependency_type: 'resolved', dev: false, optional: false, peer: false,
+        integrity: checksum, checksum_kind: go_mod_only ? 'go.mod' : 'module',
+        resolved: null, license: null, dependencies: [],
+      });
+    } else if (existing.integrity !== checksum && existing.checksum_kind === (go_mod_only ? 'go.mod' : 'module')) {
+      warnings.push({ code: 'ORIX_LOCKFILE_GO_SUM_CONFLICT', module: name, version });
+    }
+    if (records.size > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'go.sum module count exceeds configured limit', { file, maximum: limits.max_packages });
+  }
+  const packages = [...records.values()].sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
+  const by_identity = new Map(packages.map(item => [item.name + '@' + item.version, item]));
+  const root_dependencies = [];
+  const root_edges = [];
+  for (const manifest of manifests) {
+    if (manifest.ecosystem !== 'go') continue;
+    for (const dependency of manifest.dependencies ?? []) {
+      root_dependencies.push({ name: dependency.name, requirement: dependency.version, dependency_type: dependency.dependency_type });
+      const target = by_identity.get(dependency.name + '@' + dependency.version);
+      if (target) root_edges.push({ name: dependency.name, requirement: dependency.version, dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version });
+      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_ROOT_EDGE', dependency: dependency.name, version: dependency.version, manifest: manifest.path });
+      if (root_edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'go.sum root dependency count exceeds configured limit', { file, maximum: limits.max_edges });
+    }
+  }
+  return {
+    path: file, ecosystem: 'go', format: 'go-sum', lockfile_version: null,
+    packages, edges: [], root_dependencies, root_edges, warnings, complete: warnings.length === 0,
+  };
+}
+
 export function parse_lockfile(file, text, options = {}, manifests = []) {
   if (typeof file !== 'string' || typeof text !== 'string') throw new TypeError('parse_lockfile requires a file path and text');
   const limits = validate_limits(options);
@@ -703,5 +756,6 @@ export function parse_lockfile(file, text, options = {}, manifests = []) {
   if (base === 'Cargo.lock') return parse_cargo_lock(file, text, limits);
   if (base === 'pnpm-lock.yaml') return parse_pnpm_lock(file, text, limits);
   if (base === 'composer.lock') return parse_composer_lock(file, text, limits, manifests);
+  if (base === 'go.sum') return parse_go_sum(file, text, limits, manifests);
   return null;
 }
