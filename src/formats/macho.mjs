@@ -8,6 +8,68 @@ const MAGIC = new Map([
   ['feedfacf', { little: false, is_64: true }], ['cffaedfe', { little: true, is_64: true }],
 ]);
 const CPU = new Map([[7,'x86'],[0x01000007,'x86-64'],[12,'ARM'],[0x0100000c,'ARM64'],[18,'PowerPC'],[0x01000012,'PowerPC64']]);
+const FAT_MAGIC = new Map([
+  ['cafebabe', { little: false, is_64: false }], ['bebafeca', { little: true, is_64: false }],
+  ['cafebabf', { little: false, is_64: true }], ['bfbafeca', { little: true, is_64: true }],
+]);
+const LC_SEGMENT = 0x1;
+const LC_SEGMENT_64 = 0x19;
+const LC_CODE_SIGNATURE = 0x1d;
+
+function fixed_name(buffer, offset, length) {
+  const bytes = buffer.subarray(offset, offset + length);
+  const end = bytes.indexOf(0);
+  return bytes.toString('utf8', 0, end < 0 ? bytes.length : end);
+}
+
+function decode_code_signature(reader, command_offset, command_size, file_size) {
+  if (command_size < 16) throw new OrixError('ORIX_MACHO_BAD_CODE_SIGNATURE_COMMAND', 'Mach-O code-signature command is truncated', { recoverable: true });
+  const data_offset = reader.u32(command_offset + 8, true, 'code-signature data offset');
+  const data_size = reader.u32(command_offset + 12, true, 'code-signature data size');
+  const range_valid = data_offset <= file_size && data_size <= file_size - data_offset;
+  const result = { data_offset, data_size, range_valid, blob_magic: null, blob_length: null, slot_count: 0, slots: [], code_directories: [] };
+  if (!range_valid || data_size < 12) return result;
+  const magic = reader.u32(data_offset, false, 'signature blob magic');
+  const length = reader.u32(data_offset + 4, false, 'signature blob length');
+  result.blob_magic = '0x' + magic.toString(16);
+  result.blob_length = length;
+  if (magic !== 0xfade0cc0 || length < 12 || length > data_size) return result;
+  const count = reader.u32(data_offset + 8, false, 'signature slot count');
+  const maximum_slots = 1024;
+  if (count > maximum_slots || count > Math.floor((length - 12) / 8)) {
+    throw new OrixError('ORIX_MACHO_SIGNATURE_SLOT_LIMIT', 'Mach-O signature slot table exceeds its declared blob', { details: { count, length, maximum_slots }, recoverable: true });
+  }
+  result.slot_count = count;
+  for (let index = 0; index < count; index += 1) {
+    const entry = data_offset + 12 + index * 8;
+    const slot_type = reader.u32(entry, false, 'signature slot type');
+    const slot_offset = reader.u32(entry + 4, false, 'signature slot offset');
+    if (slot_offset > length - 8) {
+      result.slots.push({ type: slot_type, offset: slot_offset, valid: false });
+      continue;
+    }
+    const blob = data_offset + slot_offset;
+    const blob_magic = reader.u32(blob, false, 'signature slot magic');
+    const blob_length = reader.u32(blob + 4, false, 'signature slot length');
+    const valid = blob_length >= 8 && blob_length <= length - slot_offset;
+    result.slots.push({ type: slot_type, offset: slot_offset, magic: '0x' + blob_magic.toString(16), length: blob_length, valid });
+    if (!valid || blob_magic !== 0xfade0c02 || blob_length < 44) continue;
+    const version = reader.u32(blob + 8, false, 'CodeDirectory version');
+    const flags = reader.u32(blob + 12, false, 'CodeDirectory flags');
+    const hash_offset = reader.u32(blob + 16, false, 'CodeDirectory hash offset');
+    const identifier_offset = reader.u32(blob + 20, false, 'CodeDirectory identifier offset');
+    const special_slots = reader.u32(blob + 24, false, 'CodeDirectory special slot count');
+    const code_slots = reader.u32(blob + 28, false, 'CodeDirectory code slot count');
+    const code_limit = reader.u32(blob + 32, false, 'CodeDirectory code limit');
+    const hash_size = reader.u8(blob + 36, 'CodeDirectory hash size');
+    const hash_type = reader.u8(blob + 37, 'CodeDirectory hash type');
+    const platform = reader.u8(blob + 38, 'CodeDirectory platform');
+    const page_size = reader.u8(blob + 39, 'CodeDirectory page size');
+    const identifier = identifier_offset < blob_length ? reader.c_string(blob + identifier_offset, blob_length - identifier_offset, 'CodeDirectory identifier') : '';
+    result.code_directories.push({ version, flags, hash_offset, identifier, special_slots, code_slots, code_limit, hash_size, hash_type, platform, page_size });
+  }
+  return result;
+}
 
 export function parse_macho(buffer, options = {}) {
   const reader = new BinaryReader(buffer, { label: 'Mach-O image' });
@@ -27,6 +89,10 @@ export function parse_macho(buffer, options = {}) {
   const command_offset = minimum;
   reader.require(command_offset, command_bytes, 'load-command region');
   const commands = [];
+  const segments = [];
+  let code_signature = null;
+  let total_sections = 0;
+  const maximum_sections = options.max_sections ?? 16384;
   let cursor = command_offset;
   for (let index = 0; index < command_count; index += 1) {
     reader.require(cursor, 8, `load command ${index}`);
@@ -36,6 +102,68 @@ export function parse_macho(buffer, options = {}) {
       throw new OrixError('ORIX_MACHO_BAD_LOAD_COMMAND', 'Mach-O load command has an invalid size', { details: { index, command, size, cursor }, recoverable: true });
     }
     commands.push({ index, command: `0x${command.toString(16)}`, size });
+    if (command === LC_SEGMENT || command === LC_SEGMENT_64) {
+      const is_64_segment = command === LC_SEGMENT_64;
+      const fixed_size = is_64_segment ? 72 : 56;
+      const section_size = is_64_segment ? 80 : 68;
+      if (size < fixed_size) throw new OrixError('ORIX_MACHO_BAD_SEGMENT_COMMAND', 'Mach-O segment command is smaller than its fixed header', { details: { index, size, fixed_size }, recoverable: true });
+      const segment_name = fixed_name(buffer, cursor + 8, 16);
+      let vm_address, vm_size, file_offset, file_size, max_protection, initial_protection, section_count, segment_flags;
+      if (is_64_segment) {
+        vm_address = reader.u64(cursor + 24, spec.little, 'segment VM address');
+        vm_size = reader.u64(cursor + 32, spec.little, 'segment VM size');
+        file_offset = reader.u64(cursor + 40, spec.little, 'segment file offset');
+        file_size = reader.u64(cursor + 48, spec.little, 'segment file size');
+        max_protection = reader.u32(cursor + 56, spec.little, 'maximum segment protection');
+        initial_protection = reader.u32(cursor + 60, spec.little, 'initial segment protection');
+        section_count = reader.u32(cursor + 64, spec.little, 'segment section count');
+        segment_flags = reader.u32(cursor + 68, spec.little, 'segment flags');
+      } else {
+        vm_address = reader.u32(cursor + 24, spec.little, 'segment VM address');
+        vm_size = reader.u32(cursor + 28, spec.little, 'segment VM size');
+        file_offset = reader.u32(cursor + 32, spec.little, 'segment file offset');
+        file_size = reader.u32(cursor + 36, spec.little, 'segment file size');
+        max_protection = reader.u32(cursor + 40, spec.little, 'maximum segment protection');
+        initial_protection = reader.u32(cursor + 44, spec.little, 'initial segment protection');
+        section_count = reader.u32(cursor + 48, spec.little, 'segment section count');
+        segment_flags = reader.u32(cursor + 52, spec.little, 'segment flags');
+      }
+      total_sections += section_count;
+      if (total_sections > maximum_sections || section_count > Math.floor((size - fixed_size) / section_size)) {
+        throw new OrixError('ORIX_MACHO_SECTION_LIMIT', 'Mach-O segment section table exceeds command bounds or configured limit', { details: { index, section_count, total_sections, maximum_sections, size }, recoverable: true });
+      }
+      const sections = [];
+      for (let section_index = 0; section_index < section_count; section_index += 1) {
+        const at = cursor + fixed_size + section_index * section_size;
+        const section_name = fixed_name(buffer, at, 16);
+        const section_segment = fixed_name(buffer, at + 16, 16);
+        let address, section_file_size, section_offset, alignment, relocation_offset, relocation_count, section_flags;
+        if (is_64_segment) {
+          address = reader.u64(at + 32, spec.little, 'section address');
+          section_file_size = reader.u64(at + 40, spec.little, 'section size');
+          section_offset = reader.u32(at + 48, spec.little, 'section file offset');
+          alignment = reader.u32(at + 52, spec.little, 'section alignment');
+          relocation_offset = reader.u32(at + 56, spec.little, 'section relocation offset');
+          relocation_count = reader.u32(at + 60, spec.little, 'section relocation count');
+          section_flags = reader.u32(at + 64, spec.little, 'section flags');
+        } else {
+          address = reader.u32(at + 32, spec.little, 'section address');
+          section_file_size = reader.u32(at + 36, spec.little, 'section size');
+          section_offset = reader.u32(at + 40, spec.little, 'section file offset');
+          alignment = reader.u32(at + 44, spec.little, 'section alignment');
+          relocation_offset = reader.u32(at + 48, spec.little, 'section relocation offset');
+          relocation_count = reader.u32(at + 52, spec.little, 'section relocation count');
+          section_flags = reader.u32(at + 56, spec.little, 'section flags');
+        }
+        const valid_range = section_offset <= buffer.length && typeof section_file_size === 'number' && section_file_size <= buffer.length - section_offset;
+        sections.push({ name: section_name, segment: section_segment, address, size: section_file_size, file_offset: section_offset, alignment, relocation_offset, relocation_count, flags: section_flags, file_range_valid: valid_range });
+      }
+      const numeric_file_offset = typeof file_offset === 'number' ? file_offset : null;
+      const numeric_file_size = typeof file_size === 'number' ? file_size : null;
+      segments.push({ name: segment_name, vm_address, vm_size, file_offset, file_size, max_protection, initial_protection, flags: segment_flags, file_range_valid: numeric_file_offset !== null && numeric_file_size !== null && numeric_file_offset <= buffer.length && numeric_file_size <= buffer.length - numeric_file_offset, sections });
+    } else if (command === LC_CODE_SIGNATURE) {
+      code_signature = decode_code_signature(reader, cursor, size, buffer.length);
+    }
     cursor += size;
   }
   return {
@@ -43,6 +171,57 @@ export function parse_macho(buffer, options = {}) {
     endianness: spec.little ? 'little' : 'big', architecture: CPU.get(cpu_type) ?? `unknown-${cpu_type}`,
     header: { cpu_type, cpu_subtype, file_type, command_count, command_bytes, flags, reserved: spec.is_64 ? reader.u32(28, spec.little, 'reserved') : null },
     load_commands: commands,
-    notes: ['Thin Mach-O headers are supported. Universal/fat containers are identified by the registry but not yet expanded.', 'Load-command payloads are bounded; command-specific structures are not decoded in this release.'],
+    segments,
+    code_signature,
+    notes: ['Thin Mach-O segment and section commands are decoded with bounded counts and file-range checks.', 'Code-signature superblob and CodeDirectory metadata are structural observations only; cryptographic signature and trust verification are not performed.', 'Universal/fat containers are parsed by parse_macho_fat. Other load-command payloads remain opaque.'],
   };
+}
+
+
+export function parse_macho_fat(buffer, options = {}) {
+  const reader = new BinaryReader(buffer, { label: 'Universal Mach-O image' });
+  const magic = buffer.subarray(0, 4).toString('hex');
+  const spec = FAT_MAGIC.get(magic);
+  if (!spec) throw new OrixError('ORIX_MACHO_FAT_BAD_MAGIC', 'Input does not contain a supported universal Mach-O signature', { recoverable: true });
+  reader.require(0, 8, 'fat header');
+  const architecture_count = reader.u32(4, spec.little, 'fat architecture count');
+  const maximum = options.max_architectures ?? 128;
+  if (!Number.isSafeInteger(maximum) || maximum < 0 || architecture_count > maximum) {
+    throw new OrixError('ORIX_MACHO_FAT_ARCH_LIMIT', 'Universal Mach-O architecture count exceeds configured limit', { details: { architecture_count, maximum }, recoverable: true });
+  }
+  const entry_size = spec.is_64 ? 32 : 20;
+  reader.require(8, architecture_count * entry_size, 'fat architecture table');
+  const architectures = [];
+  const slices = [];
+  const ranges = [];
+  for (let index = 0; index < architecture_count; index += 1) {
+    const at = 8 + index * entry_size;
+    const cpu_type = reader.i32(at, false, 'fat CPU type');
+    const cpu_subtype = reader.i32(at + 4, false, 'fat CPU subtype');
+    const offset_value = spec.is_64 ? reader.u64(at + 8, false, 'fat slice offset') : reader.u32(at + 8, false, 'fat slice offset');
+    const size_value = spec.is_64 ? reader.u64(at + 16, false, 'fat slice size') : reader.u32(at + 12, false, 'fat slice size');
+    const alignment = reader.u32(at + (spec.is_64 ? 24 : 16), false, 'fat slice alignment');
+    if (typeof offset_value !== 'number' || typeof size_value !== 'number') {
+      throw new OrixError('ORIX_MACHO_FAT_OFFSET_TOO_LARGE', 'Universal Mach-O slice range exceeds safe integer precision', { details: { index }, recoverable: true });
+    }
+    if (offset_value < 8 + architecture_count * entry_size || offset_value > buffer.length || size_value > buffer.length - offset_value) {
+      throw new OrixError('ORIX_MACHO_FAT_SLICE_RANGE', 'Universal Mach-O slice is outside the file or overlaps its architecture table', { details: { index, offset: offset_value, size: size_value, file_size: buffer.length }, recoverable: true });
+    }
+    ranges.push({ start: offset_value, end: offset_value + size_value, index });
+    const slice_buffer = buffer.subarray(offset_value, offset_value + size_value);
+    let parsed = null;
+    let parser_error = null;
+    try { parsed = parse_macho(slice_buffer, options); }
+    catch (error) { parser_error = { code: error.code ?? 'ORIX_MACHO_ERROR', message: error.message }; }
+    const architecture = CPU.get(cpu_type) ?? 'unknown-' + cpu_type;
+    architectures.push({ index, cpu_type, cpu_subtype, architecture, offset: offset_value, size: size_value, alignment, parser_status: parsed ? 'parsed' : 'rejected' });
+    slices.push({ index, architecture, offset: offset_value, size: size_value, parsed, parser_error });
+  }
+  ranges.sort((a, b) => a.start - b.start);
+  for (let index = 1; index < ranges.length; index += 1) {
+    if (ranges[index].start < ranges[index - 1].end) {
+      throw new OrixError('ORIX_MACHO_FAT_OVERLAPPING_SLICES', 'Universal Mach-O architecture slices overlap', { details: { first: ranges[index - 1].index, second: ranges[index].index }, recoverable: true });
+    }
+  }
+  return { format: 'Mach-O Universal', is_64_bit_fat_header: spec.is_64, endianness: spec.little ? 'little' : 'big', architecture_count, architectures, slices, notes: ['Each architecture slice is parsed as a bounded thin Mach-O image when its header is supported.', 'Code-signature metadata is not cryptographically verified.'] };
 }
