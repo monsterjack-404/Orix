@@ -178,7 +178,7 @@ export function parse_pe(buffer, options = {}) {
   if (pe_offset < 0x40 || pe_offset > buffer.length - 24) {
     throw new OrixError('ORIX_PE_INVALID_HEADER_OFFSET', 'PE header offset is outside the file', { details: { pe_offset, file_size: buffer.length }, recoverable: true });
   }
-  if (reader.ascii(pe_offset, 4, 'PE signature') !== 'PE\\0\\0') {
+  if (reader.ascii(pe_offset, 4, 'PE signature') !== 'PE\0\0') {
     throw new OrixError('ORIX_PE_BAD_SIGNATURE', 'MZ file does not contain a valid PE signature at e_lfanew', { details: { pe_offset }, recoverable: true });
   }
   const coff_offset = pe_offset + 4;
@@ -231,7 +231,7 @@ export function parse_pe(buffer, options = {}) {
   const sections = [];
   for (let index = 0; index < section_count; index += 1) {
     const offset = section_table_offset + index * 40;
-    const name = reader.bytes(offset, 8, 'section name').toString('ascii').replace(/\\0.*$/s, '');
+    const name = reader.bytes(offset, 8, 'section name').toString('ascii').replace(/\0.*$/s, '');
     const virtual_size = reader.u32(offset + 8, true, 'section virtual size');
     const virtual_address = reader.u32(offset + 12, true, 'section virtual address');
     const raw_size = reader.u32(offset + 16, true, 'section raw size');
