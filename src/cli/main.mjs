@@ -1,5 +1,5 @@
 // JavaScript, src/cli/main.mjs, Node.js 20+, ORIX command dispatcher and report output.
-import { promises as fs } from 'node:fs';
+import { promises as fs, constants as FS_CONSTANTS } from 'node:fs';
 import path from 'node:path';
 import { parse_arguments } from './arguments.mjs';
 import { HELP_TEXT } from './help.mjs';
@@ -12,6 +12,9 @@ import { render_inspection_markdown, render_scan_markdown } from '../reports/mar
 import { render_sarif } from '../reports/sarif.mjs';
 import { normalize_error } from '../core/errors.mjs';
 import { append_ledger, list_ledger, verify_ledger } from '../evidence/ledger.mjs';
+import { compare_reports } from '../analyzer/compare.mjs';
+import { render_comparison_markdown } from '../reports/comparison.mjs';
+import { OrixError } from '../core/errors.mjs';
 import { hash_buffer } from '../core/hash.mjs';
 async function write_or_print(content,output_path) {
   if(!output_path){process.stdout.write(content.endsWith('\n')?content:content+'\n');return;}
@@ -20,6 +23,25 @@ async function write_or_print(content,output_path) {
   catch(error){if(error.code==='EEXIST')throw new Error('Refusing to overwrite existing report: '+destination);throw error;}
   process.stdout.write('Report created: '+destination+'\n');
 }
+
+async function read_json_report(file_path) {
+  const absolute = path.resolve(file_path);
+  let before;
+  try { before = await fs.lstat(absolute); }
+  catch (error) { throw new OrixError('ORIX_COMPARE_FILE_UNAVAILABLE', 'Cannot access comparison report: ' + absolute, { cause: error, details: { system_code: error.code }, recoverable: true }); }
+  if (before.isSymbolicLink() || !before.isFile()) throw new OrixError('ORIX_COMPARE_UNSAFE_FILE', 'Comparison input must be a regular non-symlink file', { details: { path: absolute }, recoverable: true });
+  if (!Number.isSafeInteger(before.size) || before.size > 64 * 1024 * 1024) throw new OrixError('ORIX_COMPARE_FILE_LIMIT', 'Comparison report exceeds the 64 MiB input limit', { details: { size: before.size }, recoverable: true });
+  const handle = await fs.open(absolute, FS_CONSTANTS.O_RDONLY | (FS_CONSTANTS.O_NOFOLLOW ?? 0));
+  let text;
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.size !== before.size) throw new OrixError('ORIX_COMPARE_FILE_CHANGED', 'Comparison report changed between metadata lookup and open', { recoverable: true });
+    text = await handle.readFile({ encoding: 'utf8' });
+  } finally { await handle.close(); }
+  try { return JSON.parse(text); }
+  catch (error) { throw new OrixError('ORIX_COMPARE_INVALID_JSON', 'Comparison input is not valid JSON: ' + absolute, { cause: error, details: { path: absolute }, recoverable: true }); }
+}
+
 function select_report(report,format,renderer){if(format==='json')return render_json(report);if(format==='sarif')return render_sarif(report);return renderer(report);}
 export async function main(argv=process.argv.slice(2)) {
   const parsed=parse_arguments(argv);
@@ -29,6 +51,14 @@ export async function main(argv=process.argv.slice(2)) {
       ? await verify_ledger(parsed.flags.ledger_path)
       : await list_ledger(parsed.flags.ledger_path);
     await write_or_print(render_json(result),parsed.flags.out);
+    return 0;
+  }
+  if(parsed.command==='compare'){
+    if(parsed.flags.format==='sarif')throw new Error('SARIF output is not defined for comparison reports');
+    const baseline=await read_json_report(parsed.baseline);
+    const current=await read_json_report(parsed.target);
+    const report=compare_reports(baseline,current);
+    await write_or_print(parsed.flags.format==='json'?render_json(report):render_comparison_markdown(report),parsed.flags.out);
     return 0;
   }
   if(parsed.command==='formats'){if(parsed.target)throw new Error('The formats command does not accept a target');await write_or_print(render_json({schema_version:'orix.formats.v1',formats:list_format_capabilities()}),parsed.flags.out);return 0;}
