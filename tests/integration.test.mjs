@@ -136,3 +136,20 @@ test('directory scan aggregates indicator counts independently of format counts'
     assert.equal(report.artifacts.length, 2);
   });
 });
+
+
+test('CLI emits SARIF 2.1 for an inspected artifact', async () => {
+  await with_temp_dir(async directory => {
+    const file = path.join(directory, 'sample.exe');
+    const image = create_pe_fixture();
+    const section_table = 0x80 + 4 + 20 + 224;
+    image.writeUInt32LE(0xe0000020, section_table + 36);
+    await writeFile(file, image);
+    const cli = spawnSync(process.execPath, ['src/cli.mjs','inspect',file,'--format','sarif'], { encoding: 'utf8', cwd: path.resolve('.') });
+    assert.equal(cli.status, 0, cli.stderr);
+    const sarif = JSON.parse(cli.stdout);
+    assert.equal(sarif.version, '2.1.0');
+    assert.equal(sarif.runs[0].tool.driver.name, 'ORIX');
+    assert.ok(sarif.runs[0].results.some(item => item.ruleId === 'ORIX-PE-WRITABLE-EXECUTABLE-001'));
+  });
+});
