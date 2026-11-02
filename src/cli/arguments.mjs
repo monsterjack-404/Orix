@@ -31,7 +31,7 @@ export function parse_arguments(argv) {
       const raw = tokens.shift();
       if (raw === undefined || raw.startsWith('--')) throw new OrixError('ORIX_CLI_MISSING_VALUE', `${token} requires a value`, { recoverable: true });
       if (token === '--format') {
-        if (!['json','markdown','sarif'].includes(raw)) throw new OrixError('ORIX_CLI_BAD_FORMAT', '--format must be json, markdown or sarif', { details: { value: raw }, recoverable: true });
+        if (!['json','markdown','sarif','cyclonedx'].includes(raw)) throw new OrixError('ORIX_CLI_BAD_FORMAT', '--format must be json, markdown, sarif or cyclonedx', { details: { value: raw }, recoverable: true });
         result.flags.format = raw;
       } else if (token === '--out') result.flags.out = raw;
       else if (token === '--ledger') result.flags.ledger = raw;
