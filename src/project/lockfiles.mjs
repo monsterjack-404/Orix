@@ -898,6 +898,121 @@ function parse_pipfile_lock(file, text, limits, manifests) {
   return { path: file, ecosystem: 'python', format: 'pipfile-lock', lockfile_version: document._meta?.pipfile_spec ?? null, packages, edges: [], root_dependencies, root_edges, warnings, complete: false };
 }
 
+function parse_gemfile_lock(file, text, limits, manifests) {
+  const packages = [];
+  const root_dependencies = [];
+  const warnings = [];
+  let section = '';
+  let source_kind = 'registry';
+  let current = null;
+  let in_specs = false;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const indent = line.length - line.trimStart().length;
+    const value = line.trim();
+    if (indent === 0) {
+      if (['GEM', 'GIT', 'PATH'].includes(value)) {
+        section = value;
+        source_kind = value.toLowerCase();
+        current = null;
+        in_specs = false;
+      } else if (value === 'DEPENDENCIES') {
+        section = 'DEPENDENCIES';
+        current = null;
+      } else {
+        section = value;
+        current = null;
+        in_specs = false;
+      }
+      continue;
+    }
+    if (section === 'DEPENDENCIES' && indent === 2) {
+      const dependency = /^([^\s(!]+)(?:\s+\(([^)]+)\))?(!)?$/.exec(value);
+      if (dependency) root_dependencies.push({
+        name: dependency[1],
+        requirement: dependency[2] ?? '*',
+        dependency_type: 'runtime',
+        pinned_source: Boolean(dependency[3]),
+      });
+      continue;
+    }
+    if (!['GEM', 'GIT', 'PATH'].includes(section)) continue;
+    if (indent === 2 && value === 'specs:') {
+      in_specs = true;
+      continue;
+    }
+    if (!in_specs) continue;
+    if (indent === 4) {
+      const package_match = /^([^\s(]+)\s+\(([^)]+)\)$/.exec(value);
+      if (!package_match) { current = null; continue; }
+      if (packages.length >= limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'Gemfile.lock package count exceeds configured limit', { file, maximum: limits.max_packages });
+      current = {
+        name: package_match[1],
+        version: package_match[2],
+        ecosystem: 'rubygems',
+        location: package_match[1] + '@' + package_match[2] + '#' + source_kind,
+        dependency_type: 'resolved',
+        dev: false,
+        optional: false,
+        peer: false,
+        integrity: null,
+        resolved: null,
+        license: null,
+        dependencies: [],
+      };
+      packages.push(current);
+      continue;
+    }
+    if (indent >= 6 && current) {
+      const dependency = /^([^\s(]+)(?:\s+\(([^)]+)\))?$/.exec(value);
+      if (dependency) current.dependencies.push({ name: dependency[1], requirement: dependency[2] ?? '*' });
+    }
+  }
+  if (packages.length === 0) warnings.push({ code: 'ORIX_LOCKFILE_NO_PACKAGE_TABLE' });
+  const by_name = new Map();
+  for (const item of packages) {
+    const values = by_name.get(item.name) ?? [];
+    values.push(item);
+    by_name.set(item.name, values);
+  }
+  const resolve = (name, requirement, context) => {
+    const candidates = by_name.get(name) ?? [];
+    const exact = /(?:^|[, ]+)=\s*([0-9][A-Za-z0-9.+_-]*)/.exec(requirement ?? '');
+    if (exact) {
+      const match = candidates.find(item => item.version === exact[1]);
+      if (match) return match;
+    }
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) warnings.push({ code: 'ORIX_LOCKFILE_AMBIGUOUS_DEPENDENCY', name, requirement, context });
+    return null;
+  };
+  const edges = [];
+  for (const item of packages) {
+    for (const dependency of item.dependencies) {
+      const target = resolve(dependency.name, dependency.requirement, item.location);
+      if (target) edges.push({ from: item.location, to: target.location, name: dependency.name, requirement: dependency.requirement, resolved_version: target.version });
+      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_EDGE', from: item.location, dependency: dependency.name });
+      if (edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Gemfile.lock dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+    }
+  }
+  const root_edges = [];
+  for (const dependency of root_dependencies) {
+    const target = resolve(dependency.name, dependency.requirement, 'root');
+    if (target) root_edges.push({ name: dependency.name, requirement: dependency.requirement, dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version });
+    else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_ROOT_EDGE', dependency: dependency.name });
+  }
+  if (edges.length + root_edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Gemfile.lock total dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+  if (root_dependencies.length === 0) {
+    const manifest = manifests.find(item => item.ecosystem === 'rubygems');
+    for (const dependency of manifest?.dependencies ?? []) {
+      root_dependencies.push({ name: dependency.name, requirement: dependency.version, dependency_type: dependency.dependency_type });
+      const target = resolve(dependency.name, dependency.version, 'Gemfile');
+      if (target) root_edges.push({ name: dependency.name, requirement: dependency.version, to: target.location, resolved_version: target.version });
+    }
+  }
+  return { path: file, ecosystem: 'rubygems', format: 'gemfile-lock', lockfile_version: null, packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0 };
+}
+
 export function parse_lockfile(file, text, options = {}, manifests = []) {
   if (typeof file !== 'string' || typeof text !== 'string') throw new TypeError('parse_lockfile requires a file path and text');
   const limits = validate_limits(options);
@@ -910,5 +1025,6 @@ export function parse_lockfile(file, text, options = {}, manifests = []) {
   if (base === 'poetry.lock') return parse_poetry_lock(file, text, limits, manifests);
   if (base === 'Pipfile.lock') return parse_pipfile_lock(file, text, limits, manifests);
   if (base === 'go.sum') return parse_go_sum(file, text, limits, manifests);
+  if (base === 'Gemfile.lock') return parse_gemfile_lock(file, text, limits, manifests);
   return null;
 }
