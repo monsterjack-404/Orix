@@ -689,3 +689,64 @@ test('PE parser converts VA-based delay-import fields and rejects invalid thunk 
   expanded.writeUInt32LE(0x7ffffff0, raw + 0x170);
   assert.throws(() => parse_pe(expanded), error => error.code === 'ORIX_PE_INVALID_DELAY_IMPORT_THUNK');
 });
+
+
+test('PE parser decodes bounded HIGHLOW and DIR64 base-relocation entries', () => {
+  const pe32 = create_pe_fixture();
+  const pe_offset = 0x80;
+  const optional32 = pe_offset + 4 + 20;
+  const section32 = optional32 + 224;
+  const raw32 = section32 + 40;
+  const image32 = Buffer.concat([pe32, Buffer.alloc(0x300)]);
+  image32.writeUInt32LE(0x300, section32 + 16);
+  const directory32 = optional32 + 96 + 5 * 8;
+  image32.writeUInt32LE(0x1100, directory32);
+  image32.writeUInt32LE(12, directory32 + 4);
+  image32.writeUInt32LE(0x1000, raw32 + 0x100);
+  image32.writeUInt32LE(12, raw32 + 0x104);
+  image32.writeUInt16LE(0x3010, raw32 + 0x108);
+  image32.writeUInt16LE(0x0000, raw32 + 0x10a);
+
+  const parsed32 = parse_pe(image32);
+  assert.equal(parsed32.base_relocation_blocks.length, 1);
+  assert.equal(parsed32.base_relocations.length, 2);
+  assert.equal(parsed32.base_relocations[0].type_name, 'HIGHLOW');
+  assert.equal(parsed32.base_relocations[0].target_rva, 0x1010);
+  assert.equal(parsed32.base_relocations[0].file_offset, raw32 + 0x10);
+  assert.equal(parsed32.base_relocations[0].file_range_valid, true);
+  assert.equal(parsed32.base_relocations[1].type_name, 'ABSOLUTE');
+  assert.equal(parsed32.base_relocations_truncated, false);
+  assert.throws(() => parse_pe(image32, { max_relocations: 1 }), error => error.code === 'ORIX_PE_RELOCATION_LIMIT');
+
+  const pe64 = create_pe_fixture({ is_64: true });
+  const optional64 = pe_offset + 4 + 20;
+  const section64 = optional64 + 240;
+  const raw64 = section64 + 40;
+  const image64 = Buffer.concat([pe64, Buffer.alloc(0x300)]);
+  image64.writeUInt32LE(0x300, section64 + 16);
+  const directory64 = optional64 + 112 + 5 * 8;
+  image64.writeUInt32LE(0x1100, directory64);
+  image64.writeUInt32LE(10, directory64 + 4);
+  image64.writeUInt32LE(0x1000, raw64 + 0x100);
+  image64.writeUInt32LE(10, raw64 + 0x104);
+  image64.writeUInt16LE(0xa008, raw64 + 0x108);
+  const parsed64 = parse_pe(image64);
+  assert.equal(parsed64.base_relocations[0].type_name, 'DIR64');
+  assert.equal(parsed64.base_relocations[0].width, 8);
+  assert.equal(parsed64.base_relocations[0].target_rva, 0x1008);
+});
+
+test('PE parser rejects malformed base-relocation block sizes', () => {
+  const buffer = create_pe_fixture();
+  const optional = 0x80 + 4 + 20;
+  const section = optional + 224;
+  const raw = section + 40;
+  const expanded = Buffer.concat([buffer, Buffer.alloc(0x300)]);
+  expanded.writeUInt32LE(0x300, section + 16);
+  const directory = optional + 96 + 5 * 8;
+  expanded.writeUInt32LE(0x1100, directory);
+  expanded.writeUInt32LE(8, directory + 4);
+  expanded.writeUInt32LE(0x1000, raw + 0x100);
+  expanded.writeUInt32LE(7, raw + 0x104);
+  assert.throws(() => parse_pe(expanded), error => error.code === 'ORIX_PE_RELOCATION_BLOCK_SIZE');
+});
