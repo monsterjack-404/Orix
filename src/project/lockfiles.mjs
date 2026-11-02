@@ -213,7 +213,7 @@ function parse_yarn_lock(file, text, limits) {
     if (section && /^\s{4,}/.test(line)) {
       const dependency = /^("[^"]+"|'[^']+'|[^\s]+)\s+(.+)$/.exec(trimmed);
       if (dependency) {
-        const name = dependency[1].replace(/^['"]|['"]$/g, '');
+        const name = dependency[1].replace(/^['"]|['"]$/g, '').replace(/:$/, '');
         const requirement = dependency[2].replace(/^['"]|['"]$/g, '');
         current[section === 'dependencies' ? 'dependencies' : 'optional_dependencies'].push({ name, requirement });
       }
