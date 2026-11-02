@@ -65,3 +65,36 @@ test('scan Markdown summarizes indicators, artifacts, failures and inventory ski
   assert.match(markdown, /Inventory truncated: yes/);
   assert.match(markdown, /Static analysis only/);
 });
+
+
+test('SARIF 2.1 export maps findings, severity, evidence byte ranges and artifact hashes', async () => {
+  const { render_sarif } = await import('../src/reports/sarif.mjs');
+  const report = inspection_report();
+  report.artifact.path = '/tmp/orix sample.exe';
+  report.integrity.digest = 'c'.repeat(64);
+  report.indicators = [{
+    rule_id: 'ORIX-PE-WX-001',
+    title: 'Writable executable section',
+    severity: 'high',
+    confidence: 'derived',
+    summary: 'Section has write and execute flags.',
+    evidence: [{ source: 'pe-section', offset: 128, length: 40 }],
+  }];
+  const sarif = JSON.parse(render_sarif(report));
+  assert.equal(sarif.version, '2.1.0');
+  assert.equal(sarif.runs[0].tool.driver.name, 'ORIX');
+  assert.equal(sarif.runs[0].tool.driver.rules[0].id, 'ORIX-PE-WX-001');
+  assert.equal(sarif.runs[0].results[0].level, 'error');
+  assert.equal(sarif.runs[0].results[0].locations[0].location.physicalLocation.region.byteOffset, 128);
+  assert.equal(sarif.runs[0].results[0].properties.artifact_sha256, 'c'.repeat(64));
+  assert.match(sarif.runs[0].results[0].locations[0].location.physicalLocation.artifactLocation.uri, /^file:/);
+});
+
+test('SARIF export aggregates scan findings and rejects unsupported report kinds', async () => {
+  const { render_sarif } = await import('../src/reports/sarif.mjs');
+  const artifact = inspection_report();
+  const scan = { schema_version: 'orix.scan.v1', artifacts: [artifact, artifact] };
+  const sarif = JSON.parse(render_sarif(scan));
+  assert.equal(sarif.runs[0].results.length, 2);
+  assert.throws(() => render_sarif({ schema_version: 'orix.project.v1' }), /supports artifact and directory-scan/);
+});
