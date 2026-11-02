@@ -302,3 +302,37 @@ test('ELF parser enforces configured program-header and symbol limits', () => {
   assert.throws(() => parse_elf(buffer, { max_program_headers: 1 }), error => error.code === 'ORIX_ELF_PROGRAM_LIMIT');
   assert.throws(() => parse_elf(buffer, { max_symbols: 1 }), error => error.code === 'ORIX_ELF_SYMBOL_LIMIT');
 });
+
+
+test('ELF32 big-endian parser decodes program-header field ordering', () => {
+  const buffer = Buffer.alloc(128);
+  buffer.set([0x7f,0x45,0x4c,0x46,1,2,1,0]);
+  buffer.writeUInt16BE(2, 16);
+  buffer.writeUInt16BE(3, 18);
+  buffer.writeUInt32BE(1, 20);
+  buffer.writeUInt32BE(0x08048054, 24);
+  buffer.writeUInt32BE(52, 28);
+  buffer.writeUInt32BE(0, 32);
+  buffer.writeUInt32BE(0, 36);
+  buffer.writeUInt16BE(52, 40);
+  buffer.writeUInt16BE(32, 42);
+  buffer.writeUInt16BE(1, 44);
+  buffer.writeUInt16BE(40, 46);
+  buffer.writeUInt16BE(0, 48);
+  buffer.writeUInt16BE(0, 50);
+  buffer.writeUInt32BE(1, 52);
+  buffer.writeUInt32BE(0, 56);
+  buffer.writeUInt32BE(0x08048000, 60);
+  buffer.writeUInt32BE(0x08048000, 64);
+  buffer.writeUInt32BE(128, 68);
+  buffer.writeUInt32BE(160, 72);
+  buffer.writeUInt32BE(5, 76);
+  buffer.writeUInt32BE(4096, 80);
+  const parsed = parse_elf(buffer);
+  assert.equal(parsed.bitness, 32);
+  assert.equal(parsed.endianness, 'big');
+  assert.equal(parsed.program_headers[0].file_offset, 0);
+  assert.equal(parsed.program_headers[0].virtual_address, 0x08048000);
+  assert.equal(parsed.program_headers[0].memory_size, 160);
+  assert.equal(parsed.program_headers[0].flags.execute, true);
+});
