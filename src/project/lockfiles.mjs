@@ -519,7 +519,7 @@ function parse_pnpm_lock(file, text, limits) {
       continue;
     }
     if (indent === 6 && record_section === 'resolution') {
-      const resolution_field = /^([A-Za-z][A-Za-z0-9_-]*):\\s*(.*)$/.exec(body);
+      const resolution_field = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(body);
       if (resolution_field && resolution_field[1] === 'integrity') current_record.integrity = parse_pnpm_scalar(resolution_field[2]);
       if (resolution_field && resolution_field[1] === 'tarball') current_record.resolved = parse_pnpm_scalar(resolution_field[2]);
       continue;
@@ -537,7 +537,7 @@ function parse_pnpm_lock(file, text, limits) {
       if (field && field[1] === 'version') current_dependency.version = parse_pnpm_scalar(field[2]);
     }
   }
-  if (![5, 6, 9].includes(lockfile_version)) warnings.push({ code: 'ORIX_LOCKFILE_UNSUPPORTED_VERSION', lockfile_version });
+  if (!(lockfile_version === 6 || lockfile_version === 9 || (lockfile_version >= 5 && lockfile_version < 6))) warnings.push({ code: 'ORIX_LOCKFILE_UNSUPPORTED_VERSION', lockfile_version });
   if (package_records.length === 0) warnings.push({ code: 'ORIX_LOCKFILE_NO_PACKAGE_TABLE' });
   const packages = [];
   const by_name_version = new Map();
@@ -601,7 +601,7 @@ function parse_pnpm_lock(file, text, limits) {
       if (edges.length + root_edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'pnpm lockfile total dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
     }
   }
-  return { path: file, ecosystem: 'npm', format: 'pnpm-lock', lockfile_version, packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0 };
+  return { path: file, ecosystem: 'pnpm', format: 'pnpm-lock', lockfile_version, packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0 };
 }
 
 export function parse_lockfile(file, text, options = {}) {
