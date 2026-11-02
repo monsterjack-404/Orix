@@ -113,3 +113,24 @@ test('CycloneDX maps pnpm lockfile packages to npm purls and preserves developme
   assert.equal(component.scope, 'optional');
   assert.ok(bom.dependencies.find(item => item.ref === bom.metadata.component['bom-ref']).dependsOn.includes(component['bom-ref']));
 });
+
+
+test('CycloneDX exports Go module purls and checksum provenance', () => {
+  const report = project_report();
+  report.lockfiles = [{
+    path: 'go.sum',
+    ecosystem: 'go',
+    packages: [{
+      name: 'github.com/acme/direct', version: 'v1.2.3', ecosystem: 'go',
+      location: 'github.com/acme/direct@v1.2.3', dependency_type: 'resolved',
+      manifest: 'go.sum', integrity: 'h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+      checksum_kind: 'module',
+    }],
+    edges: [],
+    root_edges: [{ name: 'github.com/acme/direct', to: 'github.com/acme/direct@v1.2.3' }],
+  }];
+  const bom = JSON.parse(render_cyclonedx(report));
+  const component = bom.components.find(item => item.name === 'github.com/acme/direct');
+  assert.equal(component.purl, 'pkg:golang/github.com/acme/direct@v1.2.3');
+  assert.ok(component.properties.some(item => item.name === 'orix:checksum-kind' && item.value === 'module'));
+});

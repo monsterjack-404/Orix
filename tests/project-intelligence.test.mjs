@@ -152,3 +152,19 @@ test('project intelligence integrates Composer lockfile graph with manifest root
   assert.equal(report.lockfiles[0].root_edges.length, 2);
   assert.equal(report.lockfiles[0].edges.length, 1);
 }));
+
+
+test('project intelligence matches go.sum checksums to go.mod direct dependencies', async () => with_project(async root => {
+  await writeFile(path.join(root, 'go.mod'), 'module example.invalid/root\n\nrequire github.com/acme/direct v1.2.3\n');
+  await writeFile(path.join(root, 'go.sum'), [
+    'github.com/acme/direct v1.2.3 h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+    'github.com/acme/direct v1.2.3/go.mod h1:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=',
+    'github.com/acme/transitive v0.9.0 h1:CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=',
+  ].join('\n'));
+  const report = await scan_project(root);
+  assert.equal(report.lockfiles.length, 1);
+  assert.equal(report.lockfiles[0].format, 'go-sum');
+  assert.equal(report.summary.locked_packages, 2);
+  assert.equal(report.lockfiles[0].root_edges.length, 1);
+  assert.equal(report.lockfiles[0].root_edges[0].name, 'github.com/acme/direct');
+}));
