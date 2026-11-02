@@ -13,7 +13,7 @@ node src/cli.mjs project ./my-repository --format cyclonedx --out ./sbom.cdx.jso
 
 ## Inventory and source model
 
-- Deterministic, bounded directory traversal with symlink rejection and generated/dependency-directory exclusions.
+- Deterministic, bounded directory traversal with symlink rejection and generated/dependency-directory exclusions.\n- Read-only Git metadata inventory: HEAD branch/detached state, loose and packed refs, tags, sanitized remote coordinates, shallow boundaries and verified loose HEAD commit metadata. Packed object contents and linked-worktree gitdir targets are not followed.
 - File size, SHA-256, extension/language classification and bounded text reads.
 - Manifest metadata for npm, Python, Cargo, Go modules, Composer, Maven, NuGet and Ruby.
 - Dependency declarations with manifest and dependency-group provenance.
@@ -42,7 +42,7 @@ Package URLs are emitted only for recognized ecosystems. Development dependencie
 
 ## Resource limits and interpretation
 
-Traversal, entries, depth, individual file size, aggregate bytes, symbols, imports, lockfile packages and lockfile edges are bounded. Oversized files are skipped and recorded. Coverage is marked incomplete when traversal limits are reached. Lockfile parsers enforce independent package and edge ceilings.
+Traversal, entries, depth, individual file size, aggregate bytes, symbols, imports, lockfile packages/edges, Git refs and Git metadata reads are bounded. Oversized files are skipped and recorded. Coverage is marked incomplete when traversal limits are reached. Lockfile parsers enforce independent package and edge ceilings.
 
 Manifest and import parsing are conservative heuristics, not compiler front-ends. Dependency declarations are not vulnerability findings. Credential matches never include matched values; they identify a file and line for manual review, and false positives are possible.
 
