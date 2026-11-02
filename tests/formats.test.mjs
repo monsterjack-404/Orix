@@ -987,3 +987,91 @@ test('ELF parser rejects GNU hash buckets outside DYNSYM and truncated chains', 
   assert.throws(() => parse_elf(short_chain), error => error.code === 'ORIX_ELF_GNU_HASH_CHAIN_RANGE');
   assert.throws(() => parse_elf(create_elf_gnu_hash_fixture(), { max_gnu_hash_buckets: 0 }), error => error.code === 'ORIX_ELF_GNU_HASH_LIMIT');
 });
+
+
+test('Mach-O parser decodes LC_DYSYMTAB symbol groups and indirect-symbol markers', () => {
+  const buffer = Buffer.alloc(168);
+  buffer.set([0xcf,0xfa,0xed,0xfe]);
+  buffer.writeInt32LE(0x01000007, 4);
+  buffer.writeInt32LE(3, 8);
+  buffer.writeUInt32LE(2, 12);
+  buffer.writeUInt32LE(2, 16);
+  buffer.writeUInt32LE(104, 20);
+  buffer.writeUInt32LE(0, 24);
+  buffer.writeUInt32LE(0, 28);
+  buffer.writeUInt32LE(0x2, 32);
+  buffer.writeUInt32LE(24, 36);
+  buffer.writeUInt32LE(136, 40);
+  buffer.writeUInt32LE(1, 44);
+  buffer.writeUInt32LE(152, 48);
+  buffer.writeUInt32LE(8, 52);
+  buffer.writeUInt32LE(1, 136);
+  buffer[140] = 0x0f;
+  buffer[141] = 1;
+  buffer.writeBigUInt64LE(0x1000n, 144);
+  buffer.write(Buffer.from('\\0_main\\0', 'ascii'), 152);
+
+  const dynamic = 56;
+  buffer.writeUInt32LE(0xb, dynamic);
+  buffer.writeUInt32LE(80, dynamic + 4);
+  buffer.writeUInt32LE(0, dynamic + 8);
+  buffer.writeUInt32LE(0, dynamic + 12);
+  buffer.writeUInt32LE(0, dynamic + 16);
+  buffer.writeUInt32LE(1, dynamic + 20);
+  buffer.writeUInt32LE(1, dynamic + 24);
+  buffer.writeUInt32LE(0, dynamic + 28);
+  buffer.writeUInt32LE(0, dynamic + 32);
+  buffer.writeUInt32LE(0, dynamic + 36);
+  buffer.writeUInt32LE(0, dynamic + 40);
+  buffer.writeUInt32LE(0, dynamic + 44);
+  buffer.writeUInt32LE(0, dynamic + 48);
+  buffer.writeUInt32LE(160, dynamic + 52);
+  buffer.writeUInt32LE(2, dynamic + 56);
+  buffer.writeUInt32LE(0, dynamic + 60);
+  buffer.writeUInt32LE(0, dynamic + 64);
+  buffer.writeUInt32LE(0, dynamic + 68);
+  buffer.writeUInt32LE(0, dynamic + 72);
+  buffer.writeUInt32LE(0, dynamic + 76);
+  buffer.writeUInt32LE(0, 160);
+  buffer.writeUInt32LE(0x80000000, 164);
+
+  const parsed = parse_macho(buffer);
+  assert.equal(parsed.dynamic_symbol_table.external_symbol_count, 1);
+  assert.equal(parsed.dynamic_symbol_table.indirect_symbol_count, 2);
+  assert.deepEqual(parsed.indirect_symbols, [
+    { index: 0, raw_value: 0, kind: 'SYMBOL', symbol_index: 0, symbol_name: '_main' },
+    { index: 1, raw_value: 0x80000000, kind: 'LOCAL', symbol_index: null, symbol_name: null },
+  ]);
+});
+
+test('Mach-O parser rejects invalid dynamic-symbol index groups and indirect references', () => {
+  const buffer = Buffer.alloc(168);
+  buffer.set([0xcf,0xfa,0xed,0xfe]);
+  buffer.writeInt32LE(0x01000007, 4);
+  buffer.writeInt32LE(3, 8);
+  buffer.writeUInt32LE(2, 12);
+  buffer.writeUInt32LE(2, 16);
+  buffer.writeUInt32LE(104, 20);
+  buffer.writeUInt32LE(0x2, 32);
+  buffer.writeUInt32LE(24, 36);
+  buffer.writeUInt32LE(136, 40);
+  buffer.writeUInt32LE(1, 44);
+  buffer.writeUInt32LE(152, 48);
+  buffer.writeUInt32LE(8, 52);
+  buffer.writeUInt32LE(1, 136);
+  buffer[140] = 0x0f;
+  buffer.writeBigUInt64LE(0x1000n, 144);
+  buffer.write(Buffer.from('\\0_main\\0', 'ascii'), 152);
+  const dynamic = 56;
+  buffer.writeUInt32LE(0xb, dynamic);
+  buffer.writeUInt32LE(80, dynamic + 4);
+  buffer.writeUInt32LE(2, dynamic + 16);
+  buffer.writeUInt32LE(1, dynamic + 20);
+  assert.throws(() => parse_macho(buffer), error => error.code === 'ORIX_MACHO_DYSYMTAB_SYMBOL_RANGE');
+  buffer.writeUInt32LE(0, dynamic + 16);
+  buffer.writeUInt32LE(0, dynamic + 20);
+  buffer.writeUInt32LE(160, dynamic + 52);
+  buffer.writeUInt32LE(1, dynamic + 56);
+  buffer.writeUInt32LE(0, 160);
+  assert.throws(() => parse_macho(buffer), error => error.code === 'ORIX_MACHO_INDIRECT_SYMBOL_INDEX');
+});
