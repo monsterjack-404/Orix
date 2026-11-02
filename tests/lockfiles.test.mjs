@@ -338,7 +338,7 @@ test('Poetry lock resolves package requirements, checksums and development group
     '',
     '[metadata]',
     'lock-version = "2.0"',
-  ].join('\\n');
+  ].join('\n');
   const report = parse_lockfile('poetry.lock', input, {}, manifests);
   assert.equal(report.format, 'poetry-lock');
   assert.equal(report.lockfile_version, '2.0');
