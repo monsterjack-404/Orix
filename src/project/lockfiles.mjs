@@ -779,8 +779,8 @@ function parse_poetry_lock(file, text, limits, manifests) {
       continue;
     }
     if (section === 'package' && reading_files) {
-      const hashes = [...line.matchAll(/hash\\s*=\\s*(\"(?:\\\\.|[^\"\\\\])*\"|'[^']*')/g)].map(match => decode_toml_string(match[1]));
-      current?.files.push(...hashes);
+      const hash_match = /hash\s*=\s*("(?:\\.|[^"\\])*"|'[^']*')/.exec(line);
+      if (hash_match) current?.files.push(decode_toml_string(hash_match[1]));
       if (line.includes(']')) reading_files = false;
       continue;
     }
@@ -801,6 +801,7 @@ function parse_poetry_lock(file, text, limits, manifests) {
       else if (key === 'files') {
         const hashes = [...value.matchAll(/hash\s*=\s*("(?:\\.|[^"\\])*"|'[^']*')/g)].map(match => decode_toml_string(match[1]));
         current.files.push(...hashes);
+        reading_files = value.includes('[') && !value.includes(']');
       }
     } else if (section === 'package.dependencies') {
       const dependency_name = key.replace(/^['"]|['"]$/g, '');
