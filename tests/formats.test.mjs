@@ -235,7 +235,7 @@ function create_elf_analysis_fixture() {
   buffer.writeUInt32LE(4, 600);
   buffer.writeUInt32LE(4, 604);
   buffer.writeUInt32LE(3, 608);
-  buffer.write('GNU\\0', 612, 'ascii');
+  buffer.write('GNU\0', 612, 'ascii');
   buffer.set([0xde,0xad,0xbe,0xef], 616);
 
   const strtab = 320;
@@ -243,7 +243,7 @@ function create_elf_analysis_fixture() {
   buffer.writeBigUInt64LE(620n, strtab + 24);
   buffer.writeBigUInt64LE(6n, strtab + 32);
   buffer.writeBigUInt64LE(1n, strtab + 48);
-  buffer.write('\0func\\0', 620, 'binary');
+  buffer.write('\0func\0', 620, 'binary');
 
   const symtab = 384;
   buffer.writeUInt32LE(11, symtab + 4);
@@ -274,7 +274,7 @@ function create_elf_analysis_fixture() {
 
 test('ELF parser decodes load segments, GNU build ID and dynamic symbols', () => {
   const parsed = parse_elf(create_elf_analysis_fixture());
-  assert.equal(parsed.program_headers.length, 2);
+  assert.equal(parsed.program_headers.length, 3);
   assert.equal(parsed.program_headers[0].type, 'LOAD');
   assert.equal(parsed.program_headers[0].flags.execute, true);
   assert.equal(parsed.program_headers[0].file_range_valid, true);
@@ -293,7 +293,7 @@ test('ELF parser decodes load segments, GNU build ID and dynamic symbols', () =>
 
 test('ELF parser rejects program-header ranges outside the input', () => {
   const buffer = create_elf_analysis_fixture();
-  buffer.writeBigUInt64LE(0xffffn, 72);
+  buffer.writeBigUInt64LE(0xffffn, 32);
   assert.throws(() => parse_elf(buffer), error => error.code === 'ORIX_ELF_PROGRAM_TABLE_RANGE');
 });
 
