@@ -54,6 +54,7 @@ function parse_classic_xref(text, offset, file_size, limits) {
     if (!subsection) fail('ORIX_PDF_XREF_SUBSECTION', 'Malformed xref subsection header', { offset: cursor, line: row.line.slice(0, 100) });
     const start = safe_integer(subsection[1], 'xref subsection start');
     const count = safe_integer(subsection[2], 'xref subsection count');
+    if (!Number.isSafeInteger(start + count)) fail('ORIX_PDF_XREF_SUBSECTION_RANGE', 'Xref subsection object-number range exceeds safe integer precision', { start, count });
     if (count > limits.max_xref_entries - entries.length) fail('ORIX_PDF_XREF_LIMIT', 'Xref entry count exceeds configured limit', { maximum: limits.max_xref_entries });
     subsections += 1;
     for (let index = 0; index < count; index += 1) {
@@ -64,8 +65,15 @@ function parse_classic_xref(text, offset, file_size, limits) {
       const object_offset = Number(match[1]);
       const generation = Number(match[2]);
       const in_use = match[3] === 'n';
-      if (in_use && object_offset >= file_size) fail('ORIX_PDF_XREF_OBJECT_RANGE', 'In-use xref entry points outside the file', { object_number: start + index, object_offset, file_size });
-      entries.push({ object_number: start + index, offset: object_offset, generation, in_use });
+      const object_number = start + index;
+      if (in_use && object_offset >= file_size) fail('ORIX_PDF_XREF_OBJECT_RANGE', 'In-use xref entry points outside the file', { object_number, object_offset, file_size });
+      if (in_use) {
+        const object_header = /^([0-9]+)\\s+([0-9]+)\\s+obj\\b/.exec(text.slice(object_offset, Math.min(file_size, object_offset + 64)));
+        if (!object_header || Number(object_header[1]) !== object_number || Number(object_header[2]) !== generation) {
+          fail('ORIX_PDF_XREF_OBJECT_MISMATCH', 'In-use xref entry does not point to its declared object number and generation', { object_number, generation, object_offset, actual_object_number: object_header ? Number(object_header[1]) : null, actual_generation: object_header ? Number(object_header[2]) : null });
+        }
+      }
+      entries.push({ object_number, offset: object_offset, generation, in_use });
     }
   }
   if (trailer_start < 0) fail('ORIX_PDF_TRAILER_MISSING', 'Classic xref table is not followed by a trailer dictionary', { offset: cursor });
