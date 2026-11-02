@@ -992,6 +992,18 @@ test('ELF GNU hash duplicate buckets share bounded chain traversal work', () => 
   assert.throws(() => parse_elf(buffer, { max_gnu_hash_total_entries: 0 }), error => error.code === 'ORIX_ELF_GNU_HASH_LIMIT');
 });
 
+test('ELF GNU hash aggregate work budget spans multiple hash sections', () => {
+  const buffer = create_elf_gnu_hash_fixture();
+  buffer.writeUInt16LE(7, 60);
+  const second = 256 + 6 * 64;
+  buffer.writeUInt32LE(0x6ffffff6, second + 4);
+  buffer.writeBigUInt64LE(944n, second + 24);
+  buffer.writeBigUInt64LE(32n, second + 32);
+  buffer.writeUInt32LE(2, second + 40);
+  buffer.writeBigUInt64LE(8n, second + 48);
+  assert.throws(() => parse_elf(buffer, { max_gnu_hash_total_entries: 1 }), error => error.code === 'ORIX_ELF_GNU_HASH_TOTAL_ENTRY_LIMIT');
+});
+
 test('ELF parser rejects GNU hash buckets outside DYNSYM and truncated chains', () => {
   const bad_bucket = create_elf_gnu_hash_fixture();
   bad_bucket.writeUInt32LE(99, 968);
