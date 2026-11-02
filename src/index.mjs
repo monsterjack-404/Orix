@@ -24,3 +24,5 @@ export { MCP_PROTOCOL_VERSION, ORIX_MCP_TOOLS, call_orix_tool, handle_mcp_messag
 export { render_cyclonedx } from './reports/cyclonedx.mjs';
 
 export { read_json_report } from './core/read-report.mjs';
+
+export { create_evidence_ledger, append_evidence_event, verify_evidence_ledger, read_evidence_ledger } from './core/evidence-ledger.mjs';
