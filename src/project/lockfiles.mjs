@@ -180,11 +180,15 @@ function parse_yarn_lock(file, text, limits) {
   const by_selector = new Map();
   let current = null;
   let section = null;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
+  for (const line of lines) {
     if (!line.trim() || line.trimStart().startsWith('#')) continue;
     if (!/^\s/.test(line) && line.endsWith(':')) {
       const selectors = split_yarn_key(line.slice(0, -1));
+      if (selectors.length === 1 && selectors[0] === '__metadata') {
+        current = null;
+        section = null;
+        continue;
+      }
       current = { selectors, name: null, version: null, resolved: null, integrity: null, dependencies: [], optional_dependencies: [] };
       packages.push(current);
       for (const selector of selectors) by_selector.set(selector, current);
@@ -194,8 +198,8 @@ function parse_yarn_lock(file, text, limits) {
     }
     if (!current) continue;
     const trimmed = line.trim();
-    const field = /^(version|resolved|integrity|name)\s+(.+)$/.exec(trimmed);
-    if (field && !trimmed.startsWith('version:')) {
+    const field = /^(version|resolved|integrity|name|resolution|checksum):?\s+(.+)$/.exec(trimmed);
+    if (field) {
       const value = field[2].replace(/^['"]|['"]$/g, '');
       if (field[1] === 'version') current.version = value;
       else if (field[1] === 'resolved' || field[1] === 'resolution') current.resolved = value;
@@ -207,25 +211,30 @@ function parse_yarn_lock(file, text, limits) {
     const block = /^(dependencies|optionalDependencies):\s*$/.exec(trimmed);
     if (block) { section = block[1]; continue; }
     if (section && /^\s{4,}/.test(line)) {
-      const dependency = /^([^\s]+)\s+(.+)$/.exec(trimmed);
-      if (dependency) current[section === 'dependencies' ? 'dependencies' : 'optional_dependencies'].push({ name: dependency[1], requirement: dependency[2].replace(/^['"]|['"]$/g, '') });
+      const dependency = /^("[^"]+"|'[^']+'|[^\s]+)\s+(.+)$/.exec(trimmed);
+      if (dependency) {
+        const name = dependency[1].replace(/^['"]|['"]$/g, '');
+        const requirement = dependency[2].replace(/^['"]|['"]$/g, '');
+        current[section === 'dependencies' ? 'dependencies' : 'optional_dependencies'].push({ name, requirement });
+      }
       continue;
     }
     section = null;
   }
   const resolve_name = selector => {
-    const match = /^(?:@[^/]+\/)?[^@]+@(.+)$/.exec(selector);
-    if (!match) return selector.split('@')[0];
-    return selector.slice(0, selector.lastIndexOf('@'));
+    const separator = selector.lastIndexOf('@');
+    return separator > 0 ? selector.slice(0, separator) : selector;
   };
   const resolved = [];
   const edges = [];
   const warnings = [];
-  for (let index = 0; index < packages.length; index += 1) {
-    const item = packages[index];
+  for (const item of packages) {
     const name = clean_string(item.name, MAX_NAME, 'name') ?? resolve_name(item.selectors[0] ?? '');
     const version = clean_string(item.version, MAX_VERSION, 'version');
-    if (!name || !version) continue;
+    if (!name || !version) {
+      warnings.push({ code: 'ORIX_LOCKFILE_PACKAGE_IDENTITY', selectors: item.selectors });
+      continue;
+    }
     const record = {
       name, version, ecosystem: 'npm', location: item.selectors.join(', '),
       dependency_type: 'resolved', dev: false, optional: item.optional_dependencies.length > 0,
@@ -237,12 +246,15 @@ function parse_yarn_lock(file, text, limits) {
     for (const dependency of record.dependencies) {
       const selector = dependency.name + '@' + dependency.requirement;
       const candidate = by_selector.get(selector) ?? by_selector.get(dependency.name + '@npm:' + dependency.requirement);
-      if (candidate) edges.push({ from: record.location, to: candidate.selectors.join(', '), name: dependency.name, requirement: dependency.requirement, resolved_version: candidate.version });
-      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_EDGE', from: record.location, dependency: dependency.name });
+      if (candidate) {
+        edges.push({ from: record.location, to: candidate.selectors.join(', '), name: dependency.name, requirement: dependency.requirement, resolved_version: candidate.version });
+      } else {
+        warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_EDGE', from: record.location, dependency: dependency.name });
+      }
       if (edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Yarn lockfile dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
     }
   }
-  return { path: file, ecosystem: 'npm', format: 'yarn-lock', lockfile_version: null, packages: resolved, edges, warnings, complete: warnings.length === 0 };
+  return { path: file, ecosystem: 'npm', format: 'yarn-lock', lockfile_version: null, packages: resolved, edges, root_dependencies: [], root_edges: [], warnings, complete: warnings.length === 0 };
 }
 
 export function parse_lockfile(file, text, options = {}) {
