@@ -8,7 +8,7 @@ import { scan_git_metadata } from './git-metadata.mjs';
 const DEFAULTS={max_files:50000,max_entries:200000,max_depth:24,max_file_bytes:1048576,max_total_bytes:134217728,max_symbols_per_file:100,max_imports_per_file:200,max_lockfile_packages:100000,max_lockfile_edges:500000,max_git_refs:5000,max_git_ref_depth:24,max_git_metadata_bytes:4194304,max_git_object_bytes:2097152,max_git_pack_files:1000,include_hidden:false};
 const IGNORED=new Set(['.git','.hg','.svn','node_modules','vendor','dist','build','coverage','.next','.nuxt','.turbo','.cache','.venv','venv','__pycache__','target','bin','obj']);
 const EXT={'.js':'JavaScript','.mjs':'JavaScript','.cjs':'JavaScript','.jsx':'JavaScript','.ts':'TypeScript','.tsx':'TypeScript','.py':'Python','.go':'Go','.rs':'Rust','.c':'C','.h':'C/C++','.cc':'C++','.cpp':'C++','.hpp':'C++','.java':'Java','.kt':'Kotlin','.swift':'Swift','.cs':'C#','.php':'PHP','.rb':'Ruby','.sh':'Shell','.sql':'SQL','.html':'HTML','.css':'CSS','.xml':'XML','.yaml':'YAML','.yml':'YAML','.toml':'TOML','.json':'JSON','.md':'Markdown','.mdx':'MDX','.vue':'Vue','.svelte':'Svelte'};
-const LOCKFILES=new Set(['package-lock.json','yarn.lock','Cargo.lock','pnpm-lock.yaml','composer.lock','poetry.lock','Pipfile.lock','go.sum','Gemfile.lock']);
+const LOCKFILES=new Set(['package-lock.json','yarn.lock','Cargo.lock','pnpm-lock.yaml','composer.lock','poetry.lock','Pipfile.lock','go.sum','packages.lock.json','gradle.lockfile','Gemfile.lock']);
 const MANIFESTS=new Set(['package.json','requirements.txt','pyproject.toml','Cargo.toml','go.mod','composer.json','pom.xml','Gemfile','Pipfile','packages.config','Directory.Packages.props']);
 const SECRET_RULES=[
  ['ORIX-PROJECT-SECRET-AWS-001','AWS access-key identifier',/\bAKIA[0-9A-Z]{16}\b/g],
