@@ -7,6 +7,168 @@ const MACHINES = new Map([[3,'x86'],[8,'MIPS'],[20,'PowerPC'],[21,'PowerPC64'],[
 const TYPES = new Map([[0,'NONE'],[1,'REL'],[2,'EXEC'],[3,'DYN'],[4,'CORE']]);
 const SECTION_TYPES = new Map([[0,'NULL'],[1,'PROGBITS'],[2,'SYMTAB'],[3,'STRTAB'],[4,'RELA'],[5,'HASH'],[6,'DYNAMIC'],[7,'NOTE'],[8,'NOBITS'],[9,'REL'],[11,'DYNSYM'],[14,'INIT_ARRAY'],[15,'FINI_ARRAY'],[16,'PREINIT_ARRAY'],[17,'GROUP'],[18,'SYMTAB_SHNDX']]);
 
+
+const PROGRAM_TYPES = new Map([[0,'NULL'],[1,'LOAD'],[2,'DYNAMIC'],[3,'INTERP'],[4,'NOTE'],[5,'SHLIB'],[6,'PHDR'],[7,'TLS'],[0x6474e550,'GNU_EH_FRAME'],[0x6474e551,'GNU_STACK'],[0x6474e552,'GNU_RELRO']]);
+const SYMBOL_TYPES = new Map([[0,'NOTYPE'],[1,'OBJECT'],[2,'FUNC'],[3,'SECTION'],[4,'FILE'],[5,'COMMON'],[6,'TLS'],[10,'IFUNC']]);
+const SYMBOL_BINDINGS = new Map([[0,'LOCAL'],[1,'GLOBAL'],[2,'WEAK'],[10,'GNU_UNIQUE']]);
+const DYNAMIC_TAGS = new Map([[0,'NULL'],[1,'NEEDED'],[2,'PLTRELSZ'],[3,'PLTGOT'],[4,'HASH'],[5,'STRTAB'],[6,'SYMTAB'],[7,'RELA'],[8,'RELASZ'],[9,'RELAENT'],[10,'STRSZ'],[11,'SYMENT'],[12,'INIT'],[13,'FINI'],[14,'SONAME'],[15,'RPATH'],[17,'REL'],[18,'RELSZ'],[19,'RELENT'],[20,'PLTREL'],[21,'DEBUG'],[22,'TEXTREL'],[23,'JMPREL'],[24,'BIND_NOW'],[25,'INIT_ARRAY'],[26,'FINI_ARRAY'],[27,'INIT_ARRAYSZ'],[28,'FINI_ARRAYSZ'],[29,'RUNPATH'],[30,'FLAGS'],[0x6ffffffb,'FLAGS_1'],[0x6ffffef5,'GNU_HASH'],[0x6ffffefc,'VERDEF'],[0x6ffffefd,'VERDEFNUM'],[0x6ffffffe,'VERNEED'],[0x6fffffff,'VERNEEDNUM']]);
+
+function number_field(value, label) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new OrixError('ORIX_ELF_OFFSET_TOO_LARGE', label + ' exceeds the safe integer range', { details: { value: String(value) }, recoverable: true });
+  }
+  return value;
+}
+
+function read_elf_string(reader, table, offset, label) {
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset >= table.length) return '';
+  let end = offset;
+  while (end < table.length && table[end] !== 0) end += 1;
+  if (end === table.length) return '';
+  return table.toString('utf8', offset, end);
+}
+
+function parse_program_headers(reader, buffer, is_64, little, table_offset_value, entry_size, count, options) {
+  const maximum = options.max_program_headers ?? 4096;
+  if (count > maximum) throw new OrixError('ORIX_ELF_PROGRAM_LIMIT', 'ELF program-header count exceeds configured parser limit', { details: { count, maximum }, recoverable: true });
+  const expected = is_64 ? 56 : 32;
+  if (count === 0) return { valid: true, segments: [], interpreter: null, build_id: null, dynamic: [] };
+  if (entry_size < expected) throw new OrixError('ORIX_ELF_BAD_PROGRAM_ENTRY_SIZE', 'ELF program-header entry size is too small', { details: { entry_size, expected }, recoverable: true });
+  const table_offset = number_field(table_offset_value, 'Program-header table offset');
+  if (table_offset > buffer.length || entry_size * count > buffer.length - table_offset) {
+    throw new OrixError('ORIX_ELF_PROGRAM_TABLE_RANGE', 'ELF program-header table exceeds the input', { details: { table_offset, entry_size, count, file_size: buffer.length }, recoverable: true });
+  }
+  const segments = [];
+  let interpreter = null;
+  let build_id = null;
+  const dynamic = [];
+  const dynamic_limit = options.max_dynamic_entries ?? 8192;
+  for (let index = 0; index < count; index += 1) {
+    const offset = table_offset + index * entry_size;
+    const p_type = reader.u32(offset, little, 'program type');
+    let p_flags, p_offset, virtual_address, physical_address, file_size, memory_size, alignment;
+    if (is_64) {
+      p_flags = reader.u32(offset + 4, little, 'program flags');
+      p_offset = reader.u64(offset + 8, little, 'segment file offset');
+      virtual_address = reader.u64(offset + 16, little, 'segment virtual address');
+      physical_address = reader.u64(offset + 24, little, 'segment physical address');
+      file_size = reader.u64(offset + 32, little, 'segment file size');
+      memory_size = reader.u64(offset + 40, little, 'segment memory size');
+      alignment = reader.u64(offset + 48, little, 'segment alignment');
+    } else {
+      p_offset = reader.u32(offset + 4, little, 'segment file offset');
+      virtual_address = reader.u32(offset + 8, little, 'segment virtual address');
+      physical_address = reader.u32(offset + 12, little, 'segment physical address');
+      file_size = reader.u32(offset + 16, little, 'segment file size');
+      memory_size = reader.u32(offset + 20, little, 'segment memory size');
+      p_flags = reader.u32(offset + 24, little, 'program flags');
+      alignment = reader.u32(offset + 28, little, 'segment alignment');
+    }
+    const numeric_offset = typeof p_offset === 'number' ? p_offset : null;
+    const numeric_size = typeof file_size === 'number' ? file_size : null;
+    const file_range_valid = numeric_offset !== null && numeric_size !== null && numeric_offset <= buffer.length && numeric_size <= buffer.length - numeric_offset;
+    const segment = {
+      index, type: PROGRAM_TYPES.get(p_type) ?? 'UNKNOWN_' + p_type, type_value: p_type,
+      flags: { raw: p_flags, read: Boolean(p_flags & 4), write: Boolean(p_flags & 2), execute: Boolean(p_flags & 1) },
+      file_offset: p_offset, virtual_address: virtual_address, physical_address,
+      file_size, memory_size, alignment, file_range_valid,
+    };
+    segments.push(segment);
+    if (!file_range_valid || numeric_size === 0) continue;
+    if (p_type === 3) {
+      const bytes = reader.bytes(numeric_offset, numeric_size, 'PT_INTERP');
+      const end = bytes.indexOf(0);
+      if (end < 0) throw new OrixError('ORIX_ELF_BAD_INTERPRETER', 'ELF interpreter segment is not NUL terminated', { details: { index, numeric_size }, recoverable: true });
+      interpreter = bytes.toString('utf8', 0, end);
+    }
+    if (p_type === 4) {
+      let cursor = numeric_offset;
+      const end = numeric_offset + numeric_size;
+      while (cursor + 12 <= end) {
+        const namesz = reader.u32(cursor, little, 'note name size');
+        const descsz = reader.u32(cursor + 4, little, 'note descriptor size');
+        const note_type = reader.u32(cursor + 8, little, 'note type');
+        const name_start = cursor + 12;
+        const desc_start = name_start + ((namesz + 3) & ~3);
+        const next = desc_start + ((descsz + 3) & ~3);
+        if (next > end || desc_start < name_start) break;
+        const note_name = reader.bytes(name_start, namesz, 'note name').toString('ascii').replace(/\0+$/, '');
+        if (note_name === 'GNU' && note_type === 3 && descsz > 0 && descsz <= 64) {
+          build_id = reader.bytes(desc_start, descsz, 'GNU build ID').toString('hex');
+        }
+        cursor = next;
+      }
+    }
+    if (p_type === 2) {
+      const width = is_64 ? 16 : 8;
+      const total = Math.min(Math.floor(numeric_size / width), dynamic_limit);
+      for (let item = 0; item < total; item += 1) {
+        const at = numeric_offset + item * width;
+        const tag = is_64 ? Number(reader.view.getBigInt64(at, little)) : reader.view.getInt32(at, little);
+        const value = is_64 ? reader.u64(at + 8, little, 'dynamic value') : reader.u32(at + 4, little, 'dynamic value');
+        dynamic.push({ tag, name: DYNAMIC_TAGS.get(tag) ?? 'UNKNOWN_' + tag, value });
+        if (tag === 0) break;
+      }
+    }
+  }
+  return { valid: true, segments, interpreter, build_id, dynamic };
+}
+
+function parse_symbol_tables(reader, buffer, raw_sections, is_64, little, options) {
+  const maximum = options.max_symbols ?? 100000;
+  const symbols = [];
+  const tables = [];
+  for (const section of raw_sections) {
+    if (section.raw_type !== 2 && section.raw_type !== 11) continue;
+    if (!section.raw_range_valid || typeof section.file_offset !== 'number' || typeof section.size !== 'number') {
+      tables.push({ section_index: section.index, type: section.type, status: 'invalid-range', symbol_count: 0 });
+      continue;
+    }
+    const expected = is_64 ? 24 : 16;
+    const entry_size = number_field(section.entry_size, 'Symbol entry size');
+    if (entry_size < expected || section.size % entry_size !== 0) {
+      tables.push({ section_index: section.index, type: section.type, status: 'invalid-entry-size', symbol_count: 0 });
+      continue;
+    }
+    const count = section.size / entry_size;
+    if (count > maximum || symbols.length + count > maximum) {
+      throw new OrixError('ORIX_ELF_SYMBOL_LIMIT', 'ELF symbol count exceeds configured parser limit', { details: { count, accumulated: symbols.length, maximum }, recoverable: true });
+    }
+    const linked = raw_sections[section.link];
+    let strings = Buffer.alloc(0);
+    if (linked && linked.type === 'STRTAB' && linked.raw_range_valid && typeof linked.file_offset === 'number' && typeof linked.size === 'number') {
+      strings = reader.bytes(linked.file_offset, linked.size, 'symbol string table');
+    }
+    for (let index = 0; index < count; index += 1) {
+      const at = section.file_offset + index * entry_size;
+      const name_offset = reader.u32(at, little, 'symbol name offset');
+      let info, other, section_index, value, size;
+      if (is_64) {
+        info = reader.u8(at + 4, 'symbol info');
+        other = reader.u8(at + 5, 'symbol visibility');
+        section_index = reader.u16(at + 6, little, 'symbol section index');
+        value = reader.u64(at + 8, little, 'symbol value');
+        size = reader.u64(at + 16, little, 'symbol size');
+      } else {
+        value = reader.u32(at + 4, little, 'symbol value');
+        size = reader.u32(at + 8, little, 'symbol size');
+        info = reader.u8(at + 12, 'symbol info');
+        other = reader.u8(at + 13, 'symbol visibility');
+        section_index = reader.u16(at + 14, little, 'symbol section index');
+      }
+      const name = read_elf_string(reader, strings, name_offset, 'symbol name');
+      symbols.push({
+        table_section_index: section.index, index, name,
+        binding: SYMBOL_BINDINGS.get(info >> 4) ?? 'UNKNOWN_' + (info >> 4),
+        type: SYMBOL_TYPES.get(info & 0x0f) ?? 'UNKNOWN_' + (info & 0x0f),
+        visibility: other & 3, section_index, value, size,
+      });
+    }
+    tables.push({ section_index: section.index, type: section.type, status: 'parsed', symbol_count: count, linked_string_table_index: section.link });
+  }
+  return { symbols, tables };
+}
+
 export function parse_elf(buffer, options = {}) {
   const reader = new BinaryReader(buffer, { label: 'ELF image' });
   if (reader.ascii(0, 4, 'ELF magic') !== '\x7fELF') throw new OrixError('ORIX_ELF_BAD_MAGIC', 'Input does not contain an ELF signature', { recoverable: true });
@@ -54,7 +216,10 @@ export function parse_elf(buffer, options = {}) {
     const file_offset = is_64 ? reader.u64(offset + 24, little, 'section file offset') : reader.u32(offset + 16, little, 'section file offset');
     const size = is_64 ? reader.u64(offset + 32, little, 'section size') : reader.u32(offset + 20, little, 'section size');
     const entry_size = is_64 ? reader.u64(offset + 56, little, 'section entry size') : reader.u32(offset + 36, little, 'section entry size');
-    raw_sections.push({ index, name_offset, type: SECTION_TYPES.get(section_type) ?? `UNKNOWN_${section_type}`, flags: section_flags, address, file_offset, size, entry_size, raw_range_valid: section_type === 8 || (typeof file_offset === 'number' && typeof size === 'number' && file_offset <= buffer.length && size <= buffer.length - file_offset) });
+    const link = reader.u32(offset + (is_64 ? 40 : 24), little, 'section link');
+    const info = reader.u32(offset + (is_64 ? 44 : 28), little, 'section info');
+    const alignment = is_64 ? reader.u64(offset + 48, little, 'section alignment') : reader.u32(offset + 32, little, 'section alignment');
+    raw_sections.push({ index, name_offset, raw_type: section_type, type: SECTION_TYPES.get(section_type) ?? `UNKNOWN_${section_type}`, flags: section_flags, address, file_offset, size, entry_size, link, info, alignment, raw_range_valid: section_type === 8 || (typeof file_offset === 'number' && typeof size === 'number' && file_offset <= buffer.length && size <= buffer.length - file_offset) });
   }
 
   let names = Buffer.alloc(0);
@@ -74,21 +239,24 @@ export function parse_elf(buffer, options = {}) {
     return { index: section.index, name, type: section.type, flags: section.flags, address: section.address, file_offset: section.file_offset, size: section.size, entry_size: section.entry_size, raw_range_valid: section.raw_range_valid };
   });
 
-  const expected_program_size = is_64 ? 56 : 32;
-  const program_table_valid = program_header_count === 0 || (
-    typeof program_header_offset === 'number' && program_header_entry_size >= expected_program_size &&
-    program_header_offset <= buffer.length && program_header_entry_size * program_header_count <= buffer.length - program_header_offset
-  );
+  const program_result = parse_program_headers(reader, buffer, is_64, little, program_header_offset, program_header_entry_size, program_header_count, options);
+  const symbol_result = parse_symbol_tables(reader, buffer, raw_sections, is_64, little, options);
   return {
     format: 'ELF', bitness: is_64 ? 64 : 32, endianness: little ? 'little' : 'big',
     architecture: MACHINES.get(machine) ?? `unknown-${machine}`,
     header: {
       type: TYPES.get(type) ?? `UNKNOWN_${type}`, machine, version, entry_point: entry,
       program_header_offset, program_header_entry_size, program_header_count,
-      program_table_valid, section_header_offset, section_header_entry_size,
+      program_table_valid: program_result.valid, section_header_offset, section_header_entry_size,
       section_header_count, section_name_index, header_size, flags,
     },
     sections,
-    notes: ['Section names are resolved only when the section-name string table is present and fully in range.', 'Program headers are range-checked but not decoded into load segments in this release.'],
+    program_headers: program_result.segments,
+    interpreter: program_result.interpreter,
+    gnu_build_id: program_result.build_id,
+    dynamic_entries: program_result.dynamic,
+    symbols: symbol_result.symbols,
+    symbol_tables: symbol_result.tables,
+    notes: ['Section names are resolved only when the section-name string table is present and fully in range.', 'Program headers, PT_INTERP, PT_NOTE GNU build IDs, PT_DYNAMIC entries and SHT_SYMTAB/SHT_DYNSYM symbols are decoded when their file ranges and entry layouts are valid.', 'Extended ELF numbering, relocation application, GNU symbol version resolution and DWARF decoding are not implemented.'],
   };
 }
