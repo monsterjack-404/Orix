@@ -1039,8 +1039,8 @@ test('Mach-O parser decodes LC_DYSYMTAB symbol groups and indirect-symbol marker
   buffer.writeUInt32LE(0, dynamic + 40);
   buffer.writeUInt32LE(0, dynamic + 44);
   buffer.writeUInt32LE(0, dynamic + 48);
-  buffer.writeUInt32LE(160, dynamic + 52);
-  buffer.writeUInt32LE(2, dynamic + 56);
+  buffer.writeUInt32LE(160, dynamic + 56);
+  buffer.writeUInt32LE(2, dynamic + 60);
   buffer.writeUInt32LE(0, dynamic + 60);
   buffer.writeUInt32LE(0, dynamic + 64);
   buffer.writeUInt32LE(0, dynamic + 68);
@@ -1084,8 +1084,8 @@ test('Mach-O parser rejects invalid dynamic-symbol index groups and indirect ref
   assert.throws(() => parse_macho(buffer), error => error.code === 'ORIX_MACHO_DYSYMTAB_SYMBOL_RANGE');
   buffer.writeUInt32LE(0, dynamic + 16);
   buffer.writeUInt32LE(0, dynamic + 20);
-  buffer.writeUInt32LE(160, dynamic + 52);
-  buffer.writeUInt32LE(1, dynamic + 56);
-  buffer.writeUInt32LE(0, 160);
+  buffer.writeUInt32LE(160, dynamic + 56);
+  buffer.writeUInt32LE(1, dynamic + 60);
+  buffer.writeUInt32LE(1, 160);
   assert.throws(() => parse_macho(buffer), error => error.code === 'ORIX_MACHO_INDIRECT_SYMBOL_INDEX');
 });
