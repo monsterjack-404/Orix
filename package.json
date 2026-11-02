@@ -21,7 +21,8 @@
     "./evidence/ledger": "./src/evidence/ledger.mjs",
     "./analyzer/compare": "./src/analyzer/compare.mjs",
     "./reports/comparison": "./src/reports/comparison.mjs",
-    "./mcp": "./src/mcp/server.mjs"
+    "./mcp": "./src/mcp/server.mjs",
+    "./reports/cyclonedx": "./src/reports/cyclonedx.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
