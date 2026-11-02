@@ -16,6 +16,7 @@ import { compare_reports } from '../analyzer/compare.mjs';
 import { render_comparison_markdown } from '../reports/comparison.mjs';
 import { OrixError } from '../core/errors.mjs';
 import { hash_buffer } from '../core/hash.mjs';
+import { render_cyclonedx } from '../reports/cyclonedx.mjs';
 async function write_or_print(content,output_path) {
   if(!output_path){process.stdout.write(content.endsWith('\n')?content:content+'\n');return;}
   const destination=path.resolve(output_path);
@@ -79,6 +80,7 @@ export async function main(argv=process.argv.slice(2)) {
   if(!parsed.target)throw new Error(parsed.command+' requires a target path');
   const options={...parsed.flags,limits:parsed.flags};
   if(parsed.flags.format==='sarif'&&parsed.command==='project')throw new Error('SARIF output currently supports inspect and scan reports, not project reports');
+  if(parsed.flags.format==='cyclonedx'&&parsed.command!=='project')throw new Error('CycloneDX output requires the project command');
   let report,renderer;
   if(parsed.command==='inspect'){report=await inspect_file(parsed.target,options);renderer=render_inspection_markdown;}
   else if(parsed.command==='scan'){report=await scan_directory(parsed.target,options);renderer=render_scan_markdown;}
@@ -89,7 +91,7 @@ export async function main(argv=process.argv.slice(2)) {
       max_depth:parsed.flags.max_scan_depth,
     };
     report=await scan_project(parsed.target,project_limits);
-    renderer=render_project_markdown;
+    renderer=parsed.flags.format==='cyclonedx'?render_cyclonedx:render_project_markdown;
   }
   if(parsed.flags.ledger){
     const payload=parsed.command==='inspect'
