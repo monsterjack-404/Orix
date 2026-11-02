@@ -686,6 +686,6 @@ test('PE parser converts VA-based delay-import fields and rejects invalid thunk 
   expanded.writeUInt32LE(0, descriptor + 24);
   expanded.writeUInt32LE(0, descriptor + 28);
   expanded.write('TESTDLL.dll\0', raw + 0x150, 'ascii');
-  expanded.writeUInt32LE(0xfffffff0, raw + 0x170);
+  expanded.writeUInt32LE(0x7ffffff0, raw + 0x170);
   assert.throws(() => parse_pe(expanded), error => error.code === 'ORIX_PE_INVALID_DELAY_IMPORT_NAME');
 });
