@@ -156,7 +156,7 @@ function parse_relocations(reader, raw_sections, is_64, little, options) {
     }
     const rela = section.raw_type === 4;
     const linked_symbols = raw_sections[section.link];
-    if (!linked_symbols || (linked_symbols.raw_type !== 2 && linked_symbols.raw_type !== 11)) {
+    if (!linked_symbols || (linked_symbols.raw_type !== 2 && linked_symbols.raw_type !== 11) || !linked_symbols.raw_range_valid || typeof linked_symbols.size !== 'number') {
       tables.push({ section_index: section.index, type: section.type, status: 'invalid-symbol-table-link', relocation_count: 0 });
       continue;
     }
