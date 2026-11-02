@@ -1090,7 +1090,7 @@ function parse_nuget_lock(file, text, limits) {
 }
 
 function parse_gradle_lock(file, text, limits, manifests) {
-  const packages = [];
+  const package_map = new Map();
   const warnings = [];
   for (const [index, line] of text.split(/\r?\n/).entries()) {
     const value = line.trim();
@@ -1100,9 +1100,16 @@ function parse_gradle_lock(file, text, limits, manifests) {
       warnings.push({ code: 'ORIX_LOCKFILE_GRADLE_LINE', line: index + 1 });
       continue;
     }
-    if (packages.length >= limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'Gradle lockfile package count exceeds configured limit', { file, maximum: limits.max_packages });
     const configurations = (match[4] ?? '').split(',').map(item => item.trim()).filter(Boolean);
-    packages.push({
+    const key = match[1] + ':' + match[2] + '@' + match[3];
+    const existing = package_map.get(key);
+    if (existing) {
+      existing.configurations = [...new Set([...existing.configurations, ...configurations])].sort();
+      existing.dev = existing.dev || configurations.some(item => /test|testCompile|testRuntime/i.test(item));
+      continue;
+    }
+    if (package_map.size >= limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'Gradle lockfile package count exceeds configured limit', { file, maximum: limits.max_packages });
+    package_map.set(key, {
       name: match[1] + ':' + match[2],
       version: match[3],
       ecosystem: 'maven',
@@ -1118,6 +1125,7 @@ function parse_gradle_lock(file, text, limits, manifests) {
       configurations,
     });
   }
+  const packages = [...package_map.values()];
   const by_name = new Map();
   for (const item of packages) {
     const values = by_name.get(item.name) ?? [];
