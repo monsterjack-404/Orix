@@ -107,7 +107,15 @@ orix scan <directory> [--json|--markdown|--format sarif] [--out <path>]
 
 Traversal is deterministic and does not follow symlinks. Common generated/dependency directories (`.git`, `node_modules`, `dist`, `build`, `.next`, and others) are excluded by default. A scan report records discovered files, skipped entries, errors, byte totals, format distribution, limits, and whether inventory was truncated.
 
-### `compare`\n\n```text\norix compare <baseline-report.json> <current-report.json> [--json|--markdown] [--out <path>]\n```\n\nComparison classifies added, removed, modified and unchanged artifacts by normalized report-relative path and SHA-256. It also reports introduced/resolved static indicators. Renames appear as removal plus addition; the command compares supplied snapshots and does not access original artifact trees.\n\n### Reports and safe output files
+### `compare`
+
+```text
+orix compare <baseline-report.json> <current-report.json> [--json|--markdown] [--out <path>]
+```
+
+Comparison classifies added, removed, modified and unchanged artifacts by normalized report-relative path and SHA-256. It also reports introduced/resolved static indicators. Renames appear as removal plus addition; the command compares supplied snapshots and does not access original artifact trees.
+
+### Reports and safe output files
 
 Use `--format json` or `--json` for automation, `--format sarif` for GitHub code-scanning-compatible static findings, and Markdown for review and sharing. SARIF is supported by `inspect` and `scan`; project reports remain JSON/Markdown. `--out` creates a new report file with restrictive permissions; it refuses to overwrite an existing path. Report output is not written into the target artifact or directory unless the caller explicitly names that location.
 
