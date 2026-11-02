@@ -187,7 +187,7 @@ test('PE parser enforces configured section and import limits', () => {
 
 
 function create_elf_analysis_fixture() {
-  const buffer = Buffer.alloc(768);
+  const buffer = Buffer.alloc(800);
   buffer.set([0x7f,0x45,0x4c,0x46,2,1,1,0]);
   buffer.writeUInt16LE(2, 16);
   buffer.writeUInt16LE(62, 18);
@@ -197,7 +197,7 @@ function create_elf_analysis_fixture() {
   buffer.writeBigUInt64LE(256n, 40);
   buffer.writeUInt16LE(64, 52);
   buffer.writeUInt16LE(56, 54);
-  buffer.writeUInt16LE(2, 56);
+  buffer.writeUInt16LE(3, 56);
   buffer.writeUInt16LE(64, 58);
   buffer.writeUInt16LE(3, 60);
   buffer.writeUInt16LE(0, 62);
@@ -207,8 +207,8 @@ function create_elf_analysis_fixture() {
   buffer.writeBigUInt64LE(0n, 72);
   buffer.writeBigUInt64LE(0x400000n, 80);
   buffer.writeBigUInt64LE(0x400000n, 88);
-  buffer.writeBigUInt64LE(768n, 96);
-  buffer.writeBigUInt64LE(768n, 104);
+  buffer.writeBigUInt64LE(800n, 96);
+  buffer.writeBigUInt64LE(800n, 104);
   buffer.writeBigUInt64LE(0x1000n, 112);
 
   buffer.writeUInt32LE(4, 120);
@@ -219,6 +219,19 @@ function create_elf_analysis_fixture() {
   buffer.writeBigUInt64LE(20n, 152);
   buffer.writeBigUInt64LE(20n, 160);
   buffer.writeBigUInt64LE(4n, 168);
+
+  buffer.writeUInt32LE(2, 176);
+  buffer.writeUInt32LE(4, 180);
+  buffer.writeBigUInt64LE(720n, 184);
+  buffer.writeBigUInt64LE(0x4002d0n, 192);
+  buffer.writeBigUInt64LE(0x4002d0n, 200);
+  buffer.writeBigUInt64LE(32n, 208);
+  buffer.writeBigUInt64LE(32n, 216);
+  buffer.writeBigUInt64LE(8n, 224);
+  buffer.writeBigInt64LE(1n, 720);
+  buffer.writeBigUInt64LE(1n, 728);
+  buffer.writeBigInt64LE(0n, 736);
+  buffer.writeBigUInt64LE(0n, 744);
   buffer.writeUInt32LE(4, 600);
   buffer.writeUInt32LE(4, 604);
   buffer.writeUInt32LE(3, 608);
@@ -239,6 +252,18 @@ function create_elf_analysis_fixture() {
   buffer.writeUInt32LE(1, symtab + 40);
   buffer.writeBigUInt64LE(8n, symtab + 48);
   buffer.writeBigUInt64LE(24n, symtab + 56);
+
+  const rela = 448;
+  buffer.writeUInt32LE(4, rela + 4);
+  buffer.writeBigUInt64LE(688n, rela + 24);
+  buffer.writeBigUInt64LE(24n, rela + 32);
+  buffer.writeUInt32LE(2, rela + 40);
+  buffer.writeUInt32LE(1, rela + 44);
+  buffer.writeBigUInt64LE(8n, rela + 48);
+  buffer.writeBigUInt64LE(24n, rela + 56);
+  buffer.writeBigUInt64LE(0x401010n, 688);
+  buffer.writeBigUInt64LE((1n << 32n) | 7n, 696);
+  buffer.writeBigInt64LE(-4n, 704);
   buffer.writeUInt32LE(1, 664);
   buffer[668] = 0x12;
   buffer.writeUInt16LE(1, 670);
@@ -254,6 +279,11 @@ test('ELF parser decodes load segments, GNU build ID and dynamic symbols', () =>
   assert.equal(parsed.program_headers[0].flags.execute, true);
   assert.equal(parsed.program_headers[0].file_range_valid, true);
   assert.equal(parsed.gnu_build_id, 'deadbeef');
+  assert.equal(parsed.dynamic_entries[0].name, 'NEEDED');
+  assert.equal(parsed.relocations.length, 1);
+  assert.equal(parsed.relocations[0].symbol_index, 1);
+  assert.equal(parsed.relocations[0].type, 7);
+  assert.equal(parsed.relocations[0].addend, -4);
   assert.equal(parsed.symbols.length, 2);
   assert.equal(parsed.symbols[1].name, 'func');
   assert.equal(parsed.symbols[1].binding, 'GLOBAL');
