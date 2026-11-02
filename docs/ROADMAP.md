@@ -49,7 +49,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [x] GNU version requirements, definitions and version-symbol table mapping.
 - [x] GNU hash bloom filters, bucket arrays and terminal-bit chain decoding with aggregate work limits.
 - [ ] Extended ELF numbering and DWARF decoding.
-- [x] Mach-O FAT/FAT64 architecture tables, bounded slices, segment/section commands, bounded LC_SYMTAB nlist decoding and CodeDirectory metadata.
+- [x] Mach-O FAT/FAT64 architecture tables, bounded slices, segment/section commands, bounded LC_SYMTAB nlist decoding, LC_DYSYMTAB symbol groups/indirect entries and CodeDirectory metadata.
 - [ ] Chained fixups, cryptographic trust verification and Objective-C metadata.
 - [x] ZIP64 EOCD/locator and per-entry extended size/offset parsing with safe-integer and central-directory bounds.
 - [ ] Decompression-bomb safeguards and bounded safe entry streaming; extraction remains opt-in.
