@@ -71,6 +71,8 @@ export function render_cyclonedx(report, options = {}) {
     if (dependency.lockfile_path) property_set.set('orix:lockfile', dependency.lockfile_path);
     if (dependency.integrity) property_set.set('orix:integrity', dependency.integrity);
     if (dependency.checksum_kind) property_set.set('orix:checksum-kind', dependency.checksum_kind);
+    if (dependency.frameworks?.length) property_set.set('orix:frameworks', dependency.frameworks.join(','));
+    if (dependency.configurations?.length) property_set.set('orix:configurations', dependency.configurations.join(','));
     if (dependency.resolved) property_set.set('orix:resolved-url', dependency.resolved);
     if (dependency.license) property_set.set('orix:declared-license', dependency.license);
     components.set(purl, {
