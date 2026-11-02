@@ -46,8 +46,10 @@ function parse_npm_package_lock(file, text, limits) {
   const packages = [];
   const edges = [];
   const warnings = [];
+  const root_dependencies = [];
   if (document.packages && typeof document.packages === 'object' && !Array.isArray(document.packages)) {
-    const entries = Object.entries(document.packages).filter(([location]) => location !== '').sort(([a], [b]) => a.localeCompare(b));
+    const root_metadata = document.packages[''] ?? {};
+    for (const [kind, field] of [['runtime', 'dependencies'], ['development', 'devDependencies'], ['optional', 'optionalDependencies']]) {\n      for (const [name, requirement] of Object.entries(root_metadata[field] ?? {})) root_dependencies.push({ name, requirement: String(requirement).slice(0, MAX_VERSION), dependency_type: kind });\n    }\n    const entries = Object.entries(document.packages).filter(([location]) => location !== '').sort(([a], [b]) => a.localeCompare(b));
     if (entries.length > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'npm lockfile package count exceeds configured limit', { file, count: entries.length, maximum: limits.max_packages });
     for (const [location, metadata] of entries) {
       if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue;
@@ -75,14 +77,16 @@ function parse_npm_package_lock(file, text, limits) {
       packages.push(item);
     }
     const resolve_package = (from_location, dependency_name) => {
-      const ancestors = from_location.split('/node_modules/');
-      for (let depth = ancestors.length; depth >= 1; depth -= 1) {
-        const prefix = ancestors.slice(0, depth).join('/node_modules/');
-        const candidate = prefix ? prefix + '/node_modules/' + dependency_name : 'node_modules/' + dependency_name;
+      let ancestor = from_location;
+      while (ancestor) {
+        const candidate = ancestor + '/node_modules/' + dependency_name;
         if (package_map.has(candidate)) return package_map.get(candidate);
+        const marker = ancestor.lastIndexOf('/node_modules/');
+        if (marker >= 0) ancestor = ancestor.slice(0, marker);
+        else if (ancestor.startsWith('node_modules/')) ancestor = '';
+        else ancestor = '';
       }
-      const root_candidate = 'node_modules/' + dependency_name;
-      return package_map.get(root_candidate) ?? null;
+      return package_map.get('node_modules/' + dependency_name) ?? null;
     };
     for (const item of packages) {
       for (const dependency of item.dependencies) {
@@ -111,13 +115,12 @@ function parse_npm_package_lock(file, text, limits) {
   } else {
     warnings.push({ code: 'ORIX_LOCKFILE_NO_PACKAGE_TABLE' });
   }
-  return {
-    path: file,
-    ecosystem: 'npm',
-    format: 'npm-package-lock',
+  const root_edges = root_dependencies.map(dependency => {\n    const target = package_map.get('node_modules/' + dependency.name);\n    return target ? { name: dependency.name, requirement: dependency.requirement, dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version } : null;\n  }).filter(Boolean);\n  return {\n    path: file,\n    ecosystem: 'npm',\n    format: 'npm-package-lock',
     lockfile_version: version,
     packages,
     edges,
+    root_dependencies,
+    root_edges,
     warnings,
     complete: warnings.length === 0,
   };
@@ -199,7 +202,8 @@ function parse_yarn_lock(file, text, limits) {
     };
     resolved.push(record);
     for (const dependency of record.dependencies) {
-      const candidate = packages.find(pkg => pkg.selectors.some(selector => selector === dependency.name + '@' + dependency.requirement || selector === dependency.name + '@npm:' + dependency.requirement));
+      const selector = dependency.name + '@' + dependency.requirement;
+      const candidate = by_selector.get(selector) ?? by_selector.get(dependency.name + '@npm:' + dependency.requirement);
       if (candidate) edges.push({ from: record.location, to: candidate.selectors.join(', '), name: dependency.name, requirement: dependency.requirement, resolved_version: candidate.version });
       if (edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Yarn lockfile dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
     }
