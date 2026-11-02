@@ -840,3 +840,37 @@ test('ELF parser bounds GNU version chains and rejects malformed auxiliary range
   malformed.writeUInt32LE(0xfffffff0, 896);
   assert.throws(() => parse_elf(malformed), error => error.code === 'ORIX_ELF_VERSION_RANGE');
 });
+
+
+test('ELF parser resolves GNU version definitions for exported dynamic symbols', () => {
+  const buffer = create_elf_version_fixture();
+  buffer.writeUInt16LE(3, 922);
+  buffer.writeBigUInt64LE(37n, 256 + 64 + 32);
+  Buffer.from('ORIX_1.0\\0', 'ascii').copy(buffer, 828);
+  buffer.writeUInt16LE(6, 60);
+
+  const verdef = 256 + 5 * 64;
+  buffer.writeUInt32LE(0x6ffffffd, verdef + 4);
+  buffer.writeBigUInt64LE(928n, verdef + 24);
+  buffer.writeBigUInt64LE(28n, verdef + 32);
+  buffer.writeUInt32LE(1, verdef + 40);
+  buffer.writeBigUInt64LE(4n, verdef + 48);
+
+  buffer.writeUInt16LE(1, 928);
+  buffer.writeUInt16LE(0, 930);
+  buffer.writeUInt16LE(3, 932);
+  buffer.writeUInt16LE(1, 934);
+  buffer.writeUInt32LE(0x9876, 936);
+  buffer.writeUInt32LE(20, 940);
+  buffer.writeUInt32LE(0, 944);
+  buffer.writeUInt32LE(28, 948);
+  buffer.writeUInt32LE(0, 952);
+
+  const parsed = parse_elf(buffer);
+  assert.equal(parsed.version_definitions.length, 1);
+  assert.equal(parsed.version_definitions[0].version_index, 3);
+  assert.equal(parsed.version_definitions[0].names[0], 'ORIX_1.0');
+  assert.equal(parsed.symbol_versions[1].version_index, 3);
+  assert.equal(parsed.symbol_versions[1].version_name, 'ORIX_1.0');
+  assert.equal(parsed.symbol_versions[1].source, 'definition');
+});
