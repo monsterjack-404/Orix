@@ -28,7 +28,7 @@ test('MCP inspect tool returns the same versioned artifact report as the library
   try {
     const file = path.join(directory, 'sample.bin');
     await writeFile(file, Buffer.from('MCP static analysis fixture'));
-    const response = await handle_mcp_message({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'orix.inspect_file', arguments: { path: file } } });
+    const response = await handle_mcp_message({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'orix.inspect_file', arguments: { path: file } } }, { roots: [directory] });
     assert.equal(response.result.isError, false);
     const report = JSON.parse(response.result.content[0].text);
     assert.equal(report.schema_version, 'orix.artifact.v1');
@@ -96,7 +96,7 @@ test('MCP comparison tool reads bounded reports and returns artifact deltas', as
     const response = await handle_mcp_message({
       jsonrpc: '2.0', id: 20, method: 'tools/call',
       params: { name: 'orix.compare_reports', arguments: { baseline_path, current_path } },
-    });
+    }, { roots: [directory] });
     assert.equal(response.result.isError, false);
     const comparison = JSON.parse(response.result.content[0].text);
     assert.equal(comparison.schema_version, 'orix.comparison.v1');
@@ -116,7 +116,7 @@ test('MCP comparison tool rejects unsupported report shapes', async () => {
     const response = await handle_mcp_message({
       jsonrpc: '2.0', id: 21, method: 'tools/call',
       params: { name: 'orix.compare_reports', arguments: { baseline_path, current_path } },
-    });
+    }, { roots: [directory] });
     assert.equal(response.result.isError, true);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -154,4 +154,44 @@ test('MCP ledger tools verify and list existing evidence without write access', 
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+
+test('MCP confines artifact access to configured roots and rejects symlinks', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-root-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-outside-'));
+  try {
+    const file = path.join(root, 'inside.bin');
+    const external = path.join(outside, 'outside.bin');
+    await writeFile(file, 'inside');
+    await writeFile(external, 'outside');
+    const link = path.join(root, 'linked.bin');
+    const { symlink } = await import('node:fs/promises');
+    await symlink(file, link);
+    const denied = await handle_mcp_message({ jsonrpc: '2.0', id: 30, method: 'tools/call', params: { name: 'orix.inspect_file', arguments: { path: external } } }, { roots: [root] });
+    assert.equal(denied.result.isError, true);
+    assert.match(denied.result.content[0].text, /ORIX_MCP_PATH_OUTSIDE_WORKSPACE/);
+    const linked = await handle_mcp_message({ jsonrpc: '2.0', id: 31, method: 'tools/call', params: { name: 'orix.inspect_file', arguments: { path: link } } }, { roots: [root] });
+    assert.equal(linked.result.isError, true);
+    assert.match(linked.result.content[0].text, /ORIX_MCP_SYMLINK_REJECTED/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('MCP exposes an explicit append operation for hash-chained evidence', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-ledger-'));
+  try {
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(path.join(directory, '.orix'));
+    const ledger = path.join(directory, '.orix', 'evidence.jsonl');
+    const response = await handle_mcp_message({ jsonrpc: '2.0', id: 40, method: 'tools/call', params: { name: 'orix.ledger.append', arguments: { path: ledger, type: 'analysis.completed', payload: { artifacts: 2 } } } }, { roots: [directory] });
+    assert.equal(response.result.isError, false);
+    const receipt = JSON.parse(response.result.content[0].text);
+    assert.equal(receipt.sequence, 1);
+    const verified = await handle_mcp_message({ jsonrpc: '2.0', id: 41, method: 'tools/call', params: { name: 'orix.ledger.verify', arguments: { path: ledger } } }, { roots: [directory] });
+    assert.equal(verified.result.isError, false);
+    assert.match(verified.result.content[0].text, /"valid":true/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
