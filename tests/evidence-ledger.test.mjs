@@ -50,7 +50,7 @@ test('ledger detects payload edits, record deletion and partial final writes', a
   await writeFile(file, edited);
   await assert.rejects(verify_evidence_ledger(file), error => error.code === 'ORIX_LEDGER_HASH_MISMATCH');
   await writeFile(file, original.trimEnd());
-  await assert.rejects(verify_evidence_ledger(file), error => error.code === 'ORIX_LEDGER_PARTIAL_RECORD');
+  await assert.rejects(verify_evidence_ledger(file), error => error.code === 'ORIX_LEDGER_PARTIAL_TAIL');
 });
 
 test('ledger rejects malformed events and unsafe payload values', async t => {
