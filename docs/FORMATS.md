@@ -11,7 +11,7 @@ ORIX distinguishes **signature recognition** from **structural parsing**. Recogn
 | Thin Mach-O | Yes | Yes | 32/64-bit header, CPU metadata, bounded load commands, LC_SEGMENT/LC_SEGMENT_64 sections and LC_CODE_SIGNATURE superblob/CodeDirectory metadata | Chained fixups, cryptographic trust verification, Objective-C metadata and other command payloads |
 | Universal Mach-O | Yes | Yes | 32/64-bit fat architecture tables, bounded non-overlapping slices and per-slice thin Mach-O parsing | Architecture-specific semantic analysis beyond supported thin commands |
 | WebAssembly | Yes | Yes | Version, section boundaries and custom section names | Type validation, instruction decoding, imports/exports semantics and decompilation |
-| ZIP | Yes | Yes | End-of-central-directory discovery, bounded central-directory entries, method/flag metadata, unsafe path and symlink markers, local-header range checks | ZIP64, multi-disk, decompression, CRC verification and archive-bomb analysis |
+| ZIP | Yes | Yes | EOCD and ZIP64 EOCD/locator, 64-bit central-directory metadata, ZIP64 per-entry sizes/offsets, extra-field bounds, path/symlink flags and local data ranges | Multi-disk, decompression, CRC verification and streaming extraction |
 | PDF | Yes | No | `%PDF-` prefix | Cross-reference parsing, object graph, incremental updates, embedded files and JavaScript inspection |
 | PNG | Yes | No | Eight-byte PNG signature | Chunk validation, decompression and metadata |
 | JPEG | Yes | No | JPEG SOI marker | Marker/segment parsing and image decoding |
@@ -36,7 +36,7 @@ Thin Mach-O parsing validates magic, byte order, header size and each load comma
 
 ### ZIP
 
-The parser locates the end-of-central-directory record in the permitted trailing window, validates single-disk metadata and reads each central-directory record within its declared range. It reports entry names, compression methods, encryption flags, size ratios, local-header range status and suspicious absolute or parent-traversal paths. It never extracts or decompresses content. ZIP64 sentinel values and multi-disk archives are rejected explicitly.
+The parser locates the end-of-central-directory record in the permitted trailing window. ZIP64 locators and end records are decoded with safe-integer checks; per-entry ZIP64 extra fields resolve 64-bit sizes and local-header offsets. Central-directory bounds are constrained to the appropriate EOCD record. It reports entry names, compression methods, encryption flags, size ratios, local-header/data range status and suspicious absolute or parent-traversal paths. It never extracts or decompresses content. Multi-disk archives remain unsupported; CRC values are reported but not recomputed.
 
 ### WebAssembly
 
