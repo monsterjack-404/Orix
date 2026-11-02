@@ -1,7 +1,7 @@
 // JavaScript, src/index.mjs, Node.js 20+, public programmatic ORIX API.
-
 export { inspect_file, INSPECTOR_DEFAULTS } from './core/inspect.mjs';
 export { scan_directory } from './analyzer/scan.mjs';
+export { scan_project, render_project_markdown } from './project/intelligence.mjs';
 export { evaluate_indicators } from './analyzer/indicators.mjs';
 export { walk_directory } from './analyzer/walk.mjs';
 export { detect_format, list_supported_formats, analyze_known_format, parse_pe, parse_elf, parse_macho, parse_wasm, parse_zip } from './formats/index.mjs';
