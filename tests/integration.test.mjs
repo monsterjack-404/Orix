@@ -220,3 +220,22 @@ test('CLI comparison rejects symbolic-link report inputs', async () => {
     assert.match(cli.stderr, /ORIX_COMPARE_UNSAFE_FILE/);
   });
 });
+
+
+test('CLI emits a CycloneDX SBOM from project dependency declarations', async () => {
+  await with_temp_dir(async directory => {
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({
+      name: 'sbom-fixture',
+      version: '2.0.0',
+      dependencies: { 'safe-lib': '^1.2.3' },
+      devDependencies: { 'test-lib': '^4.5.6' },
+    }));
+    const cli = spawnSync(process.execPath, ['src/cli.mjs','project',directory,'--format','cyclonedx'], { encoding: 'utf8', cwd: path.resolve('.') });
+    assert.equal(cli.status, 0, cli.stderr);
+    const bom = JSON.parse(cli.stdout);
+    assert.equal(bom.bomFormat, 'CycloneDX');
+    assert.equal(bom.specVersion, '1.5');
+    assert.equal(bom.metadata.component.name, 'sbom-fixture');
+    assert.equal(bom.components.length, 2);
+  });
+});
