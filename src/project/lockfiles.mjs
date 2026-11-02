@@ -47,6 +47,7 @@ function parse_npm_package_lock(file, text, limits) {
   const edges = [];
   const warnings = [];
   const root_dependencies = [];
+  const root_edges_placeholder = [];
   if (document.packages && typeof document.packages === 'object' && !Array.isArray(document.packages)) {
     const root_metadata = document.packages[''] ?? {};
     for (const [kind, field] of [['runtime', 'dependencies'], ['development', 'devDependencies'], ['optional', 'optionalDependencies']]) {
@@ -115,10 +116,31 @@ function parse_npm_package_lock(file, text, limits) {
       }
     };
     visit(document.dependencies);
+    for (const [name, metadata] of Object.entries(document.dependencies)) {
+      root_dependencies.push({ name, requirement: '*', dependency_type: metadata?.dev ? 'development' : metadata?.optional ? 'optional' : 'runtime' });
+      const target = package_map.get('node_modules/' + name);
+      if (target) root_edges_placeholder.push({ name, requirement: '*', dependency_type: metadata?.dev ? 'development' : metadata?.optional ? 'optional' : 'runtime', to: target.location, resolved_version: target.version });
+    }
+    for (const item of packages) {
+      for (const dependency of item.dependencies) {
+        let ancestor = item.location;
+        let target = null;
+        while (ancestor) {
+          target = package_map.get(ancestor + '/node_modules/' + dependency.name);
+          if (target) break;
+          const marker = ancestor.lastIndexOf('/node_modules/');
+          if (marker >= 0) ancestor = ancestor.slice(0, marker);
+          else ancestor = '';
+        }
+        target ??= package_map.get('node_modules/' + dependency.name);
+        if (target) edges.push({ from: item.location, to: target.location, name: dependency.name, requirement: dependency.requirement, resolved_version: target.version });
+        if (edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'npm lockfile dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+      }
+    }
   } else {
     warnings.push({ code: 'ORIX_LOCKFILE_NO_PACKAGE_TABLE' });
   }
-  const root_edges = root_dependencies.map(dependency => {
+  const root_edges = root_edges_placeholder.length ? root_edges_placeholder : root_dependencies.map(dependency => {
     const target = package_map.get('node_modules/' + dependency.name);
     return target ? { name: dependency.name, requirement: dependency.requirement, dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version } : null;
   }).filter(Boolean);
