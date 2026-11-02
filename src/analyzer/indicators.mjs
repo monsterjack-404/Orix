@@ -126,6 +126,43 @@ export function evaluate_indicators({ format, parser_status, parsed, parser_erro
     }
   }
 
+
+  if (format === 'PDF' && parsed) {
+    const active = parsed.active_content ?? {};
+    const active_keys = ['javascript', 'open_actions', 'additional_actions', 'launch_actions'].filter(key => active[key]);
+    if (active_keys.length) {
+      indicators.push(make_indicator(
+        'ORIX-PDF-ACTIVE-CONTENT-001',
+        'PDF contains active-content action markers',
+        'medium',
+        'observed',
+        'PDF dictionaries contain JavaScript or action-related names. These lexical markers do not prove that the content is reachable or will execute.',
+        active_keys.map(key => ({ source: 'pdf-name-marker', marker: key, present: true })),
+      ));
+    }
+    const attachment_keys = ['embedded_files', 'file_specifications'].filter(key => active[key]);
+    if (attachment_keys.length) {
+      indicators.push(make_indicator(
+        'ORIX-PDF-EMBEDDED-CONTENT-001',
+        'PDF contains embedded-file markers',
+        'info',
+        'observed',
+        'PDF dictionaries contain embedded-file or file-specification names. ORIX does not extract attachments.',
+        attachment_keys.map(key => ({ source: 'pdf-name-marker', marker: key, present: true })),
+      ));
+    }
+    if (parsed.encrypted) {
+      indicators.push(make_indicator(
+        'ORIX-PDF-ENCRYPTED-001',
+        'PDF encryption dictionary observed',
+        'info',
+        'observed',
+        'The PDF trailer or scanned dictionary contains an encryption reference. ORIX does not decrypt document contents.',
+        [{ source: 'pdf-trailer', encrypted: true }],
+      ));
+    }
+  }
+
   for (const group of API_GROUPS) {
     const matches = find_api_strings(strings, group.names);
     if (matches.length) {
