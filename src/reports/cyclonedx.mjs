@@ -151,6 +151,7 @@ export function render_cyclonedx(report, options = {}) {
       { name: 'orix:locked-packages', value: String(report.resolved_dependencies?.length ?? lockfile_packages.length) },
       { name: 'orix:components-emitted', value: String(ordered.length) },
       { name: 'orix:transitive-resolution-performed', value: String((report.resolved_dependencies?.length ?? lockfile_packages.length) > 0) },
+    ],
   };
   return JSON.stringify(bom, null, options.compact ? 0 : 2) + '\n';
 }
