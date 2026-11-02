@@ -128,6 +128,76 @@ function parse_symbol_table(reader, command, is_64, little, options) {
   };
 }
 
+function parse_dynamic_symbol_table(reader, command, is_64, little, symbol_result, options) {
+  if (!command) return null;
+  if (command.size < 80) throw new OrixError('ORIX_MACHO_BAD_DYSYMTAB_COMMAND', 'Mach-O LC_DYSYMTAB command is smaller than its fixed header', { details: { size: command.size }, recoverable: true });
+  const names = [
+    'local_symbol_index', 'local_symbol_count',
+    'external_symbol_index', 'external_symbol_count',
+    'undefined_symbol_index', 'undefined_symbol_count',
+    'table_of_contents_offset', 'table_of_contents_count',
+    'module_table_offset', 'module_table_count',
+    'external_reference_offset', 'external_reference_count',
+    'indirect_symbol_offset', 'indirect_symbol_count',
+    'external_relocation_offset', 'external_relocation_count',
+    'local_relocation_offset', 'local_relocation_count',
+  ];
+  const fields = {};
+  for (let index = 0; index < names.length; index += 1) {
+    fields[names[index]] = reader.u32(command.offset + 8 + index * 4, little, 'dynamic symbol table field');
+  }
+  const symbol_count = symbol_result.table?.symbol_count ?? 0;
+  for (const [index_name, count_name] of [
+    ['local_symbol_index', 'local_symbol_count'],
+    ['external_symbol_index', 'external_symbol_count'],
+    ['undefined_symbol_index', 'undefined_symbol_count'],
+  ]) {
+    const start = fields[index_name];
+    const count = fields[count_name];
+    if (start > symbol_count || count > symbol_count - start) {
+      throw new OrixError('ORIX_MACHO_DYSYMTAB_SYMBOL_RANGE', 'Mach-O dynamic symbol group exceeds LC_SYMTAB symbol count', { details: { index_name, start, count, symbol_count }, recoverable: true });
+    }
+  }
+  const ranges = {};
+  const check_table = (name, offset, count, entry_size) => {
+    const byte_size = count * entry_size;
+    if (!Number.isSafeInteger(byte_size) || offset > reader.buffer.length || byte_size > reader.buffer.length - offset) {
+      throw new OrixError('ORIX_MACHO_DYSYMTAB_RANGE', 'Mach-O dynamic symbol table range is outside the file', { details: { name, offset, count, entry_size, file_size: reader.buffer.length }, recoverable: true });
+    }
+    ranges[name] = { offset, count, entry_size, byte_size, range_valid: true };
+  };
+  check_table('table_of_contents', fields.table_of_contents_offset, fields.table_of_contents_count, 8);
+  check_table('module_table', fields.module_table_offset, fields.module_table_count, is_64 ? 56 : 52);
+  check_table('external_references', fields.external_reference_offset, fields.external_reference_count, 4);
+  check_table('indirect_symbols', fields.indirect_symbol_offset, fields.indirect_symbol_count, 4);
+  check_table('external_relocations', fields.external_relocation_offset, fields.external_relocation_count, 8);
+  check_table('local_relocations', fields.local_relocation_offset, fields.local_relocation_count, 8);
+  const maximum_indirect = options.max_indirect_symbols ?? 100000;
+  if (!Number.isSafeInteger(maximum_indirect) || maximum_indirect < 0 || fields.indirect_symbol_count > maximum_indirect) {
+    throw new OrixError('ORIX_MACHO_INDIRECT_SYMBOL_LIMIT', 'Mach-O indirect symbol count exceeds configured parser limit', { details: { count: fields.indirect_symbol_count, maximum_indirect }, recoverable: true });
+  }
+  const symbols_by_index = new Map(symbol_result.symbols.map(symbol => [symbol.index, symbol]));
+  const indirect_symbols = [];
+  for (let index = 0; index < fields.indirect_symbol_count; index += 1) {
+    const raw_value = reader.u32(fields.indirect_symbol_offset + index * 4, little, 'indirect symbol entry');
+    const is_local = (raw_value & 0x80000000) !== 0;
+    const is_absolute = !is_local && (raw_value & 0x40000000) !== 0;
+    const symbol_index = raw_value & 0x3fffffff;
+    if (!is_local && !is_absolute && symbol_index >= symbol_count) {
+      throw new OrixError('ORIX_MACHO_INDIRECT_SYMBOL_INDEX', 'Mach-O indirect symbol references an index outside LC_SYMTAB', { details: { index, symbol_index, symbol_count }, recoverable: true });
+    }
+    const symbol = !is_local && !is_absolute ? symbols_by_index.get(symbol_index) : null;
+    indirect_symbols.push({
+      index,
+      raw_value,
+      kind: is_local ? 'LOCAL' : is_absolute ? 'ABSOLUTE' : 'SYMBOL',
+      symbol_index: is_local || is_absolute ? null : symbol_index,
+      symbol_name: symbol?.name ?? null,
+    });
+  }
+  return { ...fields, table_ranges: ranges, indirect_symbols };
+}
+
 export function parse_macho(buffer, options = {}) {
   const reader = new BinaryReader(buffer, { label: 'Mach-O image' });
   const magic = buffer.subarray(0, 4).toString('hex');
@@ -149,6 +219,7 @@ export function parse_macho(buffer, options = {}) {
   const segments = [];
   let code_signature = null;
   let symbol_table_command = null;
+  let dynamic_symbol_table_command = null;
   let total_sections = 0;
   const maximum_sections = options.max_sections ?? 16384;
   let cursor = command_offset;
@@ -222,12 +293,16 @@ export function parse_macho(buffer, options = {}) {
     } else if (command === 0x2) {
       if (size < 24) throw new OrixError('ORIX_MACHO_BAD_SYMTAB_COMMAND', 'Mach-O LC_SYMTAB command is truncated', { details: { index, size }, recoverable: true });
       symbol_table_command = { offset: cursor, size };
+    } else if (command === 0xb) {
+      if (size < 80) throw new OrixError('ORIX_MACHO_BAD_DYSYMTAB_COMMAND', 'Mach-O LC_DYSYMTAB command is truncated', { details: { index, size }, recoverable: true });
+      dynamic_symbol_table_command = { offset: cursor, size };
     } else if (command === LC_CODE_SIGNATURE) {
       code_signature = decode_code_signature(reader, cursor, size, buffer.length, spec.little);
     }
     cursor += size;
   }
   const symbol_result = parse_symbol_table(reader, symbol_table_command, spec.is_64, spec.little, options);
+  const dynamic_symbol_result = parse_dynamic_symbol_table(reader, dynamic_symbol_table_command, spec.is_64, spec.little, symbol_result, options);
   return {
     format: 'Mach-O', bitness: spec.is_64 ? 64 : 32,
     endianness: spec.little ? 'little' : 'big', architecture: CPU.get(cpu_type) ?? `unknown-${cpu_type}`,
@@ -236,6 +311,8 @@ export function parse_macho(buffer, options = {}) {
     segments,
     symbol_table: symbol_result.table,
     symbols: symbol_result.symbols,
+    dynamic_symbol_table: dynamic_symbol_result,
+    indirect_symbols: dynamic_symbol_result?.indirect_symbols ?? [],
     code_signature,
     notes: ['Thin Mach-O segment and section commands are decoded with bounded counts and file-range checks.', 'Code-signature superblob and CodeDirectory metadata are structural observations only; cryptographic signature and trust verification are not performed.', 'LC_SYMTAB nlist records and bounded symbol strings are decoded when present. Universal/fat containers are parsed by parse_macho_fat. Other load-command payloads remain opaque.'],
   };
