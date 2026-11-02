@@ -7,7 +7,6 @@ import { scan_project } from '../project/intelligence.mjs';
 import { list_format_capabilities } from '../formats/index.mjs';
 import { verify_ledger, list_ledger } from '../evidence/ledger.mjs';
 import { compare_reports } from '../analyzer/compare.mjs';
-import { read_json_report } from '../core/read-report.mjs';
 import { normalize_error } from '../core/errors.mjs';
 import { append_ledger } from '../evidence/ledger.mjs';
 import { configured_workspace_roots, resolve_workspace_path, resolve_workspace_output, read_workspace_json } from './security.mjs';
