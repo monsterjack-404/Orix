@@ -106,3 +106,18 @@ export function create_zip_fixture(entry_name = 'sample.txt', contents = 'hello'
   buffer.writeUInt16LE(0, eocd + 20);
   return buffer;
 }
+
+export function create_pdf_fixture() {
+  const parts = ['%PDF-1.7\n', '1 0 obj\n<< /Type /Catalog /Pages 2 0 R /OpenAction 3 0 R >>\nendobj\n', '2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n', '3 0 obj\n<< /S /JavaScript /JS (app.alert) >>\nendobj\n'];
+  let offset = 0;
+  const offsets = [0];
+  for (let index = 1; index < parts.length; index += 1) {
+    offsets[index] = offset + Buffer.byteLength(parts.slice(0, index).join(''), 'latin1');
+  }
+  const body = parts.join('');
+  const xref_offset = Buffer.byteLength(body, 'latin1');
+  const xref = ['xref\n0 4\n', '0000000000 65535 f \n'];
+  for (let index = 1; index < offsets.length; index += 1) xref.push(String(offsets[index]).padStart(10, '0') + ' 00000 n \n');
+  xref.push('trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n' + xref_offset + '\n%%EOF\n');
+  return Buffer.from(body + xref.join(''), 'latin1');
+}
