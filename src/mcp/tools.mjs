@@ -19,6 +19,34 @@ export const MCP_TOOLS = Object.freeze([
   { name: 'orix.ledger.append', description: 'Append a typed, hash-chained evidence event to a local ledger inside an allowed workspace.', inputSchema: { type: 'object', properties: { path: { type: 'string', minLength: 1 }, type: { type: 'string', pattern: '^[a-z][a-z0-9.-]{1,63}$' }, payload: { type: 'object' } }, required: ['path','type','payload'], additionalProperties: false } },
   { name: 'orix.compare_reports', description: 'Compare two saved ORIX artifact or directory-scan JSON reports by relative path, SHA-256 and indicator deltas.', inputSchema: { type: 'object', properties: { baseline_path: { type: 'string', minLength: 1 }, current_path: { type: 'string', minLength: 1 } }, required: ['baseline_path','current_path'], additionalProperties: false } },
 ]);
+function validate_tool_arguments(name, args) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) throw new OrixError('ORIX_MCP_INVALID_ARGUMENTS', 'Tool arguments must be a JSON object', { recoverable: true });
+  const definition = MCP_TOOLS.find(tool => tool.name === name);
+  if (!definition) throw new OrixError('ORIX_MCP_UNKNOWN_TOOL', 'Unknown ORIX tool: ' + name, { recoverable: true });
+  const schema = definition.inputSchema;
+  const properties = schema.properties ?? {};
+  for (const required of schema.required ?? []) {
+    if (!Object.hasOwn(args, required)) throw new OrixError('ORIX_MCP_REQUIRED_ARGUMENT', 'Missing required tool argument: ' + required, { details: { tool: name, argument: required }, recoverable: true });
+  }
+  for (const [key, value] of Object.entries(args)) {
+    const rule = properties[key];
+    if (!rule) throw new OrixError('ORIX_MCP_UNKNOWN_ARGUMENT', 'Unknown tool argument: ' + key, { details: { tool: name, argument: key }, recoverable: true });
+    if (rule.type === 'string') {
+      if (typeof value !== 'string' || value.length < (rule.minLength ?? 0) || (rule.pattern && !new RegExp(rule.pattern).test(value))) {
+        throw new OrixError('ORIX_MCP_ARGUMENT_TYPE', 'Tool argument ' + key + ' does not satisfy its string contract', { details: { tool: name, argument: key }, recoverable: true });
+      }
+    } else if (rule.type === 'integer') {
+      if (!Number.isSafeInteger(value) || value < (rule.minimum ?? Number.MIN_SAFE_INTEGER) || value > (rule.maximum ?? Number.MAX_SAFE_INTEGER)) {
+        throw new OrixError('ORIX_MCP_ARGUMENT_RANGE', 'Tool argument ' + key + ' is outside its integer range', { details: { tool: name, argument: key, minimum: rule.minimum, maximum: rule.maximum, value }, recoverable: true });
+      }
+    } else if (rule.type === 'boolean' && typeof value !== 'boolean') {
+      throw new OrixError('ORIX_MCP_ARGUMENT_TYPE', 'Tool argument ' + key + ' must be boolean', { details: { tool: name, argument: key }, recoverable: true });
+    } else if (rule.type === 'object' && (!value || typeof value !== 'object' || Array.isArray(value))) {
+      throw new OrixError('ORIX_MCP_ARGUMENT_TYPE', 'Tool argument ' + key + ' must be an object', { details: { tool: name, argument: key }, recoverable: true });
+    }
+  }
+}
+
 function assert_arguments(args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new OrixError('ORIX_MCP_INVALID_ARGUMENTS', 'Tool arguments must be a JSON object', { recoverable: true });
 }
@@ -89,6 +117,7 @@ export function create_tool_registry(options = {}) {
   return Object.freeze({
     definitions: MCP_TOOLS,
     async call(name, args) {
+      validate_tool_arguments(name, args);
       const handler = handlers[name];
       if (!handler) throw new OrixError('ORIX_MCP_UNKNOWN_TOOL', 'Unknown ORIX tool: ' + name, { recoverable: true });
       return serialize_result(await handler(args));
