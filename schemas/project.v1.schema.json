@@ -6,6 +6,7 @@
   "required": [
     "schema_version",
     "project",
+    "git",
     "summary",
     "detection",
     "manifests",
@@ -45,7 +46,8 @@
         "secret_pattern_matches",
         "locked_packages",
         "dependency_edges",
-        "lockfile_edges"
+        "lockfile_edges",
+        "git_present"
       ]
     },
     "detection": {
@@ -223,6 +225,24 @@
           }
         }
       }
+    },
+    "git": {
+      "type": "object",
+      "required": [
+        "present",
+        "supported",
+        "kind",
+        "branch",
+        "head_oid",
+        "branches",
+        "tags",
+        "remotes",
+        "shallow",
+        "object_format",
+        "storage",
+        "head_commit",
+        "warnings"
+      ]
     }
   },
   "additionalProperties": true
