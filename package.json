@@ -8,7 +8,8 @@
     "node": ">=20.11"
   },
   "bin": {
-    "orix": "./src/cli.mjs"
+    "orix": "./src/cli.mjs",
+    "orix-mcp": "./src/mcp.mjs"
   },
   "exports": {
     ".": "./src/index.mjs",
@@ -19,14 +20,16 @@
     "./reports/sarif": "./src/reports/sarif.mjs",
     "./evidence/ledger": "./src/evidence/ledger.mjs",
     "./analyzer/compare": "./src/analyzer/compare.mjs",
-    "./reports/comparison": "./src/reports/comparison.mjs"
+    "./reports/comparison": "./src/reports/comparison.mjs",
+    "./mcp": "./src/mcp/server.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
     "orix": "node ./src/cli.mjs",
     "check": "node scripts/check-syntax.mjs",
     "test": "node --test",
-    "test:coverage": "node --test --experimental-test-coverage"
+    "test:coverage": "node --test --experimental-test-coverage",
+    "mcp": "node ./src/mcp.mjs"
   },
   "license": "Apache-2.0"
 }

@@ -274,3 +274,16 @@ A small set of credential-shaped patterns is reported with file and line metadat
 ORIX can append compact inspection, scan and project records to a local SHA-256 hash-chained JSONL ledger. Use `orix inspect ./sample.exe --ledger ./.orix/evidence.jsonl` to record an inspection. Verify the chain with `orix ledger verify ./.orix/evidence.jsonl` or list verified records with `orix ledger list ./.orix/evidence.jsonl`.
 
 The ledger detects content changes, broken ordering and partial writes. It is tamper-evident, not tamper-proof: it is not a digital signature, trusted timestamp authority, remote transparency log or write-once medium.
+
+
+## MCP server
+
+ORIX exposes its local analysis engine as a read-only Model Context Protocol server over standard input/output. It provides tools for artifact inspection, directory scans, project intelligence, format capabilities and evidence-ledger verification/listing. It does not execute samples or project code and does not expose shell execution, arbitrary commands, network fetches or file writes.
+
+Run the server with:
+
+```bash
+node ./src/mcp.mjs
+```
+
+For a local MCP client, configure the command as `node`, the argument as the absolute path to `src/mcp.mjs`, and the working directory as the ORIX checkout. The stdio stream is reserved for JSON-RPC messages; diagnostics go to standard error. Tool inputs are checked against the advertised schemas, and result sizes are bounded. See [MCP integration](docs/MCP.md).
