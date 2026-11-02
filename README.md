@@ -28,8 +28,9 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | WebAssembly parser | Module version, bounded section framing and custom section names | Does not validate instruction semantics or decompile code |
 | Static metrics | Shannon entropy, ASCII/UTF-16LE string extraction and bounded hex preview | Metrics are descriptive, not malware verdicts |
 | Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
-| Evidence model | Stable evidence records with source, offsets, confidence and structured details | Evidence is local to the generated report; no database is required |
+| Evidence model | Stable report evidence plus append-only SHA-256 chained JSONL ledger, verify/list commands and append receipts | Not a signature, trusted timestamp or external transparency log |
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
+| MCP integration | Local stdio JSON-RPC server with eight typed tools for inspect, scan, project, formats, comparison and evidence ledger | No HTTP listener, remote auth, resource subscription or prompt catalog |
 | Reports | JSON, Markdown, SARIF 2.1.0, report comparison and CycloneDX 1.5 SBOM | No hosted dashboard or relational database |
 
 Static indicator rules operate only on already-parsed metadata and bounded extracted strings. Each finding includes a rule ID, severity, confidence and supporting evidence. A clean report means only that the built-in rules did not match; it is not a safety certification.
@@ -75,6 +76,16 @@ node src/cli.mjs scan ./build --max-files 3000 --max-depth 16 --concurrency 4
 
 # List known signatures
 node src/cli.mjs formats
+
+# Start local MCP stdio server
+npm run mcp
+
+# Compare saved reports
+node src/cli.mjs compare ./baseline.json ./current.json --json
+
+# Append and verify an evidence record
+node src/cli.mjs inspect ./sample.exe --ledger ./.orix/evidence.jsonl
+node src/cli.mjs ledger verify ./.orix/evidence.jsonl
 ```
 
 When the package is installed globally or linked locally, the `orix` command is exposed through `package.json#bin`:
@@ -85,6 +96,8 @@ orix help
 ```
 
 ## CLI reference
+
+See [`docs/MCP.md`](docs/MCP.md) for the local MCP server, tool schemas and workspace security model.
 
 ### `inspect`
 
