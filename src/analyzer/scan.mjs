@@ -4,7 +4,6 @@ import { inspect_file } from '../core/inspect.mjs';
 import { resolve_limits } from '../core/limits.mjs';
 import { walk_directory } from './walk.mjs';
 import { normalize_error } from '../core/errors.mjs';
-import { append_evidence_event } from '../core/evidence-ledger.mjs';
 
 async function run_pool(items, concurrency, worker) {
   const results = new Array(items.length);
