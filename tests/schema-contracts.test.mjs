@@ -9,7 +9,8 @@ const schema_paths = [
   new URL('../schemas/scan.v1.schema.json', import.meta.url),
   new URL('../schemas/indicator.v1.schema.json', import.meta.url),
   new URL('../schemas/ledger.v1.schema.json', import.meta.url),
-  new URL('../schemas/comparison.v1.schema.json', import.meta.url),\n  new URL('../schemas/project.v1.schema.json', import.meta.url),
+  new URL('../schemas/comparison.v1.schema.json', import.meta.url),
+  new URL('../schemas/project.v1.schema.json', import.meta.url),
 ];
 
 test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
@@ -29,5 +30,8 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.ok(schemas[3].required.includes('previous_hash'));
   assert.ok(schemas[3].required.includes('hash'));
   assert.equal(schemas[4].properties.schema_version.const, 'orix.comparison.v1');
-  assert.equal(schemas[4].additionalProperties, false);\n  assert.equal(schemas[5].properties.schema_version.const, 'orix.project.v1');\n  assert.ok(schemas[5].required.includes('lockfiles'));\n  assert.ok(schemas[5].properties.summary.required.includes('locked_packages'));
+  assert.equal(schemas[4].additionalProperties, false);
+  assert.equal(schemas[5].properties.schema_version.const, 'orix.project.v1');
+  assert.ok(schemas[5].required.includes('lockfiles'));
+  assert.ok(schemas[5].properties.summary.required.includes('locked_packages'));
 });
