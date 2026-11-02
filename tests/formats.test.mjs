@@ -978,6 +978,20 @@ test('ELF parser decodes GNU hash bloom words, buckets and terminal chain entrie
   assert.deepEqual(table.buckets[0].chain, [{ symbol_index: 1, hash: 0x1235, terminal: true }]);
 });
 
+test('ELF GNU hash duplicate buckets share bounded chain traversal work', () => {
+  const buffer = create_elf_gnu_hash_fixture();
+  const section = 256 + 5 * 64;
+  buffer.writeBigUInt64LE(36n, section + 32);
+  buffer.writeUInt32LE(2, 944);
+  buffer.writeUInt32LE(1, 968);
+  buffer.writeUInt32LE(1, 972);
+  buffer.writeUInt32LE(0x1235, 976);
+  const parsed = parse_elf(buffer, { max_gnu_hash_total_entries: 1 });
+  assert.equal(parsed.gnu_hash_tables[0].buckets.length, 2);
+  assert.deepEqual(parsed.gnu_hash_tables[0].buckets[0].chain, parsed.gnu_hash_tables[0].buckets[1].chain);
+  assert.throws(() => parse_elf(buffer, { max_gnu_hash_total_entries: 0 }), error => error.code === 'ORIX_ELF_GNU_HASH_LIMIT');
+});
+
 test('ELF parser rejects GNU hash buckets outside DYNSYM and truncated chains', () => {
   const bad_bucket = create_elf_gnu_hash_fixture();
   bad_bucket.writeUInt32LE(99, 968);
