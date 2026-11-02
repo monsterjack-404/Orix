@@ -750,3 +750,93 @@ test('PE parser rejects malformed base-relocation block sizes', () => {
   expanded.writeUInt32LE(7, raw + 0x104);
   assert.throws(() => parse_pe(expanded), error => error.code === 'ORIX_PE_RELOCATION_BLOCK_SIZE');
 });
+
+
+function create_elf_version_fixture() {
+  const buffer = Buffer.alloc(1024);
+  buffer.set([0x7f,0x45,0x4c,0x46,2,1,1,0]);
+  buffer.writeUInt16LE(3, 16);
+  buffer.writeUInt16LE(62, 18);
+  buffer.writeUInt32LE(1, 20);
+  buffer.writeBigUInt64LE(0n, 24);
+  buffer.writeBigUInt64LE(0n, 32);
+  buffer.writeBigUInt64LE(256n, 40);
+  buffer.writeUInt16LE(64, 52);
+  buffer.writeUInt16LE(56, 54);
+  buffer.writeUInt16LE(0, 56);
+  buffer.writeUInt16LE(64, 58);
+  buffer.writeUInt16LE(5, 60);
+  buffer.writeUInt16LE(0, 62);
+
+  const section = index => 256 + index * 64;
+  const strtab = section(1);
+  buffer.writeUInt32LE(3, strtab + 4);
+  buffer.writeBigUInt64LE(800n, strtab + 24);
+  buffer.writeBigUInt64LE(28n, strtab + 32);
+  buffer.writeBigUInt64LE(1n, strtab + 48);
+
+  const dynsym = section(2);
+  buffer.writeUInt32LE(11, dynsym + 4);
+  buffer.writeBigUInt64LE(840n, dynsym + 24);
+  buffer.writeBigUInt64LE(48n, dynsym + 32);
+  buffer.writeUInt32LE(1, dynsym + 40);
+  buffer.writeUInt32LE(1, dynsym + 44);
+  buffer.writeBigUInt64LE(8n, dynsym + 48);
+  buffer.writeBigUInt64LE(24n, dynsym + 56);
+
+  const verneed = section(3);
+  buffer.writeUInt32LE(0x6ffffffe, verneed + 4);
+  buffer.writeBigUInt64LE(888n, verneed + 24);
+  buffer.writeBigUInt64LE(32n, verneed + 32);
+  buffer.writeUInt32LE(1, verneed + 40);
+  buffer.writeBigUInt64LE(4n, verneed + 48);
+
+  const versym = section(4);
+  buffer.writeUInt32LE(0x6fffffff, versym + 4);
+  buffer.writeBigUInt64LE(920n, versym + 24);
+  buffer.writeBigUInt64LE(4n, versym + 32);
+  buffer.writeUInt32LE(2, versym + 40);
+  buffer.writeBigUInt64LE(2n, versym + 48);
+
+  buffer.write(Buffer.from('\\0func\\0libc.so.6\\0GLIBC_2.2.5\\0', 'ascii'), 800);
+  buffer.writeUInt32LE(1, 864);
+  buffer[868] = 0x12;
+  buffer.writeUInt16LE(1, 870);
+  buffer.writeBigUInt64LE(0x401000n, 872);
+  buffer.writeBigUInt64LE(4n, 880);
+
+  buffer.writeUInt16LE(1, 888);
+  buffer.writeUInt16LE(1, 890);
+  buffer.writeUInt32LE(6, 892);
+  buffer.writeUInt32LE(16, 896);
+  buffer.writeUInt32LE(0, 900);
+  buffer.writeUInt32LE(0x1234, 904);
+  buffer.writeUInt16LE(0, 908);
+  buffer.writeUInt16LE(2, 910);
+  buffer.writeUInt32LE(16, 912);
+  buffer.writeUInt32LE(0, 916);
+  buffer.writeUInt16LE(0, 920);
+  buffer.writeUInt16LE(2, 922);
+  return buffer;
+}
+
+test('ELF parser resolves GNU version requirements onto dynamic symbols', () => {
+  const parsed = parse_elf(create_elf_version_fixture());
+  assert.equal(parsed.version_requirements.length, 1);
+  assert.equal(parsed.version_requirements[0].library, 'libc.so.6');
+  assert.equal(parsed.version_requirements[0].auxiliary[0].name, 'GLIBC_2.2.5');
+  assert.equal(parsed.symbol_versions.length, 2);
+  assert.equal(parsed.symbol_versions[0].version_name, 'LOCAL');
+  assert.equal(parsed.symbol_versions[1].symbol_name, 'func');
+  assert.equal(parsed.symbol_versions[1].version_index, 2);
+  assert.equal(parsed.symbol_versions[1].version_name, 'GLIBC_2.2.5');
+  assert.equal(parsed.symbol_versions[1].library, 'libc.so.6');
+});
+
+test('ELF parser bounds GNU version chains and rejects malformed auxiliary ranges', () => {
+  const fixture = create_elf_version_fixture();
+  assert.throws(() => parse_elf(fixture, { max_version_records: 1 }), error => error.code === 'ORIX_ELF_VERSION_RECORD_LIMIT');
+  const malformed = create_elf_version_fixture();
+  malformed.writeUInt32LE(0xfffffff0, 896);
+  assert.throws(() => parse_elf(malformed), error => error.code === 'ORIX_ELF_VERSION_RANGE');
+});
