@@ -8,6 +8,7 @@ const schema_paths = [
   new URL('../schemas/artifact.v1.schema.json', import.meta.url),
   new URL('../schemas/scan.v1.schema.json', import.meta.url),
   new URL('../schemas/indicator.v1.schema.json', import.meta.url),
+  new URL('../schemas/ledger.v1.schema.json', import.meta.url),
 ];
 
 test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
@@ -22,4 +23,7 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.equal(schemas[0].properties.schema_version.const, 'orix.artifact.v1');
   assert.equal(schemas[1].properties.schema_version.const, 'orix.scan.v1');
   assert.ok(schemas[2].properties.severity.enum.includes('high'));
+  assert.equal(schemas[3].properties.format.const, 'orix.evidence-ledger.v1');
+  assert.ok(schemas[3].required.includes('previous_hash'));
+  assert.ok(schemas[3].required.includes('hash'));
 });
