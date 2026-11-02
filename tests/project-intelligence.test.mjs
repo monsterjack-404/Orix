@@ -106,3 +106,34 @@ test('project Markdown includes lockfile graph status and resolved package prove
   assert.match(markdown, /alpha/);
   assert.doesNotMatch(markdown, /\\\n/);
 }));
+
+
+test('project intelligence indexes pnpm lockfile package graph', async () => with_project(async root => {
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'pnpm-fixture', dependencies: { alpha: '^1.0.0' } }));
+  await writeFile(path.join(root, 'pnpm-lock.yaml'), [
+    "lockfileVersion: '9.0'",
+    'importers:',
+    '  .:',
+    '    dependencies:',
+    '      alpha:',
+    '        specifier: ^1.0.0',
+    '        version: 1.2.0',
+    'packages:',
+    '  alpha@1.2.0:',
+    '    resolution:',
+    '      integrity: sha512-alpha',
+    '  beta@2.3.0:',
+    '    resolution: {integrity: sha512-beta}',
+    'snapshots:',
+    '  alpha@1.2.0:',
+    '    dependencies:',
+    '      beta: 2.3.0',
+    '  beta@2.3.0: {}',
+  ].join('\\n'));
+  const report = await scan_project(root);
+  assert.equal(report.lockfiles.length, 1);
+  assert.equal(report.lockfiles[0].format, 'pnpm-lock');
+  assert.equal(report.summary.locked_packages, 2);
+  assert.equal(report.summary.lockfile_edges, 1);
+  assert.equal(report.lockfiles[0].root_edges[0].name, 'alpha');
+}));
