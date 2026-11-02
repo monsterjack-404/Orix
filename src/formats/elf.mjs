@@ -117,6 +117,33 @@ function parse_program_headers(reader, buffer, is_64, little, table_offset_value
 }
 
 
+
+function resolve_dynamic_strings(dynamic, segments, buffer) {
+  const string_table_value = dynamic.find(entry => entry.tag === 5)?.value;
+  const string_size_value = dynamic.find(entry => entry.tag === 10)?.value;
+  if (typeof string_table_value !== 'number' || typeof string_size_value !== 'number') {
+    return { status: 'missing-string-table-metadata', needed_libraries: [], soname: null, rpath: null, runpath: null };
+  }
+  const segment = segments.find(item => item.type === 'LOAD' &&
+    typeof item.virtual_address === 'number' && typeof item.file_offset === 'number' &&
+    typeof item.file_size === 'number' && string_table_value >= item.virtual_address &&
+    string_table_value - item.virtual_address <= item.file_size &&
+    string_size_value <= item.file_size - (string_table_value - item.virtual_address));
+  if (!segment) return { status: 'unmapped-string-table', needed_libraries: [], soname: null, rpath: null, runpath: null };
+  const offset = segment.file_offset + (string_table_value - segment.virtual_address);
+  if (offset > buffer.length || string_size_value > buffer.length - offset) {
+    return { status: 'out-of-range-string-table', needed_libraries: [], soname: null, rpath: null, runpath: null };
+  }
+  const strings = buffer.subarray(offset, offset + string_size_value);
+  const resolve = value => typeof value === 'number' ? read_elf_string(null, strings, value, 'dynamic string') : '';
+  const needed_libraries = dynamic.filter(entry => entry.tag === 1).map(entry => resolve(entry.value));
+  const first = tag => {
+    const entry = dynamic.find(item => item.tag === tag);
+    return entry ? resolve(entry.value) : null;
+  };
+  return { status: 'parsed', needed_libraries, soname: first(14), rpath: first(15), runpath: first(29) };
+}
+
 function parse_relocations(reader, raw_sections, is_64, little, options) {
   const maximum = options.max_relocations ?? 100000;
   const relocations = [];
@@ -292,6 +319,7 @@ export function parse_elf(buffer, options = {}) {
   const program_result = parse_program_headers(reader, buffer, is_64, little, program_header_offset, program_header_entry_size, program_header_count, options);
   const symbol_result = parse_symbol_tables(reader, buffer, raw_sections, is_64, little, options);
   const relocation_result = parse_relocations(reader, raw_sections, is_64, little, options);
+  const dynamic_strings = resolve_dynamic_strings(program_result.dynamic, program_result.segments, buffer);
   return {
     format: 'ELF', bitness: is_64 ? 64 : 32, endianness: little ? 'little' : 'big',
     architecture: MACHINES.get(machine) ?? `unknown-${machine}`,
@@ -306,6 +334,7 @@ export function parse_elf(buffer, options = {}) {
     interpreter: program_result.interpreter,
     gnu_build_id: program_result.build_id,
     dynamic_entries: program_result.dynamic,
+    dynamic_strings,
     symbols: symbol_result.symbols,
     symbol_tables: symbol_result.tables,
     relocations: relocation_result.relocations,
