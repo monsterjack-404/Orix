@@ -93,13 +93,19 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 ## 0.7 — Agent and MCP Interface
 
-- Tool catalog generated from typed operation contracts.
-- MCP server exposing artifact, project and evidence workflows.
+**Status: local stdio tools vertical slice implemented; protocol expansion remains planned**
+
+- [x] JSON-RPC stdio server with MCP 2025-03-26 initialize, ping, tools/list and tools/call.
+- [x] Workspace-confined artifact, directory, project, format, comparison and evidence-ledger tools.
+- [x] Tool argument contracts, path checks, no-follow report reads and input/output byte budgets.
+- [ ] Tool catalog generated from typed operation contracts.
+- [x] MCP server exposing artifact, project, comparison and evidence workflows.
+- [ ] HTTP transport, resource/prompt subscriptions and remote authentication.
 - Compact and full argument profiles with canonical server validation.
 - Pagination, cancellation and report-size budgets.
 - Prompt-injection-resistant handling of strings and metadata extracted from artifacts.
 
-**Exit criteria:** tool schemas validate against the selected MCP dialect; every advertised tool has integration tests and real, documented behavior.
+**Exit criteria:** tool schemas validate against the selected MCP dialect; every advertised tool has integration tests and real, documented behavior. The current stdio slice is not a remote service.
 
 ## 0.8 — Desktop and Web Workspace
 
