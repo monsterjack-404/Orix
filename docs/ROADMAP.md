@@ -45,6 +45,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [ ] Chained fixups, cryptographic trust verification and Objective-C metadata.
 - [x] ZIP64 EOCD/locator and per-entry extended size/offset parsing with safe-integer and central-directory bounds.
 - [ ] Decompression-bomb safeguards and bounded safe entry streaming; extraction remains opt-in.
+- [x] Deterministic malformed-input mutation and truncation smoke corpus for all registered binary parsers.
 - PDF object and cross-reference parser with object-count and recursion budgets.
 - Versioned JSON Schema documents and golden report fixtures.
 
