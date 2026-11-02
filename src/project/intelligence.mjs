@@ -1,6 +1,6 @@
 // JavaScript, src/project/intelligence.mjs, Node.js 20+, bounded read-only repository intelligence.
 import { createHash } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { constants as fs_constants, promises as fs } from 'node:fs';
 import path from 'node:path';
 
 const DEFAULTS={max_files:50000,max_entries:200000,max_depth:24,max_file_bytes:1048576,max_total_bytes:134217728,max_symbols_per_file:100,max_imports_per_file:200,include_hidden:false};
@@ -54,7 +54,24 @@ function signals(paths){const names=new Set(paths.map(x=>path.posix.basename(x))
 export async function scan_project(root_path,input={}){
  const limits=get_limits(input),root=path.resolve(root_path),root_stat=await fs.lstat(root);if(!root_stat.isDirectory()||root_stat.isSymbolicLink())throw new TypeError('Project target must be a real directory');
  const raw=[],skipped=[];let entries_seen=0,total_bytes=0,truncated=false;
- async function visit(dir,depth){if(depth>limits.max_depth){truncated=true;skipped.push({path:path.relative(root,dir),reason:'maximum-depth'});return;}let entries;try{entries=await fs.readdir(dir,{withFileTypes:true});}catch(error){skipped.push({path:path.relative(root,dir),reason:'unreadable-directory',message:String(error.message).slice(0,160)});return;}entries.sort((a,b)=>a.name.localeCompare(b.name));for(const entry of entries){entries_seen++;const absolute=path.join(dir,entry.name),relative=path.relative(root,absolute).split(path.sep).join('/');if(entries_seen>limits.max_entries||raw.length>=limits.max_files){truncated=true;return;}if(entry.isSymbolicLink()){skipped.push({path:relative,reason:'symbolic-link'});continue;}if(entry.isDirectory()){if(IGNORED.has(entry.name)||(!limits.include_hidden&&entry.name.startsWith('.')&&!['.github','.circleci'].includes(entry.name))){skipped.push({path:relative,reason:'ignored-directory'});continue;}await visit(absolute,depth+1);if(truncated&&(entries_seen>limits.max_entries||raw.length>=limits.max_files))return;continue;}if(!entry.isFile()){skipped.push({path:relative,reason:'non-regular-entry'});continue;}let stat;try{stat=await fs.stat(absolute);}catch{skipped.push({path:relative,reason:'stat-failed'});continue;}if(stat.size>limits.max_file_bytes){skipped.push({path:relative,reason:'file-size-limit',size_bytes:stat.size});continue;}if(total_bytes+stat.size>limits.max_total_bytes){truncated=true;skipped.push({path:relative,reason:'total-byte-limit'});return;}let buffer;try{buffer=await fs.readFile(absolute);}catch(error){skipped.push({path:relative,reason:'read-failed',message:String(error.message).slice(0,160)});continue;}total_bytes+=buffer.length;const text=!buffer.subarray(0,Math.min(buffer.length,8192)).includes(0)?buffer.toString('utf8'):null;raw.push({path:relative,size_bytes:buffer.length,sha256:digest(buffer),language:EXT[path.extname(relative).toLowerCase()]??'Unknown',extension:path.extname(relative).toLowerCase(),text});}}
+ async function visit(dir,depth){if(depth>limits.max_depth){truncated=true;skipped.push({path:path.relative(root,dir),reason:'maximum-depth'});return;}let entries;try{entries=await fs.readdir(dir,{withFileTypes:true});}catch(error){skipped.push({path:path.relative(root,dir),reason:'unreadable-directory',message:String(error.message).slice(0,160)});return;}entries.sort((a,b)=>a.name.localeCompare(b.name));for(const entry of entries){entries_seen++;const absolute=path.join(dir,entry.name),relative=path.relative(root,absolute).split(path.sep).join('/');if(entries_seen>limits.max_entries||raw.length>=limits.max_files){truncated=true;return;}if(entry.isSymbolicLink()){skipped.push({path:relative,reason:'symbolic-link'});continue;}if(entry.isDirectory()){if(IGNORED.has(entry.name)||(!limits.include_hidden&&entry.name.startsWith('.')&&!['.github','.circleci'].includes(entry.name))){skipped.push({path:relative,reason:'ignored-directory'});continue;}await visit(absolute,depth+1);if(truncated&&(entries_seen>limits.max_entries||raw.length>=limits.max_files))return;continue;}if(!entry.isFile()){skipped.push({path:relative,reason:'non-regular-entry'});continue;}let handle,stat,buffer;
+try{
+ const flags=fs_constants.O_RDONLY|(fs_constants.O_NOFOLLOW??0);
+ handle=await fs.open(absolute,flags);
+ stat=await handle.stat();
+ if(!stat.isFile()){skipped.push({path:relative,reason:'non-regular-entry'});continue;}
+ if(stat.size>limits.max_file_bytes){skipped.push({path:relative,reason:'file-size-limit',size_bytes:stat.size});continue;}
+ if(total_bytes+stat.size>limits.max_total_bytes){truncated=true;skipped.push({path:relative,reason:'total-byte-limit'});return;}
+ buffer=Buffer.alloc(stat.size);
+ let offset=0;
+ while(offset<buffer.length){const result=await handle.read(buffer,offset,buffer.length-offset,offset);if(result.bytesRead===0)break;offset+=result.bytesRead;}
+ const after=await handle.stat();
+ if(offset!==stat.size||after.size!==stat.size||after.mtimeMs!==stat.mtimeMs){skipped.push({path:relative,reason:'file-changed-during-read'});continue;}
+}catch(error){skipped.push({path:relative,reason:'read-failed',message:String(error.message).slice(0,160)});continue;}
+finally{if(handle)await handle.close().catch(()=>{});}
+total_bytes+=buffer.length;
+const text=!buffer.subarray(0,Math.min(buffer.length,8192)).includes(0)?buffer.toString('utf8'):null;
+raw.push({path:relative,size_bytes:buffer.length,sha256:digest(buffer),language:EXT[path.extname(relative).toLowerCase()]??'Unknown',extension:path.extname(relative).toLowerCase(),text});}}
  await visit(root,0);
  const known=new Set(raw.map(x=>x.path)),files=[],manifests=[],dependencies=[],symbols=[],findings=[],edges=[];
  for(const item of raw){const record={path:item.path,size_bytes:item.size_bytes,sha256:item.sha256,language:item.language,extension:item.extension,text_analyzed:item.text!==null};if(item.text!==null){record.imports=extract(IMPORTS[item.language],item.text,limits.max_imports_per_file).map(specifier=>({specifier,resolved_path:resolve_import(item.path,specifier,known)}));record.symbols=symbol_list(SYMBOLS[item.language],item.text,limits.max_symbols_per_file);for(const symbol of record.symbols)symbols.push({file:item.path,...symbol,language:item.language});for(const edge of record.imports)if(edge.resolved_path)edges.push({from:item.path,to:edge.resolved_path,kind:'source-import',label:edge.specifier});findings.push(...secret_findings(item.path,item.text));const manifest_name=path.posix.basename(item.path);if(MANIFESTS.has(manifest_name)||manifest_name.endsWith('.csproj')){const manifest=parse_manifest(item.path,item.text);if(manifest){manifests.push(manifest);dependencies.push(...manifest.dependencies.map(dep=>({...dep,manifest:item.path})));}}}files.push(record);}
