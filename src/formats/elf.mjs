@@ -323,7 +323,7 @@ function parse_gnu_symbol_versions(reader, raw_sections, symbol_result, is_64, l
           const next_aux = reader.u32(aux_at + 12, little, 'Vernaux next offset');
           const name = read_elf_string(reader, strings, name_offset, 'Vernaux version name');
           const version_index = other & 0x7fff;
-          const auxiliary = { hash, flags, version_index, name };
+          const auxiliary = { hash, flags, version_index, hidden: (other & 0x8000) !== 0, name };
           record.auxiliary.push(auxiliary);
           if (version_index > 1) version_map.set(version_index, { name, source: 'need', library });
           if (index + 1 < count) {
@@ -372,6 +372,11 @@ function parse_gnu_symbol_versions(reader, raw_sections, symbol_result, is_64, l
   }
 
   const symbol_versions = [];
+  const symbols_by_table = new Map();
+  for (const symbol of symbol_result.symbols) {
+    if (!symbols_by_table.has(symbol.table_section_index)) symbols_by_table.set(symbol.table_section_index, new Map());
+    symbols_by_table.get(symbol.table_section_index).set(symbol.index, symbol);
+  }
   for (const section of raw_sections) {
     if (section.raw_type !== 0x6fffffff) continue;
     if (!section.raw_range_valid || typeof section.file_offset !== 'number' || typeof section.size !== 'number' || section.size % 2 !== 0) {
@@ -388,10 +393,10 @@ function parse_gnu_symbol_versions(reader, raw_sections, symbol_result, is_64, l
     }
     const symbol_count = symbol_section.size / symbol_entry_size;
     const count = section.size / 2;
-    if (count > maximum_symbols || count !== symbol_count) {
+    if (count > maximum_symbols || symbol_versions.length + count > maximum_symbols || count !== symbol_count) {
       throw new OrixError('ORIX_ELF_VERSYM_COUNT', 'GNU version-symbol count does not match its linked dynamic symbol table', { details: { section_index: section.index, count, symbol_count, maximum_symbols }, recoverable: true });
     }
-    const symbols_by_index = new Map(symbol_result.symbols.filter(symbol => symbol.table_section_index === symbol_section.index).map(symbol => [symbol.index, symbol]));
+    const symbols_by_index = symbols_by_table.get(symbol_section.index) ?? new Map();
     for (let index = 0; index < count; index += 1) {
       const raw_value = reader.u16(section.file_offset + index * 2, little, 'GNU version-symbol entry');
       const version_index = raw_value & 0x7fff;
