@@ -798,7 +798,7 @@ function create_elf_version_fixture() {
   buffer.writeUInt32LE(2, versym + 40);
   buffer.writeBigUInt64LE(2n, versym + 48);
 
-  buffer.write(Buffer.from('\\0func\\0libc.so.6\\0GLIBC_2.2.5\\0', 'ascii'), 800);
+  Buffer.from('\0func\0libc.so.6\0GLIBC_2.2.5\0', 'ascii').copy(buffer, 800);
   buffer.writeUInt32LE(1, 864);
   buffer[868] = 0x12;
   buffer.writeUInt16LE(1, 870);
