@@ -75,7 +75,7 @@ async function read_records(file_path, options = {}) {
     catch (error) { fail('ORIX_LEDGER_INVALID_JSON', 'Evidence ledger contains malformed JSON', { line: index + 1 }, error); }
     if (!record || record.ledger_version !== LEDGER_VERSION || !Number.isSafeInteger(record.sequence) || record.sequence !== index + 1 ||
         typeof record.previous_hash !== 'string' || typeof record.record_hash !== 'string' ||
-        record.previous_hash !== previous_hash || typeof record.type !== 'string' || !record.payload) {
+        record.previous_hash !== previous_hash || typeof record.type !== 'string' || !record.payload || typeof record.payload !== 'object') {
       fail('ORIX_LEDGER_CHAIN_INVALID', 'Evidence ledger record metadata or sequence is invalid', { line: index + 1 });
     }
     const { record_hash: supplied_hash, ...unsigned } = record;
@@ -148,6 +148,8 @@ export async function append_ledger(ledger_path, { type, payload }, options = {}
     const max_record_bytes = options.max_record_bytes ?? DEFAULT_MAX_RECORD_BYTES;
     if (Buffer.byteLength(line) > max_record_bytes) fail('ORIX_LEDGER_RECORD_LIMIT', 'Evidence payload exceeds maximum record size', { bytes: Buffer.byteLength(line), max_record_bytes });
     const existing = await ensure_regular_file(absolute_path);
+    const max_bytes = options.max_bytes ?? DEFAULT_MAX_BYTES;
+    if ((existing?.size ?? 0) + Buffer.byteLength(line) > max_bytes) fail('ORIX_LEDGER_SIZE_LIMIT', 'Appending this record would exceed the configured ledger size limit', { current_bytes: existing?.size ?? 0, record_bytes: Buffer.byteLength(line), max_bytes });
     if (!existing) {
       const created = await fs.open(absolute_path, FS_CONSTANTS.O_CREAT | FS_CONSTANTS.O_EXCL | FS_CONSTANTS.O_WRONLY, 0o600);
       try { await created.writeFile(line); await created.sync(); }
