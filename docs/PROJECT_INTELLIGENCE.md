@@ -1,35 +1,50 @@
 # Project Intelligence
 
-ORIX Project Intelligence inventories a local source tree without running project code.
+ORIX inventories a local source tree without executing project code, package scripts, build hooks, tests, binaries or plugins.
 
 ## Commands
 
-~~~bash
+```bash
 node src/cli.mjs project ./my-repository
 node src/cli.mjs project ./my-repository --json
 node src/cli.mjs project ./my-repository --json --out ./project-report.json
 node src/cli.mjs project ./my-repository --format cyclonedx --out ./sbom.cdx.json
-~~~
+```
 
-## Current analysis
+## Inventory and source model
 
-- Deterministic traversal, symlink rejection, no-follow file-descriptor opens where supported, bounded reads and exclusions for generated/dependency directories.
-- File inventory, SHA-256, extension/language classification and bounded source reads.
-- Manifest metadata for npm-compatible package.json, Python requirements and basic pyproject.toml, Cargo, Go modules, Composer, Maven, NuGet and Gemfile.
-- Dependency declarations with dependency group and manifest provenance.
+- Deterministic, bounded directory traversal with symlink rejection and generated/dependency-directory exclusions.
+- File size, SHA-256, extension/language classification and bounded text reads.
+- Manifest metadata for npm, Python, Cargo, Go modules, Composer, Maven, NuGet and Ruby.
+- Dependency declarations with manifest and dependency-group provenance.
 - Conservative import extraction for JavaScript/TypeScript, Python, Go, Rust, C/C++, Java, Kotlin, C# and Ruby.
 - Best-effort local import resolution, file graph edges and syntax-pattern symbol candidates.
-- README, license, CI, tests, package-manager and container project signals.
-- Redacted indicators for selected credential-shaped patterns.
+- README, license, CI, tests, package-manager and container signals.
+- Redacted findings for selected credential-shaped patterns.
 
-## Limits and interpretation
+## Lockfile analysis
 
-The scanner enforces ceilings for files, entries, depth, individual file size, aggregate bytes, symbols and imports. It marks coverage incomplete when traversal limits are reached. Oversized files are skipped and recorded. It does not follow symlinks.
+The lockfile reader currently supports:
 
-The `--format cyclonedx` option exports declared direct dependencies as a CycloneDX 1.5 SBOM. It emits package URLs for recognized ecosystems (npm, PyPI, Cargo, Go modules, Composer, Maven, NuGet and RubyGems), preserves manifest/dependency-group provenance as component properties, and marks development dependencies as optional. Unknown ecosystems are omitted rather than assigned guessed package URLs. The project component and dependency inventory describe declarations only: ORIX does not resolve transitive dependencies, verify package integrity, or assert vulnerability status.\n\nManifest parsers are conservative. They do not execute package managers, resolve version ranges, fetch registries, inspect transitive lockfile graphs, run build scripts, install packages, or claim vulnerability status. Import resolution and symbol extraction are heuristic, not compiler front-ends.
+- npm `package-lock.json` versions 1, 2 and 3, including nested package placement, root dependencies, package metadata and dependency edges.
+- Yarn classic lockfiles and Yarn Berry lockfiles, including selector groups, resolved versions, checksums/integrity fields and dependency edges.
 
-Credential matches never include matched values. They identify a file and line for manual review; false positives are possible. Reports may contain local paths and project metadata, so review them before sharing.
+The project report records lockfile format, path, package inventory, root edges, package-to-package edges, warnings and completeness. Package locations are kept distinct so nested versions of the same package do not collapse in the dependency graph. Lockfile package records are not registry lookups: ORIX does not download packages or validate their integrity hashes against remote content.
+
+pnpm, Cargo, Composer, Python, Go and other lockfile formats are not yet parsed. Their manifest declarations may still be reported where the corresponding manifest parser exists. Unresolved selectors and malformed records are surfaced as warnings rather than silently treated as a complete graph.
+
+## CycloneDX export
+
+`--format cyclonedx` emits a CycloneDX 1.5 SBOM. When supported npm or Yarn lockfiles are present, ORIX uses exact locked package versions and the observed dependency relationships. Without a supported lockfile, the export falls back to recognized declared dependencies and their manifest provenance.
+
+Package URLs are emitted only for recognized ecosystems. Development dependencies are marked optional where that classification is available. Unknown ecosystems are omitted rather than assigned guessed package URLs. A lockfile graph is an inventory of recorded package metadata, not a vulnerability assessment, publisher-authenticity check or guarantee that the lockfile matches an installed tree.
+
+## Resource limits and interpretation
+
+Traversal, entries, depth, individual file size, aggregate bytes, symbols, imports, lockfile packages and lockfile edges are bounded. Oversized files are skipped and recorded. Coverage is marked incomplete when traversal limits are reached. Lockfile parsers enforce independent package and edge ceilings.
+
+Manifest and import parsing are conservative heuristics, not compiler front-ends. Dependency declarations are not vulnerability findings. Credential matches never include matched values; they identify a file and line for manual review, and false positives are possible.
 
 ## Security boundary
 
-No package scripts, hooks, build tools, tests, binaries, plugins, or source files are executed. Only filesystem metadata and bounded file reads are performed. File identity and size are checked around descriptor-based reads; platforms that do not expose a no-follow open flag retain the operating system's file-open semantics. Use this feature only on repositories you own or are authorized to inspect.
+Only filesystem metadata and bounded file reads are used. File descriptors are opened with no-follow semantics where the platform exposes them, and file identity and size are checked around reads. No package manager, registry, script, build, test, binary or project-supplied code is executed. Reports may contain local paths and project metadata; review them before sharing.
