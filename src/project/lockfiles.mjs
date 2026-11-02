@@ -284,7 +284,6 @@ function parse_cargo_lock(file, text, limits) {
   let lockfile_version = null;
   let current = null;
   let reading_dependencies = false;
-  let dependency_buffer = '';
   const read_dependency_values = value => {
     const matches = value.match(/"(?:\\.|[^"\\])*"|'[^']*'/g) ?? [];
     for (const token of matches) {
@@ -307,7 +306,6 @@ function parse_cargo_lock(file, text, limits) {
     }
     if (!current) continue;
     if (reading_dependencies) {
-      dependency_buffer += ' ' + line;
       read_dependency_values(line);
       if (line.includes(']')) reading_dependencies = false;
       continue;
@@ -315,12 +313,11 @@ function parse_cargo_lock(file, text, limits) {
     const dependencies_match = /^\s*dependencies\s*=\s*\[(.*)$/.exec(line);
     if (dependencies_match) {
       current.dependencies = [];
-      dependency_buffer = dependencies_match[1];
       read_dependency_values(dependencies_match[1]);
       reading_dependencies = !dependencies_match[1].includes(']');
       continue;
     }
-    const field = /^\s*(name|version|source|checksum)\s*=\s*(.+?)\s*(?:#.*)?$/.exec(line);
+    const field = /^\s*(name|version|source|checksum)\s*=\s*("(?:\\.|[^"\\])*"|'[^']*')/.exec(line);
     if (!field) continue;
     const value = decode_toml_string(field[2]);
     if (field[1] === 'name') current.name = value;
@@ -329,6 +326,7 @@ function parse_cargo_lock(file, text, limits) {
     else if (field[1] === 'checksum') current.checksum = value;
   }
   const warnings = [];
+  if (blocks.length === 0) warnings.push({ code: 'ORIX_LOCKFILE_NO_PACKAGE_TABLE' });
   const package_map = new Map();
   const packages = [];
   const local_packages = [];
