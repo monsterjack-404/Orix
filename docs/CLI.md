@@ -99,3 +99,8 @@ node src/cli.mjs ledger list ./.orix/evidence.jsonl
 ```
 
 The chain detects edits, deletion, reordering and incomplete final records. It is tamper-evident, not tamper-proof: anyone able to rewrite the entire ledger can recompute its hashes. Preserve signed or externally timestamped checkpoints when independent chain-of-custody proof is required.
+
+
+### Local MCP server
+
+`npm run mcp` starts the stdio JSON-RPC server; `orix-mcp` is the package executable. The default workspace root is the current working directory. Set `ORIX_MCP_ROOTS` to an explicit platform-delimited list of allowed roots. See [`MCP.md`](MCP.md) for tool contracts and security limits.
