@@ -647,11 +647,11 @@ test('PE parser decodes RVA-based delay imports and named thunks', () => {
   expanded.writeUInt32LE(0, descriptor + 20);
   expanded.writeUInt32LE(0, descriptor + 24);
   expanded.writeUInt32LE(0x65a1b2c3, descriptor + 28);
-  expanded.write('TESTDLL.dll\\0', raw + 0x150, 'ascii');
+  expanded.write('TESTDLL.dll\0', raw + 0x150, 'ascii');
   expanded.writeUInt32LE(0x1180, raw + 0x170);
   expanded.writeUInt32LE(0, raw + 0x174);
   expanded.writeUInt16LE(3, raw + 0x180);
-  expanded.write('DelayLoadFunc\\0', raw + 0x182, 'ascii');
+  expanded.write('DelayLoadFunc\0', raw + 0x182, 'ascii');
 
   const parsed = parse_pe(expanded);
   assert.equal(parsed.delay_imports.length, 1);
@@ -685,7 +685,7 @@ test('PE parser converts VA-based delay-import fields and rejects invalid thunk 
   expanded.writeUInt32LE(0, descriptor + 20);
   expanded.writeUInt32LE(0, descriptor + 24);
   expanded.writeUInt32LE(0, descriptor + 28);
-  expanded.write('TESTDLL.dll\\0', raw + 0x150, 'ascii');
+  expanded.write('TESTDLL.dll\0', raw + 0x150, 'ascii');
   expanded.writeUInt32LE(0xfffffff0, raw + 0x170);
   assert.throws(() => parse_pe(expanded), error => error.code === 'ORIX_PE_INVALID_DELAY_IMPORT_NAME');
 });
