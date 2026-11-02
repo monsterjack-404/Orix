@@ -4,7 +4,7 @@
 
 ORIX is a local-first engineering intelligence workbench for inspecting software artifacts, reconstructing file-format structure, and preserving the evidence behind every conclusion. It is designed as a serious, extensible foundation for authorized reverse engineering and software research—not a wrapper that hides its methods and not a collection of aspirational feature folders.
 
-> Current release line: **0.4.0 — Artifact, Repository + PE/ELF/Mach-O Structural Intelligence**  
+> Current release line: **0.4.0 — Artifact, Repository + PE/ELF/Mach-O/ZIP64 Structural Intelligence**  
 > Runtime: **Node.js 20.11 or newer**  
 > Dependencies: **Node.js built-ins only**  
 > Execution model: **local, static, read-only analysis**
