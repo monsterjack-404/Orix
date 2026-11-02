@@ -99,3 +99,43 @@ test('Yarn Berry lockfiles skip metadata and parse resolution and colon fields',
   assert.equal(report.edges.length, 1);
   assert.equal(report.edges[0].resolved_version, '2.3.0');
 });
+
+
+test('Cargo.lock resolves registry packages, checksums and workspace dependency edges', () => {
+  const input = [
+    'version = 4',
+    '',
+    '[[package]]',
+    'name = "demo-app"',
+    'version = "1.0.0"',
+    'dependencies = [',
+    ' "serde 1.0.200",',
+    ']',
+    '',
+    '[[package]]',
+    'name = "serde"',
+    'version = "1.0.200"',
+    'source = "registry+https://github.com/rust-lang/crates.io-index"',
+    'checksum = "abc123"',
+    'dependencies = [',
+    ' "serde_core 1.0.200",',
+    ']',
+    '',
+    '[[package]]',
+    'name = "serde_core"',
+    'version = "1.0.200"',
+    'source = "registry+https://github.com/rust-lang/crates.io-index"',
+    'checksum = "def456"',
+  ].join('\n');
+  const report = parse_lockfile('Cargo.lock', input);
+  assert.equal(report.format, 'cargo-lock');
+  assert.equal(report.lockfile_version, 4);
+  assert.equal(report.packages.length, 2);
+  assert.equal(report.root_edges.length, 1);
+  assert.equal(report.root_edges[0].name, 'serde');
+  assert.equal(report.edges.length, 1);
+  assert.equal(report.edges[0].name, 'serde_core');
+  assert.equal(report.edges[0].resolved_version, '1.0.200');
+  assert.equal(report.packages.find(item => item.name === 'serde').integrity, 'abc123');
+  assert.equal(report.complete, true);
+});
