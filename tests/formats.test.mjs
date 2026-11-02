@@ -112,7 +112,7 @@ test('ZIP parser flags parent-traversal paths and rejects ZIP64 sentinels', asyn
   const eocd = zip64.length - 22;
   zip64.writeUInt16LE(0xffff, eocd + 8);
   zip64.writeUInt16LE(0xffff, eocd + 10);
-  assert.throws(() => parse_zip(zip64), error => error.code === 'ORIX_ZIP64_UNSUPPORTED');
+  assert.throws(() => parse_zip(zip64), error => error.code === 'ORIX_ZIP64_LOCATOR_MISSING');
 });
 
 
