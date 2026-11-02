@@ -658,7 +658,7 @@ function parse_composer_lock(file, text, limits, manifests) {
         integrity: dist_shasum && /^[a-f0-9]{40,128}$/i.test(dist_shasum) ? dist_shasum : null,
         resolved: source_type && source_reference ? source_type + ':' + source_reference : null,
         license: Array.isArray(entry.license) ? entry.license.map(value => clean_string(value, 128, 'license')).filter(Boolean).slice(0, 20) : [],
-        dependencies: Object.entries(entry.require ?? {}).filter(([dependency]) => typeof dependency === 'string').map(([dependency, requirement]) => ({ name: dependency, requirement: String(requirement).slice(0, MAX_VERSION) })),
+        dependencies: Object.entries(entry.require && typeof entry.require === 'object' && !Array.isArray(entry.require) ? entry.require : {}).map(([dependency, requirement]) => ({ name: dependency, requirement: String(requirement).slice(0, MAX_VERSION) })),
       };
       packages.push(item);
       const candidates = by_name.get(name) ?? [];
@@ -694,7 +694,7 @@ function parse_composer_lock(file, text, limits, manifests) {
   return { path: file, ecosystem: 'composer', format: 'composer-lock', lockfile_version: null, packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0 };
 }
 
-export function parse_lockfile(file, text, options = {}) {
+export function parse_lockfile(file, text, options = {}, manifests = []) {
   if (typeof file !== 'string' || typeof text !== 'string') throw new TypeError('parse_lockfile requires a file path and text');
   const limits = validate_limits(options);
   const base = file.split('/').at(-1);
@@ -702,6 +702,6 @@ export function parse_lockfile(file, text, options = {}) {
   if (base === 'yarn.lock') return parse_yarn_lock(file, text, limits);
   if (base === 'Cargo.lock') return parse_cargo_lock(file, text, limits);
   if (base === 'pnpm-lock.yaml') return parse_pnpm_lock(file, text, limits);
-  if (base === 'composer.lock') return parse_composer_lock(file, text, limits, options.manifests ?? []);
+  if (base === 'composer.lock') return parse_composer_lock(file, text, limits, manifests);
   return null;
 }
