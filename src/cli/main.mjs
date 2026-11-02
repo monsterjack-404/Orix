@@ -12,6 +12,7 @@ import { render_inspection_markdown, render_scan_markdown } from '../reports/mar
 import { render_sarif } from '../reports/sarif.mjs';
 import { normalize_error } from '../core/errors.mjs';
 import { append_ledger, list_ledger, verify_ledger } from '../evidence/ledger.mjs';
+import { hash_buffer } from '../core/hash.mjs';
 async function write_or_print(content,output_path) {
   if(!output_path){process.stdout.write(content.endsWith('\n')?content:content+'\n');return;}
   const destination=path.resolve(output_path);
@@ -51,8 +52,8 @@ export async function main(argv=process.argv.slice(2)) {
     const payload=parsed.command==='inspect'
       ? { path:report.artifact.path, sha256:report.integrity.digest, size_bytes:report.artifact.size_bytes, format:report.detection.format, parser_status:report.parser.status, indicators:report.indicators, evidence:report.evidence }
       : parsed.command==='scan'
-        ? { root:report.scan.root, files_analyzed:report.scan.files_analyzed, files_skipped:report.scan.files_skipped, coverage:report.scan.coverage, artifacts:report.artifacts.map(item=>({ path:item.artifact.path, sha256:item.integrity.digest, format:item.detection.format, indicators:item.indicators })) }
-        : { root:parsed.target, schema_version:report.schema_version, report };
+        ? { root:report.scan.root, files_analyzed:report.scan.files_analyzed, files_skipped:report.scan.files_skipped, total_bytes_analyzed:report.scan.total_bytes_analyzed, formats:report.scan.formats, indicator_counts:report.scan.indicator_counts, coverage:report.scan.coverage, artifacts:report.artifacts.map(item=>({ path:item.artifact.path, sha256:item.integrity.digest, format:item.detection.format, indicator_rule_ids:(item.indicators??[]).map(finding=>finding.rule_id) })) }
+        : { root:parsed.target, schema_version:report.schema_version, report_sha256:hash_buffer(Buffer.from(JSON.stringify(report))), file_count:report.inventory?.files?.length??report.files?.length??null };
     report.ledger_receipt=await append_ledger(parsed.flags.ledger,{type:parsed.command+'.completed',payload});
   }
   await write_or_print(select_report(report,parsed.flags.format??'markdown',renderer),parsed.flags.out);
