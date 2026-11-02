@@ -77,7 +77,7 @@ export function render_cyclonedx(report, options = {}) {
       name: dependency.name,
       ...(is_pinned_version(dependency.version) ? { version: dependency.version } : {}),
       purl,
-      scope: existing?.scope === 'required' || !['dev', 'devDependencies', 'require-dev', 'dev-dependencies', 'build-dependencies'].includes(dependency.dependency_type) ? 'required' : 'optional',
+      scope: existing?.scope === 'required' || !(dependency.dev || dependency.optional || ['dev', 'devDependencies', 'require-dev', 'dev-dependencies', 'build-dependencies'].includes(dependency.dependency_type)) ? 'required' : 'optional',
       properties: [...property_set].map(([name, value]) => ({ name, value })).sort((a, b) => a.name.localeCompare(b.name)),
     });
   }
