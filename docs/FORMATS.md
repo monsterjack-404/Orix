@@ -8,8 +8,8 @@ ORIX distinguishes **signature recognition** from **structural parsing**. Recogn
 |---|---:|---:|---|---|
 | PE / COFF | Yes (`MZ`) | Yes | PE pointer, signature, COFF, PE32/PE32+, selected optional fields, data directories, section records, file-backed RVA mapping, import descriptors/thunks, named and ordinal exports, forwarded-export markers | Delay imports, relocations, resources, certificate validation, CLR metadata |
 | ELF | Yes | Yes | ELF32/ELF64 headers, endianness, section names, PT_LOAD and other program headers, PT_INTERP, PT_DYNAMIC tags, GNU build IDs, SHT_SYMTAB/SHT_DYNSYM symbols and SHT_REL/SHT_RELA relocation records | Extended numbering, relocation application, GNU symbol-version resolution, DWARF and architecture-specific relocation-name catalogs |
-| Thin Mach-O | Yes | Yes | 32/64-bit header, CPU metadata and bounded load-command framing | Universal/fat expansion, command-specific payloads, chained fixups, code signatures and Objective-C metadata |
-| Universal Mach-O | Yes | No | Container signature only | Architecture table parsing and slice selection |
+| Thin Mach-O | Yes | Yes | 32/64-bit header, CPU metadata, bounded load commands, LC_SEGMENT/LC_SEGMENT_64 sections and LC_CODE_SIGNATURE superblob/CodeDirectory metadata | Chained fixups, cryptographic trust verification, Objective-C metadata and other command payloads |
+| Universal Mach-O | Yes | Yes | 32/64-bit fat architecture tables, bounded non-overlapping slices and per-slice thin Mach-O parsing | Architecture-specific semantic analysis beyond supported thin commands |
 | WebAssembly | Yes | Yes | Version, section boundaries and custom section names | Type validation, instruction decoding, imports/exports semantics and decompilation |
 | ZIP | Yes | Yes | End-of-central-directory discovery, bounded central-directory entries, method/flag metadata, unsafe path and symlink markers, local-header range checks | ZIP64, multi-disk, decompression, CRC verification and archive-bomb analysis |
 | PDF | Yes | No | `%PDF-` prefix | Cross-reference parsing, object graph, incremental updates, embedded files and JavaScript inspection |
@@ -32,7 +32,7 @@ The parser validates class and byte order before selecting ELF32 or ELF64 layout
 
 ### Mach-O
 
-Only thin Mach-O headers are parsed. Magic determines byte order and 32/64-bit header size. Each load command must fit inside the declared command region, have a size of at least eight bytes and stay within the file. Command-specific payloads remain opaque.
+Thin Mach-O parsing validates magic, byte order, header size and each load command. LC_SEGMENT and LC_SEGMENT_64 decode segment ranges, protections and section records with count and file-range checks. LC_CODE_SIGNATURE reports bounded embedded-signature superblob slots and CodeDirectory metadata; it does not verify hashes, CMS signatures, certificates or trust. Universal Mach-O parsing decodes FAT/FAT64 architecture tables, rejects out-of-file and overlapping slices, and runs the thin parser against each bounded slice. Chained fixups, Objective-C metadata and other load-command payloads remain unsupported.
 
 ### ZIP
 
