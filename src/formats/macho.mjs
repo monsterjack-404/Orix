@@ -71,6 +71,63 @@ function decode_code_signature(reader, command_offset, command_size, file_size, 
   return result;
 }
 
+function parse_symbol_table(reader, command, is_64, little, options) {
+  if (!command) return { table: null, symbols: [] };
+  if (command.size < 24) throw new OrixError('ORIX_MACHO_BAD_SYMTAB_COMMAND', 'Mach-O LC_SYMTAB command is smaller than its fixed header', { details: { size: command.size }, recoverable: true });
+  const symbol_offset = reader.u32(command.offset + 8, little, 'symbol table offset');
+  const symbol_count = reader.u32(command.offset + 12, little, 'symbol count');
+  const string_offset = reader.u32(command.offset + 16, little, 'symbol string-table offset');
+  const string_size = reader.u32(command.offset + 20, little, 'symbol string-table size');
+  const maximum_symbols = options.max_symbols ?? 100000;
+  const maximum_string_bytes = options.max_symbol_string_bytes ?? 16 * 1024 * 1024;
+  if (!Number.isSafeInteger(maximum_symbols) || maximum_symbols < 0 || symbol_count > maximum_symbols) {
+    throw new OrixError('ORIX_MACHO_SYMBOL_LIMIT', 'Mach-O symbol count exceeds configured parser limit', { details: { symbol_count, maximum_symbols }, recoverable: true });
+  }
+  if (!Number.isSafeInteger(maximum_string_bytes) || maximum_string_bytes < 0 || string_size > maximum_string_bytes) {
+    throw new OrixError('ORIX_MACHO_STRING_TABLE_LIMIT', 'Mach-O symbol string table exceeds configured parser limit', { details: { string_size, maximum_string_bytes }, recoverable: true });
+  }
+  const entry_size = is_64 ? 16 : 12;
+  const symbol_bytes = symbol_count * entry_size;
+  if (!Number.isSafeInteger(symbol_bytes)) throw new OrixError('ORIX_MACHO_SYMBOL_RANGE', 'Mach-O symbol table byte count is not safely representable', { recoverable: true });
+  reader.require(symbol_offset, symbol_bytes, 'Mach-O nlist table');
+  reader.require(string_offset, string_size, 'Mach-O symbol string table');
+  const string_table = reader.bytes(string_offset, string_size, 'Mach-O symbol string table');
+  const type_names = new Map([[0, 'UNDEFINED'], [2, 'ABSOLUTE'], [8, 'SECTION'], [10, 'PREBOUND_UNDEFINED'], [12, 'INDIRECT']]);
+  const symbols = [];
+  for (let index = 0; index < symbol_count; index += 1) {
+    const at = symbol_offset + index * entry_size;
+    const string_index = reader.u32(at, little, 'nlist string index');
+    const raw_type = reader.u8(at + 4, 'nlist type');
+    const section_index = reader.u8(at + 5, 'nlist section index');
+    const description = reader.u16(at + 6, little, 'nlist description');
+    const value = is_64 ? reader.u64(at + 8, little, 'nlist value') : reader.u32(at + 8, little, 'nlist value');
+    let name = null;
+    if (string_index !== 0) {
+      if (string_index >= string_size) throw new OrixError('ORIX_MACHO_SYMBOL_STRING_INDEX', 'Mach-O symbol name index is outside its string table', { details: { index, string_index, string_size }, recoverable: true });
+      const terminator = string_table.indexOf(0, string_index);
+      if (terminator < 0) throw new OrixError('ORIX_MACHO_SYMBOL_STRING_UNTERMINATED', 'Mach-O symbol name is not NUL-terminated inside the string table', { details: { index, string_index }, recoverable: true });
+      name = string_table.toString('utf8', string_index, terminator);
+    }
+    const type = raw_type & 0x0e;
+    symbols.push({
+      index,
+      name,
+      raw_type,
+      type: type_names.get(type) ?? 'UNKNOWN_' + type,
+      is_external: (raw_type & 0x01) !== 0,
+      is_private_external: (raw_type & 0x10) !== 0,
+      is_debug_symbol: (raw_type & 0xe0) !== 0,
+      section_index,
+      description,
+      value,
+    });
+  }
+  return {
+    table: { symbol_offset, symbol_count, string_offset, string_size, entry_size, range_valid: true },
+    symbols,
+  };
+}
+
 export function parse_macho(buffer, options = {}) {
   const reader = new BinaryReader(buffer, { label: 'Mach-O image' });
   const magic = buffer.subarray(0, 4).toString('hex');
@@ -91,6 +148,7 @@ export function parse_macho(buffer, options = {}) {
   const commands = [];
   const segments = [];
   let code_signature = null;
+  let symbol_table_command = null;
   let total_sections = 0;
   const maximum_sections = options.max_sections ?? 16384;
   let cursor = command_offset;
@@ -161,19 +219,25 @@ export function parse_macho(buffer, options = {}) {
       const numeric_file_offset = typeof file_offset === 'number' ? file_offset : null;
       const numeric_file_size = typeof file_size === 'number' ? file_size : null;
       segments.push({ name: segment_name, vm_address, vm_size, file_offset, file_size, max_protection, initial_protection, flags: segment_flags, file_range_valid: numeric_file_offset !== null && numeric_file_size !== null && numeric_file_offset <= buffer.length && numeric_file_size <= buffer.length - numeric_file_offset, sections });
+    } else if (command === 0x2) {
+      if (size < 24) throw new OrixError('ORIX_MACHO_BAD_SYMTAB_COMMAND', 'Mach-O LC_SYMTAB command is truncated', { details: { index, size }, recoverable: true });
+      symbol_table_command = { offset: cursor, size };
     } else if (command === LC_CODE_SIGNATURE) {
       code_signature = decode_code_signature(reader, cursor, size, buffer.length, spec.little);
     }
     cursor += size;
   }
+  const symbol_result = parse_symbol_table(reader, symbol_table_command, spec.is_64, spec.little, options);
   return {
     format: 'Mach-O', bitness: spec.is_64 ? 64 : 32,
     endianness: spec.little ? 'little' : 'big', architecture: CPU.get(cpu_type) ?? `unknown-${cpu_type}`,
     header: { cpu_type, cpu_subtype, file_type, command_count, command_bytes, flags, reserved: spec.is_64 ? reader.u32(28, spec.little, 'reserved') : null },
     load_commands: commands,
     segments,
+    symbol_table: symbol_result.table,
+    symbols: symbol_result.symbols,
     code_signature,
-    notes: ['Thin Mach-O segment and section commands are decoded with bounded counts and file-range checks.', 'Code-signature superblob and CodeDirectory metadata are structural observations only; cryptographic signature and trust verification are not performed.', 'Universal/fat containers are parsed by parse_macho_fat. Other load-command payloads remain opaque.'],
+    notes: ['Thin Mach-O segment and section commands are decoded with bounded counts and file-range checks.', 'Code-signature superblob and CodeDirectory metadata are structural observations only; cryptographic signature and trust verification are not performed.', 'LC_SYMTAB nlist records and bounded symbol strings are decoded when present. Universal/fat containers are parsed by parse_macho_fat. Other load-command payloads remain opaque.'],
   };
 }
 
