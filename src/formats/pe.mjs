@@ -169,6 +169,101 @@ function parse_exports(reader, directory, map_rva, options) {
   };
 }
 
+
+function parse_resources(reader, directory, map_rva, options) {
+  if (!directory || directory.address === 0 || directory.size === 0) return { entries: [], directory_count: 0, truncated: false };
+  const root_rva = directory.address;
+  const root_size = directory.size;
+  const max_depth = options.max_resource_depth ?? 8;
+  const max_entries = options.max_resource_entries ?? 4096;
+  const max_name_units = options.max_resource_name_units ?? 1024;
+  let visited_entries = 0;
+  let directory_count = 0;
+  const visited_directories = new Set();
+  function mapped_relative(relative, length, label) {
+    if (!Number.isSafeInteger(relative) || relative < 0 || relative > root_size || length > root_size - relative) {
+      invalid('ORIX_PE_RESOURCE_RANGE', 'PE resource structure exceeds its declared directory range', { relative, length, root_size, label });
+    }
+    const offset = map_rva(root_rva + relative, length);
+    if (offset === null) invalid('ORIX_PE_RESOURCE_RVA', 'PE resource structure cannot be mapped to file data', { relative, length, label });
+    return offset;
+  }
+  function read_name(name_field) {
+    const relative = name_field & 0x7fffffff;
+    const offset = mapped_relative(relative, 2, 'resource name length');
+    const units = reader.u16(offset, true, 'resource name length');
+    if (units > max_name_units) invalid('ORIX_PE_RESOURCE_NAME_LIMIT', 'PE resource name exceeds configured UTF-16 length limit', { units, max_name_units });
+    const name_offset = mapped_relative(relative + 2, units * 2, 'resource name');
+    return reader.bytes(name_offset, units * 2, 'resource name').toString('utf16le');
+  }
+  function walk(relative, depth, path_parts) {
+    if (depth > max_depth) invalid('ORIX_PE_RESOURCE_DEPTH_LIMIT', 'PE resource tree exceeds configured depth', { depth, max_depth });
+    if (visited_directories.has(relative)) invalid('ORIX_PE_RESOURCE_CYCLE', 'PE resource tree contains a directory cycle', { relative });
+    visited_directories.add(relative);
+    directory_count += 1;
+    const header = mapped_relative(relative, 16, 'resource directory header');
+    const named_count = reader.u16(header + 12, true, 'resource named entry count');
+    const id_count = reader.u16(header + 14, true, 'resource ID entry count');
+    const count = named_count + id_count;
+    if (visited_entries + count > max_entries) invalid('ORIX_PE_RESOURCE_ENTRY_LIMIT', 'PE resource entries exceed configured limit', { visited_entries, count, max_entries });
+    mapped_relative(relative + 16, count * 8, 'resource directory entries');
+    const entries = [];
+    for (let index = 0; index < count; index += 1) {
+      visited_entries += 1;
+      const at = mapped_relative(relative + 16 + index * 8, 8, 'resource directory entry');
+      const name_field = reader.u32(at, true, 'resource entry name');
+      const target_field = reader.u32(at + 4, true, 'resource entry target');
+      const key = (name_field & 0x80000000) !== 0
+        ? { name: read_name(name_field), id: null }
+        : { name: null, id: name_field & 0xffff };
+      const next_path = [...path_parts, key.name ?? key.id];
+      if ((target_field & 0x80000000) !== 0) {
+        entries.push({ ...key, kind: 'directory', entries: walk(target_field & 0x7fffffff, depth + 1, next_path) });
+      } else {
+        const data_relative = target_field & 0x7fffffff;
+        const data_offset = mapped_relative(data_relative, 16, 'resource data entry');
+        const data_rva = reader.u32(data_offset, true, 'resource data RVA');
+        const data_size = reader.u32(data_offset + 4, true, 'resource data size');
+        const codepage = reader.u32(data_offset + 8, true, 'resource code page');
+        const reserved = reader.u32(data_offset + 12, true, 'resource reserved');
+        const file_offset = map_rva(data_rva, data_size);
+        entries.push({ ...key, kind: 'data', path: next_path, data_rva, data_size, codepage, reserved, file_offset, file_range_valid: file_offset !== null });
+      }
+    }
+    visited_directories.delete(relative);
+    return entries;
+  }
+  return { entries: walk(0, 0, []), directory_count, truncated: false };
+}
+
+function parse_certificates(reader, directory, buffer, options) {
+  if (!directory || directory.address === 0 || directory.size === 0) return { certificates: [], range_valid: true, truncated: false };
+  const offset = directory.address;
+  const size = directory.size;
+  if (offset > buffer.length || size > buffer.length - offset) {
+    invalid('ORIX_PE_CERTIFICATE_RANGE', 'PE certificate table is outside the file', { offset, size, file_size: buffer.length });
+  }
+  const maximum = options.max_certificates ?? 1024;
+  const certificates = [];
+  const end = offset + size;
+  let cursor = offset;
+  while (cursor + 8 <= end) {
+    if (certificates.length >= maximum) invalid('ORIX_PE_CERTIFICATE_LIMIT', 'PE certificate count exceeds configured limit', { maximum });
+    const length = reader.u32(cursor, true, 'WIN_CERTIFICATE length');
+    const revision = reader.u16(cursor + 4, true, 'WIN_CERTIFICATE revision');
+    const type = reader.u16(cursor + 6, true, 'WIN_CERTIFICATE type');
+    if (length < 8 || length > end - cursor) invalid('ORIX_PE_BAD_CERTIFICATE_RECORD', 'PE WIN_CERTIFICATE record has an invalid length', { cursor, length, remaining: end - cursor });
+    certificates.push({ offset: cursor, length, revision: '0x' + revision.toString(16), type, payload_size: length - 8 });
+    const aligned = Math.ceil(length / 8) * 8;
+    if (aligned > end - cursor) {
+      if (cursor + length === end) cursor = end;
+      else invalid('ORIX_PE_BAD_CERTIFICATE_ALIGNMENT', 'PE certificate alignment exceeds the certificate table', { cursor, length, aligned, remaining: end - cursor });
+    } else cursor += aligned;
+  }
+  if (cursor !== end) invalid('ORIX_PE_CERTIFICATE_TRAILING_BYTES', 'PE certificate table contains an incomplete trailing record', { cursor, end });
+  return { certificates, range_valid: true, truncated: false };
+}
+
 export function parse_pe(buffer, options = {}) {
   const reader = new BinaryReader(buffer, { label: 'PE image' });
   if (reader.ascii(0, 2, 'DOS signature') !== 'MZ') {
@@ -246,6 +341,8 @@ export function parse_pe(buffer, options = {}) {
   const map_rva = make_rva_mapper(reader, sections, size_of_headers);
   const import_result = parse_imports(reader, directory_entries[1], map_rva, is_64_bit, options);
   const export_result = parse_exports(reader, directory_entries[0], map_rva, options);
+  const resource_result = parse_resources(reader, directory_entries[2], map_rva, options);
+  const certificate_result = parse_certificates(reader, directory_entries[4], buffer, options);
 
   return {
     format: 'PE',
@@ -283,9 +380,13 @@ export function parse_pe(buffer, options = {}) {
     exports_truncated: export_result.truncated,
     export_module_name: export_result.module_name,
     export_metadata: export_result.metadata ?? null,
+    resources: resource_result.entries,
+    resource_directory_count: resource_result.directory_count,
+    certificates: certificate_result.certificates,
+    certificate_table_range_valid: certificate_result.range_valid,
     notes: [
-      'PE imports and exports are decoded from bounded file-backed RVAs; delay imports and forwarded API resolution are not performed.',
-      'The certificate directory uses a file offset and is not mapped as an RVA. Certificate trust and authenticity are not validated.',
+      'PE imports, exports and resource trees are decoded from bounded file-backed RVAs; delay imports and forwarded API resolution are not performed.',
+      'The certificate directory uses a file offset and WIN_CERTIFICATE framing is decoded; certificate chains, Authenticode hashes and publisher trust are not verified.',
       'A valid PE signature does not prove that the file is safe. Parser output is structural evidence, not an execution verdict.',
     ],
   };
