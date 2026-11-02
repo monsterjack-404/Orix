@@ -22,6 +22,8 @@ src/cli.mjs
        └─ src/analyzer/scan.mjs
             └─ src/analyzer/walk.mjs
 
+src/core/evidence-ledger.mjs owns persistent ledger integrity; src/evidence/ledger.mjs exposes the CLI-facing record adapter.
+
 src/index.mjs exposes the supported programmatic surface, including the SARIF 2.1.0 renderer.
 ```
 
@@ -37,7 +39,7 @@ src/index.mjs exposes the supported programmatic surface, including the SARIF 2.
 | `analyzer/scan` | Concurrency, per-file isolation, aggregate counts, indicator counts and coverage | Reinterpreting parser fields |
 | `analyzer/indicators` | Deterministic rule evaluation over parser output and bounded metrics | Executing samples, network lookups, opaque scoring or final malware verdicts |
 | `core/evidence` | In-memory evidence identity, provenance, confidence labels and details | User-facing verdicts |
-| `evidence/ledger` | Append-only JSONL records, writer lock, SHA-256 hash chain and verification | Parser interpretation, automatic tamper repair or claims of external timestamping |
+| `core/evidence-ledger` | Canonical JSON records, bounded reads, writer lock, append-only writes, SHA-256 chain validation | Parser interpretation, automatic tamper repair or external timestamp claims |\n| `evidence/ledger` | CLI-facing event adapter and normalized receipt/list/verify reports | Reimplementing the ledger format or hash algorithm |
 | `reports/*` | JSON and Markdown rendering | New analysis or silent data loss |
 | `cli/*` | Arguments, command routing, output destination selection | Parser implementation |
 
@@ -121,7 +123,7 @@ New analyzers should be independent modules with explicit resource budgets and t
 Planned components such as databases, MCP, browser UI, collaboration and worker fleets should be added as vertical slices with end-to-end tests—not as disconnected empty folders.
 
 
-## 10. Persistent evidence ledger
+## 11. Persistent evidence ledger
 
 The optional local ledger stores compact inspection, directory-scan or project-report records as JSON Lines. Each record contains a monotonically increasing sequence, UTC timestamp, event type, payload, previous-record SHA-256 and a SHA-256 digest over canonical JSON. A single-writer lock prevents concurrent appenders from interleaving writes. The verifier checks sequence continuity, previous-hash links, canonical record hashes, JSON framing and configured byte limits.
 
