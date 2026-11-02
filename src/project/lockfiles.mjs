@@ -198,9 +198,9 @@ function parse_yarn_lock(file, text, limits) {
     if (field && !trimmed.startsWith('version:')) {
       const value = field[2].replace(/^['"]|['"]$/g, '');
       if (field[1] === 'version') current.version = value;
-      else if (field[1] === 'resolved') current.resolved = value;
-      else if (field[1] === 'integrity') current.integrity = value;
-      else current.name = value;
+      else if (field[1] === 'resolved' || field[1] === 'resolution') current.resolved = value;
+      else if (field[1] === 'integrity' || field[1] === 'checksum') current.integrity = value;
+      else if (field[1] === 'name') current.name = value;
       section = null;
       continue;
     }
@@ -220,6 +220,7 @@ function parse_yarn_lock(file, text, limits) {
   };
   const resolved = [];
   const edges = [];
+  const warnings = [];
   for (let index = 0; index < packages.length; index += 1) {
     const item = packages[index];
     const name = clean_string(item.name, MAX_NAME, 'name') ?? resolve_name(item.selectors[0] ?? '');
@@ -237,10 +238,11 @@ function parse_yarn_lock(file, text, limits) {
       const selector = dependency.name + '@' + dependency.requirement;
       const candidate = by_selector.get(selector) ?? by_selector.get(dependency.name + '@npm:' + dependency.requirement);
       if (candidate) edges.push({ from: record.location, to: candidate.selectors.join(', '), name: dependency.name, requirement: dependency.requirement, resolved_version: candidate.version });
+      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_EDGE', from: record.location, dependency: dependency.name });
       if (edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Yarn lockfile dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
     }
   }
-  return { path: file, ecosystem: 'npm', format: 'yarn-lock', lockfile_version: null, packages: resolved, edges, warnings: [], complete: true };
+  return { path: file, ecosystem: 'npm', format: 'yarn-lock', lockfile_version: null, packages: resolved, edges, warnings, complete: warnings.length === 0 };
 }
 
 export function parse_lockfile(file, text, options = {}) {
