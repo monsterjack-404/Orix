@@ -68,6 +68,7 @@ function collect_indicators(indexed) {
 export function compare_reports(baseline, current) {
   validate_report(baseline, 'Baseline');
   validate_report(current, 'Current');
+  if (baseline.schema_version !== current.schema_version) fail('ORIX_COMPARE_SCHEMA_MISMATCH', 'Baseline and current reports must use the same report schema', { baseline: baseline.schema_version, current: current.schema_version });
   const before = index_artifacts(baseline, 'Baseline');
   const after = index_artifacts(current, 'Current');
   const added = [];
