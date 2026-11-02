@@ -228,3 +228,21 @@ test('project intelligence integrates Pipfile.lock with declared runtime and dev
   assert.equal(report.lockfiles[0].root_edges.length, 2);
   assert.equal(report.lockfiles[0].complete, false);
 }));
+
+
+test('project intelligence integrates NuGet and Gradle lock inventories', async () => with_project(async root => {
+  await writeFile(path.join(root, 'packages.lock.json'), JSON.stringify({
+    version: 1,
+    dependencies: {
+      'net8.0': {
+        'Newtonsoft.Json': { type: 'Direct', requested: '[13.0.3, )', resolved: '13.0.3', contentHash: 'sha512-hash', dependencies: {} },
+      },
+    },
+  }));
+  await writeFile(path.join(root, 'gradle.lockfile'), 'com.google.guava:guava:32.1.2-jre=compileClasspath,runtimeClasspath\\n');
+  const report = await scan_project(root);
+  assert.equal(report.lockfiles.length, 2);
+  assert.ok(report.lockfiles.some(item => item.format === 'nuget-packages-lock'));
+  assert.ok(report.lockfiles.some(item => item.format === 'gradle-lock'));
+  assert.equal(report.summary.locked_packages, 2);
+}));
