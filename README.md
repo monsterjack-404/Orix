@@ -4,7 +4,7 @@
 
 ORIX is a local-first engineering intelligence workbench for inspecting software artifacts, reconstructing file-format structure, and preserving the evidence behind every conclusion. It is designed as a serious, extensible foundation for authorized reverse engineering and software research—not a wrapper that hides its methods and not a collection of aspirational feature folders.
 
-> Current release line: **0.4.0 — Artifact, Repository + PE/ELF Structural Intelligence**  
+> Current release line: **0.4.0 — Artifact, Repository + PE/ELF/Mach-O Structural Intelligence**  
 > Runtime: **Node.js 20.11 or newer**  
 > Dependencies: **Node.js built-ins only**  
 > Execution model: **local, static, read-only analysis**
@@ -22,7 +22,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Format registry | Signature recognition for ELF, PE/MZ, Mach-O, universal Mach-O, WebAssembly, PDF, PNG, JPEG, SQLite and GZIP | Signature recognition is not a complete format parser |
 | PE parser | PE32/PE32+ headers, data directories, section records, file-backed RVA mapping, import DLLs and name/ordinal thunks, named/ordinal exports and forwarder markers | Delay imports, relocations, resources, CLR metadata and certificate trust validation are not implemented |
 | ELF parser | ELF32/ELF64 headers, bounded program segments, PT_INTERP, PT_DYNAMIC tags, GNU build IDs, symbol tables and REL/RELA relocation records | Does not apply relocations, resolve GNU symbol versions or decode DWARF |
-| Mach-O parser | Thin 32-bit/64-bit header and bounded load-command framing | Does not expand universal containers or decode command-specific payloads |
+| Mach-O parser | Thin and FAT/FAT64 universal images, per-slice parsing, segment/section commands and CodeDirectory metadata | Does not cryptographically verify signatures or decode chained fixups and Objective-C metadata |
 | WebAssembly parser | Module version, bounded section framing and custom section names | Does not validate instruction semantics or decompile code |
 | Static metrics | Shannon entropy, ASCII/UTF-16LE string extraction and bounded hex preview | Metrics are descriptive, not malware verdicts |
 | Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
