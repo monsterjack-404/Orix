@@ -241,9 +241,9 @@ function create_elf_analysis_fixture() {
   buffer.writeBigUInt64LE(24n, symtab + 56);
   buffer.writeUInt32LE(1, 664);
   buffer[668] = 0x12;
-  buffer.writeUInt16LE(1, 470);
-  buffer.writeBigUInt64LE(0x401000n, 472);
-  buffer.writeBigUInt64LE(4n, 480);
+  buffer.writeUInt16LE(1, 670);
+  buffer.writeBigUInt64LE(0x401000n, 672);
+  buffer.writeBigUInt64LE(4n, 680);
   return buffer;
 }
 
