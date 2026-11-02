@@ -40,7 +40,8 @@ src/index.mjs exposes the supported programmatic surface, including SARIF render
 | `analyzer/scan` | Concurrency, per-file isolation, aggregate counts, indicator counts and coverage | Reinterpreting parser fields |
 | `analyzer/indicators` | Deterministic rule evaluation over parser output and bounded metrics | Executing samples, network lookups, opaque scoring or final malware verdicts |
 | `core/evidence` | In-memory evidence identity, provenance, confidence labels and details | User-facing verdicts |
-| `core/evidence-ledger` | Canonical JSON records, bounded reads, writer lock, append-only writes, SHA-256 chain validation | Parser interpretation, automatic tamper repair or external timestamp claims |\n| `evidence/ledger` | CLI-facing event adapter and normalized receipt/list/verify reports | Reimplementing the ledger format or hash algorithm |
+| `core/evidence-ledger` | Canonical JSON records, bounded reads, writer lock, append-only writes, SHA-256 chain validation | Parser interpretation, automatic tamper repair or external timestamp claims |
+| `evidence/ledger` | CLI-facing event adapter and normalized receipt/list/verify reports | Reimplementing the ledger format or hash algorithm |
 | `reports/*` | JSON and Markdown rendering | New analysis or silent data loss |
 | `cli/*` | Arguments, command routing, output destination selection | Parser implementation |
 
