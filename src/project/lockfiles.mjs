@@ -633,6 +633,67 @@ function parse_pnpm_lock(file, text, limits) {
   return { path: file, ecosystem: 'pnpm', format: 'pnpm-lock', lockfile_version, packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0 };
 }
 
+function parse_composer_lock(file, text, limits, manifests) {
+  let document;
+  try { document = JSON.parse(text); }
+  catch (error) { fail('ORIX_LOCKFILE_INVALID_JSON', 'Composer lockfile is not valid JSON', { file, reason: error.message.slice(0, 160) }); }
+  if (!document || typeof document !== 'object' || Array.isArray(document)) fail('ORIX_LOCKFILE_DOCUMENT', 'Composer lockfile root must be an object', { file });
+  const runtime = Array.isArray(document.packages) ? document.packages : [];
+  const development = Array.isArray(document['packages-dev']) ? document['packages-dev'] : [];
+  if (runtime.length + development.length > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'Composer lockfile package count exceeds configured limit', { file, count: runtime.length + development.length, maximum: limits.max_packages });
+  const packages = [];
+  const by_name = new Map();
+  const warnings = [];
+  for (const [entries, dependency_type] of [[runtime, 'runtime'], [development, 'development']]) {
+    for (const entry of entries) {
+      const name = clean_string(entry?.name, MAX_NAME, 'package name');
+      const version = clean_string(entry?.version, MAX_VERSION, 'package version');
+      if (!name || !version) { warnings.push({ code: 'ORIX_LOCKFILE_PACKAGE_IDENTITY' }); continue; }
+      const source_type = clean_string(entry.source?.type, 64, 'source type');
+      const source_reference = clean_string(entry.source?.reference, 256, 'source reference');
+      const dist_shasum = clean_string(entry.dist?.shasum, 128, 'dist shasum');
+      const item = {
+        name, version, ecosystem: 'composer', location: name + '@' + version,
+        dependency_type, dev: dependency_type === 'development', optional: false, peer: false,
+        integrity: dist_shasum && /^[a-f0-9]{40,128}$/i.test(dist_shasum) ? dist_shasum : null,
+        resolved: source_type && source_reference ? source_type + ':' + source_reference : null,
+        license: Array.isArray(entry.license) ? entry.license.map(value => clean_string(value, 128, 'license')).filter(Boolean).slice(0, 20) : [],
+        dependencies: Object.entries(entry.require ?? {}).filter(([dependency]) => typeof dependency === 'string').map(([dependency, requirement]) => ({ name: dependency, requirement: String(requirement).slice(0, MAX_VERSION) })),
+      };
+      packages.push(item);
+      const candidates = by_name.get(name) ?? [];
+      candidates.push(item);
+      by_name.set(name, candidates);
+    }
+  }
+  const edges = [];
+  const root_edges = [];
+  const resolve = name => {
+    const candidates = by_name.get(name) ?? [];
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) warnings.push({ code: 'ORIX_LOCKFILE_AMBIGUOUS_DEPENDENCY', name });
+    return null;
+  };
+  for (const item of packages) {
+    for (const dependency of item.dependencies) {
+      if (/^(?:php|ext-|lib-)/i.test(dependency.name)) continue;
+      const target = resolve(dependency.name);
+      if (target) edges.push({ from: item.location, to: target.location, name: dependency.name, requirement: dependency.requirement, resolved_version: target.version });
+      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_EDGE', from: item.location, dependency: dependency.name });
+      if (edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Composer lockfile dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+    }
+  }
+  const manifest = manifests.find(item => item.ecosystem === 'composer');
+  const root_dependencies = (manifest?.dependencies ?? []).map(item => ({ name: item.name, requirement: item.version, dependency_type: item.dependency_type === 'require-dev' ? 'development' : 'runtime' }));
+  for (const dependency of root_dependencies) {
+    const target = resolve(dependency.name);
+    if (target) root_edges.push({ name: dependency.name, requirement: dependency.requirement, dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version });
+    else if (!/^(?:php|ext-|lib-)/i.test(dependency.name)) warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_ROOT_EDGE', dependency: dependency.name });
+    if (edges.length + root_edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'Composer lockfile total dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+  }
+  return { path: file, ecosystem: 'composer', format: 'composer-lock', lockfile_version: null, packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0 };
+}
+
 export function parse_lockfile(file, text, options = {}) {
   if (typeof file !== 'string' || typeof text !== 'string') throw new TypeError('parse_lockfile requires a file path and text');
   const limits = validate_limits(options);
@@ -641,5 +702,6 @@ export function parse_lockfile(file, text, options = {}) {
   if (base === 'yarn.lock') return parse_yarn_lock(file, text, limits);
   if (base === 'Cargo.lock') return parse_cargo_lock(file, text, limits);
   if (base === 'pnpm-lock.yaml') return parse_pnpm_lock(file, text, limits);
+  if (base === 'composer.lock') return parse_composer_lock(file, text, limits, options.manifests ?? []);
   return null;
 }
