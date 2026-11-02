@@ -80,14 +80,29 @@ function tool_result(value) {
   return { content: [{ type: 'text', text }], isError: false };
 }
 
-function validate_arguments(value) {
+function validate_arguments(name, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Tool arguments must be a JSON object');
-  if (typeof value.path !== 'string' && !('path' in value)) return;
-  if ('path' in value && (typeof value.path !== 'string' || value.path.length === 0)) throw new TypeError('path must be a non-empty string');
+  const tool = ORIX_MCP_TOOLS.find(item => item.name === name);
+  if (!tool) throw new TypeError('Unknown ORIX tool: ' + name);
+  const properties = tool.inputSchema.properties ?? {};
+  for (const required of tool.inputSchema.required ?? []) {
+    if (!Object.hasOwn(value, required)) throw new TypeError('Missing required tool argument: ' + required);
+  }
+  for (const [key, item] of Object.entries(value)) {
+    const schema = properties[key];
+    if (!schema) throw new TypeError('Unknown tool argument: ' + key);
+    if (schema.type === 'string' && (typeof item !== 'string' || (schema.minLength && item.length < schema.minLength))) {
+      throw new TypeError(key + ' must be a non-empty string');
+    }
+    if (schema.type === 'boolean' && typeof item !== 'boolean') throw new TypeError(key + ' must be a boolean');
+    if (schema.type === 'integer' && (!Number.isSafeInteger(item) || item < schema.minimum || item > schema.maximum)) {
+      throw new TypeError(key + ' must be an integer between ' + schema.minimum + ' and ' + schema.maximum);
+    }
+  }
 }
 
 export async function call_orix_tool(name, args = {}) {
-  validate_arguments(args);
+  validate_arguments(name, args);
   switch (name) {
     case 'orix.inspect_file': {
       const limits = {};
