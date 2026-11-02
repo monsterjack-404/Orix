@@ -10,7 +10,7 @@ import { configured_workspace_roots, resolve_workspace_path, resolve_workspace_o
 
 const MAX_RESULT_BYTES = 2 * 1024 * 1024;
 export const MCP_TOOLS = Object.freeze([
-  { name: 'orix.inspect_file', description: 'Statically inspect one regular file inside an allowed workspace. Does not execute the file.', inputSchema: { type: 'object', properties: { path: { type: 'string', minLength: 1 } }, required: ['path'], additionalProperties: false } },
+  { name: 'orix.inspect_file', description: 'Statically inspect one regular file inside an allowed workspace. Does not execute the file.', inputSchema: { type: 'object', properties: { path: { type: 'string', minLength: 1 }, max_read_mib: { type: 'integer', minimum: 1, maximum: 512 }, max_file_mib: { type: 'integer', minimum: 1, maximum: 2048 }, max_strings: { type: 'integer', minimum: 0, maximum: 100000 }, extract_strings: { type: 'boolean' } }, required: ['path'], additionalProperties: false } },
   { name: 'orix.scan_directory', description: 'Inventory and statically inspect files beneath an allowed workspace directory with explicit resource limits.', inputSchema: { type: 'object', properties: { path: { type: 'string', minLength: 1 }, max_files: { type: 'integer', minimum: 1, maximum: 10000 }, max_depth: { type: 'integer', minimum: 0, maximum: 64 }, concurrency: { type: 'integer', minimum: 1, maximum: 16 } }, required: ['path'], additionalProperties: false } },
   { name: 'orix.scan_project', description: 'Build a bounded source, manifest, dependency and import index without running project code.', inputSchema: { type: 'object', properties: { path: { type: 'string', minLength: 1 }, max_files: { type: 'integer', minimum: 1, maximum: 10000 }, max_depth: { type: 'integer', minimum: 0, maximum: 64 } }, required: ['path'], additionalProperties: false } },
   { name: 'orix.formats', description: 'List recognized file signatures and the availability of structural parsers.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
@@ -37,7 +37,7 @@ function validate_tool_arguments(name, args) {
       }
     } else if (rule.type === 'integer') {
       if (!Number.isSafeInteger(value) || value < (rule.minimum ?? Number.MIN_SAFE_INTEGER) || value > (rule.maximum ?? Number.MAX_SAFE_INTEGER)) {
-        throw new OrixError('ORIX_MCP_ARGUMENT_RANGE', 'Tool argument ' + key + ' is outside its integer range', { details: { tool: name, argument: key, minimum: rule.minimum, maximum: rule.maximum, value }, recoverable: true });
+        throw new OrixError('ORIX_MCP_ARGUMENT_RANGE', 'Tool argument ' + key + ' must be an integer between ' + (rule.minimum ?? Number.MIN_SAFE_INTEGER) + ' and ' + (rule.maximum ?? Number.MAX_SAFE_INTEGER), { details: { tool: name, argument: key, minimum: rule.minimum, maximum: rule.maximum, value }, recoverable: true });
       }
     } else if (rule.type === 'boolean' && typeof value !== 'boolean') {
       throw new OrixError('ORIX_MCP_ARGUMENT_TYPE', 'Tool argument ' + key + ' must be boolean', { details: { tool: name, argument: key }, recoverable: true });
@@ -67,7 +67,11 @@ export function create_tool_registry(options = {}) {
     async 'orix.inspect_file'(args) {
       assert_arguments(args);
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-      return inspect_file(target.path);
+      const limits = {};
+      if (args.max_read_mib !== undefined) limits.max_read_bytes = args.max_read_mib * 1024 * 1024;
+      if (args.max_file_mib !== undefined) limits.max_file_bytes = args.max_file_mib * 1024 * 1024;
+      if (args.max_strings !== undefined) limits.max_strings = args.max_strings;
+      return inspect_file(target.path, { limits, extract_strings: args.extract_strings });
     },
     async 'orix.scan_directory'(args) {
       assert_arguments(args);
