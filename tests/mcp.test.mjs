@@ -41,6 +41,8 @@ test('MCP inspect tool returns the same versioned artifact report as the library
 test('MCP maps tool errors to isError and unknown methods to JSON-RPC errors', async () => {
   const bad = await handle_mcp_message({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'orix.inspect_file', arguments: { path: '' } } });
   assert.equal(bad.result.isError, true);
+  const unknown_tool = await handle_mcp_message({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'orix.not_a_tool', arguments: {} } });
+  assert.equal(unknown_tool.result.isError, true);
   const unknown = await handle_mcp_message({ jsonrpc: '2.0', id: 5, method: 'unknown/method' });
   assert.equal(unknown.error.code, -32601);
   assert.equal(await handle_mcp_message({ jsonrpc: '2.0', method: 'notifications/initialized' }), null);
