@@ -874,3 +874,67 @@ test('ELF parser resolves GNU version definitions for exported dynamic symbols',
   assert.equal(parsed.symbol_versions[1].version_name, 'ORIX_1.0');
   assert.equal(parsed.symbol_versions[1].source, 'definition');
 });
+
+
+test('Mach-O parser decodes bounded 64-bit nlist symbols and names', () => {
+  const buffer = Buffer.alloc(88);
+  buffer.set([0xcf,0xfa,0xed,0xfe]);
+  buffer.writeInt32LE(0x01000007, 4);
+  buffer.writeInt32LE(3, 8);
+  buffer.writeUInt32LE(2, 12);
+  buffer.writeUInt32LE(1, 16);
+  buffer.writeUInt32LE(24, 20);
+  buffer.writeUInt32LE(0, 24);
+  buffer.writeUInt32LE(0, 28);
+  buffer.writeUInt32LE(0x2, 32);
+  buffer.writeUInt32LE(24, 36);
+  buffer.writeUInt32LE(56, 40);
+  buffer.writeUInt32LE(1, 44);
+  buffer.writeUInt32LE(72, 48);
+  buffer.writeUInt32LE(16, 52);
+  buffer.writeUInt32LE(1, 56);
+  buffer[60] = 0x0f;
+  buffer[61] = 1;
+  buffer.writeUInt16LE(0, 62);
+  buffer.writeBigUInt64LE(0x1000n, 64);
+  buffer.write(Buffer.from('\\0_main\\0_unused\\0', 'ascii'), 72);
+  const parsed = parse_macho(buffer);
+  assert.equal(parsed.symbol_table.symbol_count, 1);
+  assert.equal(parsed.symbol_table.entry_size, 16);
+  assert.deepEqual(parsed.symbols[0], {
+    index: 0,
+    name: '_main',
+    raw_type: 0x0f,
+    type: 'SECTION',
+    is_external: true,
+    is_private_external: false,
+    is_debug_symbol: false,
+    section_index: 1,
+    description: 0,
+    value: 0x1000,
+  });
+});
+
+test('Mach-O parser bounds symbol count and rejects invalid string indexes', () => {
+  const buffer = Buffer.alloc(88);
+  buffer.set([0xcf,0xfa,0xed,0xfe]);
+  buffer.writeInt32LE(0x01000007, 4);
+  buffer.writeInt32LE(3, 8);
+  buffer.writeUInt32LE(2, 12);
+  buffer.writeUInt32LE(1, 16);
+  buffer.writeUInt32LE(24, 20);
+  buffer.writeUInt32LE(0x2, 32);
+  buffer.writeUInt32LE(24, 36);
+  buffer.writeUInt32LE(56, 40);
+  buffer.writeUInt32LE(1, 44);
+  buffer.writeUInt32LE(72, 48);
+  buffer.writeUInt32LE(16, 52);
+  buffer.writeUInt32LE(1, 56);
+  buffer[60] = 0x0f;
+  buffer.writeBigUInt64LE(0x1000n, 64);
+  buffer.write(Buffer.from('\\0_main\\0_unused\\0', 'ascii'), 72);
+  assert.throws(() => parse_macho(buffer, { max_symbols: 0 }), error => error.code === 'ORIX_MACHO_SYMBOL_LIMIT');
+  const malformed = Buffer.from(buffer);
+  malformed.writeUInt32LE(0xffff, 56);
+  assert.throws(() => parse_macho(malformed), error => error.code === 'ORIX_MACHO_SYMBOL_STRING_INDEX');
+});
