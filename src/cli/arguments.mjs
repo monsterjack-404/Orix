@@ -50,6 +50,12 @@ export function parse_arguments(argv) {
   }
   result.command = result.positionals.shift() ?? null;
   result.target = result.positionals.shift() ?? null;
+  if (result.command === 'compare') {
+    result.baseline = result.target;
+    result.target = result.positionals.shift() ?? null;
+    if (!result.baseline || !result.target) throw new OrixError('ORIX_CLI_COMPARE_ARGUMENTS', 'compare requires baseline and current report paths', { recoverable: true });
+    if (result.positionals.length > 0) throw new OrixError('ORIX_CLI_EXTRA_ARGUMENTS', 'compare accepts exactly two report paths', { recoverable: true });
+  }
   if (result.command === 'ledger') {
     result.flags.ledger_operation = result.target;
     result.flags.ledger_path = result.positionals.shift() ?? null;
