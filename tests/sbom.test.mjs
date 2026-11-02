@@ -45,3 +45,26 @@ test('CycloneDX output is stable for the same report and rejects non-project rep
   assert.equal(render_cyclonedx(report), render_cyclonedx(report));
   assert.throws(() => render_cyclonedx({ schema_version: 'orix.scan.v1' }), /requires an ORIX project/);
 });
+
+
+test('CycloneDX exports locked transitive components and actual dependency relationships', () => {
+  const report = project_report();
+  report.lockfiles = [{
+    path: 'package-lock.json',
+    ecosystem: 'npm',
+    packages: [
+      { name: 'alpha', version: '1.2.0', ecosystem: 'npm', location: 'node_modules/alpha', dependency_type: 'direct-or-hoisted', manifest: 'package-lock.json', integrity: 'sha512-YQ==' },
+      { name: 'beta', version: '2.3.0', ecosystem: 'npm', location: 'node_modules/alpha/node_modules/beta', dependency_type: 'transitive', manifest: 'package-lock.json' },
+    ],
+    edges: [{ from: 'node_modules/alpha', to: 'node_modules/alpha/node_modules/beta', name: 'beta', requirement: '^2.0.0', resolved_version: '2.3.0' }],
+    root_edges: [{ name: 'alpha', to: 'node_modules/alpha', resolved_version: '1.2.0' }],
+  }];
+  const bom = JSON.parse(render_cyclonedx(report));
+  assert.ok(bom.components.some(item => item.purl === 'pkg:npm/alpha@1.2.0'));
+  assert.ok(bom.components.some(item => item.purl === 'pkg:npm/beta@2.3.0'));
+  const root = bom.dependencies.find(item => item.ref === bom.metadata.component['bom-ref']);
+  assert.deepEqual(root.dependsOn, ['pkg:npm/alpha@1.2.0']);
+  const alpha = bom.dependencies.find(item => item.ref === 'pkg:npm/alpha@1.2.0');
+  assert.deepEqual(alpha.dependsOn, ['pkg:npm/beta@2.3.0']);
+  assert.ok(bom.components.find(item => item.name === 'alpha').properties.some(item => item.name === 'orix:integrity' && item.value === 'sha512-YQ=='));
+});
