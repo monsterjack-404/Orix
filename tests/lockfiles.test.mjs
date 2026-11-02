@@ -8,7 +8,7 @@ test('npm package-lock v3 indexes direct, nested and transitive packages with de
   const input = JSON.stringify({
     name: 'fixture', lockfileVersion: 3,
     packages: {
-      '': { name: 'fixture' },
+      '': { name: 'fixture', dependencies: { alpha: '^1.2.0', gamma: '^3.0.0' }, devDependencies: { gamma: '^3.0.0' } },
       'node_modules/alpha': { version: '1.2.0', dependencies: { beta: '^2.0.0' }, integrity: 'sha512-YQ==' },
       'node_modules/alpha/node_modules/beta': { version: '2.1.0' },
       'node_modules/gamma': { version: '3.0.0', dev: true },
@@ -26,6 +26,7 @@ test('npm package-lock v3 indexes direct, nested and transitive packages with de
     name: 'beta', requirement: '^2.0.0', resolved_version: '2.1.0',
   }]);
   assert.equal(report.packages.find(item => item.name === 'alpha').integrity, 'sha512-YQ==');
+  assert.deepEqual(report.root_edges.map(edge => edge.name).sort(), ['alpha', 'gamma']);
 });
 
 test('npm package-lock rejects malformed documents and bounds package count', () => {
