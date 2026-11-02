@@ -87,3 +87,22 @@ test('project intelligence inventories Git metadata without traversing .git obje
   assert.equal(report.summary.git_present, true);
   assert.equal(report.files.some(file => file.path.startsWith('.git/')), false);
 }));
+
+
+test('project Markdown includes lockfile graph status and resolved package provenance', async () => with_project(async root => {
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'markdown-fixture', dependencies: { alpha: '^1.0.0' } }));
+  await writeFile(path.join(root, 'package-lock.json'), JSON.stringify({
+    lockfileVersion: 3,
+    packages: {
+      '': { name: 'markdown-fixture', dependencies: { alpha: '^1.0.0' } },
+      'node_modules/alpha': { version: '1.2.0', integrity: 'sha512-YQ==' },
+    },
+  }));
+  const report = await scan_project(root);
+  const markdown = render_project_markdown(report);
+  assert.match(markdown, /## Lockfile inventory/);
+  assert.match(markdown, /npm-package-lock/);
+  assert.match(markdown, /## Resolved package sample/);
+  assert.match(markdown, /alpha/);
+  assert.doesNotMatch(markdown, /\\\\n/);
+}));
