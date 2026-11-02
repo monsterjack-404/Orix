@@ -113,12 +113,44 @@ export function render_cyclonedx(report, options = {}) {
       },
     },
     components: ordered,
-    dependencies: (() => {\n      const graph_edges = report.dependency_graph?.edges ?? [];\n      if (!report.resolved_dependencies?.length || graph_edges.length === 0) return [{ ref: root_purl, dependsOn: ordered.map(item => item['bom-ref']) }];\n      const grouped = new Map();\n      for (const edge of graph_edges) {\n        const from = edge.from === 'root' ? root_purl : package_refs.get(edge.from);\n        const to = package_refs.get(edge.to);\n        if (!from || !to) continue;\n        const values = grouped.get(from) ?? new Set(); values.add(to); grouped.set(from, values);\n      }\n      if (!grouped.has(root_purl)) grouped.set(root_purl, new Set());\n      return [...grouped].map(([ref, values]) => ({ ref, dependsOn: [...values].sort() })).sort((a, b) => a.ref.localeCompare(b.ref));\n    })(),
+    dependencies: (() => {
+      const grouped = new Map();
+      const add_edge = (from, to) => { if (!from || !to) return; const values = grouped.get(from) ?? new Set(); values.add(to); grouped.set(from, values); };
+      const lockfiles = report.lockfiles ?? [];
+      if (lockfiles.some(item => item.packages?.length > 0)) {
+        for (const lockfile of lockfiles) {
+          const locations = new Map();
+          for (const dependency of lockfile.packages ?? []) {
+            const purl = package_url(dependency);
+            if (purl) locations.set(dependency.location, purl);
+          }
+          for (const edge of lockfile.edges ?? []) add_edge(locations.get(edge.from), locations.get(edge.to));
+          for (const edge of lockfile.root_edges ?? []) add_edge(root_purl, locations.get(edge.to));
+        }
+        if (!(grouped.get(root_purl)?.size)) {
+          const direct_names = new Set((report.dependencies ?? []).map(item => item.name));
+          for (const dependency of lockfile_packages) if (direct_names.has(dependency.name)) add_edge(root_purl, package_url(dependency));
+        }
+      } else {
+        const graph_edges = report.dependency_graph?.edges ?? [];
+        if (report.resolved_dependencies?.length && graph_edges.length > 0) {
+          for (const edge of graph_edges) {
+            const from = edge.from === 'root' ? root_purl : package_refs.get(edge.from);
+            const to = package_refs.get(edge.to);
+            add_edge(from, to);
+          }
+        } else {
+          for (const item of ordered) add_edge(root_purl, item['bom-ref']);
+        }
+      }
+      if (!grouped.has(root_purl)) grouped.set(root_purl, new Set());
+      return [...grouped].map(([ref, values]) => ({ ref, dependsOn: [...values].sort() })).sort((a, b) => a.ref.localeCompare(b.ref));
+    })(),
     properties: [
-      { name: 'orix:dependency-declarations', value: String(report.dependencies.length) },\n      { name: 'orix:locked-packages', value: String(report.resolved_dependencies?.length ?? lockfile_packages.length) },
+      { name: 'orix:dependency-declarations', value: String(report.dependencies.length) },
+      { name: 'orix:locked-packages', value: String(report.resolved_dependencies?.length ?? lockfile_packages.length) },
       { name: 'orix:components-emitted', value: String(ordered.length) },
       { name: 'orix:transitive-resolution-performed', value: String((report.resolved_dependencies?.length ?? lockfile_packages.length) > 0) },
-    ],
   };
   return JSON.stringify(bom, null, options.compact ? 0 : 2) + '\n';
 }
