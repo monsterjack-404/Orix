@@ -461,7 +461,7 @@ test('Gradle lockfile merges configurations and reports unavailable dependency e
     'com.google.guava:guava:32.1.2-jre=compileClasspath,runtimeClasspath',
     'org.slf4j:slf4j-api:2.0.9=runtimeClasspath',
     'com.google.guava:guava:32.1.2-jre=testRuntimeClasspath',
-  ].join('\\n');
+  ].join('\n');
   const report = parse_lockfile('gradle.lockfile', input);
   assert.equal(report.format, 'gradle-lock');
   assert.equal(report.packages.length, 2);
