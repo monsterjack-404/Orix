@@ -199,7 +199,7 @@ function create_elf_analysis_fixture() {
   buffer.writeUInt16LE(56, 54);
   buffer.writeUInt16LE(3, 56);
   buffer.writeUInt16LE(64, 58);
-  buffer.writeUInt16LE(3, 60);
+  buffer.writeUInt16LE(4, 60);
   buffer.writeUInt16LE(0, 62);
 
   buffer.writeUInt32LE(1, 64);
