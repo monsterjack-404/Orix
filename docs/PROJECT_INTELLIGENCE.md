@@ -12,7 +12,7 @@ node src/cli.mjs project ./my-repository --json --out ./project-report.json
 
 ## Current analysis
 
-- Deterministic traversal, symlink rejection and exclusions for generated/dependency directories.
+- Deterministic traversal, symlink rejection, no-follow file-descriptor opens where supported, bounded reads and exclusions for generated/dependency directories.
 - File inventory, SHA-256, extension/language classification and bounded source reads.
 - Manifest metadata for npm-compatible package.json, Python requirements and basic pyproject.toml, Cargo, Go modules, Composer, Maven, NuGet and Gemfile.
 - Dependency declarations with dependency group and manifest provenance.
@@ -31,4 +31,4 @@ Credential matches never include matched values. They identify a file and line f
 
 ## Security boundary
 
-No package scripts, hooks, build tools, tests, binaries, plugins, or source files are executed. Only filesystem metadata and bounded file reads are performed. Use this feature only on repositories you own or are authorized to inspect.
+No package scripts, hooks, build tools, tests, binaries, plugins, or source files are executed. Only filesystem metadata and bounded file reads are performed. File identity and size are checked around descriptor-based reads; platforms that do not expose a no-follow open flag retain the operating system's file-open semantics. Use this feature only on repositories you own or are authorized to inspect.
