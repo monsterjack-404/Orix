@@ -238,7 +238,7 @@ function create_elf_analysis_fixture() {
   buffer.writeBigUInt64LE(9n, 776);
   buffer.writeBigInt64LE(0n, 784);
   buffer.writeBigUInt64LE(0n, 792);
-  buffer.write('\\0libc.so\\0app.so\\0', 832, 'binary');
+  buffer.write('\0libc.so\0app.so\0', 832, 'binary');
   buffer.writeUInt32LE(4, 600);
   buffer.writeUInt32LE(4, 604);
   buffer.writeUInt32LE(3, 608);
