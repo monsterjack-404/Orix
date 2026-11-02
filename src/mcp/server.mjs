@@ -255,9 +255,6 @@ export async function handle_mcp_message(message, options = {}) {
     const name = message.params?.name;
     const args = message.params?.arguments ?? {};
     try {
-      if (!ORIX_MCP_TOOLS.some(tool => tool.name === name)) {
-        return { jsonrpc: '2.0', id, result: tool_result({ code: 'ORIX_MCP_TOOL_NOT_FOUND', message: 'Unknown tool: ' + String(name) }) };
-      }
       return { jsonrpc: '2.0', id, result: tool_result(await call_orix_tool(name, args, options)) };
     } catch (error) {
       const normalized = normalize_error(error);
