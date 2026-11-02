@@ -130,7 +130,8 @@ export function parse_zip(buffer, options = {}) {
   if (resolved_entries > (options.max_entries ?? 100_000)) {
     throw new OrixError('ORIX_ZIP_ENTRY_LIMIT', 'ZIP entry count exceeds configured parser limit', { details: { total_entries, max_entries: options.max_entries ?? 100_000 }, recoverable: true });
   }
-  if (resolved_central_offset > eocd_offset || resolved_central_size > eocd_offset - resolved_central_offset || resolved_central_offset + resolved_central_size > eocd_offset) {
+  const directory_boundary = directory.zip64 ? directory.zip64_eocd_offset : eocd_offset;
+  if (resolved_central_offset > directory_boundary || resolved_central_size > directory_boundary - resolved_central_offset || resolved_central_offset + resolved_central_size > directory_boundary) {
     throw new OrixError('ORIX_ZIP_CENTRAL_DIRECTORY_RANGE', 'ZIP central directory lies outside the valid archive range', { details: { central_offset: resolved_central_offset, central_size: resolved_central_size, eocd_offset }, recoverable: true });
   }
 
@@ -165,6 +166,7 @@ export function parse_zip(buffer, options = {}) {
     const uncompressed_size = resolved.uncompressed_size;
     const local_header_offset = resolved.local_header_offset;
     const disk_start = resolved.disk_start;
+    if (disk_start !== 0) throw new OrixError('ORIX_ZIP_MULTIDISK_UNSUPPORTED', 'ZIP entry references a non-zero disk', { details: { index, disk_start }, recoverable: true });
     const unix_mode = version_made_by >>> 8 === 3 ? (external_attributes >>> 16) & 0xffff : null;
     const file_type = unix_mode === null ? null : unix_mode & 0xf000;
     const is_symlink = file_type === 0xa000;
