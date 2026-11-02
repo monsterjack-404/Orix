@@ -616,3 +616,10 @@ test('ZIP64 parser rejects missing locators and malformed extended fields', asyn
   malformed_extra.writeUInt16LE(8, 38 + 46 + 7 + 2);
   assert.throws(() => parse_zip(malformed_extra), error => error.code === 'ORIX_ZIP64_EXTRA_TRUNCATED');
 });
+
+
+test('ELF parser rejects relocations that reference missing symbols', () => {
+  const buffer = create_elf_analysis_fixture();
+  buffer.writeBigUInt64LE((9n << 32n) | 7n, 696);
+  assert.throws(() => parse_elf(buffer), error => error.code === 'ORIX_ELF_RELOCATION_SYMBOL_INDEX');
+});
