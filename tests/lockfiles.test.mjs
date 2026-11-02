@@ -303,3 +303,75 @@ test('Go sum inventory separates module and go.mod checksums and links declared 
   assert.equal(report.edges.length, 0);
   assert.equal(report.complete, true);
 });
+
+
+test('Poetry lock resolves package requirements, checksums and development groups', () => {
+  const manifests = [{
+    path: 'pyproject.toml',
+    ecosystem: 'python',
+    dependencies: [
+      { name: 'requests', version: '^2.31.0', dependency_type: 'runtime' },
+      { name: 'pytest', version: '^7.0', dependency_type: 'dev' },
+    ],
+  }];
+  const input = [
+    '[[package]]',
+    'name = "requests"',
+    'version = "2.31.0"',
+    'optional = false',
+    'groups = ["main"]',
+    'files = [',
+    '  {file = "requests.whl", hash = "sha256:' + 'a'.repeat(64) + '"},',
+    ']',
+    '[package.dependencies]',
+    'urllib3 = ">=1.21.1,<3"',
+    '',
+    '[[package]]',
+    'name = "urllib3"',
+    'version = "2.0.7"',
+    'groups = ["main"]',
+    '',
+    '[[package]]',
+    'name = "pytest"',
+    'version = "7.4.0"',
+    'groups = ["dev"]',
+    '',
+    '[metadata]',
+    'lock-version = "2.0"',
+  ].join('\\n');
+  const report = parse_lockfile('poetry.lock', input, {}, manifests);
+  assert.equal(report.format, 'poetry-lock');
+  assert.equal(report.lockfile_version, '2.0');
+  assert.equal(report.packages.length, 3);
+  assert.equal(report.root_edges.length, 2);
+  assert.equal(report.edges.length, 1);
+  assert.equal(report.edges[0].to, 'urllib3@2.0.7');
+  assert.equal(report.packages.find(item => item.name === 'requests').integrity, 'a'.repeat(64));
+  assert.equal(report.packages.find(item => item.name === 'pytest').dev, true);
+  assert.equal(report.complete, true);
+});
+
+test('Pipfile.lock inventories resolved versions and root requirements without inventing transitive edges', () => {
+  const manifests = [{
+    path: 'Pipfile',
+    ecosystem: 'python',
+    dependencies: [
+      { name: 'requests', version: '==2.31.0', dependency_type: 'runtime' },
+      { name: 'pytest', version: '==7.4.0', dependency_type: 'dev' },
+    ],
+  }];
+  const input = JSON.stringify({
+    _meta: { pipfile_spec: 6 },
+    default: { requests: { version: '==2.31.0', hashes: ['sha256:' + 'a'.repeat(64)] } },
+    develop: { pytest: { version: '==7.4.0', hashes: ['sha256:' + 'b'.repeat(64)] } },
+  });
+  const report = parse_lockfile('Pipfile.lock', input, {}, manifests);
+  assert.equal(report.format, 'pipfile-lock');
+  assert.equal(report.packages.length, 2);
+  assert.equal(report.root_edges.length, 2);
+  assert.equal(report.packages.find(item => item.name === 'requests').version, '2.31.0');
+  assert.equal(report.packages.find(item => item.name === 'pytest').dev, true);
+  assert.equal(report.edges.length, 0);
+  assert.equal(report.complete, false);
+  assert.ok(report.warnings.some(item => item.code === 'ORIX_LOCKFILE_DEPENDENCY_EDGES_UNAVAILABLE'));
+});
