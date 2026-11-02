@@ -20,11 +20,12 @@ src/cli.mjs
        │    ├─ src/core/evidence.mjs
        │    └─ src/formats/index.mjs
        └─ src/analyzer/scan.mjs
-            └─ src/analyzer/walk.mjs
+            ├─ src/analyzer/walk.mjs
+            └─ src/analyzer/compare.mjs
 
 src/core/evidence-ledger.mjs owns persistent ledger integrity; src/evidence/ledger.mjs exposes the CLI-facing record adapter.
 
-src/index.mjs exposes the supported programmatic surface, including the SARIF 2.1.0 renderer.
+src/index.mjs exposes the supported programmatic surface, including SARIF rendering and report comparison. `src/evidence/ledger.mjs` owns the optional append-only hash-chained evidence journal.
 ```
 
 ## 2. Ownership rules
