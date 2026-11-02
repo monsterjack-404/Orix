@@ -14,3 +14,4 @@ export { DEFAULT_LIMITS, resolve_limits } from './core/limits.mjs';
 export { render_json } from './reports/json.mjs';
 export { render_inspection_markdown, render_scan_markdown } from './reports/markdown.mjs';
 \nexport { render_sarif } from './reports/sarif.mjs';\n
+export { append_ledger, list_ledger, verify_ledger } from './evidence/ledger.mjs';
