@@ -34,6 +34,8 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 ## 0.4 — Structural Analysis Expansion
 
+**Status: PE and ELF structural-analysis slices implemented; other format work remains planned.**
+
 - [x] PE import/export tables and file-backed RVA mapping, including named/ordinal imports, named exports and forwarded-export markers.
 - [ ] PE resource directory and certificate metadata.
 - [x] ELF program headers, PT_INTERP, PT_DYNAMIC tags, GNU build identifiers, symbol tables and REL/RELA relocation records.
