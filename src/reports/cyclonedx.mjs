@@ -70,6 +70,7 @@ export function render_cyclonedx(report, options = {}) {
     property_set.set('orix:manifest:' + dependency.manifest, 'true');
     if (dependency.lockfile_path) property_set.set('orix:lockfile', dependency.lockfile_path);
     if (dependency.integrity) property_set.set('orix:integrity', dependency.integrity);
+    if (dependency.checksum_kind) property_set.set('orix:checksum-kind', dependency.checksum_kind);
     if (dependency.resolved) property_set.set('orix:resolved-url', dependency.resolved);
     if (dependency.license) property_set.set('orix:declared-license', dependency.license);
     components.set(purl, {
