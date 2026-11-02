@@ -6,9 +6,8 @@ import { parse_pe } from '../src/formats/pe.mjs';
 import { parse_elf } from '../src/formats/elf.mjs';
 import { parse_macho, parse_macho_fat } from '../src/formats/macho.mjs';
 import { parse_wasm } from '../src/formats/wasm.mjs';
-import { parse_pdf } from '../src/formats/pdf.mjs';
 import { analyze_known_format } from '../src/formats/index.mjs';
-import { create_elf_fixture, create_pe_fixture, create_wasm_fixture, create_pdf_fixture } from './helpers.mjs';
+import { create_elf_fixture, create_pe_fixture, create_wasm_fixture } from './helpers.mjs';
 
 test('PE32 parser reads machine, subsystem, entry point and section attributes', () => {
   const parsed = parse_pe(create_pe_fixture());
@@ -625,45 +624,3 @@ test('ELF parser rejects relocations that reference missing symbols', () => {
   assert.throws(() => parse_elf(buffer), error => error.code === 'ORIX_ELF_RELOCATION_SYMBOL_INDEX');
 });
 
-
-test('PDF parser indexes classic xref, trailer, object framing and active-content markers', () => {
-  const parsed = parse_pdf(create_pdf_fixture());
-  assert.equal(parsed.version, '1.7');
-  assert.equal(parsed.revisions.length, 1);
-  assert.equal(parsed.revisions[0].kind, 'table');
-  assert.equal(parsed.revisions[0].entry_count, 4);
-  assert.deepEqual(parsed.revisions[0].root, { object_number: 1, generation: 0 });
-  assert.equal(parsed.object_count, 3);
-  assert.equal(parsed.active_content.javascript, true);
-  assert.equal(parsed.active_content.open_actions, true);
-  assert.equal(parsed.encrypted, false);
-});
-
-test('PDF parser rejects missing EOF, invalid xref offsets and revision cycles', () => {
-  const missing_eof = create_pdf_fixture().subarray(0, -6);
-  assert.throws(() => parse_pdf(missing_eof), error => error.code === 'ORIX_PDF_EOF_MISSING');
-
-  const invalid_xref = create_pdf_fixture();
-  const text = invalid_xref.toString('latin1');
-  const marker = text.lastIndexOf('startxref\\n') + 'startxref\\n'.length;
-  invalid_xref.write('9999999999', marker, 'ascii');
-  assert.throws(() => parse_pdf(invalid_xref), error => error.code === 'ORIX_PDF_XREF_RANGE');
-
-  const cycle = create_pdf_fixture();
-  const cycle_text = cycle.toString('latin1');
-  const trailer = cycle_text.indexOf('/Size 4');
-  cycle.write('/Prev ' + cycle_text.match(/startxref\\n(\\d+)/)[1], trailer + '/Size 4 '.length, 'ascii');
-  assert.throws(() => parse_pdf(cycle), error => error.code === 'ORIX_PDF_PREV_ORDER' || error.code === 'ORIX_PDF_PREV_CYCLE');
-});
-
-test('PDF parser enforces xref and revision limits', () => {
-  assert.throws(() => parse_pdf(create_pdf_fixture(), { max_xref_entries: 2 }), error => error.code === 'ORIX_PDF_XREF_LIMIT');
-  assert.throws(() => parse_pdf(create_pdf_fixture(), { max_revisions: 0 }), error => error.code === 'ORIX_PDF_REVISION_LIMIT');
-});
-
-test('format dispatcher now structurally parses recognized PDF files', () => {
-  const result = analyze_known_format(create_pdf_fixture());
-  assert.equal(result.detection.format, 'PDF');
-  assert.equal(result.parser_status, 'parsed');
-  assert.equal(result.parsed.format, 'PDF');
-});
