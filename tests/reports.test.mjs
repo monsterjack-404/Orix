@@ -6,6 +6,7 @@ import { render_inspection_markdown, render_scan_markdown } from '../src/reports
 
 function inspection_report(status = 'parsed') {
   return {
+    schema_version: 'orix.artifact.v1',
     artifact: { name: 'sample.bin', path: '/tmp/sample.bin', size_bytes: 2048 },
     detection: { format: 'Unknown', confidence: 'none' },
     integrity: { digest: 'a'.repeat(64), stable_during_read: true },
