@@ -64,7 +64,7 @@ test('ledger rejects malformed events and unsafe payload values', async t => {
 test('ledger enforces read, record and lock limits', async t => {
   const { file } = await fixture(t);
   await append_evidence_event(file, 'scan.completed', { note: 'bounded' });
-  await assert.rejects(verify_evidence_ledger(file, { max_bytes: 1, max_record_bytes: 256 }), error => error.code === 'ORIX_LEDGER_SIZE_LIMIT');
+  await assert.rejects(verify_evidence_ledger(file, { max_bytes: 256, max_record_bytes: 256 }), error => error.code === 'ORIX_LEDGER_SIZE_LIMIT');
   await assert.rejects(verify_evidence_ledger(file, { max_bytes: 4096, max_record_bytes: 256 }), error => error.code === 'ORIX_LEDGER_RECORD_LIMIT');
 });
 
