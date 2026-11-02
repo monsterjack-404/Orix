@@ -278,7 +278,7 @@ The ledger detects content changes, broken ordering and partial writes. It is ta
 
 ## MCP server
 
-ORIX exposes its local analysis engine as a read-only Model Context Protocol server over standard input/output. It provides tools for artifact inspection, directory scans, project intelligence, format capabilities and evidence-ledger verification/listing. It does not execute samples or project code and does not expose shell execution, arbitrary commands, network fetches or file writes.
+ORIX exposes its local analysis engine as a read-only Model Context Protocol server over standard input/output. It provides tools for artifact inspection, directory scans, project intelligence, format capabilities and evidence-ledger verification/listing and deterministic comparison of prior artifact/scan reports. It does not execute samples or project code and does not expose shell execution, arbitrary commands, network fetches or file writes.
 
 Run the server with:
 
