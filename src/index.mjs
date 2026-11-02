@@ -26,3 +26,4 @@ export { render_cyclonedx } from './reports/cyclonedx.mjs';
 export { read_json_report } from './core/read-report.mjs';
 
 export { create_evidence_ledger, append_evidence_event, verify_evidence_ledger, read_evidence_ledger } from './core/evidence-ledger.mjs';
+export { parse_lockfile } from './project/lockfiles.mjs';
