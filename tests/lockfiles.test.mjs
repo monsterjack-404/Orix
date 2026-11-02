@@ -280,3 +280,26 @@ test('Composer lockfile resolves runtime and development packages without retain
   assert.equal(JSON.stringify(report).includes('secret'), false);
   assert.equal(report.complete, true);
 });
+
+
+test('Go sum inventory separates module and go.mod checksums and links declared roots', () => {
+  const manifests = [{
+    path: 'go.mod',
+    ecosystem: 'go',
+    dependencies: [{ name: 'github.com/acme/direct', version: 'v1.2.3', dependency_type: 'runtime' }],
+  }];
+  const input = [
+    'github.com/acme/direct v1.2.3 h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+    'github.com/acme/direct v1.2.3/go.mod h1:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=',
+    'github.com/acme/transitive v0.9.0 h1:CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=',
+  ].join('\n');
+  const report = parse_lockfile('go.sum', input, {}, manifests);
+  assert.equal(report.format, 'go-sum');
+  assert.equal(report.packages.length, 2);
+  assert.equal(report.root_edges.length, 1);
+  assert.equal(report.root_edges[0].name, 'github.com/acme/direct');
+  assert.equal(report.packages.find(item => item.name === 'github.com/acme/direct').checksum_kind, 'module');
+  assert.match(report.packages.find(item => item.name === 'github.com/acme/direct').integrity, /^h1:/);
+  assert.equal(report.edges.length, 0);
+  assert.equal(report.complete, true);
+});
