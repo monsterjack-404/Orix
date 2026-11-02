@@ -1,6 +1,6 @@
 # ORIX Architecture
 
-This document describes the 0.4.x implementation and the constraints new modules must preserve. The architecture is intentionally layered: file acquisition owns filesystem facts, the binary reader owns offset validation, format parsers own format interpretation, analyzers own orchestration, evidence owns provenance, and renderers own presentation.
+This document describes the 0.4.x implementation and the constraints new modules must preserve. The architecture is intentionally layered: file acquisition owns filesystem facts, the binary reader owns offset validation, format parsers own format interpretation, analyzers own orchestration, evidence owns provenance, renderers own presentation, and optional exports adapt findings to external report standards.
 
 ## 1. Runtime boundaries
 
@@ -22,7 +22,7 @@ src/cli.mjs
        └─ src/analyzer/scan.mjs
             └─ src/analyzer/walk.mjs
 
-src/index.mjs exposes the supported programmatic surface.
+src/index.mjs exposes the supported programmatic surface, including the SARIF 2.1.0 renderer.
 ```
 
 ## 2. Ownership rules
