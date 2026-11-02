@@ -23,6 +23,7 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | `orix.compare_reports` | `baseline_path`, `current_path` | Deterministic artifact/scan comparison, SHA-256 deltas and indicator changes |
 | `orix.ledger.verify` | `path` | Evidence-ledger chain verification |
 | `orix.ledger.list` | `path` | Verified evidence-ledger records |
+| `orix.ledger.append` | `path`, event `type`, JSON object `payload` | Workspace-confined append receipt for the hash-chained ledger |
 
 Every tool validates its input server-side against the same schema advertised by `tools/list`. Output is capped at 2 MiB per tool response; reduce scan limits if a result exceeds the cap.
 
@@ -33,6 +34,7 @@ Every tool validates its input server-side against the same schema advertised by
 - Symlinks are not followed by the underlying scanners.
 - Existing parser, traversal and file-size limits remain active.
 - Tool output is JSON text in MCP content blocks. Errors are returned with `isError: true`. Comparison reads each report through a no-follow, 64 MiB-bounded file reader and never rescans the original artifacts.
-- The ledger tools only read and verify. The MCP server does not provide a ledger append tool.
+- Ledger append is explicit, workspace-confined and serialized through the ledger writer lock; records are hash-chained and size-bounded.
+- Input frames are streamed with a 4 MiB maximum; tool responses are capped at 2 MiB.
 
 MCP is a transport adapter over ORIX's existing public analysis functions; it does not fork or reimplement parsers.
