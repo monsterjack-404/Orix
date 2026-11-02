@@ -390,6 +390,209 @@ function parse_cargo_lock(file, text, limits) {
   };
 }
 
+function parse_pnpm_scalar(value) {
+  const input = value.trim().replace(/,$/, '');
+  if (!input) return null;
+  if ((input.startsWith('"') && input.endsWith('"')) || (input.startsWith("'") && input.endsWith("'"))) return input.slice(1, -1);
+  return input;
+}
+
+function parse_pnpm_package_key(value) {
+  let key = parse_pnpm_scalar(value) ?? '';
+  key = key.replace(/^\//, '');
+  let separator = -1;
+  if (key.startsWith('@')) separator = key.indexOf('@', key.indexOf('/') + 1);
+  else separator = key.indexOf('@');
+  let name;
+  let raw_version;
+  if (separator > 0) {
+    name = key.slice(0, separator);
+    raw_version = key.slice(separator + 1);
+  } else {
+    const slash = key.lastIndexOf('/');
+    if (slash < 1) return null;
+    name = key.slice(0, slash);
+    raw_version = key.slice(slash + 1);
+  }
+  const peer_start = raw_version.indexOf('(');
+  const version = peer_start < 0 ? raw_version : raw_version.slice(0, peer_start);
+  const peer_suffix = peer_start < 0 ? '' : raw_version.slice(peer_start);
+  if (!clean_string(name, MAX_NAME, 'package name') || !clean_string(version, MAX_VERSION, 'package version')) return null;
+  return { name, version, peer_suffix };
+}
+
+function parse_pnpm_lock(file, text, limits) {
+  const lines = text.split(/\r?\n/);
+  let lockfile_version = null;
+  let section = '';
+  let current_record = null;
+  let current_importer = null;
+  let record_dependency_field = null;
+  let importer_dependency_field = null;
+  let current_dependency = null;
+  let current_dependency_target = null;
+  const package_records = [];
+  const snapshot_records = [];
+  const importer_records = [];
+  const warnings = [];
+  const read_inline_resolution = (record, value) => {
+    const integrity = /(?:^|[,{]\s*)integrity:\s*([^,}]+)/.exec(value);
+    const tarball = /(?:^|[,{]\s*)tarball:\s*([^,}]+)/.exec(value);
+    if (integrity) record.integrity = parse_pnpm_scalar(integrity[1]);
+    if (tarball) record.resolved = parse_pnpm_scalar(tarball[1]);
+  };
+  for (const line of lines) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue;
+    const indent = line.length - line.trimStart().length;
+    const body = line.trim();
+    if (indent === 0) {
+      const header = /^([A-Za-z][A-Za-z0-9_-]*):(?:\s*(.*))?$/.exec(body);
+      if (!header) continue;
+      section = header[1];
+      current_record = null;
+      current_importer = null;
+      record_dependency_field = null;
+      importer_dependency_field = null;
+      current_dependency = null;
+      if (section === 'lockfileVersion') lockfile_version = Number(parse_pnpm_scalar(header[2] ?? ''));
+      continue;
+    }
+    if (section === 'importers') {
+      if (indent === 2 && body.endsWith(':')) {
+        current_importer = { path: parse_pnpm_scalar(body.slice(0, -1)), dependencies: [] };
+        importer_records.push(current_importer);
+        importer_dependency_field = null;
+        current_dependency = null;
+        continue;
+      }
+      if (!current_importer) continue;
+      if (indent === 4) {
+        const field = /^([A-Za-z][A-Za-z0-9_-]*):(?:\s*(.*))?$/.exec(body);
+        if (field) {
+          importer_dependency_field = ['dependencies', 'devDependencies', 'optionalDependencies'].includes(field[1]) ? field[1] : null;
+          current_dependency = null;
+        }
+        continue;
+      }
+      if (indent === 6 && importer_dependency_field) {
+        const dependency = /^(.+?):(?:\s*(.*))?$/.exec(body);
+        if (dependency) {
+          current_dependency = { name: parse_pnpm_scalar(dependency[1]), specifier: null, version: parse_pnpm_scalar(dependency[2] ?? '') };
+          current_importer.dependencies.push({ ...current_dependency, dependency_type: importer_dependency_field });
+        }
+        continue;
+      }
+      if (indent >= 8 && current_dependency && importer_dependency_field) {
+        const field = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(body);
+        if (field && ['specifier', 'version'].includes(field[1])) {
+          current_dependency[field[1]] = parse_pnpm_scalar(field[2]);
+          const target = current_importer.dependencies.at(-1);
+          if (target) target[field[1]] = current_dependency[field[1]];
+        }
+      }
+      continue;
+    }
+    if (section !== 'packages' && section !== 'snapshots') continue;
+    const target_records = section === 'packages' ? package_records : snapshot_records;
+    if (indent === 2 && body.endsWith(':')) {
+      current_record = { key: parse_pnpm_scalar(body.slice(0, -1)), dependencies: [], optional_dependencies: [], integrity: null, resolved: null, dev: false, optional: false, license: null };
+      target_records.push(current_record);
+      record_dependency_field = null;
+      current_dependency = null;
+      if (target_records.length > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'pnpm lockfile package count exceeds configured limit', { file, maximum: limits.max_packages });
+      continue;
+    }
+    if (!current_record) continue;
+    if (indent === 4) {
+      const field = /^([A-Za-z][A-Za-z0-9_-]*):(?:\s*(.*))?$/.exec(body);
+      if (!field) continue;
+      record_dependency_field = ['dependencies', 'optionalDependencies'].includes(field[1]) ? field[1] : null;
+      current_dependency = null;
+      if (field[1] === 'resolution') read_inline_resolution(current_record, field[2] ?? '');
+      else if (field[1] === 'dev') current_record.dev = parse_pnpm_scalar(field[2] ?? '') === 'true';
+      else if (field[1] === 'optional') current_record.optional = parse_pnpm_scalar(field[2] ?? '') === 'true';
+      else if (field[1] === 'license') current_record.license = parse_pnpm_scalar(field[2] ?? '');
+      continue;
+    }
+    if (indent === 6 && record_dependency_field) {
+      const dependency = /^(.+?):(?:\s*(.*))?$/.exec(body);
+      if (dependency) {
+        current_dependency = { name: parse_pnpm_scalar(dependency[1]), version: parse_pnpm_scalar(dependency[2] ?? '') };
+        current_record[record_dependency_field].push(current_dependency);
+      }
+      continue;
+    }
+    if (indent >= 8 && current_dependency && record_dependency_field) {
+      const field = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(body);
+      if (field && field[1] === 'version') current_dependency.version = parse_pnpm_scalar(field[2]);
+    }
+  }
+  if (package_records.length === 0) warnings.push({ code: 'ORIX_LOCKFILE_NO_PACKAGE_TABLE' });
+  const packages = [];
+  const by_name_version = new Map();
+  const metadata_by_key = new Map();
+  for (const record of package_records) {
+    const identity = parse_pnpm_package_key(record.key);
+    if (!identity) { warnings.push({ code: 'ORIX_LOCKFILE_PACKAGE_IDENTITY', key: record.key }); continue; }
+    const snapshot = snapshot_records.find(item => item.key === record.key);
+    const dependency_source = snapshot ?? record;
+    const item = {
+      name: identity.name,
+      version: identity.version,
+      ecosystem: 'npm',
+      location: record.key,
+      dependency_type: 'resolved',
+      dev: record.dev,
+      optional: record.optional,
+      peer: Boolean(identity.peer_suffix),
+      integrity: clean_string(record.integrity, 2048, 'integrity'),
+      resolved: clean_string(record.resolved, 4096, 'resolved'),
+      license: clean_string(record.license, 256, 'license'),
+      peer_suffix: identity.peer_suffix || null,
+      dependencies: [...(dependency_source.dependencies ?? []), ...(dependency_source.optional_dependencies ?? [])].filter(dep => clean_string(dep.name, MAX_NAME, 'dependency name') && clean_string(dep.version, MAX_VERSION, 'dependency version')),
+    };
+    packages.push(item);
+    metadata_by_key.set(record.key, item);
+    const key = identity.name + '@' + identity.version;
+    const candidates = by_name_version.get(key) ?? [];
+    candidates.push(item);
+    by_name_version.set(key, candidates);
+  }
+  const resolve_package = (name, version) => {
+    const normalized_version = String(version ?? '').replace(/\(.*/, '');
+    const candidates = by_name_version.get(name + '@' + normalized_version) ?? [];
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) {
+      const peer_suffix = String(version ?? '').slice(normalized_version.length);
+      const exact = candidates.find(item => item.peer_suffix === peer_suffix);
+      if (exact) return exact;
+      warnings.push({ code: 'ORIX_LOCKFILE_AMBIGUOUS_DEPENDENCY', name, version });
+    }
+    return null;
+  };
+  const edges = [];
+  for (const item of packages) {
+    for (const dependency of item.dependencies) {
+      const target = resolve_package(dependency.name, dependency.version);
+      if (target) edges.push({ from: item.location, to: target.location, name: dependency.name, requirement: dependency.version, resolved_version: target.version });
+      else warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_EDGE', from: item.location, dependency: dependency.name, version: dependency.version });
+      if (edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'pnpm lockfile dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+    }
+  }
+  const root_dependencies = [];
+  const root_edges = [];
+  for (const importer of importer_records) {
+    for (const dependency of importer.dependencies) {
+      root_dependencies.push({ name: dependency.name, requirement: dependency.specifier ?? '*', dependency_type: dependency.dependency_type });
+      const target = resolve_package(dependency.name, dependency.version);
+      if (target) root_edges.push({ name: dependency.name, requirement: dependency.specifier ?? '*', dependency_type: dependency.dependency_type, to: target.location, resolved_version: target.version, importer: importer.path });
+      else if (!String(dependency.version ?? '').startsWith('link:')) warnings.push({ code: 'ORIX_LOCKFILE_UNRESOLVED_ROOT_EDGE', importer: importer.path, dependency: dependency.name, version: dependency.version });
+      if (edges.length + root_edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'pnpm lockfile total dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
+    }
+  }
+  return { path: file, ecosystem: 'npm', format: 'pnpm-lock', lockfile_version, packages, edges, root_dependencies, root_edges, warnings, complete: warnings.length === 0 };
+}
+
 export function parse_lockfile(file, text, options = {}) {
   if (typeof file !== 'string' || typeof text !== 'string') throw new TypeError('parse_lockfile requires a file path and text');
   const limits = validate_limits(options);
@@ -397,5 +600,6 @@ export function parse_lockfile(file, text, options = {}) {
   if (base === 'package-lock.json') return parse_npm_package_lock(file, text, limits);
   if (base === 'yarn.lock') return parse_yarn_lock(file, text, limits);
   if (base === 'Cargo.lock') return parse_cargo_lock(file, text, limits);
+  if (base === 'pnpm-lock.yaml') return parse_pnpm_lock(file, text, limits);
   return null;
 }
