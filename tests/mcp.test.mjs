@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool, start_mcp_server } from '../src/mcp/server.mjs';
+import { append_ledger } from '../src/evidence/ledger.mjs';
 
 test('MCP initialize negotiates protocol and advertises tool capability', async () => {
   const response = await handle_mcp_message({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26' } });
@@ -117,6 +118,39 @@ test('MCP comparison tool rejects unsupported report shapes', async () => {
       params: { name: 'orix.compare_reports', arguments: { baseline_path, current_path } },
     });
     assert.equal(response.result.isError, true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+
+test('MCP directory and project tools reuse bounded ORIX analysis services', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-scan-'));
+  try {
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ name: 'fixture', version: '1.0.0' }));
+    await writeFile(path.join(directory, 'index.js'), 'export function run() { return 7; }');
+    const scan = await call_orix_tool('orix.scan_directory', { path: directory, max_files: 20, concurrency: 1 });
+    assert.equal(scan.schema_version, 'orix.scan.v1');
+    assert.equal(scan.scan.files_analyzed, 2);
+    const project = await call_orix_tool('orix.scan_project', { path: directory, max_files: 20 });
+    assert.equal(project.schema_version, 'orix.project.v1');
+    assert.ok(project.inventory || project.files || project.summary);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('MCP ledger tools verify and list existing evidence without write access', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-ledger-'));
+  try {
+    const ledger_path = path.join(directory, 'evidence.jsonl');
+    await append_ledger(ledger_path, { type: 'test.completed', payload: { safe: true } });
+    const verified = await call_orix_tool('orix.ledger.verify', { path: ledger_path });
+    const listed = await call_orix_tool('orix.ledger.list', { path: ledger_path });
+    assert.equal(verified.valid, true);
+    assert.equal(verified.records_verified, 1);
+    assert.equal(listed.records.length, 1);
+    assert.equal(listed.records[0].type, 'test.completed');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
