@@ -168,3 +168,63 @@ test('project intelligence matches go.sum checksums to go.mod direct dependencie
   assert.equal(report.lockfiles[0].root_edges.length, 1);
   assert.equal(report.lockfiles[0].root_edges[0].name, 'github.com/acme/direct');
 }));
+
+
+test('project intelligence resolves Poetry lock packages and dependency groups', async () => with_project(async root => {
+  await writeFile(path.join(root, 'pyproject.toml'), [
+    '[tool.poetry]',
+    'name = "poetry-fixture"',
+    'version = "1.0.0"',
+    '[tool.poetry.dependencies]',
+    'python = "^3.11"',
+    'requests = "^2.31.0"',
+    '[tool.poetry.group.dev.dependencies]',
+    'pytest = "^7.0"',
+  ].join('\\n'));
+  await writeFile(path.join(root, 'poetry.lock'), [
+    '[[package]]',
+    'name = "requests"',
+    'version = "2.31.0"',
+    'groups = ["main"]',
+    '[package.dependencies]',
+    'urllib3 = ">=1.21.1,<3"',
+    '',
+    '[[package]]',
+    'name = "urllib3"',
+    'version = "2.0.7"',
+    'groups = ["main"]',
+    '',
+    '[[package]]',
+    'name = "pytest"',
+    'version = "7.4.0"',
+    'groups = ["dev"]',
+    '',
+    '[metadata]',
+    'lock-version = "2.0"',
+  ].join('\\n'));
+  const report = await scan_project(root);
+  assert.equal(report.lockfiles[0].format, 'poetry-lock');
+  assert.equal(report.summary.locked_packages, 3);
+  assert.equal(report.lockfiles[0].root_edges.length, 2);
+  assert.equal(report.lockfiles[0].edges.length, 1);
+  assert.equal(report.dependencies.find(item => item.name === 'pytest').dependency_type, 'dev');
+}));
+
+test('project intelligence integrates Pipfile.lock with declared runtime and development packages', async () => with_project(async root => {
+  await writeFile(path.join(root, 'Pipfile'), [
+    '[packages]',
+    'requests = "==2.31.0"',
+    '[dev-packages]',
+    'pytest = "==7.4.0"',
+  ].join('\\n'));
+  await writeFile(path.join(root, 'Pipfile.lock'), JSON.stringify({
+    _meta: { pipfile_spec: 6 },
+    default: { requests: { version: '==2.31.0', hashes: [] } },
+    develop: { pytest: { version: '==7.4.0', hashes: [] } },
+  }));
+  const report = await scan_project(root);
+  assert.equal(report.lockfiles[0].format, 'pipfile-lock');
+  assert.equal(report.summary.locked_packages, 2);
+  assert.equal(report.lockfiles[0].root_edges.length, 2);
+  assert.equal(report.lockfiles[0].complete, false);
+}));
