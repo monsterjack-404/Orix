@@ -35,7 +35,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - Project structure signals for README, license, CI, tests and container files.
 - Redacted credential-shaped indicators and versioned project report schema.
 
-**Remaining:** lockfile transitive graph parsing, compiler-backed symbol resolution, incremental cache, workspace persistence and deeper language parsers.
+**Remaining:** pnpm/Cargo/Composer/Python/Go lockfile parsers, compiler-backed symbol resolution, incremental cache, workspace persistence and deeper language parsers.
 
 **Exit criteria:** deterministic results, explicit coverage, cache invalidation tests and no implicit build or package scripts.
 
@@ -67,7 +67,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 - Git repository inventory without executing project hooks.
 - Language and build-system detection based on bounded manifests.
-- Dependency graph and lockfile analysis with ecosystem-specific parsers.
+- [x] npm package-lock v1-v3 and Yarn classic/Berry dependency graph analysis.\n- [ ] pnpm, Cargo, Composer, Python and Go lockfile parsers.
 - Source symbol index and cross-reference model.
 - Architecture map assembled from observed files and declared dependencies.
 - Incremental cache keyed by content hash, parser version and analysis options.
