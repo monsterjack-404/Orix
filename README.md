@@ -44,6 +44,7 @@ The `project` command builds a bounded source and manifest index without running
 ```bash
 node src/cli.mjs project ./source-tree
 node src/cli.mjs project ./source-tree --json
+node src/cli.mjs project ./source-tree --format cyclonedx --out ./sbom.cdx.json
 ```
 
 It records file hashes, language counts, selected dependency declarations, source import edges, symbol candidates and redacted credential-shaped findings. See [`docs/PROJECT_INTELLIGENCE.md`](docs/PROJECT_INTELLIGENCE.md) for parser boundaries and resource limits.
