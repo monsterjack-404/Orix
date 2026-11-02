@@ -93,7 +93,7 @@ async function read_ledger_file(file_path, options = {}) {
     }
     const after = await handle.stat();
     if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs) fail('ORIX_LEDGER_FILE_CHANGED', 'Evidence ledger changed while it was being read', { path: absolute });
-    return { absolute, buffer: Buffer.concat(chunks), limits };
+    return { absolute, buffer: Buffer.concat(chunks), limits, dev: opened.dev, ino: opened.ino };
   } catch (error) {
     if (error instanceof OrixError) throw error;
     fail('ORIX_LEDGER_READ_FAILED', 'Cannot read evidence ledger', { path: absolute, reason: error.code }, error);
@@ -200,6 +200,7 @@ export async function append_evidence_event(file_path, event, payload, options =
     const handle = await fs.open(absolute, fs_constants.O_WRONLY | fs_constants.O_APPEND | nofollow);
     try {
       const opened = await handle.stat();
+      if (opened.dev !== current.dev || opened.ino !== current.ino) fail('ORIX_LEDGER_FILE_CHANGED', 'Evidence ledger identity changed after chain verification', { path: absolute });
       if (opened.size !== current.buffer.length) fail('ORIX_LEDGER_CONCURRENT_MODIFICATION', 'Ledger size changed after chain verification', { verified_size: current.buffer.length, current_size: opened.size });
       await handle.writeFile(line, 'utf8');
       await handle.sync();
