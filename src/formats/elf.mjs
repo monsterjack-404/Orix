@@ -434,16 +434,38 @@ export function parse_elf(buffer, options = {}) {
   const flags = reader.u32(is_64 ? 48 : 36, little, 'ELF flags');
   const header_size = reader.u16(is_64 ? 52 : 40, little, 'ELF header size');
   const program_header_entry_size = reader.u16(is_64 ? 54 : 42, little, 'program header entry size');
-  const program_header_count = reader.u16(is_64 ? 56 : 44, little, 'program header count');
+  let program_header_count = reader.u16(is_64 ? 56 : 44, little, 'program header count');
   const section_header_entry_size = reader.u16(is_64 ? 58 : 46, little, 'section header entry size');
-  const section_header_count = reader.u16(is_64 ? 60 : 48, little, 'section header count');
-  const section_name_index = reader.u16(is_64 ? 62 : 50, little, 'section name index');
+  let section_header_count = reader.u16(is_64 ? 60 : 48, little, 'section header count');
+  let section_name_index = reader.u16(is_64 ? 62 : 50, little, 'section name index');
+
+  const expected_section_size = is_64 ? 64 : 40;
+  const has_extended_section_count = section_header_count === 0 && section_header_offset !== 0;
+  const has_extended_program_count = program_header_count === 0xffff;
+  const has_extended_name_index = section_name_index === 0xffff;
+  const uses_extended_numbering = has_extended_section_count || has_extended_program_count || has_extended_name_index;
+  if (uses_extended_numbering) {
+    if (typeof section_header_offset !== 'number' || section_header_offset === 0) {
+      throw new OrixError('ORIX_ELF_EXTENDED_NUMBERING_MISSING', 'ELF extended numbering requires a readable section-header zero entry', { recoverable: true });
+    }
+    if (section_header_entry_size < expected_section_size) {
+      throw new OrixError('ORIX_ELF_BAD_SECTION_ENTRY_SIZE', 'ELF section-header entry size is too small for extended numbering', { details: { section_header_entry_size, expected_section_size }, recoverable: true });
+    }
+    reader.require(section_header_offset, expected_section_size, 'extended numbering section header zero');
+    const section_zero_size = is_64
+      ? reader.u64(section_header_offset + 32, little, 'extended section count')
+      : reader.u32(section_header_offset + 20, little, 'extended section count');
+    const section_zero_link = reader.u32(section_header_offset + (is_64 ? 40 : 24), little, 'extended section-name index');
+    const section_zero_info = reader.u32(section_header_offset + (is_64 ? 44 : 28), little, 'extended program-header count');
+    if (has_extended_section_count) section_header_count = number_field(section_zero_size, 'Extended section count');
+    if (has_extended_name_index) section_name_index = section_zero_link;
+    if (has_extended_program_count) program_header_count = section_zero_info;
+  }
 
   const maximum_sections = options.max_sections ?? 4_096;
   if (section_header_count > maximum_sections) {
     throw new OrixError('ORIX_ELF_SECTION_LIMIT', 'ELF section count exceeds configured parser limit', { details: { section_header_count, maximum_sections }, recoverable: true });
   }
-  const expected_section_size = is_64 ? 64 : 40;
   if (section_header_count > 0 && section_header_entry_size < expected_section_size) {
     throw new OrixError('ORIX_ELF_BAD_SECTION_ENTRY_SIZE', 'ELF section-header entry size is too small', { details: { section_header_entry_size, expected_section_size }, recoverable: true });
   }
