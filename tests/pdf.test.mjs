@@ -90,7 +90,7 @@ endobj
   assert.equal(parsed.revisions[0].entries_decoded, false);
 });
 
-test('PDF parser enforces object, xref-entry and revision limits with typed errors', () => {
+test('PDF parser enforces count limits and rejects invalid limit configuration', () => {
   const fixture = make_pdf([`1 0 obj
 << /Type /Catalog >>
 endobj`]);
