@@ -148,7 +148,6 @@ function parse_relocations(reader, raw_sections, is_64, little, options) {
   const maximum = options.max_relocations ?? 100000;
   const relocations = [];
   const tables = [];
-  let total_chain_entries = 0;
   for (const section of raw_sections) {
     if (section.raw_type !== 4 && section.raw_type !== 9) continue;
     if (!section.raw_range_valid || typeof section.file_offset !== 'number' || typeof section.size !== 'number') {
@@ -426,6 +425,7 @@ function parse_gnu_hash_tables(reader, raw_sections, symbol_result, is_64, littl
     if (!Number.isSafeInteger(value) || value < 1) throw new OrixError('ORIX_ELF_GNU_HASH_LIMIT', name + ' must be a positive safe integer', { details: { name, value }, recoverable: true });
   }
   const tables = [];
+  let total_chain_entries = 0;
   for (const section of raw_sections) {
     if (section.raw_type !== 0x6ffffff6) continue;
     if (!section.raw_range_valid) throw new OrixError('ORIX_ELF_GNU_HASH_RANGE', 'GNU hash section is outside file-backed input', { details: { section_index: section.index }, recoverable: true });
