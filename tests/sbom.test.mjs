@@ -92,3 +92,24 @@ test('CycloneDX export uses exact locked npm versions and preserves package depe
   assert.deepEqual(root.dependsOn, ['pkg:npm/alpha@1.2.0']);
   assert.equal(bom.properties.find(item => item.name === 'orix:transitive-resolution-performed').value, 'true');
 });
+
+
+test('CycloneDX maps pnpm lockfile packages to npm purls and preserves development scope', () => {
+  const report = project_report();
+  report.lockfiles = [{
+    path: 'pnpm-lock.yaml',
+    ecosystem: 'pnpm',
+    packages: [{
+      name: 'alpha', version: '1.2.0', ecosystem: 'pnpm',
+      location: 'alpha@1.2.0', dependency_type: 'resolved',
+      manifest: 'pnpm-lock.yaml', dev: true, optional: false,
+    }],
+    edges: [],
+    root_edges: [{ name: 'alpha', to: 'alpha@1.2.0', dependency_type: 'devDependencies' }],
+  }];
+  const bom = JSON.parse(render_cyclonedx(report));
+  const component = bom.components.find(item => item.name === 'alpha');
+  assert.equal(component.purl, 'pkg:npm/alpha@1.2.0');
+  assert.equal(component.scope, 'optional');
+  assert.ok(bom.dependencies.find(item => item.ref === bom.metadata.component['bom-ref']).dependsOn.includes(component['bom-ref']));
+});
