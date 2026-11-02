@@ -430,3 +430,43 @@ test('Gemfile.lock supports multiple sources and reports ambiguous versions', ()
   assert.ok(report.warnings.some(item => item.code === 'ORIX_LOCKFILE_AMBIGUOUS_DEPENDENCY'));
   assert.equal(report.root_edges.some(item => item.name === 'custom-gem'), true);
 });
+
+
+test('NuGet packages.lock.json resolves direct and transitive packages across target frameworks', () => {
+  const input = JSON.stringify({
+    version: 1,
+    dependencies: {
+      '.NETCoreApp,Version=v8.0': {
+        'Newtonsoft.Json': { type: 'Direct', requested: '[13.0.3, )', resolved: '13.0.3', contentHash: 'sha512-hash', dependencies: { 'System.Runtime.CompilerServices.Unsafe': '6.0.0' } },
+        'System.Runtime.CompilerServices.Unsafe': { type: 'Transitive', requested: '[6.0.0, )', resolved: '6.0.0', contentHash: 'sha512-child' },
+      },
+      '.NETCoreApp,Version=v9.0': {
+        'Newtonsoft.Json': { type: 'Direct', requested: '[13.0.3, )', resolved: '13.0.3', contentHash: 'sha512-hash', dependencies: { 'System.Runtime.CompilerServices.Unsafe': '6.0.0' } },
+      },
+    },
+  });
+  const report = parse_lockfile('packages.lock.json', input);
+  assert.equal(report.format, 'nuget-packages-lock');
+  assert.equal(report.packages.length, 2);
+  assert.equal(report.root_edges.length, 1);
+  assert.equal(report.edges.length, 1);
+  assert.deepEqual(report.packages.find(item => item.name === 'Newtonsoft.Json').target_frameworks, ['.NETCoreApp,Version=v8.0', '.NETCoreApp,Version=v9.0']);
+  assert.equal(report.edges[0].to, 'System.Runtime.CompilerServices.Unsafe@6.0.0');
+  assert.equal(report.complete, true);
+});
+
+test('Gradle lockfile merges configurations and reports unavailable dependency edges', () => {
+  const input = [
+    '# This is a Gradle generated file.',
+    'com.google.guava:guava:32.1.2-jre=compileClasspath,runtimeClasspath',
+    'org.slf4j:slf4j-api:2.0.9=runtimeClasspath',
+    'com.google.guava:guava:32.1.2-jre=testRuntimeClasspath',
+  ].join('\\n');
+  const report = parse_lockfile('gradle.lockfile', input);
+  assert.equal(report.format, 'gradle-lock');
+  assert.equal(report.packages.length, 2);
+  assert.deepEqual(report.packages[0].configurations, ['compileClasspath', 'runtimeClasspath', 'testRuntimeClasspath']);
+  assert.equal(report.edges.length, 0);
+  assert.equal(report.complete, false);
+  assert.ok(report.warnings.some(item => item.code === 'ORIX_LOCKFILE_DEPENDENCY_EDGES_UNAVAILABLE'));
+});
