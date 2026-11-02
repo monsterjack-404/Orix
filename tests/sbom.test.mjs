@@ -32,7 +32,7 @@ test('CycloneDX export maps ecosystems to purls and preserves dependency provena
   assert.ok(bom.components.some(item => item.purl === 'pkg:pypi/requests@2.31.0'));
   assert.equal(bom.components.find(item => item.name === '@scope/core').version, undefined);
   assert.ok(bom.components.find(item => item.name === '@scope/core').properties.some(item => item.name === 'orix:declared-version' && item.value === '^2.1.0'));
-  assert.deepEqual(bom.metadata.tools[0], { vendor: 'ORIX', name: 'ORIX', version: '0.4.0' });
+  assert.deepEqual(bom.metadata.tools[0], { vendor: 'ORIX', name: 'ORIX', version: '0.5.0' });
   assert.ok(bom.components.some(item => item.purl === 'pkg:maven/org/example/codec@4.0'));
   assert.equal(bom.components.find(item => item.name === 'jest').scope, 'optional');
   assert.equal(bom.components.some(item => item.name === 'unknown-lib'), false);
@@ -67,4 +67,28 @@ test('CycloneDX exports locked transitive components and actual dependency relat
   const alpha = bom.dependencies.find(item => item.ref === 'pkg:npm/alpha@1.2.0');
   assert.deepEqual(alpha.dependsOn, ['pkg:npm/beta@2.3.0']);
   assert.ok(bom.components.find(item => item.name === 'alpha').properties.some(item => item.name === 'orix:integrity' && item.value === 'sha512-YQ=='));
+});
+
+
+test('CycloneDX export uses exact locked npm versions and preserves package dependency edges', () => {
+  const report = project_report();
+  report.lockfiles = [{
+    path: 'package-lock.json',
+    ecosystem: 'npm',
+    format: 'npm-package-lock',
+    packages: [
+      { name: 'alpha', version: '1.2.0', ecosystem: 'npm', location: 'node_modules/alpha', dependency_type: 'direct-or-hoisted', integrity: 'sha512-YQ==' },
+      { name: 'beta', version: '2.3.0', ecosystem: 'npm', location: 'node_modules/alpha/node_modules/beta', dependency_type: 'transitive' },
+    ],
+    edges: [{ from: 'node_modules/alpha', to: 'node_modules/alpha/node_modules/beta', name: 'beta', requirement: '^2', resolved_version: '2.3.0' }],
+    root_edges: [{ name: 'alpha', to: 'node_modules/alpha', resolved_version: '1.2.0' }],
+  }];
+  const bom = JSON.parse(render_cyclonedx(report));
+  assert.ok(bom.components.some(item => item.purl === 'pkg:npm/alpha@1.2.0'));
+  assert.ok(bom.components.some(item => item.purl === 'pkg:npm/beta@2.3.0'));
+  const alpha = bom.dependencies.find(item => item.ref === 'pkg:npm/alpha@1.2.0');
+  assert.deepEqual(alpha.dependsOn, ['pkg:npm/beta@2.3.0']);
+  const root = bom.dependencies.find(item => item.ref === bom.metadata.component['bom-ref']);
+  assert.deepEqual(root.dependsOn, ['pkg:npm/alpha@1.2.0']);
+  assert.equal(bom.properties.find(item => item.name === 'orix:transitive-resolution-performed').value, 'true');
 });
