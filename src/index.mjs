@@ -22,3 +22,5 @@ export { render_comparison_markdown } from './reports/comparison.mjs';
 export { MCP_PROTOCOL_VERSION, ORIX_MCP_TOOLS, call_orix_tool, handle_mcp_message, start_mcp_server } from './mcp/server.mjs';
 
 export { render_cyclonedx } from './reports/cyclonedx.mjs';
+
+export { read_json_report } from './core/read-report.mjs';
