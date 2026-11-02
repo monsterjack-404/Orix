@@ -184,3 +184,91 @@ test('PE parser enforces configured section and import limits', () => {
   const buffer = create_pe_fixture();
   assert.throws(() => parse_pe(buffer, { max_sections: 0 }), error => error.code === 'ORIX_PE_SECTION_LIMIT');
 });
+
+
+function create_elf_analysis_fixture() {
+  const buffer = Buffer.alloc(512);
+  buffer.set([0x7f,0x45,0x4c,0x46,2,1,1,0]);
+  buffer.writeUInt16LE(2, 16);
+  buffer.writeUInt16LE(62, 18);
+  buffer.writeUInt32LE(1, 20);
+  buffer.writeBigUInt64LE(0x401000n, 24);
+  buffer.writeBigUInt64LE(64n, 32);
+  buffer.writeBigUInt64LE(256n, 40);
+  buffer.writeUInt16LE(64, 52);
+  buffer.writeUInt16LE(56, 54);
+  buffer.writeUInt16LE(2, 56);
+  buffer.writeUInt16LE(64, 58);
+  buffer.writeUInt16LE(3, 60);
+  buffer.writeUInt16LE(0, 62);
+
+  buffer.writeUInt32LE(1, 64);
+  buffer.writeUInt32LE(5, 68);
+  buffer.writeBigUInt64LE(0n, 72);
+  buffer.writeBigUInt64LE(0x400000n, 80);
+  buffer.writeBigUInt64LE(0x400000n, 88);
+  buffer.writeBigUInt64LE(512n, 96);
+  buffer.writeBigUInt64LE(512n, 104);
+  buffer.writeBigUInt64LE(0x1000n, 112);
+
+  buffer.writeUInt32LE(4, 120);
+  buffer.writeUInt32LE(4, 124);
+  buffer.writeBigUInt64LE(400n, 128);
+  buffer.writeBigUInt64LE(0n, 136);
+  buffer.writeBigUInt64LE(0n, 144);
+  buffer.writeBigUInt64LE(20n, 152);
+  buffer.writeBigUInt64LE(20n, 160);
+  buffer.writeBigUInt64LE(4n, 168);
+  buffer.writeUInt32LE(4, 400);
+  buffer.writeUInt32LE(4, 404);
+  buffer.writeUInt32LE(3, 408);
+  buffer.write('GNU\\0', 412, 'ascii');
+  buffer.set([0xde,0xad,0xbe,0xef], 416);
+
+  const strtab = 320;
+  buffer.writeUInt32LE(3, strtab + 4);
+  buffer.writeBigUInt64LE(420n, strtab + 24);
+  buffer.writeBigUInt64LE(6n, strtab + 32);
+  buffer.writeBigUInt64LE(1n, strtab + 48);
+  buffer.write('\0func\\0', 420, 'binary');
+
+  const symtab = 384;
+  buffer.writeUInt32LE(11, symtab + 4);
+  buffer.writeBigUInt64LE(440n, symtab + 24);
+  buffer.writeBigUInt64LE(48n, symtab + 32);
+  buffer.writeUInt32LE(1, symtab + 40);
+  buffer.writeBigUInt64LE(8n, symtab + 48);
+  buffer.writeBigUInt64LE(24n, symtab + 56);
+  buffer.writeUInt32LE(1, 464);
+  buffer[468] = 0x12;
+  buffer.writeUInt16LE(1, 470);
+  buffer.writeBigUInt64LE(0x401000n, 472);
+  buffer.writeBigUInt64LE(4n, 480);
+  return buffer;
+}
+
+test('ELF parser decodes load segments, GNU build ID and dynamic symbols', () => {
+  const parsed = parse_elf(create_elf_analysis_fixture());
+  assert.equal(parsed.program_headers.length, 2);
+  assert.equal(parsed.program_headers[0].type, 'LOAD');
+  assert.equal(parsed.program_headers[0].flags.execute, true);
+  assert.equal(parsed.program_headers[0].file_range_valid, true);
+  assert.equal(parsed.gnu_build_id, 'deadbeef');
+  assert.equal(parsed.symbols.length, 2);
+  assert.equal(parsed.symbols[1].name, 'func');
+  assert.equal(parsed.symbols[1].binding, 'GLOBAL');
+  assert.equal(parsed.symbols[1].type, 'FUNC');
+  assert.equal(parsed.symbols[1].value, 0x401000);
+});
+
+test('ELF parser rejects program-header ranges outside the input', () => {
+  const buffer = create_elf_analysis_fixture();
+  buffer.writeBigUInt64LE(0xffffn, 72);
+  assert.throws(() => parse_elf(buffer), error => error.code === 'ORIX_ELF_PROGRAM_TABLE_RANGE');
+});
+
+test('ELF parser enforces configured program-header and symbol limits', () => {
+  const buffer = create_elf_analysis_fixture();
+  assert.throws(() => parse_elf(buffer, { max_program_headers: 1 }), error => error.code === 'ORIX_ELF_PROGRAM_LIMIT');
+  assert.throws(() => parse_elf(buffer, { max_symbols: 1 }), error => error.code === 'ORIX_ELF_SYMBOL_LIMIT');
+});
