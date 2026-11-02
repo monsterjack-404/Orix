@@ -16,7 +16,8 @@
     "./formats/elf": "./src/formats/elf.mjs",
     "./project": "./src/project/intelligence.mjs",
     "./formats/pdf": "./src/formats/pdf.mjs",
-    "./reports/sarif": "./src/reports/sarif.mjs"
+    "./reports/sarif": "./src/reports/sarif.mjs",
+    "./evidence/ledger": "./src/evidence/ledger.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
@@ -26,4 +27,4 @@
     "test:coverage": "node --test --experimental-test-coverage"
   },
   "license": "Apache-2.0"
-}\n
+}
