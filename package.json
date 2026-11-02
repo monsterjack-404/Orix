@@ -1,6 +1,6 @@
 {
   "name":"@orix/cli",
-  "version":"0.3.0",
+  "version":"0.4.0",
   "description":"ORIX — Open Research & Intelligence eXplorer: local-first artifact and repository intelligence",
   "type":"module",
   "private":true,
