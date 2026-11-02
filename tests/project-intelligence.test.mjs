@@ -49,3 +49,24 @@ test('project CLI emits the versioned JSON report without executing scripts',asy
  assert.equal(report.schema_version,'orix.project.v1');
  assert.equal(report.manifests[0].scripts[0].name,'postinstall');
 }));
+
+
+test('project intelligence indexes npm lockfile packages without executing install hooks', async () => with_project(async root => {
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'locked-fixture', dependencies: { alpha: '^1.0.0' }, scripts: { postinstall: 'throw new Error("must not run")' } }));
+  await writeFile(path.join(root, 'package-lock.json'), JSON.stringify({
+    name: 'locked-fixture',
+    lockfileVersion: 3,
+    packages: {
+      '': { name: 'locked-fixture', dependencies: { alpha: '^1.0.0' } },
+      'node_modules/alpha': { version: '1.2.0', dependencies: { beta: '^2.0.0' }, integrity: 'sha512-YQ==' },
+      'node_modules/alpha/node_modules/beta': { version: '2.3.0' },
+    },
+  }));
+  const report = await scan_project(root);
+  assert.equal(report.lockfiles.length, 1);
+  assert.equal(report.summary.locked_packages, 2);
+  assert.equal(report.summary.lockfile_edges, 1);
+  assert.equal(report.lockfiles[0].root_edges[0].name, 'alpha');
+  assert.equal(report.lockfiles[0].edges[0].resolved_version, '2.3.0');
+  assert.equal(report.manifests[0].scripts[0].name, 'postinstall');
+}));
