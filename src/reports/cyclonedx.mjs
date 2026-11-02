@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 
 const TYPES = Object.freeze({
   npm: 'npm',
+  pnpm: 'npm',
   pip: 'pypi',
   python: 'pypi',
   cargo: 'cargo',
