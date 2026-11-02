@@ -8,7 +8,7 @@ import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project, render_project_markdown } from '../project/intelligence.mjs';
 import { list_format_capabilities } from '../formats/index.mjs';
 import { render_json } from '../reports/json.mjs';
-import { render_inspection_markdown, render_scan_markdown } from '../reports/markdown.mjs';
+import { render_inspection_markdown, render_scan_markdown } from '../reports/markdown.mjs';\nimport { render_sarif } from '../reports/sarif.mjs';
 import { normalize_error } from '../core/errors.mjs';
 async function write_or_print(content,output_path) {
   if(!output_path){process.stdout.write(content.endsWith('\n')?content:content+'\n');return;}
@@ -17,14 +17,14 @@ async function write_or_print(content,output_path) {
   catch(error){if(error.code==='EEXIST')throw new Error('Refusing to overwrite existing report: '+destination);throw error;}
   process.stdout.write('Report created: '+destination+'\n');
 }
-function select_report(report,format,renderer){return format==='json'?render_json(report):renderer(report);}
+function select_report(report,format,renderer){if(format==='json')return render_json(report);if(format==='sarif')return render_sarif(report);return renderer(report);}
 export async function main(argv=process.argv.slice(2)) {
   const parsed=parse_arguments(argv);
   if(parsed.flags.help||parsed.command==='help'||!parsed.command){process.stdout.write(HELP_TEXT);return 0;}
   if(parsed.command==='formats'){if(parsed.target)throw new Error('The formats command does not accept a target');await write_or_print(render_json({schema_version:'orix.formats.v1',formats:list_format_capabilities()}),parsed.flags.out);return 0;}
   if(!['inspect','scan','project'].includes(parsed.command))throw new Error('Unknown command: '+parsed.command);
   if(!parsed.target)throw new Error(parsed.command+' requires a target path');
-  const options={...parsed.flags,limits:parsed.flags};
+  const options={...parsed.flags,limits:parsed.flags};\n  if(parsed.flags.format==='sarif'&&parsed.command==='project')throw new Error('SARIF output currently supports inspect and scan reports, not project reports');
   let report,renderer;
   if(parsed.command==='inspect'){report=await inspect_file(parsed.target,options);renderer=render_inspection_markdown;}
   else if(parsed.command==='scan'){report=await scan_directory(parsed.target,options);renderer=render_scan_markdown;}
