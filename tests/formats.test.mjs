@@ -913,6 +913,12 @@ test('Mach-O parser decodes bounded 64-bit nlist symbols and names', () => {
     description: 0,
     value: 0x1000,
   });
+  const indirect = Buffer.from(buffer);
+  indirect[60] = 0x0b;
+  assert.equal(parse_macho(indirect).symbols[0].type, 'INDIRECT');
+  const prebound = Buffer.from(buffer);
+  prebound[60] = 0x0d;
+  assert.equal(parse_macho(prebound).symbols[0].type, 'PREBOUND_UNDEFINED');
 });
 
 test('Mach-O parser bounds symbol count and rejects invalid string indexes', () => {
