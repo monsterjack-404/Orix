@@ -419,7 +419,8 @@ function parse_gnu_hash_tables(reader, raw_sections, symbol_result, is_64, littl
   const maximum_buckets = options.max_gnu_hash_buckets ?? 1_000_000;
   const maximum_bloom_words = options.max_gnu_hash_bloom_words ?? 65_536;
   const maximum_chains = options.max_gnu_hash_chains ?? 1_000_000;
-  for (const [name, value] of [['max_gnu_hash_buckets', maximum_buckets], ['max_gnu_hash_bloom_words', maximum_bloom_words], ['max_gnu_hash_chains', maximum_chains]]) {
+  const maximum_total_chain_entries = options.max_gnu_hash_total_entries ?? 2_000_000;
+  for (const [name, value] of [['max_gnu_hash_buckets', maximum_buckets], ['max_gnu_hash_bloom_words', maximum_bloom_words], ['max_gnu_hash_chains', maximum_chains], ['max_gnu_hash_total_entries', maximum_total_chain_entries]]) {
     if (!Number.isSafeInteger(value) || value < 1) throw new OrixError('ORIX_ELF_GNU_HASH_LIMIT', name + ' must be a positive safe integer', { details: { name, value }, recoverable: true });
   }
   const tables = [];
@@ -466,6 +467,8 @@ function parse_gnu_hash_tables(reader, raw_sections, symbol_result, is_64, littl
     }
     const bucket_base = offset + 16 + bloom_bytes;
     const buckets = [];
+    const chain_cache = new Map();
+    let total_chain_entries = 0;
     for (let index = 0; index < bucket_count; index += 1) {
       const first_symbol = reader.u32(bucket_base + index * 4, little, 'GNU hash bucket');
       if (first_symbol === 0) {
@@ -475,18 +478,26 @@ function parse_gnu_hash_tables(reader, raw_sections, symbol_result, is_64, littl
       if (first_symbol < symbol_offset || first_symbol >= symbol_count) {
         throw new OrixError('ORIX_ELF_GNU_HASH_BUCKET_SYMBOL', 'GNU hash bucket points outside its linked dynamic symbol table', { details: { section_index: section.index, bucket: index, first_symbol, symbol_offset, symbol_count }, recoverable: true });
       }
-      const chain = [];
-      let symbol_index = first_symbol;
-      while (symbol_index < symbol_count) {
-        const chain_index = symbol_index - symbol_offset;
-        if (chain_index >= chain_count) throw new OrixError('ORIX_ELF_GNU_HASH_CHAIN_RANGE', 'GNU hash chain is truncated before its terminal bit', { details: { section_index: section.index, bucket: index, symbol_index, chain_index, chain_count }, recoverable: true });
-        const hash = reader.u32(offset + chain_offset + chain_index * 4, little, 'GNU hash chain entry');
-        chain.push({ symbol_index, hash, terminal: (hash & 1) !== 0 });
-        if ((hash & 1) !== 0) break;
-        symbol_index += 1;
-      }
-      if (chain.length === 0 || !chain.at(-1).terminal) {
-        throw new OrixError('ORIX_ELF_GNU_HASH_CHAIN_UNTERMINATED', 'GNU hash chain does not contain a terminal entry', { details: { section_index: section.index, bucket: index }, recoverable: true });
+      let chain = chain_cache.get(first_symbol);
+      if (!chain) {
+        chain = [];
+        let symbol_index = first_symbol;
+        while (symbol_index < symbol_count) {
+          const chain_index = symbol_index - symbol_offset;
+          if (chain_index >= chain_count) throw new OrixError('ORIX_ELF_GNU_HASH_CHAIN_RANGE', 'GNU hash chain is truncated before its terminal bit', { details: { section_index: section.index, bucket: index, symbol_index, chain_index, chain_count }, recoverable: true });
+          total_chain_entries += 1;
+          if (total_chain_entries > maximum_total_chain_entries) {
+            throw new OrixError('ORIX_ELF_GNU_HASH_TOTAL_ENTRY_LIMIT', 'GNU hash chain traversal exceeds the aggregate work limit', { details: { section_index: section.index, maximum_total_chain_entries }, recoverable: true });
+          }
+          const hash = reader.u32(offset + chain_offset + chain_index * 4, little, 'GNU hash chain entry');
+          chain.push({ symbol_index, hash, terminal: (hash & 1) !== 0 });
+          if ((hash & 1) !== 0) break;
+          symbol_index += 1;
+        }
+        if (chain.length === 0 || !chain.at(-1).terminal) {
+          throw new OrixError('ORIX_ELF_GNU_HASH_CHAIN_UNTERMINATED', 'GNU hash chain does not contain a terminal entry', { details: { section_index: section.index, bucket: index }, recoverable: true });
+        }
+        chain_cache.set(first_symbol, chain);
       }
       buckets.push({ index, first_symbol, chain });
     }
