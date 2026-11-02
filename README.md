@@ -34,7 +34,18 @@ Static indicator rules operate only on already-parsed metadata and bounded extra
 
 Formats without a parser are still identified where their signatures are recognized. They are reported as `not-supported`, rather than pretending that a header was decoded.
 
-## Repository intelligence\n\nThe `project` command builds a bounded source and manifest index without running project scripts, builds or tests:\n\n```bash\nnode src/cli.mjs project ./source-tree\nnode src/cli.mjs project ./source-tree --json\n```\n\nIt records file hashes, language counts, selected dependency declarations, source import edges, symbol candidates and redacted credential-shaped findings. See [`docs/PROJECT_INTELLIGENCE.md`](docs/PROJECT_INTELLIGENCE.md) for parser boundaries and resource limits.\n\n## Quick start
+## Repository intelligence
+
+The `project` command builds a bounded source and manifest index without running project scripts, builds or tests:
+
+```bash
+node src/cli.mjs project ./source-tree
+node src/cli.mjs project ./source-tree --json
+```
+
+It records file hashes, language counts, selected dependency declarations, source import edges, symbol candidates and redacted credential-shaped findings. See [`docs/PROJECT_INTELLIGENCE.md`](docs/PROJECT_INTELLIGENCE.md) for parser boundaries and resource limits.
+
+## Quick start
 
 ```bash
 # Check your Node.js version
