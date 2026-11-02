@@ -204,6 +204,7 @@ function parse_symbol_tables(reader, buffer, raw_sections, is_64, little, option
   const maximum = options.max_symbols ?? 100000;
   const symbols = [];
   const tables = [];
+  let total_chain_entries = 0;
   for (const section of raw_sections) {
     if (section.raw_type !== 2 && section.raw_type !== 11) continue;
     if (!section.raw_range_valid || typeof section.file_offset !== 'number' || typeof section.size !== 'number') {
