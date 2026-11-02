@@ -183,3 +183,40 @@ test('CLI parser accepts ledger operations and validates missing paths', () => {
   assert.equal(parsed.flags.ledger_path, './evidence.jsonl');
   assert.throws(() => parse_arguments(['ledger', 'verify']), error => error.code === 'ORIX_CLI_LEDGER_PATH');
 });
+
+
+test('CLI compares prior scan reports without rescanning their source directories', async () => {
+  await with_temp_dir(async directory => {
+    const baseline_root = path.join(directory, 'baseline');
+    const current_root = path.join(directory, 'current');
+    await mkdir(baseline_root);
+    await mkdir(current_root);
+    await writeFile(path.join(baseline_root, 'same.bin'), Buffer.from('before'));
+    await writeFile(path.join(current_root, 'same.bin'), Buffer.from('after'));
+    await writeFile(path.join(current_root, 'new.bin'), Buffer.from('new file'));
+    const baseline = await scan_directory(baseline_root);
+    const current = await scan_directory(current_root);
+    const baseline_file = path.join(directory, 'baseline.json');
+    const current_file = path.join(directory, 'current.json');
+    await writeFile(baseline_file, JSON.stringify(baseline));
+    await writeFile(current_file, JSON.stringify(current));
+    const cli = spawnSync(process.execPath, ['src/cli.mjs','compare',baseline_file,current_file,'--json'], { encoding: 'utf8', cwd: path.resolve('.') });
+    assert.equal(cli.status, 0, cli.stderr);
+    const comparison = JSON.parse(cli.stdout);
+    assert.equal(comparison.schema_version, 'orix.comparison.v1');
+    assert.equal(comparison.comparison.modified, 1);
+    assert.equal(comparison.comparison.added, 1);
+  });
+});
+
+test('CLI comparison rejects symbolic-link report inputs', async () => {
+  await with_temp_dir(async directory => {
+    const target = path.join(directory, 'report.json');
+    const link = path.join(directory, 'link.json');
+    await writeFile(target, JSON.stringify({ schema_version: 'orix.scan.v1', scan: { root: directory }, artifacts: [] }));
+    await symlink(target, link);
+    const cli = spawnSync(process.execPath, ['src/cli.mjs','compare',link,target,'--json'], { encoding: 'utf8', cwd: path.resolve('.') });
+    assert.equal(cli.status, 1);
+    assert.match(cli.stderr, /ORIX_COMPARE_UNSAFE_FILE/);
+  });
+});
