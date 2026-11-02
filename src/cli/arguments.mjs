@@ -2,7 +2,7 @@
 
 import { OrixError } from '../core/errors.mjs';
 
-const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-read-mib','--max-file-mib','--concurrency','--strings-limit']);
+const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-read-mib','--max-file-mib','--concurrency','--strings-limit']);
 const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--help','-h']);
 
 function positive_integer(value, option, minimum, maximum) {
