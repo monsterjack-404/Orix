@@ -137,3 +137,18 @@ test('project intelligence indexes pnpm lockfile package graph', async () => wit
   assert.equal(report.summary.lockfile_edges, 1);
   assert.equal(report.lockfiles[0].root_edges[0].name, 'alpha');
 }));
+
+
+test('project intelligence integrates Composer lockfile graph with manifest roots', async () => with_project(async root => {
+  await writeFile(path.join(root, 'composer.json'), JSON.stringify({ name: 'vendor/root', require: { 'vendor/app': '^1.0' }, 'require-dev': { 'phpunit/phpunit': '^10.0' } }));
+  await writeFile(path.join(root, 'composer.lock'), JSON.stringify({
+    packages: [{ name: 'vendor/app', version: '1.4.0', require: { 'vendor/lib': '^2.0' } }, { name: 'vendor/lib', version: '2.3.0', require: {} }],
+    'packages-dev': [{ name: 'phpunit/phpunit', version: '10.2.0', require: {} }],
+  }));
+  const report = await scan_project(root);
+  assert.equal(report.lockfiles.length, 1);
+  assert.equal(report.lockfiles[0].format, 'composer-lock');
+  assert.equal(report.summary.locked_packages, 3);
+  assert.equal(report.lockfiles[0].root_edges.length, 2);
+  assert.equal(report.lockfiles[0].edges.length, 1);
+}));
