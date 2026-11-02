@@ -112,6 +112,87 @@ function parse_imports(reader, directory, map_rva, is_64_bit, options) {
   return { imports, truncated: !terminated };
 }
 
+function parse_delay_imports(reader, directory, map_rva, is_64_bit, image_base, options) {
+  if (!directory || directory.address === 0 || directory.size === 0) return { imports: [], truncated: false };
+  const descriptor_size = 32;
+  if (directory.size < descriptor_size) invalid('ORIX_PE_BAD_DELAY_IMPORT_DIRECTORY', 'PE delay-import directory is smaller than one descriptor');
+  const max_descriptors = options.max_delay_import_descriptors ?? options.max_import_descriptors ?? 2048;
+  const max_thunks = options.max_thunks_per_import ?? 8192;
+  if (!Number.isSafeInteger(max_descriptors) || max_descriptors < 1) invalid('ORIX_PE_DELAY_IMPORT_LIMIT', 'PE delay-import descriptor limit must be a positive safe integer', { max_descriptors });
+  if (!Number.isSafeInteger(max_thunks) || max_thunks < 1) invalid('ORIX_PE_DELAY_THUNK_LIMIT', 'PE delay-import thunk limit must be a positive safe integer', { max_thunks });
+  const descriptor_limit = Math.min(Math.floor(directory.size / descriptor_size), max_descriptors);
+  const imports = [];
+  let terminated = false;
+  const to_rva = (value, rva_mode, field, index) => {
+    if (value === 0 || rva_mode) return value;
+    if (typeof image_base !== 'number' || !Number.isSafeInteger(image_base)) {
+      invalid('ORIX_PE_DELAY_IMPORT_VA_UNSAFE', 'VA-based delay imports cannot be safely mapped with this image base', { field, index, image_base });
+    }
+    const converted = BigInt(value) - BigInt(image_base);
+    if (converted < 0n || converted > BigInt(Number.MAX_SAFE_INTEGER)) {
+      invalid('ORIX_PE_DELAY_IMPORT_VA_RANGE', 'VA-based delay-import field cannot be converted to a safe RVA', { field, index, value, image_base });
+    }
+    return Number(converted);
+  };
+
+  for (let index = 0; index < descriptor_limit; index += 1) {
+    const descriptor_rva = directory.address + index * descriptor_size;
+    const descriptor_offset = map_rva(descriptor_rva, descriptor_size);
+    if (descriptor_offset === null) invalid('ORIX_PE_INVALID_DELAY_IMPORT_DESCRIPTOR', 'PE delay-import descriptor is outside mapped file data', { index, descriptor_rva });
+    const fields = Array.from({ length: 8 }, (_, field) => reader.u32(descriptor_offset + field * 4, true, 'delay-import descriptor field'));
+    if (fields.every(value => value === 0)) {
+      terminated = true;
+      break;
+    }
+    const [attributes, name_value, module_handle_value, iat_value, int_value, bound_iat_value, unload_iat_value, timestamp] = fields;
+    const rva_mode = (attributes & 1) !== 0;
+    const name_rva = to_rva(name_value, rva_mode, 'name', index);
+    const module_handle_rva = to_rva(module_handle_value, rva_mode, 'module_handle', index);
+    const iat_rva = to_rva(iat_value, rva_mode, 'iat', index);
+    const int_rva = to_rva(int_value, rva_mode, 'int', index);
+    const bound_iat_rva = to_rva(bound_iat_value, rva_mode, 'bound_iat', index);
+    const unload_iat_rva = to_rva(unload_iat_value, rva_mode, 'unload_iat', index);
+    if (name_rva === 0 || (int_rva === 0 && iat_rva === 0)) {
+      invalid('ORIX_PE_BAD_DELAY_IMPORT_DESCRIPTOR', 'PE delay-import descriptor is missing its name or thunk table', { index, name_rva, int_rva, iat_rva });
+    }
+    const library = read_rva_string(reader, map_rva, name_rva, 'delay-import library');
+    const lookup_rva = int_rva || iat_rva;
+    const width = is_64_bit ? 8 : 4;
+    const symbols = [];
+    let thunk_terminated = false;
+    for (let thunk_index = 0; thunk_index < max_thunks; thunk_index += 1) {
+      const thunk_rva = lookup_rva + thunk_index * width;
+      const thunk_offset = map_rva(thunk_rva, width);
+      if (thunk_offset === null) invalid('ORIX_PE_INVALID_DELAY_IMPORT_THUNK', 'PE delay-import thunk is outside mapped file data', { library, thunk_index, thunk_rva });
+      const value = is_64_bit
+        ? reader.view.getBigUint64(thunk_offset, true)
+        : BigInt(reader.u32(thunk_offset, true, 'delay-import thunk'));
+      if (value === 0n) {
+        thunk_terminated = true;
+        break;
+      }
+      const ordinal_flag = is_64_bit ? 0x8000000000000000n : 0x80000000n;
+      if ((value & ordinal_flag) !== 0n) {
+        symbols.push({ kind: 'ordinal', ordinal: Number(value & 0xffffn), hint: null, name: null });
+      } else {
+        const symbol_rva = Number(value & (is_64_bit ? 0x7fffffffffffffffn : 0x7fffffffn));
+        if (!Number.isSafeInteger(symbol_rva)) invalid('ORIX_PE_INVALID_DELAY_IMPORT_NAME', 'Delay-import name RVA is not safely representable', { library, thunk_index });
+        const symbol_offset = map_rva(symbol_rva, 2);
+        if (symbol_offset === null) invalid('ORIX_PE_INVALID_DELAY_IMPORT_NAME', 'Delay-import name RVA is outside mapped file data', { library, thunk_index, symbol_rva });
+        const hint = reader.u16(symbol_offset, true, 'delay-import hint');
+        const name = read_rva_string(reader, map_rva, symbol_rva + 2, 'delay-import symbol');
+        symbols.push({ kind: 'name', ordinal: null, hint, name });
+      }
+    }
+    imports.push({
+      library, attributes, rva_mode, reserved_attributes: attributes & ~1,
+      name_rva, module_handle_rva, iat_rva, int_rva, bound_iat_rva, unload_iat_rva,
+      timestamp, symbols, symbols_truncated: !thunk_terminated,
+    });
+  }
+  return { imports, truncated: !terminated };
+}
+
 function parse_exports(reader, directory, map_rva, options) {
   if (!directory || directory.address === 0 || directory.size === 0) return { exports: [], truncated: false, module_name: null };
   if (directory.size < 40) invalid('ORIX_PE_BAD_EXPORT_DIRECTORY', 'PE export directory is smaller than its fixed header');
@@ -342,6 +423,7 @@ export function parse_pe(buffer, options = {}) {
   const import_result = parse_imports(reader, directory_entries[1], map_rva, is_64_bit, options);
   const export_result = parse_exports(reader, directory_entries[0], map_rva, options);
   const resource_result = parse_resources(reader, directory_entries[2], map_rva, options);
+  const delay_import_result = parse_delay_imports(reader, directory_entries[13], map_rva, is_64_bit, image_base, options);
   const certificate_result = parse_certificates(reader, directory_entries[4], buffer, options);
 
   return {
@@ -376,6 +458,8 @@ export function parse_pe(buffer, options = {}) {
     address_mapping: { kind: 'RVA-to-file-offset', header_size: size_of_headers, mapped_sections: sections.filter(section => section.raw_range_valid).length },
     imports: import_result.imports,
     imports_truncated: import_result.truncated,
+    delay_imports: delay_import_result.imports,
+    delay_imports_truncated: delay_import_result.truncated,
     exports: export_result.exports,
     exports_truncated: export_result.truncated,
     export_module_name: export_result.module_name,
@@ -385,7 +469,7 @@ export function parse_pe(buffer, options = {}) {
     certificates: certificate_result.certificates,
     certificate_table_range_valid: certificate_result.range_valid,
     notes: [
-      'PE imports, exports and resource trees are decoded from bounded file-backed RVAs; delay imports and forwarded API resolution are not performed.',
+      'PE imports, delay imports, exports and resource trees are decoded from bounded file-backed RVAs; forwarded API resolution is not performed.',
       'The certificate directory uses a file offset and WIN_CERTIFICATE framing is decoded; certificate chains, Authenticode hashes and publisher trust are not verified.',
       'A valid PE signature does not prove that the file is safe. Parser output is structural evidence, not an execution verdict.',
     ],
