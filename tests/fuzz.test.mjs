@@ -8,7 +8,8 @@ import { parse_elf } from '../src/formats/elf.mjs';
 import { parse_macho, parse_macho_fat } from '../src/formats/macho.mjs';
 import { parse_wasm } from '../src/formats/wasm.mjs';
 import { parse_zip } from '../src/formats/zip.mjs';
-import { create_elf_fixture, create_pe_fixture, create_wasm_fixture, create_zip_fixture } from './helpers.mjs';
+import { parse_pdf } from '../src/formats/pdf.mjs';
+import { create_elf_fixture, create_pe_fixture, create_wasm_fixture, create_zip_fixture, create_pdf_fixture } from './helpers.mjs';
 
 function create_random(seed) {
   let state = seed >>> 0;
@@ -59,6 +60,7 @@ test('binary parsers reject malformed and mutated inputs through typed errors', 
     ['Mach-O FAT', parse_macho_fat, make_fat_fixture()],
     ['WebAssembly', parse_wasm, create_wasm_fixture()],
     ['ZIP', parse_zip, create_zip_fixture('fuzz.txt', 'bounded fixture')],
+    ['PDF', parse_pdf, create_pdf_fixture()],
   ];
   const random = create_random(0x4f524958);
   for (const [name, parser, fixture] of parsers) {
@@ -81,7 +83,7 @@ test('binary parsers reject malformed and mutated inputs through typed errors', 
 
 test('binary parsers remain bounded on deterministic random byte buffers', () => {
   const random = create_random(0x53454337);
-  const parsers = [parse_pe, parse_elf, parse_macho, parse_macho_fat, parse_wasm, parse_zip];
+  const parsers = [parse_pe, parse_elf, parse_macho, parse_macho_fat, parse_wasm, parse_zip, parse_pdf];
   for (let iteration = 0; iteration < 256; iteration += 1) {
     const length = random() % 1024;
     const input = Buffer.allocUnsafe(length);
