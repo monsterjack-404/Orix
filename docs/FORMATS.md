@@ -52,8 +52,7 @@ A parser is ready for registration only after it has:
 4. A configured ceiling for every count-driven structure.
 5. A valid minimal fixture and malformed/truncated fixtures.
 6. Tests for endianness and bitness variants supported by the implementation.
-7. Explicit notes for structures not decoded.
-8. A documented distinction between raw offsets, virtual addresses, RVAs and indices.
+7. A documented distinction between raw offsets, virtual addresses, RVAs and indices.
 
 Do not use file extensions as a substitute for signature recognition. Extensions may be useful contextual metadata, but they are user-controlled labels.
 
