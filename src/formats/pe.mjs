@@ -251,6 +251,65 @@ function parse_exports(reader, directory, map_rva, options) {
 }
 
 
+function parse_base_relocations(reader, directory, map_rva, options) {
+  if (!directory || directory.address === 0 || directory.size === 0) {
+    return { blocks: [], relocations: [], truncated: false };
+  }
+  if (directory.size < 8) invalid('ORIX_PE_BAD_RELOCATION_DIRECTORY', 'PE base-relocation directory is smaller than one block header');
+  const max_blocks = options.max_relocation_blocks ?? 4096;
+  const max_relocations = options.max_relocations ?? 1_000_000;
+  if (!Number.isSafeInteger(max_blocks) || max_blocks < 1) invalid('ORIX_PE_RELOCATION_BLOCK_LIMIT', 'PE relocation block limit must be a positive safe integer', { max_blocks });
+  if (!Number.isSafeInteger(max_relocations) || max_relocations < 1) invalid('ORIX_PE_RELOCATION_LIMIT', 'PE relocation entry limit must be a positive safe integer', { max_relocations });
+  const type_names = new Map([
+    [0, 'ABSOLUTE'], [1, 'HIGH'], [2, 'LOW'], [3, 'HIGHLOW'], [4, 'HIGHADJ'],
+    [5, 'ARCHITECTURE_SPECIFIC_5'], [6, 'ARCHITECTURE_SPECIFIC_6'],
+    [7, 'ARCHITECTURE_SPECIFIC_7'], [8, 'ARCHITECTURE_SPECIFIC_8'],
+    [9, 'ARCHITECTURE_SPECIFIC_9'], [10, 'DIR64'],
+  ]);
+  const widths = new Map([[1, 2], [2, 2], [3, 4], [4, 2], [10, 8]]);
+  const blocks = [];
+  const relocations = [];
+  let cursor = 0;
+  while (cursor < directory.size) {
+    if (blocks.length >= max_blocks) invalid('ORIX_PE_RELOCATION_BLOCK_LIMIT', 'PE relocation block count exceeds configured limit', { maximum: max_blocks });
+    if (directory.size - cursor < 8) invalid('ORIX_PE_RELOCATION_BLOCK_TRUNCATED', 'PE relocation directory ends inside a block header', { cursor, remaining: directory.size - cursor });
+    const block_rva = directory.address + cursor;
+    const block_offset = map_rva(block_rva, 8);
+    if (block_offset === null) invalid('ORIX_PE_RELOCATION_BLOCK_RANGE', 'PE relocation block header is outside mapped file data', { block_rva });
+    const page_rva = reader.u32(block_offset, true, 'relocation page RVA');
+    const block_size = reader.u32(block_offset + 4, true, 'relocation block size');
+    if (block_size < 8 || block_size > directory.size - cursor || (block_size - 8) % 2 !== 0) {
+      invalid('ORIX_PE_RELOCATION_BLOCK_SIZE', 'PE relocation block has an invalid size', { cursor, block_size, remaining: directory.size - cursor });
+    }
+    const entry_count = (block_size - 8) / 2;
+    if (entry_count > max_relocations - relocations.length) invalid('ORIX_PE_RELOCATION_LIMIT', 'PE relocation entry count exceeds configured limit', { maximum: max_relocations });
+    const block = { page_rva, block_size, entry_count, first_relocation_index: relocations.length };
+    blocks.push(block);
+    for (let index = 0; index < entry_count; index += 1) {
+      const encoded = reader.u16(block_offset + 8 + index * 2, true, 'base relocation entry');
+      const type = encoded >>> 12;
+      const page_offset = encoded & 0x0fff;
+      const target_rva = page_rva + page_offset;
+      if (!Number.isSafeInteger(target_rva) || target_rva > 0xffffffff) invalid('ORIX_PE_RELOCATION_TARGET_RANGE', 'PE relocation target RVA exceeds the 32-bit address space', { page_rva, page_offset });
+      const width = widths.get(type) ?? null;
+      const target_offset = width === null ? null : map_rva(target_rva, width);
+      const relocation = {
+        type, type_name: type_names.get(type) ?? 'UNKNOWN_' + type,
+        page_rva, page_offset, target_rva, width,
+        file_offset: target_offset, file_range_valid: target_offset !== null,
+        paired_addend: null,
+      };
+      if (type === 4 && index + 1 < entry_count) {
+        relocation.paired_addend = reader.u16(block_offset + 8 + (index + 1) * 2, true, 'HIGHADJ paired addend');
+        index += 1;
+      }
+      relocations.push(relocation);
+    }
+    cursor += block_size;
+  }
+  return { blocks, relocations, truncated: false };
+}
+
 function parse_resources(reader, directory, map_rva, options) {
   if (!directory || directory.address === 0 || directory.size === 0) return { entries: [], directory_count: 0, truncated: false };
   const root_rva = directory.address;
@@ -424,6 +483,7 @@ export function parse_pe(buffer, options = {}) {
   const export_result = parse_exports(reader, directory_entries[0], map_rva, options);
   const resource_result = parse_resources(reader, directory_entries[2], map_rva, options);
   const delay_import_result = parse_delay_imports(reader, directory_entries[13], map_rva, is_64_bit, image_base, options);
+  const relocation_result = parse_base_relocations(reader, directory_entries[5], map_rva, options);
   const certificate_result = parse_certificates(reader, directory_entries[4], buffer, options);
 
   return {
@@ -460,6 +520,9 @@ export function parse_pe(buffer, options = {}) {
     imports_truncated: import_result.truncated,
     delay_imports: delay_import_result.imports,
     delay_imports_truncated: delay_import_result.truncated,
+    base_relocation_blocks: relocation_result.blocks,
+    base_relocations: relocation_result.relocations,
+    base_relocations_truncated: relocation_result.truncated,
     exports: export_result.exports,
     exports_truncated: export_result.truncated,
     export_module_name: export_result.module_name,
@@ -469,7 +532,7 @@ export function parse_pe(buffer, options = {}) {
     certificates: certificate_result.certificates,
     certificate_table_range_valid: certificate_result.range_valid,
     notes: [
-      'PE imports, delay imports, exports and resource trees are decoded from bounded file-backed RVAs; forwarded API resolution is not performed.',
+      'PE imports, delay imports, exports, base-relocation records and resource trees are decoded from bounded file-backed RVAs; relocations are not applied and forwarded API resolution is not performed.',
       'The certificate directory uses a file offset and WIN_CERTIFICATE framing is decoded; certificate chains, Authenticode hashes and publisher trust are not verified.',
       'A valid PE signature does not prove that the file is safe. Parser output is structural evidence, not an execution verdict.',
     ],
