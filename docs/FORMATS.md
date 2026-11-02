@@ -6,7 +6,7 @@ ORIX distinguishes **signature recognition** from **structural parsing**. Recogn
 
 | Format | Signature recognized | Structural parser | Implemented coverage | Not implemented yet |
 |---|---:|---:|---|---|
-| PE / COFF | Yes (`MZ`) | Yes | PE pointer, signature, COFF, PE32/PE32+, selected optional fields, data directories, section records | Import/export resolution, relocations, resources, certificate validation, RVA-to-file mapping, CLR metadata |
+| PE / COFF | Yes (`MZ`) | Yes | PE pointer, signature, COFF, PE32/PE32+, selected optional fields, data directories, section records, file-backed RVA mapping, import descriptors/thunks, named and ordinal exports, forwarded-export markers | Delay imports, relocations, resources, certificate validation, CLR metadata |
 | ELF | Yes | Yes | ELF32/ELF64 identification, endianness, core header, section table and section names | Program segment decoding, dynamic symbols, relocations, notes, DWARF and versioned symbol resolution |
 | Thin Mach-O | Yes | Yes | 32/64-bit header, CPU metadata and bounded load-command framing | Universal/fat expansion, command-specific payloads, chained fixups, code signatures and Objective-C metadata |
 | Universal Mach-O | Yes | No | Container signature only | Architecture table parsing and slice selection |
@@ -22,7 +22,7 @@ ORIX distinguishes **signature recognition** from **structural parsing**. Recogn
 
 ### PE/COFF
 
-The parser supports PE32 and PE32+ optional-header layouts. It retains raw machine identifiers, reports known architecture names, identifies selected DLL characteristics and checks each section's raw byte range against the supplied buffer. The security directory is identified as a file-offset directory; other data directories are reported as RVAs. No directory is dereferenced in this release.
+The parser supports PE32 and PE32+ optional-header layouts. It retains raw machine identifiers, reports known architecture names, identifies selected DLL characteristics and checks each section's raw byte range against the supplied buffer. File-backed RVAs are mapped through headers or section raw data; virtual zero-fill regions are not treated as file bytes. The import directory is decoded into DLL names and name/ordinal thunks. The export directory is decoded into names, ordinals, RVAs and forwarder strings. Descriptor, thunk, export and string work is bounded. The security directory is identified as a file-offset directory and is not dereferenced as an RVA. Delay imports, relocation application, resource trees, CLR metadata and certificate trust validation remain unsupported.
 
 The registry initially treats the `MZ` prefix as a PE candidate. A DOS executable without a PE signature is therefore detected as candidate `PE` but correctly rejected by the PE parser.
 
