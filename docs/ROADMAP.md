@@ -29,7 +29,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - Language classification and per-file SHA-256 identity.
 - Selected dependency manifests for npm, Python, Cargo, Go, Composer, Maven, NuGet and Ruby.
 - Dependency declaration inventory, script metadata and source-manifest provenance.
-- [x] Bounded npm package-lock v1-v3, Yarn classic/Berry, pnpm v5-v6/v9, Cargo.lock v1-v4, Composer lock and Go sum inventory with resolved package identities, integrity metadata and dependency edges.
+- [x] Bounded npm package-lock v1-v3, Yarn classic/Berry, pnpm v5-v6/v9, Cargo.lock v1-v4, Composer lock, Go sum and Ruby Gemfile.lock inventory with resolved package identities, integrity metadata and dependency edges.
 - [x] CycloneDX 1.5 export consumes lockfile-resolved packages and package-to-package relationships when lockfiles are present.
 - Best-effort source import extraction, local import edges and symbol candidates.
 - Project structure signals for README, license, CI, tests and container files.
