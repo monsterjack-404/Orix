@@ -28,12 +28,13 @@ The lockfile reader currently supports:
 
 - npm `package-lock.json` versions 1, 2 and 3, including nested package placement, root dependencies, package metadata and dependency edges.
 - Yarn classic lockfiles and Yarn Berry lockfiles, including selector groups, resolved versions, checksums/integrity fields and dependency edges.
+- pnpm lockfile v5-v6 and v9 importer/package/snapshot records, peer-suffix-aware package identities, integrity metadata and dependency edges.
 - Cargo `Cargo.lock` version 3 and 4 package records, checksums and package dependency relationships.
 - Cargo.lock v1-v4 package blocks, checksums, source identities and workspace-to-package / package-to-package dependency edges.
 
 The project report records lockfile format, path, package inventory, root edges, package-to-package edges, warnings and completeness. Package locations are kept distinct so nested versions of the same package do not collapse in the dependency graph. Lockfile package records are not registry lookups: ORIX does not download packages or validate their integrity hashes against remote content.
 
-pnpm, Composer, Python, Go and other lockfile formats are not yet parsed. Their manifest declarations may still be reported where the corresponding manifest parser exists. Unresolved selectors and malformed records are surfaced as warnings rather than silently treated as a complete graph.
+Composer, Python, Go and other lockfile formats are not yet parsed. Their manifest declarations may still be reported where the corresponding manifest parser exists. Unresolved selectors and malformed records are surfaced as warnings rather than silently treated as a complete graph.
 
 ## CycloneDX export
 
