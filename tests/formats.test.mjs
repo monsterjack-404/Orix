@@ -73,7 +73,7 @@ test('Mach-O parser validates a thin 64-bit header and load command region', () 
   buffer.writeUInt32LE(8, 20);
   buffer.writeUInt32LE(0, 24);
   buffer.writeUInt32LE(0, 28);
-  buffer.writeUInt32LE(0x1d, 32);
+  buffer.writeUInt32LE(0x80000022, 32);
   buffer.writeUInt32LE(8, 36);
   const parsed = parse_macho(buffer);
   assert.equal(parsed.bitness, 64);
@@ -404,7 +404,7 @@ test('Mach-O parser extracts bounded CodeDirectory metadata without claiming tru
   buffer[105] = 2;
   buffer[106] = 0;
   buffer[107] = 12;
-  buffer.write('test\\0', 112, 'ascii');
+  buffer.write('test\0', 112, 'ascii');
   const parsed = parse_macho(buffer);
   assert.equal(parsed.code_signature.range_valid, true);
   assert.equal(parsed.code_signature.slot_count, 1);
