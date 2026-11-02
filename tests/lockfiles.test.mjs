@@ -196,6 +196,7 @@ test('pnpm v9 lockfile merges package metadata with snapshot dependency edges', 
   assert.equal(report.packages.length, 2);
   assert.equal(report.root_edges.length, 1);
   assert.equal(report.root_edges[0].dependency_type, 'devDependencies');
+  assert.equal(report.packages.find(item => item.name === 'alpha').dev, true);
   assert.equal(report.edges.length, 1);
   assert.equal(report.edges[0].resolved_version, '2.3.0');
   assert.equal(report.packages.find(item => item.name === 'alpha').peer, true);
