@@ -231,3 +231,17 @@ The long-term direction includes richer format support, disassembly/decompiler a
 ## License
 
 ORIX is distributed under the Apache License 2.0. See [`LICENSE`](LICENSE). Third-party engines and format specifications retain their own licensing and attribution requirements; integrations will remain optional and adapter-based.
+
+## Repository and source intelligence (0.3.0)
+
+ORIX includes a bounded `project` command. It inventories a local source tree, classifies common languages, reads selected dependency manifests, extracts source-level import and symbol candidates, resolves conservative local import edges, and emits a versioned project report.
+
+~~~bash
+node src/cli.mjs project ./my-repository
+node src/cli.mjs project ./my-repository --json
+node src/cli.mjs project ./my-repository --json --out ./project-report.json
+~~~
+
+The scanner recognizes npm-compatible `package.json`, Python `requirements.txt` and basic `pyproject.toml`, Cargo, Go modules, Composer, Maven, NuGet and Gemfile declarations. It does not install dependencies, execute scripts, run builds or tests, query package registries, or claim vulnerability status. Source parsing is syntax-pattern based, not a compiler front-end.
+
+A small set of credential-shaped patterns is reported with file and line metadata; matched values are never included in the report. False positives require manual review. Traversal, file, byte, symbol and import work is bounded. Symlinks are skipped, generated/dependency directories are excluded, and reports mark incomplete coverage when limits are reached. See [Project Intelligence](docs/PROJECT_INTELLIGENCE.md).
