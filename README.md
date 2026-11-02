@@ -4,7 +4,7 @@
 
 ORIX is a local-first engineering intelligence workbench for inspecting software artifacts, reconstructing file-format structure, and preserving the evidence behind every conclusion. It is designed as a serious, extensible foundation for authorized reverse engineering and software research—not a wrapper that hides its methods and not a collection of aspirational feature folders.
 
-> Current release line: **0.4.0 — Artifact, Repository + PE/ELF/Mach-O/ZIP64 Structural Intelligence**  
+> Current release line: **0.5.0 — Artifact, Project, Evidence, Interchange + MCP Intelligence**  
 > Runtime: **Node.js 20.11 or newer**  
 > Dependencies: **Node.js built-ins only**  
 > Execution model: **local, static, read-only analysis**
@@ -272,7 +272,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for source ownership and review expecta
 
 ## Roadmap
 
-The long-term direction includes richer format support, disassembly/decompiler adapters, a local evidence store, repository intelligence, plugin contracts, MCP integration, a desktop/web interface and isolated dynamic-analysis providers. Those are roadmap items, not implemented features. The near-term plan is broken into measurable vertical slices in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+The long-term direction includes richer format support, disassembly/decompiler adapters, a persistent case database, plugin contracts, a desktop/web interface and isolated dynamic-analysis providers. The local MCP interface, repository intelligence, evidence ledger and current interchange workflows are implemented vertical slices; see the roadmap for remaining boundaries. The near-term plan is broken into measurable vertical slices in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## License
 
