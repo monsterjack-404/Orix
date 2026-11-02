@@ -128,7 +128,12 @@ async function collect_loose_refs(refs_root, git_root, refs, limits, warnings) {
       return;
     }
     let entries;
-    try { entries = await fs.readdir(directory, { withFileTypes: true }); }
+    try {
+      const directory_stat = await fs.lstat(directory);
+      const directory_real = await fs.realpath(directory);
+      if (directory_stat.isSymbolicLink() || !directory_stat.isDirectory() || !inside(directory_real, git_root)) { warnings.push({ code: 'ORIX_GIT_REF_DIRECTORY_UNSAFE', path: relative }); return; }
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    }
     catch (error) {
       if (error.code !== 'ENOENT') warnings.push({ code: 'ORIX_GIT_REF_DIRECTORY_READ', path: relative, system_code: error.code });
       return;
@@ -185,7 +190,7 @@ function parse_loose_commit(buffer, expected_oid, object_format, maximum) {
   if (split < 0) return { status: 'unavailable', reason: 'commit-header-terminator-missing' };
   const header_lines = text.slice(0, split).split('\n');
   const tree = header_lines.find(line => line.startsWith('tree '))?.slice(5) ?? null;
-  const parents = header_lines.filter(line => line.startsWith('parent ')).map(line => line.slice(7)).filter(value => /^[a-f0-9]{40}|[a-f0-9]{64}$/.test(value));
+  const parents = header_lines.filter(line => line.startsWith('parent ')).map(line => line.slice(7)).filter(value => /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value));
   const author = header_lines.find(line => line.startsWith('author ')) ?? '';
   const committer = header_lines.find(line => line.startsWith('committer ')) ?? '';
   const timestamp = line => {
@@ -239,7 +244,7 @@ export async function scan_git_metadata(root_path, options = {}) {
   const head_text = head_buffer?.toString('utf8').trim() ?? '';
   const symbolic = /^ref:\s*(refs\/[A-Za-z0-9._/-]+)$/.exec(head_text);
   let branch = symbolic?.[1].startsWith('refs/heads/') ? symbolic[1].slice('refs/heads/'.length) : null;
-  let head_oid = /^[a-f0-9]{40}|[a-f0-9]{64}$/.test(head_text) ? head_text : null;
+  let head_oid = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(head_text) ? head_text : null;
   const refs = new Map();
   await collect_loose_refs(path.join(git_root, 'refs'), git_root, refs, limits, warnings);
   const packed = await read_regular_file(path.join(git_root, 'packed-refs'), git_root, limits.max_metadata_bytes);
@@ -256,10 +261,13 @@ export async function scan_git_metadata(root_path, options = {}) {
   for (const [name, urls] of config.remotes) for (const remote of urls) remote_map.push({ name, ...remote });
   remote_map.sort((a, b) => a.name.localeCompare(b.name) || String(a.host).localeCompare(String(b.host)));
   const shallow_buffer = await read_regular_file(path.join(git_root, 'shallow'), git_root, limits.max_metadata_bytes);
-  const shallow_ids = shallow_buffer ? shallow_buffer.toString('utf8').split(/\r?\n/).filter(value => /^[a-f0-9]{40}|[a-f0-9]{64}$/.test(value)) : [];
+  const shallow_ids = shallow_buffer ? shallow_buffer.toString('utf8').split(/\r?\n/).filter(value => /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value)) : [];
   let pack_files = [];
   try {
     const pack_root = path.join(git_root, 'objects', 'pack');
+    const pack_stat = await fs.lstat(pack_root);
+    const pack_real = await fs.realpath(pack_root);
+    if (pack_stat.isSymbolicLink() || !pack_stat.isDirectory() || !inside(pack_real, git_root)) throw Object.assign(new Error('Unsafe pack directory'), { code: 'ORIX_GIT_PACK_DIRECTORY_UNSAFE' });
     const entries = await fs.readdir(pack_root, { withFileTypes: true });
     pack_files = entries.filter(item => item.isFile() && /^pack-[a-f0-9]+\.pack$/.test(item.name)).map(item => item.name).sort().slice(0, limits.max_pack_files);
     if (entries.length > limits.max_pack_files) warnings.push({ code: 'ORIX_GIT_PACK_FILE_LIMIT', maximum: limits.max_pack_files });
