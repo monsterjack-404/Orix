@@ -27,19 +27,21 @@ node src/cli.mjs project ./my-repository --format cyclonedx --out ./sbom.cdx.jso
 The lockfile reader currently supports:
 
 - npm `package-lock.json` versions 1, 2 and 3, including nested package placement, root dependencies, package metadata and dependency edges.
-- Yarn classic lockfiles and Yarn Berry lockfiles, including selector groups, resolved versions, checksums/integrity fields and dependency edges.
-- pnpm lockfile v5-v6 and v9 importer/package/snapshot records, peer-suffix-aware package identities, integrity metadata and dependency edges.
-- Cargo `Cargo.lock` version 3 and 4 package records, checksums and package dependency relationships.\n- pnpm lockfiles using versions 5.x, 6.x and 9.x, including importers, snapshots, package resolution metadata and peer-context package identities.\n- Composer `composer.lock` runtime/development packages, package requirements, checksums and root manifest edges.
-- Cargo.lock v1-v4 package blocks, checksums, source identities and workspace-to-package / package-to-package dependency edges.
-- Go `go.sum` module and `go.mod` checksum records, matched against `go.mod` direct declarations where exact versions are available.
+- Yarn classic and Berry lockfiles, including selector groups, resolved versions, checksums/integrity fields and dependency edges.
+- pnpm lockfiles using versions 5.x, 6.x and 9.x, including importers, snapshots, peer-context package identities and dependency edges.
+- Cargo `Cargo.lock` versions 1 through 4, package sources, checksums and workspace/package dependency relationships.
+- Composer `composer.lock` runtime/development packages, package requirements, checksums and root manifest edges.
+- Poetry `poetry.lock` package groups, dependency requirements, package hashes and root edges derived from `pyproject.toml`.
+- Pipenv `Pipfile.lock` resolved versions and hashes, matched to `Pipfile` root declarations. Pipfile.lock does not encode package-to-package edges, so ORIX explicitly marks that graph incomplete.
+- Go `go.sum` module checksums, matched against exact `go.mod` declarations where available.
 
 The project report records lockfile format, path, package inventory, root edges, package-to-package edges, warnings and completeness. Package locations are kept distinct so nested versions of the same package do not collapse in the dependency graph. Lockfile package records are not registry lookups: ORIX does not download packages or validate their integrity hashes against remote content.
 
-Python, Go and other lockfile formats are not yet parsed. Their manifest declarations may still be reported where the corresponding manifest parser exists. Unresolved selectors and malformed records are surfaced as warnings rather than silently treated as a complete graph.
-
+Unresolved selectors and malformed records are surfaced as warnings rather than silently treated as a complete graph. Formats without a parser are omitted from lockfile analysis while supported manifest declarations remain visible.
+ 
 ## CycloneDX export
 
-`--format cyclonedx` emits a CycloneDX 1.5 SBOM. When supported npm or Yarn lockfiles are present, ORIX uses exact locked package versions and the observed dependency relationships. Without a supported lockfile, the export falls back to recognized declared dependencies and their manifest provenance.
+`--format cyclonedx` emits a CycloneDX 1.5 SBOM. When supported npm, Yarn, pnpm, Cargo, Composer or Poetry lockfiles are present, ORIX uses exact locked package versions and the observed dependency relationships. Without a supported lockfile, the export falls back to recognized declared dependencies and their manifest provenance.
 
 Package URLs are emitted only for recognized ecosystems. Development dependencies are marked optional where that classification is available. Unknown ecosystems are omitted rather than assigned guessed package URLs. A lockfile graph is an inventory of recorded package metadata, not a vulnerability assessment, publisher-authenticity check or guarantee that the lockfile matches an installed tree.
 
