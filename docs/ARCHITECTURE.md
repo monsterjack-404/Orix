@@ -1,10 +1,10 @@
 # ORIX Architecture
 
-This document describes the 0.2.1 implementation and the constraints new modules must preserve. The architecture is intentionally layered: file acquisition owns filesystem facts, the binary reader owns offset validation, format parsers own format interpretation, analyzers own orchestration, evidence owns provenance, and renderers own presentation.
+This document describes the 0.4.x implementation and the constraints new modules must preserve. The architecture is intentionally layered: file acquisition owns filesystem facts, the binary reader owns offset validation, format parsers own format interpretation, analyzers own orchestration, evidence owns provenance, and renderers own presentation.
 
 ## 1. Runtime boundaries
 
-ORIX currently runs as a Node.js command-line application and a small programmatic library. There is no daemon, server, database, browser UI, plugin loader or remote service in the current release. Those boundaries must not be implied by package names or roadmap documents.
+ORIX currently runs as a Node.js command-line application and a small programmatic library. The current release is a local-first Node.js CLI/library with an append-only, hash-chained JSONL evidence ledger. It still has no daemon, remote service, browser UI, plugin loader or relational database. Those boundaries must not be implied by package names or roadmap documents.
 
 The public call graph is:
 
@@ -36,7 +36,7 @@ src/index.mjs exposes the supported programmatic surface.
 | `analyzer/walk` | Deterministic inventory, ignored directories, no-follow traversal, depth and count limits | Parsing file contents |
 | `analyzer/scan` | Concurrency, per-file isolation, aggregate counts, indicator counts and coverage | Reinterpreting parser fields |
 | `analyzer/indicators` | Deterministic rule evaluation over parser output and bounded metrics | Executing samples, network lookups, opaque scoring or final malware verdicts |
-| `core/evidence` | Evidence identity, provenance, confidence labels and details | User-facing verdicts |
+| `core/evidence` | In-memory evidence identity, provenance, confidence labels and details | User-facing verdicts |\n| `evidence/ledger` | Append-only JSONL records, writer lock, SHA-256 hash chain and verification | Parser interpretation, automatic tamper repair or claims of external timestamping |
 | `reports/*` | JSON and Markdown rendering | New analysis or silent data loss |
 | `cli/*` | Arguments, command routing, output destination selection | Parser implementation |
 
@@ -118,3 +118,12 @@ Report schema identifiers are currently `orix.artifact.v1`, `orix.scan.v1` and `
 New analyzers should be independent modules with explicit resource budgets and typed output. New external engines should be implemented behind optional adapters that describe version detection, capability probing, input/output mapping, process ownership, timeouts, cancellation and cleanup. The core must remain useful when no external engine is installed.
 
 Planned components such as databases, MCP, browser UI, collaboration and worker fleets should be added as vertical slices with end-to-end tests—not as disconnected empty folders.
+
+
+## 10. Persistent evidence ledger
+
+The optional local ledger stores compact inspection, directory-scan or project-report records as JSON Lines. Each record contains a monotonically increasing sequence, UTC timestamp, event type, payload, previous-record SHA-256 and a SHA-256 digest over canonical JSON. A single-writer lock prevents concurrent appenders from interleaving writes. The verifier checks sequence continuity, previous-hash links, canonical record hashes, JSON framing and configured byte limits.
+
+Use `orix inspect ./sample.exe --ledger ./.orix/evidence.jsonl` to append an inspection receipt. Use `orix ledger verify ./.orix/evidence.jsonl` to verify the chain and `orix ledger list ./.orix/evidence.jsonl` to display verified records.
+
+The ledger is tamper-evident, not tamper-proof. A local administrator can replace both records and hashes. It is not a trusted timestamp authority, digital signature, remote transparency log, or write-once medium. Back up the ledger and preserve its head hash independently for stronger chain-of-custody workflows. An incomplete final line is rejected; ORIX never silently repairs or truncates evidence.
