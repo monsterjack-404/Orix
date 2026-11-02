@@ -20,7 +20,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Artifact intake | Regular-file validation, symlink rejection, size ceilings, bounded prefix reads | Does not acquire files from remote locations |
 | Integrity | Streaming SHA-256 over the complete file using a bounded buffer | Does not authenticate the publisher or establish trust |
 | Format registry | Signature recognition for ELF, PE/MZ, Mach-O, universal Mach-O, WebAssembly, PDF, PNG, JPEG, SQLite and GZIP | Signature recognition is not a complete format parser |
-| PE parser | PE32/PE32+ fixed headers, machine, subsystem, DLL flags, data directories and section records | Does not resolve imports, relocations or virtual-memory mappings |
+| PE parser | PE32/PE32+ headers, data directories, section records, file-backed RVA mapping, import DLLs and name/ordinal thunks, named/ordinal exports and forwarder markers | Delay imports, relocations, resources, CLR metadata and certificate trust validation are not implemented |
 | ELF parser | ELF32/ELF64 identification, endianness, core header fields and bounded section records with names | Program-header records are range-checked, not decoded into load segments |
 | Mach-O parser | Thin 32-bit/64-bit header and bounded load-command framing | Does not expand universal containers or decode command-specific payloads |
 | WebAssembly parser | Module version, bounded section framing and custom section names | Does not validate instruction semantics or decompile code |
@@ -34,7 +34,7 @@ Static indicator rules operate only on already-parsed metadata and bounded extra
 
 Formats without a parser are still identified where their signatures are recognized. They are reported as `not-supported`, rather than pretending that a header was decoded.
 
-## Quick start
+## Repository intelligence\n\nThe `project` command builds a bounded source and manifest index without running project scripts, builds or tests:\n\n```bash\nnode src/cli.mjs project ./source-tree\nnode src/cli.mjs project ./source-tree --json\n```\n\nIt records file hashes, language counts, selected dependency declarations, source import edges, symbol candidates and redacted credential-shaped findings. See [`docs/PROJECT_INTELLIGENCE.md`](docs/PROJECT_INTELLIGENCE.md) for parser boundaries and resource limits.\n\n## Quick start
 
 ```bash
 # Check your Node.js version
@@ -211,7 +211,7 @@ npm test
 npm run test:coverage
 ```
 
-The test suite includes handcrafted PE32/PE32+, ELF64, thin Mach-O and WebAssembly fixtures; malformed-header boundaries; string extraction; evidence semantics; symlink handling; directory traversal; and real CLI JSON output. The fixtures are generated as small byte buffers at test time and are not executable samples.
+The test suite includes handcrafted PE32/PE32+ fixtures with bounded import/export tables, ELF64, thin Mach-O and WebAssembly fixtures; malformed-header and RVA boundaries; string extraction; evidence semantics; symlink handling; directory traversal; project-intelligence regression cases; and real CLI JSON output. The fixtures are generated as small byte buffers at test time and are not executable samples.
 
 Before adding a parser:
 
