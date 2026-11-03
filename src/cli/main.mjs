@@ -49,6 +49,7 @@ export async function main(argv=process.argv.slice(2)) {
   const parsed=parse_arguments(argv);
   if(parsed.flags.help||parsed.command==='help'||!parsed.command){process.stdout.write(HELP_TEXT);return 0;}
   validate_command_flags(parsed.command, parsed.flags);
+  if(parsed.flags.format==='mermaid'&&parsed.command!=='architecture')throw new Error('Mermaid output is only supported by the architecture command');
   if(parsed.command==='ledger'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('ledger output currently supports JSON only');
   if(parsed.command==='providers'&&parsed.provider_action==='list'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('providers list output currently supports JSON only');
   if(parsed.command==='providers'&&parsed.provider_action==='imports'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('provider import output supports JSON or Markdown only');
