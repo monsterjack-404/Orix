@@ -38,3 +38,26 @@ jobs:
       - name: Generate coverage summary
         if: matrix.node-version == 22
         run: npm run test:coverage
+
+  platform-smoke:
+    name: Platform smoke / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Validate JavaScript syntax
+        run: npm run check
+      - name: Run tests
+        run: npm test
