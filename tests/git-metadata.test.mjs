@@ -31,6 +31,15 @@ async function write_loose_commit(git_dir) {
   return oid;
 }
 
+async function write_loose_commit_payload(git_dir, payload_text) {
+  const payload = Buffer.from(payload_text);
+  const raw = Buffer.concat([Buffer.from('commit ' + payload.length + '\0'), payload]);
+  const oid = createHash('sha1').update(raw).digest('hex');
+  await mkdir(path.join(git_dir, 'objects', oid.slice(0, 2)), { recursive: true });
+  await writeFile(path.join(git_dir, 'objects', oid.slice(0, 2), oid.slice(2)), deflateSync(raw));
+  return oid;
+}
+
 test('Git metadata reads HEAD, branches, tags, remotes and verifies loose commit identity', async () => with_repo(async root => {
   const git = path.join(root, '.git');
   await mkdir(path.join(git, 'refs', 'heads'), { recursive: true });
@@ -91,4 +100,21 @@ test('Git metadata validates resource limits and rejects malformed loose object 
   await writeFile(path.join(git, 'HEAD'), 'a'.repeat(40));
   const report = await scan_git_metadata(root);
   assert.equal(report.head_commit.status, 'object-not-found');
+}));
+
+
+test('Git metadata refuses to parse loose commits with invalid object headers', async () => with_repo(async root => {
+  const git = path.join(root, '.git');
+  await mkdir(path.join(git, 'objects'), { recursive: true });
+  const oid = await write_loose_commit_payload(git, [
+    'parent ' + 'b'.repeat(40),
+    'author Test User <test@example.invalid> 1793600000 +0000',
+    'committer Test User <test@example.invalid> 1793600000 +0000',
+    '',
+    'missing tree header',
+  ].join('\\n'));
+  await writeFile(path.join(git, 'HEAD'), oid + '\\n');
+  const report = await scan_git_metadata(root);
+  assert.equal(report.head_commit.status, 'unavailable');
+  assert.equal(report.head_commit.reason, 'commit-headers-invalid');
 }));
