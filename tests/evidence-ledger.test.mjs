@@ -109,3 +109,14 @@ test('ledger rejects accessor and sparse array payload elements without invoking
     error => error.code === 'ORIX_LEDGER_SPARSE_ARRAY',
   );
 });
+
+
+test('ledger requires event payloads to be JSON objects', async t => {
+  const { file } = await fixture(t);
+  for (const payload of [null, 'text', 42, true, ['array']]) {
+    await assert.rejects(
+      append_evidence_event(file, 'scan.completed', payload),
+      error => error.code === 'ORIX_LEDGER_PAYLOAD_SHAPE',
+    );
+  }
+});
