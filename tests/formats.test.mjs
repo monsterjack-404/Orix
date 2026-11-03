@@ -1110,3 +1110,13 @@ test('Mach-O parser rejects invalid dynamic-symbol index groups and indirect ref
   buffer.writeUInt32LE(1, 160);
   assert.throws(() => parse_macho(buffer), error => error.code === 'ORIX_MACHO_INDIRECT_SYMBOL_INDEX');
 });
+
+
+test('ZIP parser rejects invalid direct entry limits', async () => {
+  const { parse_zip } = await import('../src/formats/zip.mjs');
+  const { create_zip_fixture } = await import('./helpers.mjs');
+  const fixture = create_zip_fixture('safe.txt', 'bounded');
+  for (const max_entries of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1_000_001]) {
+    assert.throws(() => parse_zip(fixture, { max_entries }), /max_entries must be an integer/);
+  }
+});
