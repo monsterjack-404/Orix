@@ -40,6 +40,19 @@ node src/cli.mjs scan ./release --concurrency 2 --no-strings
 
 A scan report stores the aggregate summary separately from each artifact result. It includes `files_with_indicators` and `indicator_counts`, while each artifact retains its own rule findings. Per-file errors are isolated. The inventory has a `truncated` flag and skipped-entry list; consumers must inspect these before claiming full coverage.
 
+### Analyze a source project
+
+```bash
+node src/cli.mjs project ./repository
+node src/cli.mjs project ./repository --json
+node src/cli.mjs project ./repository --format cyclonedx --out ./sbom.cdx.json
+node src/cli.mjs project ./repository --format sarif --out ./project-findings.sarif
+```
+
+Project SARIF export maps source findings to SARIF 2.1.0 file and line locations. ORIX exports the rule ID, severity, confidence and a stable finding fingerprint. Credential-shaped match values are deliberately excluded from messages, evidence properties and fingerprints. The project root and each finding path are checked so a report cannot manufacture file locations outside its declared root.
+
+A project scan is still static and heuristic. SARIF output does not upgrade a pattern match into a confirmed secret, vulnerability or runtime behavior finding. Review the reported line in the source repository before taking action.
+
 ### List known signatures
 
 ```bash
