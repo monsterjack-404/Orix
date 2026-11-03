@@ -80,3 +80,28 @@ test('normalizes WebAssembly imports exports and name-section functions into sea
   assert.equal(filter_report_view(view, { query: 'run' }).length, 2);
   assert.equal(filter_report_view(view, { format: 'WebAssembly function' }).length, 1);
 });
+
+test('expands WebAssembly symbols inside directory scan reports', () => {
+  const wasm = {
+    ...item('/work/module.wasm'),
+    detection: { format: 'WebAssembly' },
+    parser: {
+      status: 'parsed',
+      result: {
+        format: 'WebAssembly',
+        imports: [],
+        exports: [{ name: 'entry_point', kind: 'function', index: 0 }],
+        function_names: [{ index: 0, name: 'initialize' }],
+      },
+    },
+  };
+  const view = build_report_view({
+    schema_version: 'orix.scan.v1',
+    scan: { root: '/work' },
+    artifacts: [wasm],
+  });
+  assert.equal(view.kind, 'scan');
+  assert.equal(view.records.length, 3);
+  assert.equal(filter_report_view(view, { query: 'entry_point' }).length, 1);
+  assert.equal(filter_report_view(view, { query: 'initialize' }).length, 1);
+});
