@@ -15,6 +15,7 @@ The parser validates and exposes:
 - Export names, kinds and index values, including duplicate export-name rejection.
 - The optional start-function index.
 - Code-section function-body byte ranges, including bounds checks and function/code count consistency.
+- Standard `name` custom-section module names and function-name maps, including duplicate subsection/index and out-of-range function-index rejection.
 - Function and tag references to the parsed type index space.
 
 The sections array keeps each section's ID, name, file offset, payload offset and payload size. For sections that are not yet decoded, vector_count reports the bounded leading vector count when one is available. code_bodies contains byte offsets and lengths only; it does not imply that function instructions have been validated.
@@ -45,6 +46,8 @@ const result = parse_wasm(buffer, {
 console.log(result.types);
 console.log(result.imports);
 console.log(result.exports);
+console.log(result.module_name);
+console.log(result.function_names);
 console.log(result.code_bodies);
 ~~~
 
@@ -65,4 +68,4 @@ The parser rejects unsupported value types and memory-limit flags rather than gu
 
 ## Regression coverage
 
-tests/wasm-structure.test.mjs covers successful type/import/export/code indexing, custom section names, malformed UTF-8, duplicate and unknown sections, resource ceilings, invalid type/export references, function/code count mismatches, section-boundary reads and truncated code bodies.
+tests/wasm-structure.test.mjs covers successful type/import/export/code indexing, module/function name custom sections, custom section names, malformed UTF-8, duplicate and unknown sections, resource ceilings, invalid type/export references, function/code count mismatches, section-boundary reads and truncated code bodies.
