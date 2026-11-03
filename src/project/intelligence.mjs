@@ -9,6 +9,19 @@ const DEFAULTS={max_files:50000,max_entries:200000,max_depth:24,max_file_bytes:1
 const IGNORED=new Set(['.git','.hg','.svn','node_modules','vendor','dist','build','coverage','.next','.nuxt','.turbo','.cache','.venv','venv','__pycache__','target','bin','obj']);
 const EXT={'.js':'JavaScript','.mjs':'JavaScript','.cjs':'JavaScript','.jsx':'JavaScript','.ts':'TypeScript','.tsx':'TypeScript','.py':'Python','.go':'Go','.rs':'Rust','.c':'C','.h':'C/C++','.cc':'C++','.cpp':'C++','.hpp':'C++','.java':'Java','.kt':'Kotlin','.swift':'Swift','.cs':'C#','.php':'PHP','.rb':'Ruby','.sh':'Shell','.sql':'SQL','.html':'HTML','.css':'CSS','.xml':'XML','.yaml':'YAML','.yml':'YAML','.toml':'TOML','.json':'JSON','.md':'Markdown','.mdx':'MDX','.vue':'Vue','.svelte':'Svelte'};
 const LOCKFILES=new Set(['package-lock.json','yarn.lock','Cargo.lock','pnpm-lock.yaml','composer.lock','poetry.lock','Pipfile.lock','go.sum','packages.lock.json','gradle.lockfile','Gemfile.lock','packages.lock.json','gradle.lockfile']);
+const LOCKFILE_FAILURE_IDENTITIES = Object.freeze({
+ 'package-lock.json': { ecosystem: 'npm', format: 'npm-package-lock' },
+ 'yarn.lock': { ecosystem: 'npm', format: 'yarn-lock' },
+ 'Cargo.lock': { ecosystem: 'cargo', format: 'cargo-lock' },
+ 'pnpm-lock.yaml': { ecosystem: 'pnpm', format: 'pnpm-lock' },
+ 'composer.lock': { ecosystem: 'composer', format: 'composer-lock' },
+ 'poetry.lock': { ecosystem: 'python', format: 'poetry-lock' },
+ 'Pipfile.lock': { ecosystem: 'python', format: 'pipfile-lock' },
+ 'go.sum': { ecosystem: 'go', format: 'go-sum' },
+ 'Gemfile.lock': { ecosystem: 'rubygems', format: 'gemfile-lock' },
+ 'packages.lock.json': { ecosystem: 'nuget', format: 'nuget-packages-lock' },
+ 'gradle.lockfile': { ecosystem: 'maven', format: 'gradle-lock' },
+});
 const MANIFESTS=new Set(['package.json','requirements.txt','pyproject.toml','Cargo.toml','go.mod','composer.json','pom.xml','Gemfile','Pipfile','packages.config','Directory.Packages.props']);
 const SECRET_RULES=[
  ['ORIX-PROJECT-SECRET-AWS-001','AWS access-key identifier',/\bAKIA[0-9A-Z]{16}\b/g],
@@ -90,7 +103,18 @@ raw.push({path:relative,size_bytes:buffer.length,sha256:digest(buffer),language:
    for(const edge of parsed.edges??[])dependency_edges.push({...edge,from:item.path+'#'+edge.from,to:item.path+'#'+edge.to,lockfile:item.path});
    for(const edge of parsed.root_edges??[])dependency_edges.push({...edge,from:'root',to:item.path+'#'+edge.to,lockfile:item.path});
   } catch(error) {
-   lockfiles.push({path:item.path,ecosystem:'npm',format:path.posix.basename(item.path)==='package-lock.json'?'npm-package-lock':'yarn-lock',packages:[],edges:[],root_dependencies:[],root_edges:[],warnings:[{code:error.code??'ORIX_LOCKFILE_PARSE_FAILED'}],complete:false});
+   const identity = LOCKFILE_FAILURE_IDENTITIES[path.posix.basename(item.path)] ?? { ecosystem: 'unknown', format: 'unknown-lockfile' };
+   lockfiles.push({
+    path: item.path,
+    ecosystem: identity.ecosystem,
+    format: identity.format,
+    packages: [],
+    edges: [],
+    root_dependencies: [],
+    root_edges: [],
+    warnings: [{ code: error.code ?? 'ORIX_LOCKFILE_PARSE_FAILED' }],
+    complete: false,
+   });
   }
  }
  const paths=files.map(x=>x.path),counts={};for(const file of files)counts[file.language]=(counts[file.language]??0)+1;
