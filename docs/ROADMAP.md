@@ -77,6 +77,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 ## 0.5 — Analysis Providers and Disassembly Adapters
 
+- [x] Declarative `orix.provider.v1` JSON Schema for provider identity, capabilities, platform/format support, execution side effects, resource ceilings and licensing metadata. This is a metadata contract, not a plugin loader or execution authorization.
 - Capability interface for optional Ghidra, IDA, Hopper and other licensed/installed engines.
 - Provider version probing, health state, timeouts and structured diagnostics.
 - Function, symbol, callgraph and disassembly evidence contracts.
