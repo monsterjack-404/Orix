@@ -46,7 +46,7 @@ export const HELP_TEXT = [
   '  --executable <path>  Absolute path to an optional external provider executable.',
   '  --timeout-ms <n>     Maximum external provider runtime in milliseconds.',
   '  --max-output-kib <n> Maximum provider stdout/stderr bytes captured per process, in KiB.',
-  '  --max-imports <n>    Maximum imported symbols retained in a Rizin report.'
+  '  --max-imports <n>    Maximum imported symbols retained in a Rizin report.',
   '  -h, --help           Print help.',
   '',
   'EXAMPLES',
