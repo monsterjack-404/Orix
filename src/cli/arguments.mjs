@@ -1,6 +1,7 @@
 // JavaScript, src/cli/arguments.mjs, Node.js 20+, strict command-line argument parser.
 
 import { OrixError } from '../core/errors.mjs';
+import { DEFAULT_LIMITS } from '../core/limits.mjs';
 
 const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-read-mib','--max-file-mib','--concurrency','--strings-limit']);
 const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--help','-h']);
@@ -64,8 +65,10 @@ export function parse_arguments(argv) {
     if (!result.flags.ledger_path) throw new OrixError('ORIX_CLI_LEDGER_PATH', 'ledger operation requires a ledger path', { recoverable: true });
   }
   if (result.positionals.length > 0) throw new OrixError('ORIX_CLI_EXTRA_ARGUMENTS', `Unexpected extra arguments: ${result.positionals.join(' ')}`, { recoverable: true });
-  if (result.flags.max_read_bytes && result.flags.max_file_bytes && result.flags.max_read_bytes > result.flags.max_file_bytes) {
-    throw new OrixError('ORIX_CLI_LIMIT_CONFLICT', '--max-read-mib cannot exceed --max-file-mib', { recoverable: true });
+  const effective_file_limit = result.flags.max_file_bytes ?? DEFAULT_LIMITS.max_file_bytes;
+  const effective_read_limit = result.flags.max_read_bytes ?? Math.min(DEFAULT_LIMITS.max_read_bytes, effective_file_limit);
+  if (effective_read_limit > effective_file_limit) {
+    throw new OrixError('ORIX_CLI_LIMIT_CONFLICT', '--max-read-mib cannot exceed the effective --max-file-mib limit; set both options when increasing the read prefix', { recoverable: true });
   }
   return result;
 }
