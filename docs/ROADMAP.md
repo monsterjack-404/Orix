@@ -67,7 +67,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 - Git repository inventory without executing project hooks.
 - Language and build-system detection based on bounded manifests.
-- [x] npm package-lock v1-v3 and Yarn classic/Berry dependency graph analysis.\n- [x] npm, Yarn, pnpm, Cargo, Composer, Poetry, Pipenv, Go, Ruby, NuGet and Gradle lockfile readers (format-specific graph completeness is reported).
+- [x] npm package-lock v1-v3 and Yarn classic/Berry dependency graph analysis.\n- [x] npm, Yarn, pnpm, Cargo, Composer, Poetry, Pipenv, uv, Go, Ruby, NuGet and Gradle lockfile readers (format-specific graph completeness is reported).
 - Source symbol index and cross-reference model.
 - Architecture map assembled from observed files and declared dependencies.
 - Incremental cache keyed by content hash, parser version and analysis options.
