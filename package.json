@@ -30,7 +30,8 @@
     "./providers/registry": "./src/providers/registry.mjs",
     "./providers/process-runner": "./src/providers/process-runner.mjs",
     "./providers/rizin": "./src/providers/rizin.mjs",
-    "./reports/view-model": "./src/reports/view-model.mjs"
+    "./reports/view-model": "./src/reports/view-model.mjs",
+    "./reports/rizin": "./src/reports/rizin.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
