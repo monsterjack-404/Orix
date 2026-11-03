@@ -4,7 +4,9 @@
 
 ### Added
 - Bounded WebAssembly structure indexing for function types, imports, exports, function/type references, start function metadata and code-body byte ranges.
-- Optional Rizin static import adapter with input SHA-256 provenance, version probing, bounded JSON normalization and a versioned report schema.
+- Optional Rizin static import adapter with input SHA-256 provenance, bounded private artifact snapshots, tamper detection, bounded JSON normalization and a versioned report schema.
+- Explicit `providers rizin doctor` command and `probe_rizin` API for checking an absolute Rizin executable and recording its version/runtime diagnostics.
+- Browser-local report viewer support for Rizin import inventories and provider probe reports, including searchable symbol rows and CSV export.
 - Shell-free static provider runner with exact canonical executable and working-directory allowlists, symlink rejection, blocked command-search/loader environment overrides, timeout, cancellation and captured-output ceilings.
 - Versioned `orix.provider-execution.v1` process outcome receipts with exit/termination details and effective resource limits.
 - `providers list` and `providers rizin imports` CLI commands with JSON and Markdown output.
@@ -13,7 +15,8 @@
 - WebAssembly section boundaries, UTF-8 names, import descriptors, reference indices, vector ceilings and function/code counts receive regression coverage.
 - External provider commands require explicit executable configuration and do not execute the inspected target.
 - Provider runtime limits are enforced at the process boundary; the runner is not an OS sandbox and cannot enforce provider filesystem/network behavior.
-- Rizin input size, digest and before/after file identity are checked; analysis timeout spans hashing, version probe and import extraction.
+- Rizin input size, digest and before/after file identity are checked; the provider receives a byte-bounded private snapshot rather than the original file, and snapshot content is verified after execution.
+- Rizin analysis timeout spans hashing, bounded snapshot creation, version probe and import extraction.
 - Provider stdout/stderr capture, argument/environment sizes and import result counts are bounded.
 
 ### Boundaries
