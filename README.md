@@ -2,6 +2,8 @@
 
 **Understand. Analyze. Engineer.**
 
+> Product direction: [ORIX Product Charter](docs/PRODUCT_CHARTER.md) · [Engineering Gap Register & Implementation Backlog](docs/IMPLEMENTATION_BACKLOG.md). These define the long-term target and planned work; they do not imply planned capabilities are already implemented.
+
 ORIX is a local-first engineering intelligence workbench for inspecting software artifacts, reconstructing file-format structure, and preserving the evidence behind every conclusion. It is designed as a serious, extensible foundation for authorized reverse engineering and software research—not a wrapper that hides its methods and not a collection of aspirational feature folders.
 
 > Current release line: **0.5.0 — Artifact, Project, Evidence, Interchange + MCP Intelligence**  
