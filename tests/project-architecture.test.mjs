@@ -107,3 +107,12 @@ test('counts many independent self-loop components without losing edge attributi
     cycle.kind === 'self-loop' && cycle.member_count === 1 && cycle.internal_edge_count === 1
   ));
 });
+
+test('Markdown report cells escape backslashes before table delimiters', () => {
+  const report = analyze_project_architecture(fixture());
+  report.project.name = 'module|name\\root';
+  report.project.root = 'C:\\workspace|orix';
+  const markdown = render_architecture_markdown(report);
+  assert.ok(markdown.includes('module\\|name\\\\root'));
+  assert.ok(markdown.includes('C:\\\\workspace\\|orix'));
+});
