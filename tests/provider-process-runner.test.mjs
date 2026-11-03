@@ -330,3 +330,26 @@ test('static provider runner rejects PATH and executable-loader environment over
     );
   }
 });
+
+
+test('static provider runner rejects NUL bytes in executable and working-directory allowlists', async () => {
+  const executable = await node_executable();
+  await assert.rejects(
+    run_static_provider({
+      manifest: manifest(),
+      executable,
+      allowed_executables: [executable + '\0suffix'],
+      args: [],
+    }),
+    /absolute paths without NUL bytes/,
+  );
+  await assert.rejects(
+    run_static_provider({
+      manifest: manifest(),
+      executable,
+      cwd: process.cwd() + '\0suffix',
+      args: [],
+    }),
+    /cwd must be an absolute filesystem path/,
+  );
+});
