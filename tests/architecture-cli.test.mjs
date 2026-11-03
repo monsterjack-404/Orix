@@ -14,9 +14,9 @@ async function with_project(callback) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'orix-architecture-cli-'));
   try {
     await mkdir(path.join(root, 'src'), { recursive: true });
-    await writeFile(path.join(root, 'src', 'index.js'), \"import './service.js';\\n\");
-    await writeFile(path.join(root, 'src', 'service.js'), \"import './index.js';\\n\");
-    await writeFile(path.join(root, 'src', 'unused.js'), 'export const unused = true;\\n');
+    await writeFile(path.join(root, 'src', 'index.js'), "import './service.js';\n");
+    await writeFile(path.join(root, 'src', 'service.js'), "import './index.js';\n");
+    await writeFile(path.join(root, 'src', 'unused.js'), 'export const unused = true;\n');
     await callback(root);
   } finally {
     await rm(root, { recursive: true, force: true });
