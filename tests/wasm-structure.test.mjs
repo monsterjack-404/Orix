@@ -39,7 +39,7 @@ test('WebAssembly parser indexes function types, imports, exports and code body 
   assert.deepEqual(result.imports, [{ module: 'm', name: 'f', kind: 'function', type_index: 0 }]);
   assert.deepEqual(result.exports, [{ name: 'f', kind: 'function', index: 1 }]);
   assert.equal(result.start_function_index, 1);
-  assert.deepEqual(result.code_bodies, [{ offset: 40, size: 2 }]);
+  assert.deepEqual(result.code_bodies, [{ offset: 41, size: 2 }]);
   assert.deepEqual(result.counts, {
     types: 1, imports: 1, imported_functions: 1,
     defined_functions: 1, exports: 1, code_bodies: 1,
@@ -99,8 +99,9 @@ test('WebAssembly parser validates type indices, export indices and the function
 
   const functions = section(3, Buffer.from([1, 0]));
   const bad_export = section(7, Buffer.from([1, 1, 0x66, 0, 2]));
+  const code = section(10, Buffer.from([1, 2, 0, 0x0b]));
   assert.throws(
-    () => parse_wasm(module_with(section(1, Buffer.from([1, 0x60, 0, 0])), functions, bad_export)),
+    () => parse_wasm(module_with(section(1, Buffer.from([1, 0x60, 0, 0])), functions, bad_export, code)),
     error => error.code === 'ORIX_WASM_EXPORT_INDEX_OUT_OF_RANGE',
   );
 
