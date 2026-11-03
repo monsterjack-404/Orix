@@ -117,3 +117,8 @@ The chain detects edits, deletion, reordering and incomplete final records. It i
 ### Local MCP server
 
 `npm run mcp` starts the stdio JSON-RPC server; `orix-mcp` is the package executable. The default workspace root is the current working directory. Set `ORIX_MCP_ROOTS` to an explicit platform-delimited list of allowed roots. See [`MCP.md`](MCP.md) for tool contracts and security limits.
+
+
+## Browser report explorer
+
+Run `npm run web` and open http://127.0.0.1:4173. Set `ORIX_WEB_PORT` to choose another port. Import `orix.artifact.v1`, `orix.scan.v1` or `orix.project.v1` JSON from the browser file picker or drag-and-drop. Search the inventory, combine severity and format filters, inspect record details and export findings as CSV. File contents remain in the browser and are not sent to the server. The static server binds to loopback, exposes only allowlisted assets and accepts GET/HEAD requests only. Input is limited to 64 MiB.

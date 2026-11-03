@@ -247,3 +247,24 @@ test('MCP returns JSON-RPC invalid-request errors for malformed notification obj
   assert.equal(response.id, null);
   assert.equal(response.error.code, -32600);
 });
+
+test('MCP rejects malformed UTF-8 frames and continues with the next request', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const errors = new PassThrough();
+  let captured = '';
+  output.setEncoding('utf8');
+  output.on('data', chunk => { captured += chunk; });
+  const running = start_mcp_server({ input, output, error_output: errors });
+  input.write(Buffer.concat([
+    Buffer.from([0xc3, 0x28, 0x0a]),
+    Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: 71, method: 'ping' }) + '\n'),
+  ]));
+  input.end();
+  await running;
+  const messages = captured.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0].error.code, -32700);
+  assert.equal(messages[1].id, 71);
+  assert.deepEqual(messages[1].result, {});
+});

@@ -4,7 +4,7 @@ This document describes the 0.5.x implementation and the constraints new modules
 
 ## 1. Runtime boundaries
 
-ORIX currently runs as a Node.js command-line application and a small programmatic library. The current release is a local-first Node.js CLI/library with an append-only, hash-chained JSONL evidence ledger. It still has no daemon, remote service, browser UI, plugin loader or relational database. Those boundaries must not be implied by package names or roadmap documents.
+ORIX currently runs as a Node.js command-line application and a small programmatic library. The current release is a local-first Node.js CLI/library with an append-only, hash-chained JSONL evidence ledger. It still has no daemon, remote service, plugin loader or relational database; a loopback-only browser report viewer is provided for saved reports. Those boundaries must not be implied by package names or roadmap documents.
 
 The public call graph is:
 
@@ -143,3 +143,12 @@ The ledger is tamper-evident, not tamper-proof. A local administrator can replac
 `src/mcp/server.mjs` owns JSON-RPC framing, the advertised tool catalog, argument contracts, resource ceilings and dispatch into existing analysis modules. `src/mcp/security.mjs` confines file and directory paths to configured workspace roots and performs bounded no-follow report reads. `src/mcp.mjs` is the stdio executable. The default root is the process working directory; `ORIX_MCP_ROOTS` supplies an explicit platform-delimited allowlist.
 
 The canonical evidence ledger implementation lives in `src/core/evidence-ledger.mjs`; `src/evidence/ledger.mjs` is a compatibility facade used by the CLI and MCP. The MCP adapter does not fork a second parser implementation. It reuses `inspect_file`, `scan_directory`, `scan_project`, `compare_reports` and the evidence ledger. Responses have a 2 MiB ceiling; incoming lines have a 4 MiB ceiling. The current implementation exposes tools only; HTTP transport, prompt/resource subscriptions, remote authentication and a hosted service are not implemented.
+
+
+## 14. Local browser report explorer
+
+`src/reports/view-model.mjs` normalizes artifact, directory-scan and project reports into inventory records, severity/format counts and deterministic filters. Project findings are copied into a display shape; raw matched credential values are not retained by the normalized finding model.
+
+`web/app.mjs` reads the selected report in the browser, renders report-controlled values through DOM text nodes and exports formula-guarded CSV. It does not fetch report contents, evaluate report-provided code or modify the source report. `scripts/serve-web.mjs` is a loopback-only static server with an exact asset allowlist, GET/HEAD-only handling, no-store responses and a restrictive Content Security Policy (`connect-src 'none'`).
+
+This is a local report explorer, not a server-side workspace, desktop shell, live scanner or plugin host. It displays evidence already in a report and cannot create new findings.

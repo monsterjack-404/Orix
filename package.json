@@ -29,7 +29,8 @@
     "./providers/manifest": "./src/providers/manifest.mjs",
     "./providers/registry": "./src/providers/registry.mjs",
     "./providers/process-runner": "./src/providers/process-runner.mjs",
-    "./providers/rizin": "./src/providers/rizin.mjs"
+    "./providers/rizin": "./src/providers/rizin.mjs",
+    "./reports/view-model": "./src/reports/view-model.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
@@ -37,7 +38,8 @@
     "check": "node scripts/check-syntax.mjs",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage",
-    "mcp": "node ./src/mcp.mjs"
+    "mcp": "node ./src/mcp.mjs",
+    "web": "node ./scripts/serve-web.mjs"
   },
   "license": "Apache-2.0"
 }

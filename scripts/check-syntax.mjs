@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const project_root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const roots = ['src', 'tests', 'scripts'];
+const roots = ['src', 'tests', 'scripts', 'web'];
 const failures = [];
 let checked = 0;
 

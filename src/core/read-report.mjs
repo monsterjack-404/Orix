@@ -2,6 +2,7 @@
 
 import { constants as FS_CONSTANTS, promises as fs } from 'node:fs';
 import path from 'node:path';
+import { TextDecoder } from 'node:util';
 import { OrixError } from './errors.mjs';
 
 export async function read_json_report(file_path) {
@@ -13,13 +14,14 @@ export async function read_json_report(file_path) {
   if (!Number.isSafeInteger(before.size) || before.size > 64 * 1024 * 1024) throw new OrixError('ORIX_COMPARE_FILE_LIMIT', 'Comparison report exceeds the 64 MiB input limit', { details: { size: before.size }, recoverable: true });
   let handle;
   let text;
+  let bytes;
   try {
     handle = await fs.open(absolute, FS_CONSTANTS.O_RDONLY | (FS_CONSTANTS.O_NOFOLLOW ?? 0));
     const opened = await handle.stat();
     if (!opened.isFile() || opened.size !== before.size || String(opened.ino) !== String(before.ino) || String(opened.dev) !== String(before.dev)) {
       throw new OrixError('ORIX_COMPARE_FILE_CHANGED', 'Comparison report changed between metadata lookup and open', { recoverable: true });
     }
-    const bytes = Buffer.alloc(opened.size);
+    bytes = Buffer.alloc(opened.size);
     let offset = 0;
     while (offset < bytes.length) {
       const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset);
@@ -30,7 +32,7 @@ export async function read_json_report(file_path) {
     if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) {
       throw new OrixError('ORIX_COMPARE_FILE_CHANGED', 'Comparison report changed during bounded read', { recoverable: true });
     }
-    text = bytes.toString('utf8');
+
   } catch (error) {
     if (error instanceof OrixError) throw error;
     throw new OrixError('ORIX_COMPARE_FILE_UNAVAILABLE', 'Cannot open or read comparison report: ' + absolute, {
@@ -39,6 +41,8 @@ export async function read_json_report(file_path) {
       recoverable: true,
     });
   } finally { await handle?.close().catch(() => {}); }
+  try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+  catch (error) { throw new OrixError('ORIX_COMPARE_INVALID_UTF8', 'Comparison input is not valid UTF-8: ' + absolute, { cause: error, details: { path: absolute }, recoverable: true }); }
   try { return JSON.parse(text); }
   catch (error) { throw new OrixError('ORIX_COMPARE_INVALID_JSON', 'Comparison input is not valid JSON: ' + absolute, { cause: error, details: { path: absolute }, recoverable: true }); }
 }

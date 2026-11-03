@@ -35,3 +35,5 @@ export { ProviderRegistry } from './providers/registry.mjs';
 
 export { run_static_provider } from './providers/process-runner.mjs';
 export { RIZIN_ADAPTER_VERSION, RIZIN_PROVIDER_MANIFEST, analyze_rizin_imports } from './providers/rizin.mjs';
+
+export { build_report_view, filter_report_view, REPORT_VIEW_SEVERITIES } from './reports/view-model.mjs';

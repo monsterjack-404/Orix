@@ -7,6 +7,7 @@ import { list_format_capabilities } from '../formats/index.mjs';
 import { verify_ledger, list_ledger, append_ledger } from '../evidence/ledger.mjs';
 import { compare_reports } from '../analyzer/compare.mjs';
 import { normalize_error } from '../core/errors.mjs';
+import { TextDecoder } from 'node:util';
 import {
   configured_workspace_roots,
   resolve_workspace_path,
@@ -269,7 +270,7 @@ export async function handle_mcp_message(message, options = {}) {
 async function process_input_line(line, output, options) {
   if (line.length === 0) return;
   let message;
-  try { message = JSON.parse(line.toString('utf8')); }
+  try { message = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(line)); }
   catch {
     output.write(JSON.stringify(jsonrpc_error(null, -32700, 'Parse error')) + '\n');
     return;

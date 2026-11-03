@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Local browser report explorer for artifact, directory-scan and project JSON reports, with filters, summaries, record details and CSV export.
+- Shared normalized report-view API, loopback-only static server and browser/server boundary tests.
+
+### Security and correctness
+- Strict UTF-8 decoding for comparison report files and MCP JSON-RPC frames; malformed byte sequences are rejected instead of silently replaced.
+- Viewer finding normalization omits matched credential values and CSV export guards spreadsheet formula prefixes.
+
+
 ## 0.5.0 — 2026-11-02
 
 ### Added

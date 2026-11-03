@@ -89,10 +89,24 @@ npm run mcp
 # Compare saved reports
 node src/cli.mjs compare ./baseline.json ./current.json --json
 
+# Launch local report explorer
+npm run web
+
 # Append and verify an evidence record
 node src/cli.mjs inspect ./sample.exe --ledger ./.orix/evidence.jsonl
 node src/cli.mjs ledger verify ./.orix/evidence.jsonl
 ```
+
+## Local report explorer
+
+Open saved artifact, directory-scan and project JSON reports in ORIX's browser-local viewer. It includes inventory search, severity/format filters, summary charts, record details and findings CSV export. Report contents stay in the browser.
+
+```bash
+npm run web
+# Open http://127.0.0.1:4173
+```
+
+Set `ORIX_WEB_PORT` to select another port. The server binds only to `127.0.0.1`, serves a fixed asset allowlist and disables network connections through Content Security Policy. See [the viewer guide](docs/WEB_VIEWER.md).
 
 When the package is installed globally or linked locally, the `orix` command is exposed through `package.json#bin`:
 
