@@ -60,9 +60,24 @@ export class ProviderRegistry {
     if (filters === null || typeof filters !== 'object' || Array.isArray(filters)) {
       throw new TypeError('Provider registry filters must be an object');
     }
-    const capability = validate_filter(filters.capability, 'capability', CAPABILITY_ID);
-    const input_format = validate_filter(filters.input_format, 'input_format', FORMAT_ID);
-    const platform = validate_filter(filters.platform ?? this.platform, 'platform');
+    const prototype = Object.getPrototypeOf(filters);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new TypeError('Provider registry filters must be a plain object');
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(filters);
+    for (const key of Reflect.ownKeys(filters)) {
+      if (typeof key !== 'string' || !['capability', 'input_format', 'platform'].includes(key)) {
+        throw new TypeError('Unknown provider registry filter: ' + String(key));
+      }
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) {
+        throw new TypeError('Provider registry filters must contain enumerable data properties');
+      }
+    }
+    const capability = validate_filter(descriptors.capability?.value, 'capability', CAPABILITY_ID);
+    const input_format = validate_filter(descriptors.input_format?.value, 'input_format', FORMAT_ID);
+    const platform_value = descriptors.platform?.value ?? this.platform;
+    const platform = validate_filter(platform_value, 'platform');
     if (platform !== null && !SUPPORTED_PLATFORMS.has(platform)) {
       throw new TypeError('platform must be windows, linux, macos or any');
     }
