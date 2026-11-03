@@ -98,17 +98,19 @@ export async function scan_project(root_path,input={}){
  const raw=[],skipped=[];let entries_seen=0,total_bytes=0,truncated=false;
  async function visit(dir,depth){if(depth>limits.max_depth){truncated=true;skipped.push({path:path.relative(root,dir),reason:'maximum-depth'});return;}let entries;try{entries=await fs.readdir(dir,{withFileTypes:true});}catch(error){truncated=true;skipped.push({path:path.relative(root,dir),reason:'unreadable-directory',message:String(error.message).slice(0,160)});return;}entries.sort((a,b)=>a.name.localeCompare(b.name));for(const entry of entries){entries_seen++;const absolute=path.join(dir,entry.name),relative=path.relative(root,absolute).split(path.sep).join('/');if(entries_seen>limits.max_entries||raw.length>=limits.max_files){truncated=true;return;}if(entry.isSymbolicLink()){skipped.push({path:relative,reason:'symbolic-link'});continue;}if(entry.isDirectory()){if(IGNORED.has(entry.name)||(!limits.include_hidden&&entry.name.startsWith('.')&&!['.github','.circleci'].includes(entry.name))){skipped.push({path:relative,reason:'ignored-directory'});continue;}await visit(absolute,depth+1);if(truncated&&(entries_seen>limits.max_entries||raw.length>=limits.max_files))return;continue;}if(!entry.isFile()){skipped.push({path:relative,reason:'non-regular-entry'});continue;}let handle,stat,buffer;
 try{
+ const before_stat=await fs.lstat(absolute);
+ if(before_stat.isSymbolicLink()||!before_stat.isFile()){truncated=true;skipped.push({path:relative,reason:'file-changed-before-read'});continue;}
  const flags=fs_constants.O_RDONLY|(fs_constants.O_NOFOLLOW??0);
  handle=await fs.open(absolute,flags);
  stat=await handle.stat();
- if(!stat.isFile()){skipped.push({path:relative,reason:'non-regular-entry'});continue;}
+ if(!stat.isFile()||stat.dev!==before_stat.dev||stat.ino!==before_stat.ino){truncated=true;skipped.push({path:relative,reason:'file-changed-before-read'});continue;}
  if(stat.size>limits.max_file_bytes){truncated=true;skipped.push({path:relative,reason:'file-size-limit',size_bytes:stat.size});continue;}
  if(total_bytes+stat.size>limits.max_total_bytes){truncated=true;skipped.push({path:relative,reason:'total-byte-limit'});return;}
  buffer=Buffer.alloc(stat.size);
  let offset=0;
  while(offset<buffer.length){const result=await handle.read(buffer,offset,buffer.length-offset,offset);if(result.bytesRead===0)break;offset+=result.bytesRead;}
  const after=await handle.stat();
- if(offset!==stat.size||after.size!==stat.size||after.mtimeMs!==stat.mtimeMs){truncated=true;skipped.push({path:relative,reason:'file-changed-during-read'});continue;}
+ if(offset!==stat.size||after.size!==stat.size||after.mtimeMs!==stat.mtimeMs||after.ctimeMs!==stat.ctimeMs||after.dev!==stat.dev||after.ino!==stat.ino){truncated=true;skipped.push({path:relative,reason:'file-changed-during-read'});continue;}
 }catch(error){truncated=true;skipped.push({path:relative,reason:'read-failed',message:String(error.message).slice(0,160)});continue;}
 finally{if(handle)await handle.close().catch(()=>{});}
 total_bytes+=buffer.length;
