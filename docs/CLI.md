@@ -62,9 +62,10 @@ node src/cli.mjs architecture ./repository
 node src/cli.mjs architecture ./repository --json
 node src/cli.mjs architecture ./repository --format mermaid --out ./architecture.mmd
 node src/cli.mjs architecture ./repository --json --out ./architecture.json
+node src/cli.mjs architecture ./repository --max-nodes 10000 --max-edges 50000 --max-hotspots 40
 ```
 
-The analyzer reports source-graph entry-point candidates, strongly connected components (circular imports and self-loops), graph reachability, isolated and leaf modules, connectivity hotspots, language/directory counts and external import specifiers. It reuses `--max-files`, `--max-entries` and `--max-depth`; Mermaid output is bounded to 120 nodes and 300 edges by default. Output files are create-only.
+The analyzer reports source-graph entry-point candidates, strongly connected components (circular imports and self-loops), graph reachability, isolated and leaf modules, connectivity hotspots, language/directory counts and external import specifiers. It reuses `--max-files`, `--max-entries` and `--max-depth` for inventory. Graph analysis has separate controls: `--max-nodes` (default 20,000, maximum 50,000), `--max-edges` (default 100,000, maximum 250,000) and `--max-hotspots` (default 25, maximum 100). If a graph limit is reached, the report marks graph coverage incomplete and records omitted work. Mermaid output is separately bounded to 120 nodes and 300 edges by default. Output files are create-only.
 
 These are static heuristics over imports resolved by the project scanner—not compiler-backed call graphs, runtime traces or proof of dead code. Dynamic imports, reflection, generated code, conditional exports and unsupported language resolution may be absent. No source file, build, test, package script or target program is executed. See [Architecture Analysis](ARCHITECTURE-ANALYSIS.md) for report fields and interpretation limits.
 

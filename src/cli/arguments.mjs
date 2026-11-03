@@ -3,7 +3,7 @@
 import { OrixError } from '../core/errors.mjs';
 import { DEFAULT_LIMITS } from '../core/limits.mjs';
 
-const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports']);
+const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-nodes','--max-edges','--max-hotspots','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports']);
 const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--help','-h']);
 
 function positive_integer(value, option, minimum, maximum) {
@@ -40,6 +40,9 @@ export function parse_arguments(argv) {
       else if (token === '--max-directories') result.flags.max_scan_directories = positive_integer(raw, token, 1, 1_000_000);
       else if (token === '--max-entries') result.flags.max_scan_entries = positive_integer(raw, token, 1, 10_000_000);
       else if (token === '--max-depth') result.flags.max_scan_depth = positive_integer(raw, token, 0, 256);
+      else if (token === '--max-nodes') result.flags.max_architecture_nodes = positive_integer(raw, token, 1, 50_000);
+      else if (token === '--max-edges') result.flags.max_architecture_edges = positive_integer(raw, token, 1, 250_000);
+      else if (token === '--max-hotspots') result.flags.max_architecture_hotspots = positive_integer(raw, token, 1, 100);
       else if (token === '--max-read-mib') result.flags.max_read_bytes = positive_integer(raw, token, 1, 512) * 1024 * 1024;
       else if (token === '--max-file-mib') result.flags.max_file_bytes = positive_integer(raw, token, 1, 2_048) * 1024 * 1024;
       else if (token === '--concurrency') result.flags.max_scan_concurrency = positive_integer(raw, token, 1, 32);

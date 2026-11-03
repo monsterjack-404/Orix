@@ -63,3 +63,29 @@ test('architecture CLI writes a new report and refuses to overwrite an existing 
   assert.equal(second.status, 1);
   assert.match(second.stderr, /Refusing to overwrite existing report/);
 }));
+
+test('architecture CLI exposes bounded graph limits and rejects out-of-range values', async () => with_project(async root => {
+  const limited = spawnSync(process.execPath, [
+    cli_path, 'architecture', root, '--json',
+    '--max-nodes', '3', '--max-edges', '1', '--max-hotspots', '1',
+  ], { cwd: repository_root, encoding: 'utf8', timeout: 15000 });
+  assert.equal(limited.status, 0, limited.stderr);
+  const report = JSON.parse(limited.stdout);
+  assert.equal(report.coverage.analyzed_nodes, 3);
+  assert.equal(report.coverage.analyzed_edges, 1);
+  assert.equal(report.coverage.omitted_edges, 1);
+  assert.equal(report.coverage.graph_analysis_complete, false);
+  assert.equal(report.hotspots.length, 1);
+
+  const invalid = spawnSync(process.execPath, [
+    cli_path, 'architecture', root, '--max-nodes', '50001',
+  ], { cwd: repository_root, encoding: 'utf8', timeout: 15000 });
+  assert.equal(invalid.status, 1);
+  assert.match(invalid.stderr, /ORIX_CLI_NUMBER_OUT_OF_RANGE/);
+
+  const unsupported = spawnSync(process.execPath, [
+    cli_path, 'project', root, '--max-nodes', '100',
+  ], { cwd: repository_root, encoding: 'utf8', timeout: 15000 });
+  assert.equal(unsupported.status, 1);
+  assert.match(unsupported.stderr, /project does not support option/);
+}));

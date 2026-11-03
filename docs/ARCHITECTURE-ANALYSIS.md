@@ -8,10 +8,11 @@ ORIX adds a static architecture-analysis layer on top of the existing bounded pr
 orix architecture ./my-project
 orix architecture ./my-project --json --out ./architecture.json
 orix architecture ./my-project --format mermaid --out ./architecture.mmd
+orix architecture ./my-project --max-nodes 10000 --max-edges 50000 --max-hotspots 40
 ```
 
 
-The command reuses the existing project inventory limits: --max-files, --max-entries and --max-depth. Report files are created exclusively; ORIX refuses to overwrite an existing path.
+The command reuses the existing project inventory limits: --max-files, --max-entries and --max-depth. Graph work can be tuned independently with --max-nodes (default 20,000; maximum 50,000), --max-edges (default 100,000; maximum 250,000) and --max-hotspots (default 25; maximum 100). Values must be positive whole numbers. Hitting a graph ceiling is reflected in the report's coverage fields and warnings; it is not silently presented as a complete graph. Report files are created exclusively; ORIX refuses to overwrite an existing path.
 
 ## What it calculates
 

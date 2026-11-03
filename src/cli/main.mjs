@@ -35,7 +35,7 @@ function validate_command_flags(command, flags) {
     inspect: ['format', 'out', 'ledger', 'extract_strings', 'max_strings', 'max_read_bytes', 'max_file_bytes'],
     scan: ['format', 'out', 'ledger', 'extract_strings', 'max_strings', 'max_scan_files', 'max_scan_directories', 'max_scan_entries', 'max_scan_depth', 'max_read_bytes', 'max_file_bytes', 'max_scan_concurrency'],
     project: ['format', 'out', 'ledger', 'max_scan_files', 'max_scan_entries', 'max_scan_depth'],
-    architecture: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth'],
+    architecture: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'max_architecture_nodes', 'max_architecture_edges', 'max_architecture_hotspots'],
     compare: ['format', 'out'],
     formats: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
@@ -125,7 +125,11 @@ export async function main(argv=process.argv.slice(2)) {
     if(!parsed.target)throw new Error('architecture requires a target directory');
     if(parsed.flags.format&&!['json','markdown','mermaid'].includes(parsed.flags.format))throw new Error('architecture output supports JSON, Markdown or Mermaid');
     const project=await scan_project(parsed.target,{max_files:parsed.flags.max_scan_files,max_entries:parsed.flags.max_scan_entries,max_depth:parsed.flags.max_scan_depth});
-    const report=analyze_project_architecture(project);
+    const report=analyze_project_architecture(project, {
+      max_nodes: parsed.flags.max_architecture_nodes,
+      max_edges: parsed.flags.max_architecture_edges,
+      max_hotspots: parsed.flags.max_architecture_hotspots,
+    });
     const format=parsed.flags.format??'markdown';
     const output=format==='json'?render_json(report):format==='mermaid'?render_architecture_mermaid(report):render_architecture_markdown(report);
     await write_or_print(output,parsed.flags.out);
