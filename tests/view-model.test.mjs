@@ -21,8 +21,9 @@ test('normalizes Rizin import reports as searchable symbol inventory without mis
   assert.equal(view.summary.bytes,4096);
   assert.equal(view.summary.findings,0);
   assert.equal(filter_report_view(view,{query:'SSL_connect'}).length,1);
-  assert.equal(view.records[0].sha256,hash);
-  assert.equal(view.records[0].raw.import.library,'libssl.so');
+  const ssl_record=view.records.find(record=>record.name==='SSL_connect');
+  assert.equal(ssl_record.sha256,hash);
+  assert.equal(ssl_record.raw.import.library,'libssl.so');
 });
 
 test('normalizes explicit provider doctor reports',()=>{
