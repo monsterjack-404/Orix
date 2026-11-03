@@ -70,6 +70,16 @@ List the providers declared in this ORIX build. Listing does not probe or instal
 node src/cli.mjs providers list --json
 ```
 
+Check that an explicitly selected Rizin executable starts and reports a parseable version. This does not search PATH or open an artifact:
+
+```bash
+node src/cli.mjs providers rizin doctor \
+  --executable /opt/rizin/bin/rizin \
+  --json
+```
+
+The doctor command emits an `orix.provider-probe.v1` report. It confirms only the version probe, not every Rizin command or binary format.
+
 Use Rizin to extract static import metadata from an artifact. The executable path is explicit and must identify an installed Rizin binary:
 
 ```bash
@@ -81,7 +91,7 @@ node src/cli.mjs providers rizin imports ./sample.elf \
   --max-imports 100000
 ```
 
-The command writes an `orix.rizin-imports.v1` report containing the normalized import list, Rizin version, input SHA-256, input size and stability status. The default output is Markdown; `--json` preserves the full normalized result. `--out` remains create-only.
+The command writes an `orix.rizin-imports.v1` report containing the normalized import list, Rizin version, input SHA-256, input size and stability status. ORIX creates a byte-bounded private snapshot of the artifact, passes that copy to Rizin, and verifies its digest after execution; the original input path is not passed to the provider. The default output is Markdown; `--json` preserves the full normalized result. `--out` remains create-only.
 
 The timeout is a total deadline across input hashing, the version probe and import extraction. Output capture is bounded per provider process. The process runner uses argv without a shell and does not inherit the entire parent environment. It is **not an OS sandbox**: the provider executable can still access resources available to its account. POSIX process groups are signalled during termination; Windows process-tree teardown is not guaranteed. The inspected target is not executed by this adapter. See [Provider Integrations](PROVIDERS.md) for the full contract and threat boundary.
 
@@ -145,4 +155,4 @@ The chain detects edits, deletion, reordering and incomplete final records. It i
 
 ## Browser report explorer
 
-Run `npm run web` and open http://127.0.0.1:4173. Set `ORIX_WEB_PORT` to choose another port. Import `orix.artifact.v1`, `orix.scan.v1` or `orix.project.v1` JSON from the browser file picker or drag-and-drop. Search the inventory, combine severity and format filters, inspect record details and export findings as CSV. File contents remain in the browser and are not sent to the server. The static server binds to loopback, exposes only allowlisted assets and accepts GET/HEAD requests only. Input is limited to 64 MiB.
+Run `npm run web` and open http://127.0.0.1:4173. Set `ORIX_WEB_PORT` to choose another port. Import `orix.artifact.v1`, `orix.scan.v1`, `orix.project.v1`, `orix.rizin-imports.v1` or `orix.provider-probe.v1` JSON from the browser file picker or drag-and-drop. Search the inventory, combine severity and format filters, inspect record details and export findings and Rizin import metadata as CSV. File contents remain in the browser and are not sent to the server. The static server binds to loopback, exposes only allowlisted assets and accepts GET/HEAD requests only. Input is limited to 64 MiB.
