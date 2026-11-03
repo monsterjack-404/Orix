@@ -44,7 +44,8 @@ The `project` command builds a bounded source and manifest index without running
 ```bash
 node src/cli.mjs project ./source-tree
 node src/cli.mjs project ./source-tree --json
-node src/cli.mjs project ./source-tree --format cyclonedx --out ./sbom.cdx.json\nnode src/cli.mjs project ./source-tree --format sarif --out ./project-findings.sarif
+node src/cli.mjs project ./source-tree --format cyclonedx --out ./sbom.cdx.json
+node src/cli.mjs project ./source-tree --format sarif --out ./project-findings.sarif
 ```
 
 It records file hashes, language counts, selected dependency declarations, npm package-lock v1-v3, Yarn classic/Berry, pnpm v5/v6/v9, Cargo.lock v1-v4, Composer.lock, Poetry, Pipenv and uv.lock resolved package inventories, plus Go checksums, source import edges, symbol candidates, redacted credential-shaped findings and bounded Git repository metadata (refs, tags, sanitized remotes and loose HEAD commit identity). Packed Git objects and linked-worktree gitdir targets are not decoded or followed. CycloneDX export includes resolved lockfile components and package relationships when supported lockfiles are present; otherwise it reports declared dependencies only. See [`docs/PROJECT_INTELLIGENCE.md`](docs/PROJECT_INTELLIGENCE.md) for parser boundaries and resource limits.
