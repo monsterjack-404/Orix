@@ -82,3 +82,12 @@ test('comparison rejects scan reports without a usable root path', () => {
     error => error.code === 'ORIX_COMPARE_REPORT_INVALID' && /root path/.test(error.message),
   );
 });
+
+
+test('comparison Markdown safely delimits paths containing backticks', () => {
+  const tick = String.fromCharCode(96);
+  const baseline = scan('/work', [artifact('/work', 'evil' + tick + 'name.bin', 'a')]);
+  const current = scan('/work', [artifact('/work', 'evil' + tick + 'name.bin', 'b')]);
+  const markdown = render_comparison_markdown(compare_reports(baseline, current));
+  assert.ok(markdown.includes(tick.repeat(2) + 'evil' + tick + 'name.bin' + tick.repeat(2)));
+});
