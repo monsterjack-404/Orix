@@ -44,6 +44,12 @@ test('ELF parser reports 64-bit little-endian executable metadata', () => {
   assert.equal(parsed.header.section_header_count, 0);
 });
 
+test('ELF parser rejects unsupported header versions', () => {
+  const malformed = create_elf_fixture();
+  malformed.writeUInt32LE(2, 20);
+  assert.throws(() => parse_elf(malformed), error => error.code === 'ORIX_ELF_UNSUPPORTED_VERSION');
+});
+
 test('ELF parser rejects an invalid class instead of guessing', () => {
   const malformed = create_elf_fixture();
   malformed[4] = 9;
