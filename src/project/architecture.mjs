@@ -237,15 +237,28 @@ export function analyze_project_architecture(project_report, options = {}) {
   });
 
   const components = strongly_connected_components(nodes.map(item => item.id), outgoing, incoming);
+  const component_by_node = new Map();
+  for (let component_index = 0; component_index < components.length; component_index += 1) {
+    for (const member of components[component_index]) component_by_node.set(member, component_index);
+  }
+  // Count intra-component edges in one pass. Filtering the full edge list once
+  // per component becomes quadratic on repositories with many small cycles.
+  const internal_edge_counts = new Map();
+  for (const edge of accepted_edges) {
+    const from_component = component_by_node.get(edge.from);
+    if (from_component !== undefined && from_component === component_by_node.get(edge.to)) {
+      internal_edge_counts.set(from_component, (internal_edge_counts.get(from_component) ?? 0) + 1);
+    }
+  }
   const cycles = [];
-  for (const members of components) {
+  for (let component_index = 0; component_index < components.length; component_index += 1) {
+    const members = components[component_index];
     const self_loop = members.length === 1 && outgoing.get(members[0]).includes(members[0]);
     if (members.length < 2 && !self_loop) continue;
-    const member_set = new Set(members);
-    const internal_edges = accepted_edges.filter(edge => member_set.has(edge.from) && member_set.has(edge.to)).length;
     cycles.push({
       id: 'cycle-' + String(cycles.length + 1).padStart(4, '0'),
-      members, member_count: members.length, internal_edge_count: internal_edges,
+      members, member_count: members.length,
+      internal_edge_count: internal_edge_counts.get(component_index) ?? 0,
       kind: self_loop ? 'self-loop' : 'strongly-connected-component',
     });
   }
