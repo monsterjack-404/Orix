@@ -53,6 +53,21 @@ Project SARIF export maps source findings to SARIF 2.1.0 file and line locations
 
 A project scan is still static and heuristic. SARIF output does not upgrade a pattern match into a confirmed secret, vulnerability or runtime behavior finding. Review the reported line in the source repository before taking action.
 
+### Analyze project architecture
+
+Build a bounded report from the project's discovered local-import graph:
+
+```bash
+node src/cli.mjs architecture ./repository
+node src/cli.mjs architecture ./repository --json
+node src/cli.mjs architecture ./repository --format mermaid --out ./architecture.mmd
+node src/cli.mjs architecture ./repository --json --out ./architecture.json
+```
+
+The analyzer reports source-graph entry-point candidates, strongly connected components (circular imports and self-loops), graph reachability, isolated and leaf modules, connectivity hotspots, language/directory counts and external import specifiers. It reuses `--max-files`, `--max-entries` and `--max-depth`; Mermaid output is bounded to 120 nodes and 300 edges by default. Output files are create-only.
+
+These are static heuristics over imports resolved by the project scanner—not compiler-backed call graphs, runtime traces or proof of dead code. Dynamic imports, reflection, generated code, conditional exports and unsupported language resolution may be absent. No source file, build, test, package script or target program is executed. See [Architecture Analysis](ARCHITECTURE-ANALYSIS.md) for report fields and interpretation limits.
+
 ### List known signatures
 
 ```bash
