@@ -275,7 +275,7 @@ test('project intelligence resolves uv.lock workspace roots and transitive depen
     'name = "uv-fixture"',
     'version = "1.0.0"',
     'dependencies = ["requests>=2.31.0"]',
-  ].join('\\n'));
+  ].join('\n'));
   await writeFile(path.join(root, 'uv.lock'), [
     'version = 1',
     'revision = 3',
@@ -301,7 +301,7 @@ test('project intelligence resolves uv.lock workspace roots and transitive depen
     'name = "urllib3"',
     'version = "2.2.0"',
     'source = { registry = "https://pypi.org/simple" }',
-  ].join('\\n'));
+  ].join('\n'));
   const report = await scan_project(root);
   assert.equal(report.lockfiles.length, 1);
   assert.equal(report.lockfiles[0].ecosystem, 'python');
