@@ -76,6 +76,7 @@ function read_name(reader, cursor, end, maximum_name_bytes) {
 }
 
 function read_value_type(reader, cursor, end, field) {
+  if (cursor >= end) wasm_error('ORIX_WASM_TRUNCATED_SECTION', 'WebAssembly value type crosses its containing section', { offset: cursor, end, field });
   const code = reader.u8(cursor, field);
   const value = VALUE_TYPES.get(code);
   if (!value) {
@@ -135,6 +136,7 @@ function parse_type_section(reader, start, end, limits) {
   let cursor = count.next;
   const types = [];
   for (let index = 0; index < count.value; index += 1) {
+    if (cursor >= end) wasm_error('ORIX_WASM_TRUNCATED_SECTION', 'WebAssembly function type form is truncated', { index, end });
     const form = reader.u8(cursor, 'function type form');
     cursor += 1;
     if (form !== 0x60) {
@@ -173,6 +175,7 @@ function parse_import_section(reader, start, end, limits) {
     cursor = module_name.next;
     const field_name = read_name(reader, cursor, end, limits.max_name_bytes);
     cursor = field_name.next;
+    if (cursor >= end) wasm_error('ORIX_WASM_TRUNCATED_SECTION', 'WebAssembly import kind is truncated', { index, end });
     const kind = reader.u8(cursor, 'import kind');
     cursor += 1;
     const item = { module: module_name.value, name: field_name.value, kind: null };
@@ -195,6 +198,7 @@ function parse_import_section(reader, start, end, limits) {
       cursor = memory_limits.next;
     } else if (kind === 3) {
       const value_type = read_value_type(reader, cursor, end, 'import global type');
+      if (value_type.next >= end) wasm_error('ORIX_WASM_TRUNCATED_SECTION', 'WebAssembly imported global mutability is truncated', { index, end });
       const mutability = reader.u8(value_type.next, 'import global mutability');
       if (mutability !== 0 && mutability !== 1) {
         wasm_error('ORIX_WASM_BAD_MUTABILITY', 'WebAssembly global mutability must be zero or one', {
@@ -255,6 +259,7 @@ function parse_export_section(reader, start, end, limits) {
       });
     }
     names.add(name.value);
+    if (cursor >= end) wasm_error('ORIX_WASM_TRUNCATED_SECTION', 'WebAssembly export kind is truncated', { index, end });
     const kind_code = reader.u8(cursor, 'export kind');
     cursor += 1;
     const kind = kinds.get(kind_code);
@@ -330,7 +335,6 @@ export function parse_wasm(buffer, options = {}) {
   let code_bodies = [];
   let start_function_index = null;
   let cursor = 8;
-  let type_section_present = false;
   let import_section_present = false;
   let function_section_present = false;
   let code_section_present = false;
@@ -373,7 +377,6 @@ export function parse_wasm(buffer, options = {}) {
     } else if (id === 1) {
       const parsed = parse_type_section(reader, payload_offset, section_end, limits);
       types.push(...parsed.value);
-      type_section_present = true;
       vector_count = parsed.value.length;
     } else if (id === 2) {
       const parsed = parse_import_section(reader, payload_offset, section_end, limits);
@@ -414,17 +417,12 @@ export function parse_wasm(buffer, options = {}) {
     cursor = section_end;
   }
 
-  if (function_section_present !== code_section_present && function_type_indices.length > 0) {
-    wasm_error('ORIX_WASM_FUNCTION_CODE_MISMATCH', 'WebAssembly function and code sections must both describe defined functions', {
-      function_count: function_type_indices.length, code_count: code_bodies.length,
-    });
-  }
-  if (function_section_present && code_section_present && function_type_indices.length !== code_bodies.length) {
+  if ((function_section_present || code_section_present) && function_type_indices.length !== code_bodies.length) {
     wasm_error('ORIX_WASM_FUNCTION_CODE_MISMATCH', 'WebAssembly function and code section counts differ', {
       function_count: function_type_indices.length, code_count: code_bodies.length,
     });
   }
-  if (type_section_present) {
+  {
     for (const item of imports) {
       if (item.kind === 'function' && item.type_index >= types.length) {
         wasm_error('ORIX_WASM_TYPE_INDEX_OUT_OF_RANGE', 'Imported function refers to a missing type entry', {
@@ -447,34 +445,16 @@ export function parse_wasm(buffer, options = {}) {
   }
 
   const imported_functions = imports.filter(item => item.kind === 'function').length;
-  const imported_tables = imports.filter(item => item.kind === 'table').length;
-  const imported_memories = imports.filter(item => item.kind === 'memory').length;
-  const imported_globals = imports.filter(item => item.kind === 'global').length;
   const function_count = imported_functions + function_type_indices.length;
-  if (start_function_index !== null && (import_section_present || function_section_present) && start_function_index >= function_count) {
+  if (start_function_index !== null && start_function_index >= function_count) {
     wasm_error('ORIX_WASM_START_INDEX_OUT_OF_RANGE', 'WebAssembly start function index is outside the declared function index space', {
       start_function_index, function_count,
     });
   }
   for (const item of exports) {
-    if (item.kind === 'function' && (import_section_present || function_section_present) && item.index >= function_count) {
+    if (item.kind === 'function' && item.index >= function_count) {
       wasm_error('ORIX_WASM_EXPORT_INDEX_OUT_OF_RANGE', 'WebAssembly function export index is outside the declared function index space', {
         name: item.name, index: item.index, function_count,
-      });
-    }
-    if (item.kind === 'table' && import_section_present && item.index >= imported_tables) {
-      wasm_error('ORIX_WASM_EXPORT_INDEX_UNVERIFIED', 'WebAssembly table export index cannot be verified because table definitions are not fully indexed', {
-        name: item.name, index: item.index, imported_tables,
-      });
-    }
-    if (item.kind === 'memory' && import_section_present && item.index >= imported_memories) {
-      wasm_error('ORIX_WASM_EXPORT_INDEX_UNVERIFIED', 'WebAssembly memory export index cannot be verified because memory definitions are not fully indexed', {
-        name: item.name, index: item.index, imported_memories,
-      });
-    }
-    if (item.kind === 'global' && import_section_present && item.index >= imported_globals) {
-      wasm_error('ORIX_WASM_EXPORT_INDEX_UNVERIFIED', 'WebAssembly global export index cannot be verified because global definitions are not fully indexed', {
-        name: item.name, index: item.index, imported_globals,
       });
     }
   }
