@@ -7,6 +7,7 @@
 - Optional Rizin static import adapter with input SHA-256 provenance, bounded private artifact snapshots, tamper detection, bounded JSON normalization and a versioned report schema.
 - Explicit `providers rizin doctor` command and `probe_rizin` API for checking an absolute Rizin executable and recording its version/runtime diagnostics.
 - Browser-local report viewer support for Rizin import inventories and provider probe reports, including searchable symbol rows and CSV export.
+- Scheduled GitHub CodeQL `security-extended` analysis for JavaScript/TypeScript and weekly Dependabot updates for GitHub Actions.
 - Shell-free static provider runner with exact canonical executable and working-directory allowlists, symlink rejection, blocked command-search/loader environment overrides, timeout, cancellation and captured-output ceilings.
 - Versioned `orix.provider-execution.v1` process outcome receipts with exit/termination details and effective resource limits.
 - `providers list` and `providers rizin imports` CLI commands with JSON and Markdown output.
