@@ -27,7 +27,21 @@ function canonical_value(value, seen = new Set()) {
   seen.add(value);
   let result;
   if (Array.isArray(value)) {
-    result = value.map(item => canonical_value(item, seen));
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const expected_indices = new Set(Array.from({ length: value.length }, (_, index) => String(index)));
+    for (const key of Object.keys(descriptors)) {
+      if (key !== 'length' && !expected_indices.has(key)) {
+        fail('ORIX_LEDGER_ARRAY_PROPERTY', 'Ledger arrays must not contain custom properties', { key });
+      }
+    }
+    result = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor) fail('ORIX_LEDGER_SPARSE_ARRAY', 'Ledger arrays must not contain sparse elements', { index });
+      if (!Object.hasOwn(descriptor, 'value')) fail('ORIX_LEDGER_ACCESSOR_VALUE', 'Ledger payload must not contain getters or setters', { index });
+      if (descriptor.value === undefined) fail('ORIX_LEDGER_UNDEFINED_VALUE', 'Ledger payload contains an undefined array element', { index });
+      result.push(canonical_value(descriptor.value, seen));
+    }
   } else {
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) fail('ORIX_LEDGER_UNSAFE_OBJECT', 'Ledger payload must contain plain objects and arrays');
@@ -95,7 +109,7 @@ async function read_ledger_file(file_path, options = {}) {
       chunks.push(Buffer.from(chunk.subarray(0, bytesRead)));
     }
     const after = await handle.stat();
-    if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs) fail('ORIX_LEDGER_FILE_CHANGED', 'Evidence ledger changed while it was being read', { path: absolute });
+    if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) fail('ORIX_LEDGER_FILE_CHANGED', 'Evidence ledger changed while it was being read', { path: absolute });
     return { absolute, buffer: Buffer.concat(chunks), limits, dev: opened.dev, ino: opened.ino };
   } catch (error) {
     if (error instanceof OrixError) throw error;
