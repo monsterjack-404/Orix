@@ -45,7 +45,8 @@ export const HELP_TEXT = [
   '  --concurrency <n>    Concurrent artifact inspections.',
   '  --executable <path>  Absolute path to an optional external provider executable.',
   '  --timeout-ms <n>     Maximum external provider runtime in milliseconds.',
-  '  --max-output-kib <n> Maximum provider stdout/stderr bytes captured, in KiB.',
+  '  --max-output-kib <n> Maximum provider stdout/stderr bytes captured per process, in KiB.',
+  '  --max-imports <n>    Maximum imported symbols retained in a Rizin report.'
   '  -h, --help           Print help.',
   '',
   'EXAMPLES',
@@ -59,7 +60,7 @@ export const HELP_TEXT = [
   '  orix ledger verify ./.orix/evidence.jsonl',
   '  orix formats',
   '  orix providers list --json',
-  '  orix providers rizin imports ./sample.elf --executable /usr/bin/rizin --json',
+  '  orix providers rizin imports ./sample.elf --executable /usr/bin/rizin --max-imports 50000 --json',
   '',
   'SAFETY AND SCOPE',
   '  Built-in analysis is static and does not execute the inspected target. Optional',
