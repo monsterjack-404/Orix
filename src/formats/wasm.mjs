@@ -210,6 +210,7 @@ function parse_import_section(reader, start, end, limits) {
       item.mutable = mutability === 1;
       cursor = value_type.next + 1;
     } else if (kind === 4) {
+      if (cursor >= end) wasm_error('ORIX_WASM_TRUNCATED_SECTION', 'WebAssembly import tag attribute is truncated', { index, end });
       const attribute = reader.u8(cursor, 'import tag attribute');
       if (attribute !== 0) {
         wasm_error('ORIX_WASM_BAD_TAG_ATTRIBUTE', 'WebAssembly tag attribute is not supported', {
@@ -335,7 +336,6 @@ export function parse_wasm(buffer, options = {}) {
   let code_bodies = [];
   let start_function_index = null;
   let cursor = 8;
-  let import_section_present = false;
   let function_section_present = false;
   let code_section_present = false;
 
@@ -381,7 +381,6 @@ export function parse_wasm(buffer, options = {}) {
     } else if (id === 2) {
       const parsed = parse_import_section(reader, payload_offset, section_end, limits);
       imports.push(...parsed.value);
-      import_section_present = true;
       vector_count = parsed.value.length;
     } else if (id === 3) {
       const parsed = parse_function_section(reader, payload_offset, section_end, limits);
