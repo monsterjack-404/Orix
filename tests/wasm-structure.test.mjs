@@ -194,3 +194,52 @@ test('WebAssembly parser reports section and vector offsets without decoding gue
   assert.equal(result.code_bodies[0].size, 4);
   assert.ok(result.notes.some(note => /instruction streams/.test(note)));
 });
+
+test('WebAssembly parser indexes module and function names from the standard name custom section', () => {
+  const types = section(1, Buffer.from([1, 0x60, 0, 0]));
+  const functions = section(3, Buffer.from([1, 0]));
+  const code = section(10, Buffer.from([1, 2, 0, 0x0b]));
+  const module_subsection = Buffer.from([0, 2, 1, 0x6d]);
+  const function_subsection = Buffer.from([1, 7, 1, 0, 4, 0x6d, 0x61, 0x69, 0x6e]);
+  const names = section(0, Buffer.concat([
+    Buffer.from([4, 0x6e, 0x61, 0x6d, 0x65]),
+    module_subsection,
+    function_subsection,
+  ]));
+  const result = parse_wasm(module_with(types, functions, code, names));
+  assert.equal(result.module_name, 'm');
+  assert.deepEqual(result.function_names, [{ index: 0, name: 'main' }]);
+  assert.deepEqual(result.name_subsections, [
+    { id: 0, size: 2 },
+    { id: 1, size: 7, count: 1 },
+  ]);
+});
+
+test('WebAssembly name custom section rejects duplicate, out-of-range and malformed function name entries', () => {
+  const types = section(1, Buffer.from([1, 0x60, 0, 0]));
+  const functions = section(3, Buffer.from([1, 0]));
+  const code = section(10, Buffer.from([1, 2, 0, 0x0b]));
+  const duplicate_function_names = Buffer.from([
+    4, 0x6e, 0x61, 0x6d, 0x65,
+    1, 10, 2, 0, 1, 0x61, 1, 1, 0x62,
+  ]);
+  assert.throws(
+    () => parse_wasm(module_with(types, functions, code, section(0, duplicate_function_names))),
+    error => error.code === 'ORIX_WASM_DUPLICATE_FUNCTION_NAME',
+  );
+
+  const out_of_range = Buffer.from([
+    4, 0x6e, 0x61, 0x6d, 0x65,
+    1, 7, 1, 1, 4, 0x6d, 0x69, 0x73, 0x73,
+  ]);
+  assert.throws(
+    () => parse_wasm(module_with(types, functions, code, section(0, out_of_range))),
+    error => error.code === 'ORIX_WASM_FUNCTION_NAME_INDEX_OUT_OF_RANGE',
+  );
+
+  const truncated_subsection = Buffer.from([4, 0x6e, 0x61, 0x6d, 0x65, 1, 9, 1, 0]);
+  assert.throws(
+    () => parse_wasm(module_with(section(0, truncated_subsection))),
+    error => error.code === 'ORIX_WASM_NAME_SUBSECTION_RANGE',
+  );
+});
