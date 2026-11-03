@@ -83,3 +83,27 @@ test('analysis is deterministic and does not mutate its input report', () => {
   assert.equal(JSON.stringify(first), JSON.stringify(second));
   assert.equal(JSON.stringify(input), before);
 });
+
+test('counts many independent self-loop components without losing edge attribution', () => {
+  const count = 1200;
+  const nodes = Array.from({ length: count }, (_, index) => ({
+    id: 'src/module-' + String(index).padStart(4, '0') + '.js',
+    type: 'file',
+    language: 'JavaScript',
+  }));
+  const input = {
+    schema_version: 'orix.project.v1',
+    project: { name: 'cycle-scale-fixture', root: '/tmp/cycle-scale-fixture', scanned_at: null },
+    summary: { declared_dependencies: 0, locked_packages: 0, lockfile_edges: 0 },
+    coverage: { complete: true, skipped: 0 },
+    files: nodes.map(node => ({ path: node.id, language: node.language, imports: [] })),
+    graph: { nodes, edges: nodes.map(node => ({ from: node.id, to: node.id, kind: 'source-import' })) },
+  };
+
+  const report = analyze_project_architecture(input);
+  assert.equal(report.summary.cycle_count, count);
+  assert.equal(report.summary.cycle_participants, count);
+  assert.ok(report.cycles.every(cycle =>
+    cycle.kind === 'self-loop' && cycle.member_count === 1 && cycle.internal_edge_count === 1
+  ));
+});
