@@ -116,20 +116,20 @@ The scanner uses a bounded worker pool. Each file is inspected independently; on
 
 The current design is sequential at directory-inventory time and bounded-concurrent at file-analysis time. Do not add unbounded `Promise.all` over user-controlled directory contents.
 
-## 9. Reports and compatibility
+## 10. Reports and compatibility
 
 JSON is the canonical machine-readable output. Markdown is a view over the same report object. If a new report field is added, update schema/version documentation and both renderers where needed. Renderers must not invent fields or claim certainty beyond report evidence.
 
 Report schema identifiers are currently `orix.artifact.v1`, `orix.scan.v1` and `orix.formats.v1`. Breaking output changes require a schema version change and migration notes.
 
-## 10. Extension strategy
+## 11. Extension strategy
 
 New analyzers should be independent modules with explicit resource budgets and typed output. New external engines should be implemented behind optional adapters that describe version detection, capability probing, input/output mapping, process ownership, timeouts, cancellation and cleanup. The core must remain useful when no external engine is installed.
 
 Planned components such as databases, browser UI, collaboration and worker fleets should be added as vertical slices with end-to-end tests—not as disconnected empty folders. The local stdio MCP interface is implemented as a separate adapter over the same analysis services.
 
 
-## 11. Persistent evidence ledger
+## 12. Persistent evidence ledger
 
 The optional local ledger stores compact inspection, directory-scan or project-report records as JSON Lines. Each record contains a monotonically increasing sequence, UTC timestamp, event type, payload, previous-record SHA-256 and a SHA-256 digest over canonical JSON. A single-writer lock prevents concurrent appenders from interleaving writes. The verifier checks sequence continuity, previous-hash links, canonical record hashes, JSON framing and configured byte limits.
 
@@ -138,7 +138,7 @@ Use `orix inspect ./sample.exe --ledger ./.orix/evidence.jsonl` to append an ins
 The ledger is tamper-evident, not tamper-proof. A local administrator can replace both records and hashes. It is not a trusted timestamp authority, digital signature, remote transparency log, or write-once medium. Back up the ledger and preserve its head hash independently for stronger chain-of-custody workflows. An incomplete final line is rejected; ORIX never silently repairs or truncates evidence.
 
 
-## 12. MCP boundary
+## 13. MCP boundary
 
 `src/mcp/server.mjs` owns JSON-RPC framing, the advertised tool catalog, argument contracts, resource ceilings and dispatch into existing analysis modules. `src/mcp/security.mjs` confines file and directory paths to configured workspace roots and performs bounded no-follow report reads. `src/mcp.mjs` is the stdio executable. The default root is the process working directory; `ORIX_MCP_ROOTS` supplies an explicit platform-delimited allowlist.
 
