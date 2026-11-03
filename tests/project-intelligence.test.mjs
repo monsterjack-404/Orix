@@ -356,3 +356,11 @@ test('project file-size skips make inventory coverage explicitly incomplete', as
   assert.equal(report.coverage.truncated, true);
   assert.ok(report.coverage.skipped_entries.some(item => item.reason === 'file-size-limit'));
 }));
+
+
+test('project intelligence rejects zero Git limits before calling the Git reader', async () => with_project(async root => {
+  await assert.rejects(
+    scan_project(root, { max_git_refs: 0 }),
+    /Invalid project limit: max_git_refs/,
+  );
+}));
