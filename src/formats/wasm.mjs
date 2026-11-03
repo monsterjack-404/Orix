@@ -301,6 +301,58 @@ function parse_code_section(reader, start, end, limits) {
   return { value: bodies, next: cursor };
 }
 
+function parse_name_custom_section(reader, start, end, limits) {
+  let cursor = start;
+  let module_name = null;
+  const function_names = [];
+  const seen_subsections = new Set();
+  const seen_function_indices = new Set();
+  const subsections = [];
+  while (cursor < end) {
+    const subsection_id = reader.u8(cursor, 'name subsection ID');
+    const size = read_varuint(reader, cursor + 1, end);
+    const subsection_start = size.next;
+    if (size.value > end - subsection_start) {
+      wasm_error('ORIX_WASM_NAME_SUBSECTION_RANGE', 'WebAssembly name subsection exceeds its custom section boundary', {
+        subsection_id, offset: cursor, size: size.value, section_end: end,
+      });
+    }
+    const subsection_end = subsection_start + size.value;
+    if (seen_subsections.has(subsection_id)) {
+      wasm_error('ORIX_WASM_DUPLICATE_NAME_SUBSECTION', 'WebAssembly name custom section repeats a subsection identifier', {
+        subsection_id,
+      });
+    }
+    seen_subsections.add(subsection_id);
+    let item_count = null;
+    if (subsection_id === 0) {
+      const parsed = read_name(reader, subsection_start, subsection_end, limits.max_name_bytes);
+      require_section_end(parsed.next, subsection_end, 'name module subsection');
+      module_name = parsed.value;
+    } else if (subsection_id === 1) {
+      const count = read_count(reader, subsection_start, subsection_end, limits.max_vector_entries, 'function names');
+      let item_cursor = count.next;
+      item_count = count.value;
+      for (let index = 0; index < count.value; index += 1) {
+        const function_index = read_varuint(reader, item_cursor, subsection_end);
+        const parsed_name = read_name(reader, function_index.next, subsection_end, limits.max_name_bytes);
+        if (seen_function_indices.has(function_index.value)) {
+          wasm_error('ORIX_WASM_DUPLICATE_FUNCTION_NAME', 'WebAssembly function name map repeats a function index', {
+            function_index: function_index.value,
+          });
+        }
+        seen_function_indices.add(function_index.value);
+        function_names.push({ index: function_index.value, name: parsed_name.value });
+        item_cursor = parsed_name.next;
+      }
+      require_section_end(item_cursor, subsection_end, 'name function subsection');
+    }
+    subsections.push({ id: subsection_id, size: size.value, ...(item_count === null ? {} : { count: item_count }) });
+    cursor = subsection_end;
+  }
+  return { module_name, function_names, subsections };
+}
+
 function parse_single_index(reader, start, end, section_name) {
   const index = read_varuint(reader, start, end);
   require_section_end(index.next, end, section_name);
@@ -337,6 +389,9 @@ export function parse_wasm(buffer, options = {}) {
   const types = [];
   const imports = [];
   const exports = [];
+  let module_name = null;
+  const function_names = [];
+  const name_subsections = [];
   let function_type_indices = [];
   let code_bodies = [];
   let start_function_index = null;
@@ -379,6 +434,12 @@ export function parse_wasm(buffer, options = {}) {
     if (id === 0 && size_info.value > 0) {
       const decoded_name = read_name(reader, payload_offset, section_end, max_name_bytes);
       custom_name = decoded_name.value;
+      if (custom_name === 'name') {
+        const parsed = parse_name_custom_section(reader, decoded_name.next, section_end, limits);
+        if (parsed.module_name !== null) module_name = parsed.module_name;
+        function_names.push(...parsed.function_names);
+        name_subsections.push(...parsed.subsections);
+      }
     } else if (id === 1) {
       const parsed = parse_type_section(reader, payload_offset, section_end, limits);
       types.push(...parsed.value);
@@ -450,6 +511,13 @@ export function parse_wasm(buffer, options = {}) {
 
   const imported_functions = imports.filter(item => item.kind === 'function').length;
   const function_count = imported_functions + function_type_indices.length;
+  for (const item of function_names) {
+    if (item.index >= function_count) {
+      wasm_error('ORIX_WASM_FUNCTION_NAME_INDEX_OUT_OF_RANGE', 'WebAssembly function name refers to an undeclared function index', {
+        function_index: item.index, function_count,
+      });
+    }
+  }
   if (start_function_index !== null && start_function_index >= function_count) {
     wasm_error('ORIX_WASM_START_INDEX_OUT_OF_RANGE', 'WebAssembly start function index is outside the declared function index space', {
       start_function_index, function_count,
@@ -470,6 +538,9 @@ export function parse_wasm(buffer, options = {}) {
     types,
     imports,
     exports,
+    module_name,
+    function_names,
+    name_subsections,
     function_type_indices,
     code_bodies,
     start_function_index,
@@ -482,7 +553,7 @@ export function parse_wasm(buffer, options = {}) {
       code_bodies: code_bodies.length,
     },
     notes: [
-      'Type, import, function, export, start and code-body framing are structurally indexed.',
+      'Type, import, function, export, start, code-body framing and standard name-section module/function names are indexed.',
       'Table, memory, global, element, data, data-count and tag sections currently expose bounded vector counts only.',
       'Function instruction streams, constant expressions, element/data initializers, typed references and extended proposals are not decoded.',
       'The parser is a bounded structural indexer, not a WebAssembly validator or decompiler.',
