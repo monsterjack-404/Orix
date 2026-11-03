@@ -186,6 +186,11 @@ function parse_import_section(reader, start, end, limits) {
       cursor = type_index.next;
     } else if (kind === 1) {
       const reference_type = read_value_type(reader, cursor, end, 'import table reference type');
+      if (reference_type.value !== 'funcref' && reference_type.value !== 'externref') {
+        wasm_error('ORIX_WASM_BAD_TABLE_TYPE', 'WebAssembly table imports require a reference type', {
+          index, reference_type: reference_type.value,
+        });
+      }
       const table_limits = read_limits(reader, reference_type.next, end, 'table');
       item.kind = 'table';
       item.reference_type = reference_type.value;
