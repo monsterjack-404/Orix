@@ -36,7 +36,7 @@ function validate_command_flags(command, flags) {
     compare: ['format', 'out'],
     formats: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
-    providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes'],
+    providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes', 'max_imports'],
   }[command];
   if (!allowed) return;
   const unsupported = Object.keys(flags).filter(key => !allowed.includes(key));
@@ -79,6 +79,7 @@ export async function main(argv=process.argv.slice(2)) {
         input_path:parsed.target,
         timeout_ms:parsed.flags.timeout_ms,
         max_output_bytes:parsed.flags.max_output_bytes,
+        max_imports:parsed.flags.max_imports,
       });
       const output=parsed.flags.format==='json'
         ? render_json(report)
