@@ -48,6 +48,7 @@ export function extract_strings(buffer, options = {}) {
   const minimum = options.minimum ?? 5;
   const maximum = options.maximum ?? 512;
   const limit = options.limit ?? 2_000;
+  if (minimum > maximum) throw new TypeError('minimum cannot exceed maximum');
   for (const [name, value] of Object.entries({ minimum, maximum, limit })) {
     if (!Number.isSafeInteger(value) || value < (name === 'limit' ? 0 : 1)) throw new TypeError(`${name} must be a valid positive integer`);
   }
