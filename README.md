@@ -7,7 +7,7 @@ ORIX is a local-first engineering intelligence workbench for inspecting software
 > Current release line: **0.5.0 — Artifact, Project, Evidence, Interchange + MCP Intelligence**  
 > Runtime: **Node.js 20.11 or newer**  
 > Dependencies: **Node.js built-ins only**  
-> Execution model: **local, static, read-only analysis**
+> Execution model: **local static analysis with opt-in bounded external static providers**
 
 ---
 
@@ -32,6 +32,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
 | MCP integration | Local stdio JSON-RPC server with eight typed tools for inspect, scan, project, formats, comparison and evidence ledger | No HTTP listener, remote auth, resource subscription or prompt catalog |
 | Provider integrations | Declarative manifests, immutable registry, bounded shell-free process runner, and opt-in Rizin import-metadata adapter | No OS sandbox, dynamic execution provider, installer, daemon or automatic provider discovery |
+
 | Reports | JSON, Markdown, SARIF 2.1.0 for artifact, directory-scan and source-project findings, report comparison and CycloneDX 1.5 SBOM | No hosted dashboard or relational database |
 
 Static indicator rules operate only on already-parsed metadata and bounded extracted strings. Each finding includes a rule ID, severity, confidence and supporting evidence. A clean report means only that the built-in rules did not match; it is not a safety certification.
@@ -230,7 +231,7 @@ CLI / Programmatic API
         └── JSON / Markdown / SARIF 2.1 renderers
 ```
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for ownership boundaries, data flow and extension rules; [`docs/FORMATS.md`](docs/FORMATS.md) for parser coverage; and [`docs/INDICATORS.md`](docs/INDICATORS.md) for every built-in static triage rule.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for ownership boundaries, data flow and extension rules; [`docs/PROVIDERS.md`](docs/PROVIDERS.md) for static provider execution; [`docs/FORMATS.md`](docs/FORMATS.md) for parser coverage; and [`docs/INDICATORS.md`](docs/INDICATORS.md) for every built-in static triage rule.
 
 ## Evidence, not unsupported certainty
 
@@ -244,7 +245,7 @@ Evidence records retain a source path and, when meaningful, byte offsets and len
 
 ## Safety model
 
-ORIX's current analysis pipeline is static and read-only. It does not execute samples, load target libraries, attach to processes, inject code, alter binaries, bypass access controls, harvest credentials, persist in a host, or contact remote infrastructure. It does not label a file safe or malicious solely from entropy, strings, a file extension or a header signature.
+ORIX's built-in parsers and indicators are static and read-only: they do not execute the inspected sample, load its libraries, attach to its processes, inject code, or modify the artifact. An operator may separately opt into a declared-static external analysis engine such as Rizin; ORIX launches that provider process with a fixed argument vector, timeout and output ceiling. The process runner is not an OS sandbox and cannot enforce a provider's declared filesystem or network behavior. Do not run an untrusted provider executable on a sensitive host. It does not label a file safe or malicious solely from entropy, strings, a file extension or a header signature.
 
 Built-in indicators never execute a sample. API-name matches can be false positives, high entropy can mean ordinary compression, and a writable/executable section can have legitimate uses. Rule output must be independently reviewed.
 
