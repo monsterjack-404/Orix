@@ -908,9 +908,11 @@ function parse_uv_lock(file, text, limits, manifests) {
 
   const inline_fields = value => {
     const fields = {};
-    for (const match of value.matchAll(/([A-Za-z0-9_-]+)\s*=\s*("(?:\\.|[^"\\])*"|'[^']*'|[^,}]+)/g)) {
+    for (const match of value.matchAll(/([A-Za-z0-9_-]+)\s*=\s*(\{[^{}]*\}|"(?:\\.|[^"\\])*"|'[^']*'|[^,}]+)/g)) {
       const raw = match[2].trim();
-      fields[match[1]] = decode_toml_string(raw) ?? raw.replace(/,$/, '').trim();
+      fields[match[1]] = raw.startsWith('{') && raw.endsWith('}')
+        ? inline_fields(raw.slice(1, -1))
+        : decode_toml_string(raw) ?? raw.replace(/,$/, '').trim();
     }
     return fields;
   };
@@ -967,8 +969,7 @@ function parse_uv_lock(file, text, limits, manifests) {
         warnings.push({ code: 'ORIX_LOCKFILE_DEPENDENCY_IDENTITY', package: record.name });
         continue;
       }
-      const source_text = typeof fields.source === 'string' ? fields.source.trim() : '';
-      const source = source_text.startsWith('{') ? inline_fields(source_text.slice(1, source_text.lastIndexOf('}'))) : {};
+      const source = fields.source && typeof fields.source === 'object' ? fields.source : {};
       const source_label = Object.entries(source).map(([key, item]) => key + '=' + item).join(',');
       record.dependencies.push({
         name,
