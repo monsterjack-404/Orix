@@ -1,0 +1,231 @@
+// JavaScript, tests/provider-process-runner.test.mjs, Node.js 20+, bounded process runner regressions.
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { chmod, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { run_static_provider } from '../src/providers/process-runner.mjs';
+
+function manifest(overrides = {}) {
+  return {
+    contract_version: 'orix.provider.v1',
+    id: 'test.static',
+    name: 'Static test provider',
+    version: '1.0.0',
+    description: 'A test-only static provider.',
+    capabilities: ['test.process'],
+    supported_platforms: ['linux', 'windows', 'macos'],
+    input_formats: ['test'],
+    execution: {
+      mode: 'static',
+      requires_authorization: false,
+      executes_target: false,
+      writes_target: false,
+      uses_network: false,
+    },
+    limits: {
+      timeout_ms: 5000,
+      max_input_bytes: 1024 * 1024,
+      max_output_bytes: 64 * 1024,
+    },
+    license: { spdx_id: 'MIT', redistribution: 'external-install' },
+    ...overrides,
+  };
+}
+
+async function with_directory(callback) {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-process-test-'));
+  try { await callback(directory); }
+  finally { await rm(directory, { recursive: true, force: true }); }
+}
+
+async function node_executable() {
+  return realpath(process.execPath);
+}
+
+test('static provider runner uses argv without shell interpolation and returns bounded diagnostics', async () => {
+  const result = await run_static_provider({
+    manifest: manifest(),
+    executable: await node_executable(),
+    args: ['-e', 'process.stdout.write(process.argv[1]); process.stderr.write("diagnostic");', 'literal $(not-a-shell) value'],
+    env: { ORIX_CHILD_TEST: 'present' },
+    timeout_ms: 1000,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.stdout, 'literal $(not-a-shell) value');
+  assert.equal(result.stderr, 'diagnostic');
+  assert.equal(result.provider.id, 'test.static');
+  assert.equal(result.stdout_bytes, Buffer.byteLength(result.stdout));
+  assert.equal(result.stderr_bytes, Buffer.byteLength(result.stderr));
+});
+
+test('static provider runner does not inherit the parent environment by default', async () => {
+  const key = 'ORIX_PROCESS_RUNNER_PARENT_SECRET';
+  const previous = process.env[key];
+  process.env[key] = 'must-not-leak';
+  try {
+    const result = await run_static_provider({
+      manifest: manifest(),
+      executable: await node_executable(),
+      args: ['-e', 'process.stdout.write(process.env.ORIX_PROCESS_RUNNER_PARENT_SECRET || "absent")'],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.stdout, 'absent');
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  }
+});
+
+test('static provider runner reports non-zero exit status instead of hiding it', async () => {
+  const result = await run_static_provider({
+    manifest: manifest(),
+    executable: await node_executable(),
+    args: ['-e', 'process.stderr.write("failure"); process.exitCode = 7;'],
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.exit_code, 7);
+  assert.equal(result.stderr, 'failure');
+});
+
+test('static provider runner enforces the per-run output ceiling', async () => {
+  const result = await run_static_provider({
+    manifest: manifest(),
+    executable: await node_executable(),
+    args: ['-e', 'process.stdout.write("x".repeat(8192))'],
+    max_output_bytes: 1024,
+    kill_grace_ms: 20,
+  });
+  assert.equal(result.output_limited, true);
+  assert.equal(result.output_truncated, true);
+  assert.ok(result.captured_bytes <= 1024);
+  assert.equal(result.ok, false);
+});
+
+test('static provider runner terminates providers at the configured deadline', async () => {
+  const result = await run_static_provider({
+    manifest: manifest(),
+    executable: await node_executable(),
+    args: ['-e', 'setTimeout(() => {}, 5000)'],
+    timeout_ms: 40,
+    kill_grace_ms: 20,
+  });
+  assert.equal(result.timed_out, true);
+  assert.equal(result.ok, false);
+});
+
+test('static provider runner supports AbortSignal cancellation', async () => {
+  const controller = new AbortController();
+  const abort_timer = setTimeout(() => controller.abort(), 40);
+  try {
+    const result = await run_static_provider({
+      manifest: manifest(),
+      executable: await node_executable(),
+      args: ['-e', 'setTimeout(() => {}, 5000)'],
+      signal: controller.signal,
+      timeout_ms: 2000,
+      kill_grace_ms: 20,
+    });
+    assert.equal(result.cancelled, true);
+    assert.equal(result.timed_out, false);
+    assert.equal(result.ok, false);
+  } finally {
+    clearTimeout(abort_timer);
+  }
+});
+
+test('static provider runner rejects dynamic, write-capable, network and authorization-required manifests', async () => {
+  const dynamic = manifest({
+    execution: {
+      mode: 'dynamic',
+      requires_authorization: true,
+      executes_target: true,
+      writes_target: false,
+      uses_network: false,
+    },
+  });
+  await assert.rejects(
+    run_static_provider({ manifest: dynamic, executable: await node_executable(), args: [] }),
+    error => error.code === 'ORIX_PROVIDER_EXECUTION_NOT_STATIC',
+  );
+});
+
+test('static provider runner rejects NUL, sparse, accessor-backed and custom-property argv arrays', async () => {
+  const executable = await node_executable();
+  await assert.rejects(
+    run_static_provider({ manifest: manifest(), executable, args: ['bad\0arg'] }),
+    /without NUL bytes/,
+  );
+  const sparse = new Array(1);
+  await assert.rejects(
+    run_static_provider({ manifest: manifest(), executable, args: sparse }),
+    /must not be sparse/,
+  );
+  const accessor = [];
+  Object.defineProperty(accessor, '0', {
+    enumerable: true,
+    get() { throw new Error('getter must not run'); },
+  });
+  accessor.length = 1;
+  await assert.rejects(
+    run_static_provider({ manifest: manifest(), executable, args: accessor }),
+    /data elements only/,
+  );
+  const custom = [];
+  custom.extra = 'hidden';
+  await assert.rejects(
+    run_static_provider({ manifest: manifest(), executable, args: custom }),
+    /custom array properties/,
+  );
+});
+
+test('static provider runner rejects symlink executables and working directories', async context => {
+  if (process.platform === 'win32') {
+    context.skip('POSIX symlink and executable semantics differ on Windows');
+    return;
+  }
+  await with_directory(async directory => {
+    const executable = await node_executable();
+    const executable_link = path.join(directory, 'node-link');
+    const cwd_link = path.join(directory, 'cwd-link');
+    const cwd_target = path.join(directory, 'cwd-target');
+    await symlink(executable, executable_link);
+    await import('node:fs/promises').then(fs => fs.mkdir(cwd_target));
+    await symlink(cwd_target, cwd_link);
+    await assert.rejects(
+      run_static_provider({ manifest: manifest(), executable: executable_link, args: [] }),
+      error => error.code === 'ORIX_PROVIDER_EXECUTABLE_NOT_REGULAR',
+    );
+    await assert.rejects(
+      run_static_provider({ manifest: manifest(), executable, args: [], cwd: cwd_link }),
+      error => error.code === 'ORIX_PROVIDER_CWD_INVALID',
+    );
+  });
+});
+
+test('static provider runner rejects invalid environment accessors without invoking them', async () => {
+  let getter_called = false;
+  const env = {};
+  Object.defineProperty(env, 'ORIX_BAD', {
+    enumerable: true,
+    get() { getter_called = true; throw new Error('must not run'); },
+  });
+  await assert.rejects(
+    run_static_provider({
+      manifest: manifest(),
+      executable: await node_executable(),
+      args: [],
+      env,
+    }),
+    /enumerable string data properties/,
+  );
+  assert.equal(getter_called, false);
+});
+
+test('static provider runner rejects non-absolute executable paths before spawning', async () => {
+  await assert.rejects(
+    run_static_provider({ manifest: manifest(), executable: 'node', args: [] }),
+    /absolute filesystem path/,
+  );
+});
