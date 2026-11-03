@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orix.dev/schemas/provider-probe.v1.schema.json",
+  "title": "ORIX Provider Probe Report v1",
+  "description": "Result of an explicit, bounded provider executable version probe.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "provider", "runtime", "status", "diagnostics", "notes"],
+  "properties": {
+    "schema_version": { "const": "orix.provider-probe.v1" },
+    "provider": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "adapter_version", "engine_version", "executable"],
+      "properties": {
+        "id": { "const": "rizin.static" },
+        "adapter_version": { "type": "string", "minLength": 1 },
+        "engine_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+" },
+        "executable": { "type": "string", "minLength": 1 }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "architecture", "node_version"],
+      "properties": {
+        "platform": { "enum": ["aix", "android", "darwin", "freebsd", "haiku", "linux", "openbsd", "sunos", "win32", "cygwin", "netbsd"] },
+        "architecture": { "type": "string", "minLength": 1 },
+        "node_version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "status": { "const": "available" },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["duration_ms", "exit_code", "stderr"],
+      "properties": {
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "exit_code": { "const": 0 },
+        "stderr": { "type": "string", "maxLength": 1024 }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 512 }
+    }
+  }
+}
