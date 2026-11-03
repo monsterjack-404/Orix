@@ -246,3 +246,24 @@ test('project intelligence integrates NuGet and Gradle lock inventories', async 
   assert.ok(report.lockfiles.some(item => item.format === 'gradle-lock'));
   assert.equal(report.summary.locked_packages, 2);
 }));
+
+
+test('malformed JSON lockfiles retain their ecosystem and format identity', async () => {
+  const cases = [
+    ['package-lock.json', 'npm', 'npm-package-lock'],
+    ['composer.lock', 'composer', 'composer-lock'],
+    ['Pipfile.lock', 'python', 'pipfile-lock'],
+    ['packages.lock.json', 'nuget', 'nuget-packages-lock'],
+  ];
+  for (const [filename, ecosystem, format] of cases) {
+    await with_project(async root => {
+      await writeFile(path.join(root, filename), '{ malformed json');
+      const report = await scan_project(root);
+      assert.equal(report.lockfiles.length, 1, filename);
+      assert.equal(report.lockfiles[0].ecosystem, ecosystem, filename);
+      assert.equal(report.lockfiles[0].format, format, filename);
+      assert.equal(report.lockfiles[0].complete, false, filename);
+      assert.ok(report.lockfiles[0].warnings.some(item => item.code === 'ORIX_LOCKFILE_INVALID_JSON'), filename);
+    });
+  }
+});
