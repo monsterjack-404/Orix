@@ -80,7 +80,9 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 - [x] Declarative `orix.provider.v1` JSON Schema for provider identity, capabilities, platform/format support, execution side effects, resource ceilings and licensing metadata. This is a metadata contract, not a plugin loader or execution authorization.
 - [x] Bounded static-provider process runner with absolute executable validation, argv-only launch, minimal environment, per-run deadlines, cancellation and captured-output ceilings. This is not an OS sandbox.
-- [x] Provider version probing, bounded timeouts, cancellation, output caps and structured Rizin adapter diagnostics.
+- [x] Optional Rizin static import adapter: version probe, JSON import normalization, input SHA-256 and pre/post identity checks.
+- [x] Bounded timeouts, cancellation, output caps and structured process diagnostics.
+- [ ] Broader Ghidra/IDA/Hopper adapters and independently verified OS-level containment for untrusted providers.
 - Function, symbol, callgraph and disassembly evidence contracts.
 - External process ownership, cancellation and cleanup tests.
 - Offline mode and provider-free operation as first-class paths.
