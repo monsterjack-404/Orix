@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { analyze_rizin_imports } from '../src/providers/rizin.mjs';
+import { analyze_rizin_imports, probe_rizin, RIZIN_PROVIDER_MANIFEST } from '../src/providers/rizin.mjs';
 
 async function with_fixture(callback) {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-test-'));
@@ -199,4 +199,20 @@ test('Rizin adapter isolates the original artifact and discards results if a pro
     const after = await import('node:fs/promises').then(fs => fs.readFile(input_path));
     assert.deepEqual(after, original);
   });
+});
+
+test('Rizin adapter and doctor reject manifests that exclude the current runtime platform', async () => {
+  const current = process.platform === 'win32'
+    ? 'windows'
+    : process.platform === 'darwin' ? 'macos' : process.platform;
+  const unsupported = current === 'windows' ? 'linux' : 'windows';
+  const manifest = { ...RIZIN_PROVIDER_MANIFEST, supported_platforms: [unsupported] };
+  await assert.rejects(
+    probe_rizin({ executable: '/not/started/rizin', manifest }),
+    error => error.code === 'ORIX_RIZIN_PLATFORM_UNSUPPORTED',
+  );
+  await assert.rejects(
+    analyze_rizin_imports({ input_path: '/not/opened/sample.elf', executable: '/not/started/rizin', manifest }),
+    error => error.code === 'ORIX_RIZIN_PLATFORM_UNSUPPORTED',
+  );
 });
