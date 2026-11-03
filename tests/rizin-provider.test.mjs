@@ -134,3 +134,39 @@ test('Rizin adapter rejects input files exceeding provider byte ceiling', async 
     );
   });
 });
+
+
+test('Rizin adapter enforces the import result ceiling without returning partial imports', async context => {
+  if (process.platform === 'win32') {
+    context.skip('POSIX executable fixture is used for the process adapter contract test');
+    return;
+  }
+  await with_fixture(async ({ input_path, executable }) => {
+    await assert.rejects(
+      analyze_rizin_imports({ input_path, executable, max_imports: 1 }),
+      error => error.code === 'ORIX_RIZIN_IMPORT_LIMIT',
+    );
+  });
+});
+
+test('Rizin adapter applies one total timeout across version and import probes', async context => {
+  if (process.platform === 'win32') {
+    context.skip('POSIX process-group termination is tested on Unix runners');
+    return;
+  }
+  await with_fixture(async ({ input_path, executable }) => {
+    const script = [
+      '#!/bin/sh',
+      'if [ "$1" = "-v" ]; then printf "%s\\n" "rizin 0.8.2"; exit 0; fi',
+      'if [ "$1" = "-N" ] && [ "$4" = "iij" ]; then sleep 5; exit 0; fi',
+      'exit 64',
+      '',
+    ].join('\n');
+    await writeFile(executable, script, { mode: 0o700 });
+    await chmod(executable, 0o700);
+    await assert.rejects(
+      analyze_rizin_imports({ input_path, executable, timeout_ms: 500 }),
+      error => error.code === 'ORIX_RIZIN_TIMEOUT',
+    );
+  });
+});
