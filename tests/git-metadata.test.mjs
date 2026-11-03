@@ -112,8 +112,8 @@ test('Git metadata refuses to parse loose commits with invalid object headers', 
     'committer Test User <test@example.invalid> 1793600000 +0000',
     '',
     'missing tree header',
-  ].join('\\n'));
-  await writeFile(path.join(git, 'HEAD'), oid + '\\n');
+  ].join('\n'));
+  await writeFile(path.join(git, 'HEAD'), oid + '\n');
   const report = await scan_git_metadata(root);
   assert.equal(report.head_commit.status, 'unavailable');
   assert.equal(report.head_commit.reason, 'commit-headers-invalid');
