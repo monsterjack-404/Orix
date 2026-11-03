@@ -140,7 +140,7 @@ function validate_absolute_path_list(value, label, maximum) {
     const descriptor = descriptors[String(index)];
     if (!descriptor) throw new TypeError(label + ' must not be sparse');
     const item = descriptor.value;
-    if (typeof item !== 'string' || !path.isAbsolute(item) || item.includes('\\0') || item.length > 4096) {
+    if (typeof item !== 'string' || !path.isAbsolute(item) || item.includes('\0') || item.length > 4096) {
       throw new TypeError(label + ' entries must be absolute paths without NUL bytes');
     }
     result.push(item);
@@ -155,7 +155,7 @@ function is_within(root, candidate) {
 }
 
 async function validate_executable(value, allowed_executables) {
-  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\\0')) {
+  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
     throw new TypeError('executable must be an absolute filesystem path');
   }
   let details;
@@ -187,7 +187,7 @@ async function validate_executable(value, allowed_executables) {
       runner_error('ORIX_PROVIDER_EXECUTABLE_NOT_RUNNABLE', 'Provider executable does not have execute permission', { path: canonical });
     }
   }
-  if (process.platform === 'win32' && /\\.(bat|cmd|ps1)$/i.test(canonical)) {
+  if (process.platform === 'win32' && /\.(bat|cmd|ps1)$/i.test(canonical)) {
     runner_error('ORIX_PROVIDER_EXECUTABLE_SCRIPT', 'Script launchers are not accepted as provider executables on Windows', { path: canonical });
   }
 
@@ -213,7 +213,7 @@ async function validate_executable(value, allowed_executables) {
 }
 
 async function validate_working_directory(value, allowed_roots) {
-  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\\0')) {
+  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
     throw new TypeError('cwd must be an absolute filesystem path');
   }
   let details;
