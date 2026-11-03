@@ -139,6 +139,28 @@ console.log(report.imports);
 
 The adapter report contract is defined in [rizin-imports.v1.schema.json](../schemas/rizin-imports.v1.schema.json). The adapter uses Rizin's `-N` no-user-settings option and `-q -c iij` command form. See the [Rizin CLI options](https://book.rizin.re/src/first_steps/commandline_options.html) and [Rizin command-line guide](https://book.rizin.re/src/first_steps/commandline_rizin.html). Rizin remains an optional external installation; ORIX does not bundle it or claim it was run when it is unavailable. The automated adapter tests use a deterministic executable fixture and do not substitute for verification against every supported upstream Rizin release.
 
+### CLI
+
+List adapters without probing external installations:
+
+~~~sh
+node src/cli.mjs providers list --json
+~~~
+
+Run import extraction with an explicit Rizin executable:
+
+~~~sh
+node src/cli.mjs providers rizin imports ./sample.elf \
+  --executable /opt/rizin/bin/rizin \
+  --format json \
+  --timeout-ms 30000 \
+  --max-output-kib 4096 \
+  --max-imports 100000
+~~~
+
+The timeout applies to the complete adapter workflow, including the version and import probes. The output cap is applied per process and covers combined stdout/stderr capture. The Markdown renderer displays at most 2,000 rows by default; use JSON to preserve the complete normalized result.
+
+
 ## 6. Runtime adapter requirements
 
 A provider is not an implemented analysis integration merely because its manifest validates or appears in the registry. Before an adapter can be advertised as operational, it must implement and test:
