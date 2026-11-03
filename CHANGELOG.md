@@ -6,7 +6,7 @@
 - Bounded WebAssembly structure indexing for specification-ordered sections, function types, imports, exports, function/type references, start function metadata, code-body byte ranges and standard module/function names.
 - Optional Rizin static import adapter with input SHA-256 provenance, bounded private artifact snapshots, tamper detection, bounded JSON normalization and a versioned report schema.
 - Explicit `providers rizin doctor` command and `probe_rizin` API for checking an absolute Rizin executable and recording its version/runtime diagnostics.
-- Browser-local report viewer support for Rizin import inventories and provider probe reports, including searchable symbol rows and CSV export.
+- Browser-local report viewer support for Rizin import inventories, WebAssembly import/export/function symbols and provider probe reports, including searchable symbol rows and CSV export.
 - Scheduled GitHub CodeQL `security-extended` analysis for JavaScript/TypeScript and weekly Dependabot updates for GitHub Actions.
 - Expanded CI with Windows and macOS smoke suites on Node.js 22 alongside the Node.js 20/22/24 Linux matrix.
 - Shell-free static provider runner with exact canonical executable and working-directory allowlists, symlink rejection, blocked command-search/loader environment overrides, timeout, cancellation and captured-output ceilings.
