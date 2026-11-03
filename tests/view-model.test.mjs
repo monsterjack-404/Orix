@@ -48,3 +48,33 @@ test('rejects malformed Rizin provider report identities',()=>{
     imports:[],
   }),/valid artifact identity/);
 });
+
+test('normalizes WebAssembly imports exports and name-section functions into searchable inventory', () => {
+  const report = {
+    schema_version: 'orix.artifact.v1',
+    ...item('/samples/module.wasm'),
+    detection: { format: 'WebAssembly' },
+    parser: {
+      status: 'parsed',
+      result: {
+        format: 'WebAssembly',
+        module_name: 'demo-module',
+        imports: [{ module: 'env', name: 'host_call', kind: 'function', type_index: 0 }],
+        exports: [{ name: 'run_export', kind: 'function', index: 0 }],
+        function_names: [{ index: 0, name: 'run' }],
+      },
+    },
+  };
+  const view = build_report_view(report);
+  assert.equal(view.records.length, 4);
+  assert.equal(view.summary.bytes, 1024);
+  assert.equal(view.summary.findings, 1);
+  const imported = view.records.find(record => record.kind === 'wasm-symbol' && record.raw.symbol_kind === 'import');
+  assert.equal(imported.name, 'run');
+  assert.equal(imported.library, 'env');
+  const exported = view.records.find(record => record.kind === 'wasm-symbol' && record.raw.symbol_kind === 'export');
+  assert.equal(exported.name, 'run');
+  assert.equal(filter_report_view(view, { query: 'host_call' }).length, 0);
+  assert.equal(filter_report_view(view, { query: 'run' }).length, 2);
+  assert.equal(filter_report_view(view, { format: 'WebAssembly function' }).length, 1);
+});
