@@ -25,7 +25,7 @@ test('CycloneDX export maps ecosystems to purls and preserves dependency provena
   const bom = JSON.parse(render_cyclonedx(project_report()));
   assert.equal(bom.bomFormat, 'CycloneDX');
   assert.equal(bom.specVersion, '1.5');
-  assert.match(bom.serialNumber, /^urn:uuid:/);
+  assert.match(bom.serialNumber, /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.equal(bom.metadata.component.name, 'demo-app');
   assert.equal(bom.metadata.component.version, '1.2.3');
   assert.ok(bom.components.some(item => item.purl === 'pkg:npm/%40scope/core'));
