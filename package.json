@@ -17,6 +17,7 @@
     "./formats/elf": "./src/formats/elf.mjs",
     "./project": "./src/project/intelligence.mjs",
     "./formats/pdf": "./src/formats/pdf.mjs",
+    "./formats/wasm": "./src/formats/wasm.mjs",
     "./reports/sarif": "./src/reports/sarif.mjs",
     "./evidence/ledger": "./src/evidence/ledger.mjs",
     "./analyzer/compare": "./src/analyzer/compare.mjs",
