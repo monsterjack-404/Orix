@@ -70,11 +70,13 @@ test('normalizes WebAssembly imports exports and name-section functions into sea
   assert.equal(view.summary.bytes, 1024);
   assert.equal(view.summary.findings, 1);
   const imported = view.records.find(record => record.kind === 'wasm-symbol' && record.raw.symbol_kind === 'import');
-  assert.equal(imported.name, 'run');
+  assert.equal(imported.name, 'host_call');
+  assert.equal(imported.raw.resolved_name, 'run');
   assert.equal(imported.library, 'env');
   const exported = view.records.find(record => record.kind === 'wasm-symbol' && record.raw.symbol_kind === 'export');
-  assert.equal(exported.name, 'run');
-  assert.equal(filter_report_view(view, { query: 'host_call' }).length, 0);
-  assert.equal(filter_report_view(view, { query: 'run' }).length, 2);
+  assert.equal(exported.name, 'run_export');
+  assert.equal(exported.raw.resolved_name, 'run');
+  assert.equal(filter_report_view(view, { query: 'host_call' }).length, 1);
+  assert.equal(filter_report_view(view, { query: 'run' }).length, 1);
   assert.equal(filter_report_view(view, { format: 'WebAssembly function' }).length, 1);
 });
