@@ -25,7 +25,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Mach-O parser | Thin and FAT/FAT64 universal images, per-slice parsing, segment/section commands, LC_SYMTAB symbols, LC_DYSYMTAB groups/indirect symbols and CodeDirectory metadata | Does not cryptographically verify signatures or decode chained fixups and Objective-C metadata |
 | ZIP parser | ZIP32/ZIP64 central-directory indexing, extended entry sizes and offsets, unsafe path and symlink metadata | Multi-disk archives, extraction, decompression and CRC verification are not implemented |
 | PDF parser | Classic xref tables, trailer metadata, incremental /Prev chain, indirect-object framing, encryption and active-content marker triage | Xref-stream entries, object streams, filters, attachment extraction, page-tree semantics and signature verification are not implemented |
-| WebAssembly parser | Module version, bounded section framing and custom section names | Does not validate instruction semantics or decompile code |
+| WebAssembly parser | Versioned module header, bounded section framing, strict UTF-8 names, function types, imports, exports, function/type indices, start function and code-body ranges | Does not decode instructions or initializers, validate all section semantics, or decompile code |
 | Static metrics | Shannon entropy, ASCII/UTF-16LE string extraction and bounded hex preview | Metrics are descriptive, not malware verdicts |
 | Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
 | Evidence model | Stable report evidence plus append-only SHA-256 chained JSONL ledger, verify/list commands and append receipts | Not a signature, trusted timestamp or external transparency log |
@@ -37,6 +37,8 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 Static indicator rules operate only on already-parsed metadata and bounded extracted strings. Each finding includes a rule ID, severity, confidence and supporting evidence. A clean report means only that the built-in rules did not match; it is not a safety certification.
 
 Formats without a parser are still identified where their signatures are recognized. They are reported as `not-supported`, rather than pretending that a header was decoded.
+
+The WebAssembly parser now exposes a bounded structural index of type, import, export, function and code-body metadata. Its exact validation boundary and API fields are documented in [`docs/WASM_ANALYSIS.md`](docs/WASM_ANALYSIS.md).
 
 ## Repository intelligence
 
