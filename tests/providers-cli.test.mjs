@@ -45,6 +45,7 @@ test('provider CLI parser accepts list and Rizin import operations', () => {
     '--executable', '/opt/rizin/bin/rizin',
     '--timeout-ms', '12000',
     '--max-output-kib', '2048',
+    '--max-imports', '25000',
     '--json',
   ]);
   assert.equal(invocation.provider_action, 'imports');
@@ -52,6 +53,7 @@ test('provider CLI parser accepts list and Rizin import operations', () => {
   assert.equal(invocation.flags.provider_executable, '/opt/rizin/bin/rizin');
   assert.equal(invocation.flags.timeout_ms, 12000);
   assert.equal(invocation.flags.max_output_bytes, 2 * 1024 * 1024);
+  assert.equal(invocation.flags.max_imports, 25000);
   assert.equal(invocation.flags.format, 'json');
 });
 
