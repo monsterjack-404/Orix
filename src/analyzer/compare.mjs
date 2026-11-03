@@ -12,8 +12,13 @@ function validate_report(report, label) {
   if (!['orix.scan.v1', 'orix.artifact.v1'].includes(report.schema_version)) {
     fail('ORIX_COMPARE_REPORT_UNSUPPORTED', label + ' report must be an artifact or directory-scan report', { schema_version: report.schema_version ?? null });
   }
-  if (report.schema_version === 'orix.scan.v1' && !Array.isArray(report.artifacts)) {
-    fail('ORIX_COMPARE_REPORT_INVALID', label + ' scan report has no artifact array');
+  if (report.schema_version === 'orix.scan.v1') {
+    if (!report.scan || typeof report.scan !== 'object' || typeof report.scan.root !== 'string' || report.scan.root.length === 0) {
+      fail('ORIX_COMPARE_REPORT_INVALID', label + ' scan report has no valid root path');
+    }
+    if (!Array.isArray(report.artifacts)) {
+      fail('ORIX_COMPARE_REPORT_INVALID', label + ' scan report has no artifact array');
+    }
   }
   if (report.schema_version === 'orix.artifact.v1' && (!report.artifact || !report.integrity)) {
     fail('ORIX_COMPARE_REPORT_INVALID', label + ' artifact report is missing identity or integrity metadata');
