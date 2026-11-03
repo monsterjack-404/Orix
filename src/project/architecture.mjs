@@ -152,19 +152,26 @@ export function analyze_project_architecture(project_report, options = {}) {
   if (invalid_nodes > 0) warnings.push('Ignored ' + invalid_nodes + ' invalid or duplicate graph node(s).');
   if (omitted_nodes > 0) warnings.push('Node limit reached; ' + omitted_nodes + ' graph node(s) were not analyzed.');
 
+  const retained_input_ids = new Set(raw_nodes.map(item => item.id));
   const outgoing_sets = new Map(nodes.map(node => [node.id, new Set()]));
   const incoming_sets = new Map(nodes.map(node => [node.id, new Set()]));
   const accepted_edges = [];
   let invalid_edges = 0;
   let duplicate_edges = 0;
+  let omitted_edges = 0;
   const raw_edges = [...project_report.graph.edges]
     .sort((a, b) => String(a?.from).localeCompare(String(b?.from)) ||
       String(a?.to).localeCompare(String(b?.to)) ||
       String(a?.label ?? '').localeCompare(String(b?.label ?? '')));
 
-  for (const edge of raw_edges) {
-    if (!edge || !node_by_id.has(edge.from) || !node_by_id.has(edge.to)) {
+  for (let edge_index = 0; edge_index < raw_edges.length; edge_index += 1) {
+    const edge = raw_edges[edge_index];
+    if (!edge || !retained_input_ids.has(edge.from) || !retained_input_ids.has(edge.to)) {
       invalid_edges += 1;
+      continue;
+    }
+    if (!node_by_id.has(edge.from) || !node_by_id.has(edge.to)) {
+      omitted_edges += 1;
       continue;
     }
     const from = edge.from;
@@ -173,7 +180,10 @@ export function analyze_project_architecture(project_report, options = {}) {
       duplicate_edges += 1;
       continue;
     }
-    if (accepted_edges.length >= max_edges) break;
+    if (accepted_edges.length >= max_edges) {
+      omitted_edges += raw_edges.length - edge_index;
+      break;
+    }
     outgoing_sets.get(from).add(to);
     incoming_sets.get(to).add(from);
     accepted_edges.push({
@@ -183,7 +193,6 @@ export function analyze_project_architecture(project_report, options = {}) {
       label: typeof edge.label === 'string' ? edge.label.slice(0, 512) : '',
     });
   }
-  const omitted_edges = Math.max(0, raw_edges.length - accepted_edges.length - invalid_edges - duplicate_edges);
   if (invalid_edges > 0) warnings.push('Ignored ' + invalid_edges + ' edge(s) whose endpoints were not retained.');
   if (omitted_edges > 0) warnings.push('Edge limit reached; ' + omitted_edges + ' graph edge(s) were not analyzed.');
 
