@@ -199,7 +199,10 @@ export function build_report_view(report) {
     kind = 'scan';
     if (!Array.isArray(report.artifacts)) throw new TypeError('Scan report requires an artifacts array');
     root = typeof report.scan?.root === 'string' ? report.scan.root : '';
-    records = report.artifacts.map(artifact);
+    records = report.artifacts.flatMap((item, index) => {
+      const base_record = artifact(item, index);
+      return [base_record, ...wasm_symbols(item, base_record)];
+    });
   } else if (report.schema_version === 'orix.project.v1') {
     kind = 'project';
     if (!Array.isArray(report.files) || !Array.isArray(report.findings ?? [])) {
