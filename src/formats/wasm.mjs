@@ -8,6 +8,10 @@ const SECTION_NAMES = new Map([
   [5, 'memory'], [6, 'global'], [7, 'export'], [8, 'start'], [9, 'element'],
   [10, 'code'], [11, 'data'], [12, 'data-count'], [13, 'tag'],
 ]);
+const SECTION_ORDER = new Map([
+  [1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [13, 6], [6, 7],
+  [7, 8], [8, 9], [9, 10], [12, 11], [10, 12], [11, 13],
+]);
 const VALUE_TYPES = new Map([
   [0x7f, 'i32'], [0x7e, 'i64'], [0x7d, 'f32'], [0x7c, 'f64'],
   [0x7b, 'v128'], [0x70, 'funcref'], [0x6f, 'externref'],
@@ -386,6 +390,7 @@ export function parse_wasm(buffer, options = {}) {
   const limits = { max_vector_entries, max_name_bytes };
   const sections = [];
   const seen_sections = new Set();
+  let previous_section_order = 0;
   const types = [];
   const imports = [];
   const exports = [];
@@ -429,6 +434,13 @@ export function parse_wasm(buffer, options = {}) {
         });
       }
       seen_sections.add(id);
+      const section_order = SECTION_ORDER.get(id);
+      if (section_order <= previous_section_order) {
+        wasm_error('ORIX_WASM_SECTION_ORDER', 'WebAssembly standard sections are not in specification order', {
+          id, name, previous_section_order, section_order,
+        });
+      }
+      previous_section_order = section_order;
     }
 
     if (id === 0 && size_info.value > 0) {
