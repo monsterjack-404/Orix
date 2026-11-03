@@ -291,6 +291,15 @@ test('MCP architecture analysis reuses the bounded scanner and reports local cyc
     assert.deepEqual(report.cycles[0].members, ['index.js', 'service.js']);
     assert.deepEqual(report.isolated_files, ['isolated.js']);
     assert.equal(report.coverage.input_inventory_complete, true);
+
+    const default_report = await call_orix_tool(
+      'orix.analyze_architecture',
+      { path: directory },
+      { roots: [directory] },
+    );
+    assert.equal(default_report.schema_version, 'orix.architecture.v1');
+    assert.equal(default_report.summary.cycle_count, 1);
+
     await assert.rejects(
       call_orix_tool('orix.analyze_architecture', { path: directory, max_nodes: 50001 }, { roots: [directory] }),
       /between 1 and 50000/,
