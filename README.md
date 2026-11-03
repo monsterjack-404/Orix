@@ -273,7 +273,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for source ownership and review expecta
 
 ## Roadmap
 
-The long-term direction includes richer format support, disassembly/decompiler adapters, a persistent case database, plugin contracts, a desktop/web interface and isolated dynamic-analysis providers. The local MCP interface, repository intelligence, evidence ledger and current interchange workflows are implemented vertical slices; see the roadmap for remaining boundaries. The near-term plan is broken into measurable vertical slices in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+The long-term direction includes richer format support, disassembly/decompiler adapters, a persistent case database, plugin contracts, a desktop/web interface and isolated dynamic-analysis providers. The local MCP interface, repository intelligence, evidence ledger and current interchange workflows are implemented vertical slices; see the roadmap for remaining boundaries. The near-term plan is broken into measurable vertical slices in [`docs/ROADMAP.md`](docs/ROADMAP.md). The upstream capability comparison and adapter priorities are maintained in [`docs/COMPETITIVE_LANDSCAPE.md`](docs/COMPETITIVE_LANDSCAPE.md); provider metadata contracts are defined in [`schemas/provider-manifest.v1.schema.json`](schemas/provider-manifest.v1.schema.json).
 
 ## License
 
