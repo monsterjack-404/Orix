@@ -90,3 +90,22 @@ test('ledger rejects accessor payloads and records with unhashed extension field
   await writeFile(file, JSON.stringify(record) + '\n');
   await assert.rejects(verify_evidence_ledger(file), error => error.code === 'ORIX_LEDGER_RECORD_SHAPE');
 });
+
+
+test('ledger rejects accessor and sparse array payload elements without invoking getters', async t => {
+  const { file } = await fixture(t);
+  const accessor_array = [];
+  Object.defineProperty(accessor_array, '0', {
+    enumerable: true,
+    get() { throw new Error('array getter must not run'); },
+  });
+  accessor_array.length = 1;
+  await assert.rejects(
+    append_evidence_event(file, 'scan.completed', { values: accessor_array }),
+    error => error.code === 'ORIX_LEDGER_ACCESSOR_VALUE',
+  );
+  await assert.rejects(
+    append_evidence_event(file, 'scan.completed', { values: new Array(1) }),
+    error => error.code === 'ORIX_LEDGER_SPARSE_ARRAY',
+  );
+});
