@@ -78,7 +78,7 @@ export async function scan_directory(root_path, options = {}) {
     if (!Number.isSafeInteger(maximum) || maximum < 0 || maximum > 10000) throw new TypeError('max_ledger_artifacts must be between 0 and 10000');
     const evidence = analyzed.slice(0, maximum).map(item => ({
       path: item.path,
-      sha256: item.artifact.artifact.sha256,
+      sha256: item.artifact.integrity.digest,
       size_bytes: item.artifact.artifact.size_bytes,
       format: item.artifact.detection.format,
       indicator_count: item.artifact.indicators?.length ?? 0,
