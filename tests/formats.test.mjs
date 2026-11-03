@@ -82,6 +82,11 @@ test('WebAssembly parser rejects a section that exceeds the file', () => {
   assert.throws(() => parse_wasm(malformed), error => error.code === 'ORIX_WASM_SECTION_OUT_OF_RANGE');
 });
 
+test('WebAssembly parser rejects u32 LEB128 values whose fifth byte overflows', () => {
+  const malformed = Buffer.from([0,97,115,109,1,0,0,0,1,0x80,0x80,0x80,0x80,0x10]);
+  assert.throws(() => parse_wasm(malformed), error => error.code === 'ORIX_WASM_BAD_LEB128');
+});
+
 test('Mach-O parser validates a thin 64-bit header and load command region', () => {
   const buffer = Buffer.alloc(40);
   buffer.set([0xcf,0xfa,0xed,0xfe]);
