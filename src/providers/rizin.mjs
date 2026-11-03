@@ -1,9 +1,10 @@
 // JavaScript, src/providers/rizin.mjs, Node.js 20+, read-only Rizin import metadata adapter.
 
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { constants as FS_CONSTANTS, createReadStream } from 'node:fs';
 import path from 'node:path';
-import { lstat, realpath, stat } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdtemp, realpath, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { OrixError } from '../core/errors.mjs';
 import { validate_provider_manifest } from './manifest.mjs';
 import { run_static_provider } from './process-runner.mjs';
@@ -203,85 +204,142 @@ export async function analyze_rizin_imports(options = {}) {
       expected_size_bytes: before.info.size, actual_size_bytes: input_hash.bytes_read,
     });
   }
-  const common = {
-    manifest,
-    executable: descriptors.executable?.value,
-    cwd: descriptors.cwd?.value,
-    env: descriptors.env?.value,
-    timeout_ms,
-    max_output_bytes,
-    signal,
-  };
-
-  const remaining_before_probe = timeout_ms - (Date.now() - analysis_started_at);
-  if (remaining_before_probe < 1) {
-    provider_error('ORIX_RIZIN_TIMEOUT', 'Rizin analysis exceeded the total provider deadline before version probing', {
-      timeout_ms,
-    });
-  }
-  const version_result = await run_static_provider({
-    ...common,
-    timeout_ms: remaining_before_probe,
-    args: ['-v'],
-    max_output_bytes: Math.min(common.max_output_bytes ?? manifest.limits.max_output_bytes, 16_384),
-  });
-  if (!version_result.ok) {
-    const code = version_result.cancelled
-      ? 'ORIX_RIZIN_CANCELLED'
-      : version_result.timed_out ? 'ORIX_RIZIN_TIMEOUT' : 'ORIX_RIZIN_VERSION_FAILED';
-    provider_error(code, 'Rizin version probe did not complete successfully', {
-      exit_code: version_result.exit_code,
-      timed_out: version_result.timed_out,
-      cancelled: version_result.cancelled,
-      stderr: version_result.stderr.slice(0, 1024),
-    });
-  }
-  const engine_version = parse_engine_version(version_result.stdout);
-  const remaining_timeout_ms = timeout_ms - (Date.now() - analysis_started_at);
-  if (remaining_timeout_ms < 1) {
-    provider_error('ORIX_RIZIN_TIMEOUT', 'Rizin analysis exceeded the total provider deadline', {
-      timeout_ms,
-    });
-  }
-
-  const import_result = await run_static_provider({
-    ...common,
-    timeout_ms: remaining_timeout_ms,
-    args: ['-N', '-q', '-c', 'iij', before.canonical_path],
-  });
-  if (!import_result.ok) {
-    const code = import_result.cancelled
-      ? 'ORIX_RIZIN_CANCELLED'
-      : import_result.timed_out ? 'ORIX_RIZIN_TIMEOUT' : 'ORIX_RIZIN_IMPORT_FAILED';
-    provider_error(code, 'Rizin import extraction did not complete successfully', {
-      exit_code: import_result.exit_code,
-      timed_out: import_result.timed_out,
-      cancelled: import_result.cancelled,
-      output_limited: import_result.output_limited,
-      stderr: import_result.stderr.slice(0, 1024),
-    });
-  }
-
-  let after_link;
-  let after;
-  let after_realpath;
+  // Analyze a private copy so the external tool never receives the caller's original path.
+  // The copy is private to this process, read-only by default, and checked before and after use.
+  const snapshot_directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-'));
+  const extension = path.extname(before.canonical_path).slice(0, 16);
+  const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
-    after_link = await lstat(input_path);
-    after = await stat(before.canonical_path);
-    after_realpath = await realpath(input_path);
-  } catch (error) {
-    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input disappeared or became inaccessible during analysis', {
-      input_path: before.canonical_path, reason: error.code ?? 'filesystem-error',
-    });
-  }
-  const stable = !after_link.isSymbolicLink() && after_link.isFile() &&
-    after_realpath === before.canonical_path && same_file_identity(before.info, after);
-  if (!stable) {
-    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input identity or metadata changed during analysis', {
-      input_path: before.canonical_path,
-    });
-  }
+    await copyFile(before.canonical_path, snapshot_path, FS_CONSTANTS.COPYFILE_EXCL);
+    await chmod(snapshot_path, 0o400);
+    const snapshot_hash = await sha256_file(snapshot_path, maximum_bytes, signal);
+    if (snapshot_hash.digest !== input_hash.digest || snapshot_hash.bytes_read !== input_hash.bytes_read) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input changed while its private analysis snapshot was created', {
+        input_path: before.canonical_path,
+      });
+    }
 
+    const common = {
+      manifest,
+      executable: descriptors.executable?.value,
+      cwd: descriptors.cwd?.value,
+      env: descriptors.env?.value,
+      timeout_ms,
+      max_output_bytes,
+      signal,
+    };
+
+    const remaining_before_probe = timeout_ms - (Date.now() - analysis_started_at);
+    if (remaining_before_probe < 1) {
+      provider_error('ORIX_RIZIN_TIMEOUT', 'Rizin analysis exceeded the total provider deadline before version probing', {
+        timeout_ms,
+      });
+    }
+    const version_result = await run_static_provider({
+      ...common,
+      timeout_ms: remaining_before_probe,
+      args: ['-v'],
+      max_output_bytes: Math.min(common.max_output_bytes ?? manifest.limits.max_output_bytes, 16_384),
+    });
+    if (!version_result.ok) {
+      const code = version_result.cancelled
+        ? 'ORIX_RIZIN_CANCELLED'
+        : version_result.timed_out ? 'ORIX_RIZIN_TIMEOUT' : 'ORIX_RIZIN_VERSION_FAILED';
+      provider_error(code, 'Rizin version probe did not complete successfully', {
+        exit_code: version_result.exit_code,
+        timed_out: version_result.timed_out,
+        cancelled: version_result.cancelled,
+        stderr: version_result.stderr.slice(0, 1024),
+      });
+    }
+    const engine_version = parse_engine_version(version_result.stdout);
+    const remaining_timeout_ms = timeout_ms - (Date.now() - analysis_started_at);
+    if (remaining_timeout_ms < 1) {
+      provider_error('ORIX_RIZIN_TIMEOUT', 'Rizin analysis exceeded the total provider deadline', {
+        timeout_ms,
+      });
+    }
+
+    const import_result = await run_static_provider({
+      ...common,
+      timeout_ms: remaining_timeout_ms,
+      args: ['-N', '-q', '-c', 'iij', snapshot_path],
+    });
+    if (!import_result.ok) {
+      const code = import_result.cancelled
+        ? 'ORIX_RIZIN_CANCELLED'
+        : import_result.timed_out ? 'ORIX_RIZIN_TIMEOUT' : 'ORIX_RIZIN_IMPORT_FAILED';
+      provider_error(code, 'Rizin import extraction did not complete successfully', {
+        exit_code: import_result.exit_code,
+        timed_out: import_result.timed_out,
+        cancelled: import_result.cancelled,
+        output_limited: import_result.output_limited,
+        stderr: import_result.stderr.slice(0, 1024),
+      });
+    }
+
+    let after_link;
+    let after;
+    let after_realpath;
+    try {
+      after_link = await lstat(input_path);
+      after = await stat(before.canonical_path);
+      after_realpath = await realpath(input_path);
+    } catch (error) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input disappeared or became inaccessible during analysis', {
+        input_path: before.canonical_path, reason: error.code ?? 'filesystem-error',
+      });
+    }
+    const stable = !after_link.isSymbolicLink() && after_link.isFile() &&
+      after_realpath === before.canonical_path && same_file_identity(before.info, after);
+    if (!stable) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input identity or metadata changed during analysis', {
+        input_path: before.canonical_path,
+      });
+    }
+
+    const snapshot_after = await sha256_file(snapshot_path, maximum_bytes, signal);
+    if (snapshot_after.digest !== input_hash.digest || snapshot_after.bytes_read !== input_hash.bytes_read) {
+      provider_error('ORIX_RIZIN_SNAPSHOT_CHANGED', 'External provider modified its private input snapshot; results were discarded', {
+        input_path: before.canonical_path,
+      });
+    }
+
+    const imports = normalize_imports(import_result.stdout, maximum_imports);
+    return {
+      schema_version: 'orix.rizin-imports.v1',
+      provider: {
+        id: manifest.id,
+        adapter_version: RIZIN_ADAPTER_VERSION,
+        engine_version,
+        executable: version_result.executable,
+      },
+      artifact: {
+        path: before.canonical_path,
+        size_bytes: before.info.size,
+        sha256: input_hash.digest,
+        stable_during_analysis: true,
+      },
+      imports,
+      summary: {
+        imports: imports.length,
+        libraries: new Set(imports.map(item => item.library).filter(Boolean)).size,
+      },
+      diagnostics: {
+        version_probe_duration_ms: version_result.duration_ms,
+        import_scan_duration_ms: import_result.duration_ms,
+        stderr: import_result.stderr.slice(0, 1024),
+      },
+      notes: [
+        'Uses Rizin -N -q -c iij for static import metadata; the target is not executed.',
+        'Rizin analyzes a private temporary copy; the original input path is never passed to the provider.',
+        'Rizin remains an optional external installation and is not bundled by ORIX.',
+        'The process runner bounds runtime and captured output but is not an OS sandbox.',
+      ],
+    };
+  } finally {
+    await rm(snapshot_directory, { recursive: true, force: true });
+  }
   const imports = normalize_imports(import_result.stdout, maximum_imports);
   return {
     schema_version: 'orix.rizin-imports.v1',
