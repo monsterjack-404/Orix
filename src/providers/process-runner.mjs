@@ -253,10 +253,7 @@ export async function run_static_provider(options) {
     kill_grace_ms: descriptors.kill_grace_ms?.value,
   });
   const signal = descriptors.signal?.value;
-  if (signal !== undefined && (
-    signal === null || typeof signal.addEventListener !== 'function' ||
-    typeof signal.removeEventListener !== 'function' || typeof signal.aborted !== 'boolean'
-  )) {
+  if (signal !== undefined && !(signal instanceof AbortSignal)) {
     throw new TypeError('signal must be an AbortSignal');
   }
   if (signal?.aborted) {
