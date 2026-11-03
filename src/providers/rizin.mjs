@@ -1,9 +1,11 @@
 // JavaScript, src/providers/rizin.mjs, Node.js 20+, read-only Rizin import metadata adapter.
 
 import { createHash } from 'node:crypto';
-import { constants as FS_CONSTANTS, createReadStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
-import { chmod, copyFile, lstat, mkdtemp, realpath, rm, stat } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { OrixError } from '../core/errors.mjs';
 import { validate_provider_manifest } from './manifest.mjs';
@@ -100,6 +102,40 @@ async function sha256_file(file_path, maximum_bytes, signal) {
     });
   }
   return { digest: hash.digest('hex'), bytes_read };
+}
+
+async function copy_file_bounded(source, destination, maximum_bytes, signal) {
+  let bytes_copied = 0;
+  const limiter = new Transform({
+    transform(chunk, encoding, callback) {
+      bytes_copied += chunk.length;
+      if (bytes_copied > maximum_bytes) {
+        callback(new OrixError('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin input grew beyond its manifest byte limit while creating the private snapshot', {
+          details: { bytes_copied, maximum_bytes },
+          recoverable: true,
+        }));
+        return;
+      }
+      callback(null, chunk);
+    },
+  });
+  try {
+    await pipeline(
+      createReadStream(source, { signal }),
+      limiter,
+      createWriteStream(destination, { flags: 'wx', mode: 0o400 }),
+      { signal },
+    );
+  } catch (error) {
+    if (error instanceof OrixError) throw error;
+    if (signal?.aborted) {
+      provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled while creating its private input snapshot');
+    }
+    provider_error('ORIX_RIZIN_SNAPSHOT_CREATE_FAILED', 'A bounded private Rizin input snapshot could not be created', {
+      reason: error.code ?? 'snapshot-error',
+    });
+  }
+  return bytes_copied;
 }
 
 function parse_engine_version(output) {
@@ -210,7 +246,12 @@ export async function analyze_rizin_imports(options = {}) {
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
-    await copyFile(before.canonical_path, snapshot_path, FS_CONSTANTS.COPYFILE_EXCL);
+    const snapshot_bytes = await copy_file_bounded(before.canonical_path, snapshot_path, maximum_bytes, signal);
+    if (snapshot_bytes !== input_hash.bytes_read) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input size changed while its private analysis snapshot was created', {
+        expected_size_bytes: input_hash.bytes_read, actual_size_bytes: snapshot_bytes,
+      });
+    }
     await chmod(snapshot_path, 0o400);
     const snapshot_hash = await sha256_file(snapshot_path, maximum_bytes, signal);
     if (snapshot_hash.digest !== input_hash.digest || snapshot_hash.bytes_read !== input_hash.bytes_read) {
