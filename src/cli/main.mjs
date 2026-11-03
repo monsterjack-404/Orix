@@ -17,7 +17,7 @@ import { render_comparison_markdown } from '../reports/comparison.mjs';
 import { read_json_report } from '../core/read-report.mjs';
 import { hash_buffer } from '../core/hash.mjs';
 import { render_cyclonedx } from '../reports/cyclonedx.mjs';
-import { RIZIN_PROVIDER_MANIFEST, analyze_rizin_imports } from '../providers/rizin.mjs';
+import { RIZIN_PROVIDER_MANIFEST, analyze_rizin_imports, probe_rizin } from '../providers/rizin.mjs';
 import { render_rizin_imports_markdown } from '../reports/rizin.mjs';
 async function write_or_print(content,output_path) {
   if(!output_path){process.stdout.write(content.endsWith('\n')?content:content+'\n');return;}
@@ -49,6 +49,7 @@ export async function main(argv=process.argv.slice(2)) {
   if(parsed.command==='ledger'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('ledger output currently supports JSON only');
   if(parsed.command==='providers'&&parsed.provider_action==='list'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('providers list output currently supports JSON only');
   if(parsed.command==='providers'&&parsed.provider_action==='imports'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('provider import output supports JSON or Markdown only');
+  if(parsed.command==='providers'&&parsed.provider_action==='doctor'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('provider doctor output currently supports JSON only');
   if(parsed.command==='compare'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('compare output supports JSON or Markdown only');
   if(parsed.command==='formats'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('formats output currently supports JSON only');
   if(parsed.command==='providers'){
@@ -67,6 +68,18 @@ export async function main(argv=process.argv.slice(2)) {
           availability:'external-install-not-probed',
         }],
       };
+      await write_or_print(render_json(report),parsed.flags.out);
+      return 0;
+    }
+    if(parsed.provider_action==='doctor'){
+      if(!parsed.flags.provider_executable){
+        throw new Error('providers rizin doctor requires --executable <absolute-path>');
+      }
+      const report=await probe_rizin({
+        executable:parsed.flags.provider_executable,
+        timeout_ms:parsed.flags.timeout_ms,
+        max_output_bytes:parsed.flags.max_output_bytes,
+      });
       await write_or_print(render_json(report),parsed.flags.out);
       return 0;
     }
