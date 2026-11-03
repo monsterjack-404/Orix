@@ -170,3 +170,33 @@ test('Rizin adapter applies one total timeout across version and import probes',
     );
   });
 });
+
+test('Rizin adapter isolates the original artifact and discards results if a provider mutates its snapshot', async context => {
+  if (process.platform === 'win32') {
+    context.skip('POSIX executable fixture is used for the process adapter contract test');
+    return;
+  }
+  await with_fixture(async ({ input_path, executable }) => {
+    const original = await import('node:fs/promises').then(fs => fs.readFile(input_path));
+    const script = [
+      '#!/bin/sh',
+      'if [ "$1" = "-v" ]; then printf "%s\\n" "rizin 0.8.2"; exit 0; fi',
+      'if [ "$1" = "-N" ] && [ "$4" = "iij" ]; then',
+      '  chmod u+w "$5"',
+      '  printf "%s" "provider-mutated-snapshot" > "$5"',
+      '  printf "%s" "[]"',
+      '  exit 0',
+      'fi',
+      'exit 64',
+      '',
+    ].join('\\n');
+    await writeFile(executable, script, { mode: 0o700 });
+    await chmod(executable, 0o700);
+    await assert.rejects(
+      analyze_rizin_imports({ input_path, executable }),
+      error => error.code === 'ORIX_RIZIN_SNAPSHOT_CHANGED',
+    );
+    const after = await import('node:fs/promises').then(fs => fs.readFile(input_path));
+    assert.deepEqual(after, original);
+  });
+});
