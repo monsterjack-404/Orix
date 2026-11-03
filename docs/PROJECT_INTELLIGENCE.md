@@ -13,7 +13,8 @@ node src/cli.mjs project ./my-repository --format cyclonedx --out ./sbom.cdx.jso
 
 ## Inventory and source model
 
-- Deterministic, bounded directory traversal with symlink rejection and generated/dependency-directory exclusions.\n- Read-only Git metadata inventory: HEAD branch/detached state, loose and packed refs, tags, sanitized remote coordinates, shallow boundaries and verified loose HEAD commit metadata. Packed object contents and linked-worktree gitdir targets are not followed.
+- Deterministic, bounded directory traversal with symlink rejection and generated/dependency-directory exclusions.
+- Read-only Git metadata inventory: HEAD branch/detached state, loose and packed refs, tags, sanitized remote coordinates, shallow boundaries and verified loose HEAD commit metadata. Packed object contents and linked-worktree gitdir targets are not followed.
 - File size, SHA-256, extension/language classification and bounded text reads.
 - Manifest metadata for npm, Python, Cargo, Go modules, Composer, Maven, NuGet and Ruby.
 - Dependency declarations with manifest and dependency-group provenance.
@@ -34,7 +35,10 @@ The lockfile reader currently supports:
 - Poetry `poetry.lock` package groups, dependency requirements, package hashes and root edges derived from `pyproject.toml`.
 - Astral uv `uv.lock` workspace packages, registry/source identities, dependency constraints and package-to-package edges.
 - Pipenv `Pipfile.lock` resolved versions and hashes, matched to `Pipfile` root declarations. Pipfile.lock does not encode package-to-package edges, so ORIX explicitly marks that graph incomplete.
-- Go `go.sum` module checksums, matched against exact `go.mod` declarations where available.\n- Ruby `Gemfile.lock` specs, platforms, source metadata and dependency edges.\n- NuGet `packages.lock.json` direct/transitive package records, target-framework aggregation, content hashes and dependency edges.\n- Gradle `gradle.lockfile` module versions and configuration memberships. Gradle lockfiles do not encode package-to-package edges, so ORIX marks the graph incomplete.
+- Go `go.sum` module checksums, matched against exact `go.mod` declarations where available.
+- Ruby `Gemfile.lock` specs, platforms, source metadata and dependency edges.
+- NuGet `packages.lock.json` direct/transitive package records, target-framework aggregation, content hashes and dependency edges.
+- Gradle `gradle.lockfile` module versions and configuration memberships. Gradle lockfiles do not encode package-to-package edges, so ORIX marks the graph incomplete.
 
 The project report records lockfile format, path, package inventory, root edges, package-to-package edges, warnings and completeness. Package locations are kept distinct so nested versions of the same package do not collapse in the dependency graph. Lockfile package records are not registry lookups: ORIX does not download packages or validate their integrity hashes against remote content.
 
