@@ -3,7 +3,7 @@
 import { OrixError } from '../core/errors.mjs';
 import { DEFAULT_LIMITS } from '../core/limits.mjs';
 
-const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-read-mib','--max-file-mib','--concurrency','--strings-limit']);
+const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib']);
 const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--help','-h']);
 
 function positive_integer(value, option, minimum, maximum) {
@@ -44,6 +44,9 @@ export function parse_arguments(argv) {
       else if (token === '--max-file-mib') result.flags.max_file_bytes = positive_integer(raw, token, 1, 2_048) * 1024 * 1024;
       else if (token === '--concurrency') result.flags.max_scan_concurrency = positive_integer(raw, token, 1, 32);
       else if (token === '--strings-limit') result.flags.max_strings = positive_integer(raw, token, 0, 100_000);
+      else if (token === '--executable') result.flags.provider_executable = raw;
+      else if (token === '--timeout-ms') result.flags.timeout_ms = positive_integer(raw, token, 1, 60_000);
+      else if (token === '--max-output-kib') result.flags.max_output_bytes = positive_integer(raw, token, 1, 8_192) * 1024;
       continue;
     }
     if (token.startsWith('-')) throw new OrixError('ORIX_CLI_UNKNOWN_OPTION', `Unknown option: ${token}`, { recoverable: true });
@@ -56,6 +59,27 @@ export function parse_arguments(argv) {
     result.target = result.positionals.shift() ?? null;
     if (!result.baseline || !result.target) throw new OrixError('ORIX_CLI_COMPARE_ARGUMENTS', 'compare requires baseline and current report paths', { recoverable: true });
     if (result.positionals.length > 0) throw new OrixError('ORIX_CLI_EXTRA_ARGUMENTS', 'compare accepts exactly two report paths', { recoverable: true });
+  }
+  if (result.command === 'providers') {
+    result.provider_id = result.target ?? 'list';
+    result.target = null;
+    if (result.provider_id === 'list') {
+      result.provider_action = 'list';
+      if (result.positionals.length > 0) {
+        throw new OrixError('ORIX_CLI_PROVIDER_ARGUMENTS', 'providers list accepts no positional arguments', { recoverable: true });
+      }
+    } else if (result.provider_id === 'rizin') {
+      result.provider_action = result.positionals.shift() ?? null;
+      if (result.provider_action !== 'imports') {
+        throw new OrixError('ORIX_CLI_PROVIDER_ACTION', 'providers rizin requires the imports action', { recoverable: true });
+      }
+      result.target = result.positionals.shift() ?? null;
+      if (!result.target) {
+        throw new OrixError('ORIX_CLI_PROVIDER_INPUT', 'providers rizin imports requires an input file path', { recoverable: true });
+      }
+    } else {
+      throw new OrixError('ORIX_CLI_PROVIDER_UNKNOWN', 'Unknown provider: ' + result.provider_id, { recoverable: true });
+    }
   }
   if (result.command === 'ledger') {
     result.flags.ledger_operation = result.target;
