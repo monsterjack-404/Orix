@@ -243,3 +243,15 @@ test('WebAssembly name custom section rejects duplicate, out-of-range and malfor
     error => error.code === 'ORIX_WASM_NAME_SUBSECTION_RANGE',
   );
 });
+
+
+test('WebAssembly parser enforces standard section order and allows custom sections between standard sections', () => {
+  const types = section(1, Buffer.from([0]));
+  const functions = section(3, Buffer.from([0]));
+  const custom = section(0, Buffer.from([3, 0x64, 0x65, 0x62]));
+  assert.doesNotThrow(() => parse_wasm(module_with(types, custom, functions)));
+  assert.throws(() => parse_wasm(module_with(functions, types)), error => error.code === 'ORIX_WASM_SECTION_ORDER');
+  const data_count = section(12, Buffer.from([0]));
+  const code = section(10, Buffer.from([0]));
+  assert.doesNotThrow(() => parse_wasm(module_with(data_count, code)));
+});
