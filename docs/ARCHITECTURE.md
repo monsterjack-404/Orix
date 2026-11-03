@@ -25,7 +25,7 @@ src/cli.mjs
 
 src/core/evidence-ledger.mjs owns persistent ledger integrity; src/evidence/ledger.mjs exposes the CLI-facing record adapter.
 
-src/index.mjs exposes the supported programmatic surface, including SARIF rendering, report comparison and MCP server entry points. The dedicated `src/mcp.mjs` executable provides a JSON-RPC stdio transport. `src/evidence/ledger.mjs` owns the optional append-only hash-chained evidence journal.
+src/index.mjs exposes the supported programmatic surface, including SARIF and Rizin Markdown rendering, report comparison, provider execution and MCP server entry points. The dedicated `src/mcp.mjs` executable provides a JSON-RPC stdio transport. `src/evidence/ledger.mjs` owns the optional append-only hash-chained evidence journal.
 ```
 
 ## 2. Provider contract boundary
