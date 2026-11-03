@@ -31,7 +31,7 @@ export const RIZIN_PROVIDER_MANIFEST = Object.freeze({
     max_output_bytes: 8_388_608,
   }),
   license: Object.freeze({
-    spdx_id: 'Apache-2.0',
+    spdx_id: 'LGPL-3.0-only',
     redistribution: 'external-install',
     source_url: 'https://github.com/rizinorg/rizin',
   }),
@@ -44,21 +44,11 @@ function provider_error(code, message, details = {}) {
 
 function validate_input_path(input_path) {
   if (typeof input_path !== 'string' || input_path.trim() === '' ||
-      input_path.includes('\0') || !require_path_is_absolute(input_path)) {
+      input_path.includes('\0') || !path.isAbsolute(input_path)) {
     throw new TypeError('input_path must be a non-empty absolute filesystem path');
   }
 }
 
-function require_path_is_absolute(value) {
-  // Kept separate so platform-specific absolute-path rules remain centralized in path.
-  return import_path_is_absolute(value);
-}
-
-import path from 'node:path';
-
-function import_path_is_absolute(value) {
-  return path.isAbsolute(value);
-}
 
 async function file_snapshot(input_path, maximum_bytes) {
   let link_info;
@@ -87,16 +77,26 @@ function same_file_identity(left, right) {
     left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 }
 
-async function sha256_file(file_path) {
+async function sha256_file(file_path, maximum_bytes) {
   const hash = createHash('sha256');
+  let bytes_read = 0;
   try {
-    for await (const chunk of createReadStream(file_path)) hash.update(chunk);
+    for await (const chunk of createReadStream(file_path)) {
+      bytes_read += chunk.length;
+      if (bytes_read > maximum_bytes) {
+        provider_error('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin input grew beyond its manifest byte limit while hashing', {
+          bytes_read, maximum_bytes,
+        });
+      }
+      hash.update(chunk);
+    }
   } catch (error) {
+    if (error instanceof OrixError) throw error;
     provider_error('ORIX_RIZIN_INPUT_READ_FAILED', 'Rizin input could not be hashed before analysis', {
       reason: error.code ?? 'read-error',
     });
   }
-  return hash.digest('hex');
+  return { digest: hash.digest('hex'), bytes_read };
 }
 
 function parse_engine_version(output) {
@@ -175,7 +175,16 @@ export async function analyze_rizin_imports(options = {}) {
   validate_input_path(input_path);
   const maximum_bytes = manifest.limits.max_input_bytes;
   const before = await file_snapshot(input_path, maximum_bytes);
-  const input_sha256 = await sha256_file(before.canonical_path);
+  const maximum_imports = descriptors.max_imports?.value ?? 100_000;
+  if (!Number.isSafeInteger(maximum_imports) || maximum_imports < 0 || maximum_imports > 1_000_000) {
+    throw new TypeError('max_imports must be an integer between 0 and 1000000');
+  }
+  const input_hash = await sha256_file(before.canonical_path, maximum_bytes);
+  if (input_hash.bytes_read !== before.info.size) {
+    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input size changed while it was hashed', {
+      expected_size_bytes: before.info.size, actual_size_bytes: input_hash.bytes_read,
+    });
+  }
   const common = {
     manifest,
     executable: descriptors.executable?.value,
@@ -215,9 +224,18 @@ export async function analyze_rizin_imports(options = {}) {
     });
   }
 
-  const after_link = await lstat(input_path);
-  const after = await stat(before.canonical_path);
-  const after_realpath = await realpath(input_path);
+  let after_link;
+  let after;
+  let after_realpath;
+  try {
+    after_link = await lstat(input_path);
+    after = await stat(before.canonical_path);
+    after_realpath = await realpath(input_path);
+  } catch (error) {
+    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input disappeared or became inaccessible during analysis', {
+      input_path: before.canonical_path, reason: error.code ?? 'filesystem-error',
+    });
+  }
   const stable = !after_link.isSymbolicLink() && after_link.isFile() &&
     after_realpath === before.canonical_path && same_file_identity(before.info, after);
   if (!stable) {
@@ -226,11 +244,7 @@ export async function analyze_rizin_imports(options = {}) {
     });
   }
 
-  const max_imports = descriptors.max_imports?.value ?? 100_000;
-  if (!Number.isSafeInteger(max_imports) || max_imports < 0 || max_imports > 1_000_000) {
-    throw new TypeError('max_imports must be an integer between 0 and 1000000');
-  }
-  const imports = normalize_imports(import_result.stdout, max_imports);
+  const imports = normalize_imports(import_result.stdout, maximum_imports);
   return {
     schema_version: 'orix.rizin-imports.v1',
     provider: {
@@ -242,7 +256,7 @@ export async function analyze_rizin_imports(options = {}) {
     artifact: {
       path: before.canonical_path,
       size_bytes: before.info.size,
-      sha256: input_sha256,
+      sha256: input_hash.digest,
       stable_during_analysis: true,
     },
     imports,
