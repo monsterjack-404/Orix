@@ -73,3 +73,12 @@ test('comparison rejects unsupported report schemas and invalid artifact hashes'
   const malformed = scan('/work', [{ artifact: { path: '/work/a' }, integrity: { digest: 'not-a-hash' } }]);
   assert.throws(() => compare_reports(malformed, scan('/work', [])), error => error.code === 'ORIX_COMPARE_ARTIFACT_INVALID');
 });
+
+
+test('comparison rejects scan reports without a usable root path', () => {
+  const malformed = { schema_version: 'orix.scan.v1', artifacts: [] };
+  assert.throws(
+    () => compare_reports(malformed, scan('/work', [])),
+    error => error.code === 'ORIX_COMPARE_REPORT_INVALID' && /root path/.test(error.message),
+  );
+});
