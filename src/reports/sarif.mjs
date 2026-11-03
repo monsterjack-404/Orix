@@ -124,7 +124,7 @@ export function render_sarif(report, options = {}) {
           ruleId: indicator.rule_id,
           level: LEVELS[indicator.severity] ?? 'warning',
           message: { text: indicator.summary },
-          locations: [{ location }],
+          locations: [location],
           partialFingerprints: { primaryLocationLineHash: artifact.integrity?.digest ?? uri },
           properties: {
             confidence: indicator.confidence,
