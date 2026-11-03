@@ -30,7 +30,7 @@ export class ProviderRegistry {
     if (typeof platform !== 'string' || !SUPPORTED_PLATFORMS.has(platform)) {
       throw new TypeError('platform must be windows, linux, macos or any');
     }
-    this.platform = platform;
+    Object.defineProperty(this, 'platform', { value: platform, enumerable: true });
   }
 
   register(input) {
