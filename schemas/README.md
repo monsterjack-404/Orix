@@ -13,3 +13,8 @@ The JSON Schema documents in this directory describe the public JSON report cont
 The provider manifest describes declared capabilities, execution side effects, resource ceilings and redistribution status. It is metadata only: a valid manifest does not prove a provider is installed, trusted, safe, or authorized to run.
 
 The schemas document shape and basic constraints. They do not prove that a parser result is truthful, that a report was generated from authentic bytes, or that a file is safe. Consumers that need runtime validation should use a JSON Schema Draft 2020-12 validator and pin the exact schema files they accept.
+
+
+| `provider-execution.v1.schema.json` | Versioned static-provider process outcome receipt | `orix.provider-execution.v1` |
+
+The receipt carries provider identity/version, executable path, timestamps, exit/termination outcome, bounded output metadata and effective process limits. It is operational metadata, not proof of trust or sandboxing.

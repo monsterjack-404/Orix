@@ -8,6 +8,11 @@ import { OrixError } from '../core/errors.mjs';
 import { validate_provider_manifest } from './manifest.mjs';
 
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const BLOCKED_ENVIRONMENT_KEYS = new Set([
+  'PATH', 'PATHEXT', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
+  'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'DYLD_FRAMEWORK_PATH',
+  'PYTHONPATH', 'PYTHONHOME', 'PERL5OPT', 'RUBYOPT', 'BASH_ENV', 'ENV', 'IFS',
+]);
 const MAX_ARGUMENTS = 256;
 const MAX_ARGUMENT_BYTES = 32 * 1024;
 const MAX_TOTAL_ARGUMENT_BYTES = 64 * 1024;
@@ -29,6 +34,7 @@ function plain_options(value) {
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const allowed = new Set([
     'manifest', 'executable', 'args', 'cwd', 'env',
+    'allowed_executables', 'allowed_working_directories',
     'timeout_ms', 'max_output_bytes', 'kill_grace_ms', 'signal',
   ]);
   for (const key of Reflect.ownKeys(value)) {
@@ -99,7 +105,7 @@ function validate_environment(value) {
   let total = 0;
   for (const key of entries) {
     const descriptor = descriptors[key];
-    if (typeof key !== 'string' || !ENV_KEY.test(key) ||
+    if (typeof key !== 'string' || !ENV_KEY.test(key) || BLOCKED_ENVIRONMENT_KEYS.has(key.toUpperCase()) ||
         !descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) {
       throw new TypeError('env must contain enumerable string data properties with valid names');
     }
@@ -114,22 +120,53 @@ function validate_environment(value) {
   return Object.freeze(result);
 }
 
-async function validate_executable(value) {
-  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
+function validate_absolute_path_list(value, label, maximum) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > maximum) {
+    throw new TypeError(label + ' must contain between 1 and ' + maximum + ' absolute paths');
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  for (const key of Reflect.ownKeys(value)) {
+    if (key === 'length') continue;
+    if (typeof key !== 'string' || !/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= value.length) {
+      throw new TypeError(label + ' must not contain custom array properties');
+    }
+    const descriptor = descriptors[key];
+    if (!descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) {
+      throw new TypeError(label + ' must contain enumerable data entries only');
+    }
+  }
+  const result = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = descriptors[String(index)];
+    if (!descriptor) throw new TypeError(label + ' must not be sparse');
+    const item = descriptor.value;
+    if (typeof item !== 'string' || !path.isAbsolute(item) || item.includes('\\0') || item.length > 4096) {
+      throw new TypeError(label + ' entries must be absolute paths without NUL bytes');
+    }
+    result.push(item);
+  }
+  return result;
+}
+
+function is_within(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative === '' || (relative !== '..' &&
+    !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
+}
+
+async function validate_executable(value, allowed_executables) {
+  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\\0')) {
     throw new TypeError('executable must be an absolute filesystem path');
   }
   let details;
-  try {
-    details = await lstat(value);
-  } catch (error) {
+  try { details = await lstat(value); }
+  catch (error) {
     runner_error('ORIX_PROVIDER_EXECUTABLE_UNAVAILABLE', 'Provider executable cannot be inspected', {
       path: value, reason: error.code ?? 'filesystem-error',
     });
   }
   if (details.isSymbolicLink() || !details.isFile()) {
-    runner_error('ORIX_PROVIDER_EXECUTABLE_NOT_REGULAR', 'Provider executable must be a regular non-symlink file', {
-      path: value,
-    });
+    runner_error('ORIX_PROVIDER_EXECUTABLE_NOT_REGULAR', 'Provider executable must be a regular non-symlink file', { path: value });
   }
   let canonical;
   let canonical_details;
@@ -142,28 +179,41 @@ async function validate_executable(value) {
     });
   }
   if (!canonical_details.isFile()) {
-    runner_error('ORIX_PROVIDER_EXECUTABLE_NOT_REGULAR', 'Resolved provider executable is not a regular file', {
-      path: canonical,
-    });
+    runner_error('ORIX_PROVIDER_EXECUTABLE_NOT_REGULAR', 'Resolved provider executable is not a regular file', { path: canonical });
   }
-  try {
-    await access(canonical, FS_CONSTANTS.X_OK);
-  } catch {
-    runner_error('ORIX_PROVIDER_EXECUTABLE_NOT_RUNNABLE', 'Provider executable does not have execute permission', {
-      path: canonical,
-    });
+  if (process.platform !== 'win32') {
+    try { await access(canonical, FS_CONSTANTS.X_OK); }
+    catch {
+      runner_error('ORIX_PROVIDER_EXECUTABLE_NOT_RUNNABLE', 'Provider executable does not have execute permission', { path: canonical });
+    }
   }
-  if (process.platform === 'win32' && /\.(bat|cmd|ps1)$/i.test(canonical)) {
-    runner_error('ORIX_PROVIDER_EXECUTABLE_SCRIPT', 'Script launchers are not accepted as provider executables on Windows', {
-      path: canonical,
-    });
+  if (process.platform === 'win32' && /\\.(bat|cmd|ps1)$/i.test(canonical)) {
+    runner_error('ORIX_PROVIDER_EXECUTABLE_SCRIPT', 'Script launchers are not accepted as provider executables on Windows', { path: canonical });
+  }
+
+  const allowed = validate_absolute_path_list(allowed_executables, 'allowed_executables', 128);
+  let matched = false;
+  for (const candidate of allowed) {
+    let candidate_details;
+    try { candidate_details = await lstat(candidate); }
+    catch (error) {
+      runner_error('ORIX_PROVIDER_ALLOWLIST_UNAVAILABLE', 'An allowlisted executable cannot be inspected', {
+        path: candidate, reason: error.code ?? 'filesystem-error',
+      });
+    }
+    if (candidate_details.isSymbolicLink() || !candidate_details.isFile()) {
+      runner_error('ORIX_PROVIDER_ALLOWLIST_UNSAFE', 'Allowlisted executables must be regular non-symlink files', { path: candidate });
+    }
+    if (await realpath(candidate) === canonical) matched = true;
+  }
+  if (!matched) {
+    runner_error('ORIX_PROVIDER_EXECUTABLE_DENIED', 'Executable is not present in the explicit executable allowlist', { path: canonical });
   }
   return canonical;
 }
 
-async function validate_working_directory(value) {
-  if (value === undefined) return undefined;
-  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
+async function validate_working_directory(value, allowed_roots) {
+  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\\0')) {
     throw new TypeError('cwd must be an absolute filesystem path');
   }
   let details;
@@ -174,16 +224,34 @@ async function validate_working_directory(value) {
     });
   }
   if (details.isSymbolicLink() || !details.isDirectory()) {
-    runner_error('ORIX_PROVIDER_CWD_INVALID', 'Provider working directory must be a non-symlink directory', {
-      path: value,
-    });
+    runner_error('ORIX_PROVIDER_CWD_INVALID', 'Provider working directory must be a non-symlink directory', { path: value });
   }
-  try { return await realpath(value); }
+  let canonical;
+  try { canonical = await realpath(value); }
   catch (error) {
     runner_error('ORIX_PROVIDER_CWD_UNAVAILABLE', 'Provider working directory could not be resolved', {
       path: value, reason: error.code ?? 'filesystem-error',
     });
   }
+  const roots = validate_absolute_path_list(allowed_roots, 'allowed_working_directories', 64);
+  let matched = false;
+  for (const root of roots) {
+    let root_details;
+    try { root_details = await lstat(root); }
+    catch (error) {
+      runner_error('ORIX_PROVIDER_CWD_ALLOWLIST_UNAVAILABLE', 'An allowed working-directory root cannot be inspected', {
+        path: root, reason: error.code ?? 'filesystem-error',
+      });
+    }
+    if (root_details.isSymbolicLink() || !root_details.isDirectory()) {
+      runner_error('ORIX_PROVIDER_CWD_ALLOWLIST_UNSAFE', 'Allowed working-directory roots must be non-symlink directories', { path: root });
+    }
+    if (is_within(await realpath(root), canonical)) matched = true;
+  }
+  if (!matched) {
+    runner_error('ORIX_PROVIDER_CWD_DENIED', 'Provider working directory is outside the explicit allowlist', { cwd: canonical });
+  }
+  return canonical;
 }
 
 function validate_runtime_limits(manifest, options) {
@@ -223,7 +291,7 @@ function signal_process(child, detached, signal) {
       // Fall through to direct child signalling.
     }
   }
-  try { child.kill(signal); } catch {
+  try { if (process.platform === 'win32') child.kill(); else child.kill(signal); } catch {
     // The process may have exited between the state check and signal.
   }
 }
@@ -243,9 +311,17 @@ export async function run_static_provider(options) {
       manifest.execution.uses_network || manifest.execution.requires_authorization) {
     runner_error('ORIX_PROVIDER_EXECUTION_NOT_STATIC', 'Only providers declared as read-only static and non-network are accepted');
   }
-  const executable = await validate_executable(descriptors.executable?.value);
+  const executable_value = descriptors.executable?.value;
+  const cwd_value = descriptors.cwd?.value ?? process.cwd();
+  const executable = await validate_executable(
+    executable_value,
+    descriptors.allowed_executables?.value ?? [executable_value],
+  );
   const args = validate_arguments(descriptors.args?.value ?? []);
-  const cwd = await validate_working_directory(descriptors.cwd?.value);
+  const cwd = await validate_working_directory(
+    cwd_value,
+    descriptors.allowed_working_directories?.value ?? [cwd_value],
+  );
   const env = validate_environment(descriptors.env?.value);
   const limits = validate_runtime_limits(manifest, {
     timeout_ms: descriptors.timeout_ms?.value,
@@ -356,23 +432,47 @@ export async function run_static_provider(options) {
       if (settled) return;
       settled = true;
       cleanup();
+      const completed_at = new Date().toISOString();
+      const termination_reason = timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
+      const success = exit_code === 0 && termination_reason === null;
+      const stdout = Buffer.concat(stdout_chunks).toString('utf8');
+      const stderr = Buffer.concat(stderr_chunks).toString('utf8');
       resolve({
+        schema_version: 'orix.provider-execution.v1',
         provider: { id: manifest.id, version: manifest.version },
         executable,
+        args_count: args.length,
         started_at,
+        completed_at,
         duration_ms: Math.max(0, Date.now() - started_clock),
         exit_code,
-        exit_signal,
+        signal: exit_signal,
+        termination_reason,
+        success,
         timed_out,
         cancelled,
         output_limited,
-        ok: exit_code === 0 && !timed_out && !cancelled && !output_limited,
-        stdout: Buffer.concat(stdout_chunks).toString('utf8'),
-        stderr: Buffer.concat(stderr_chunks).toString('utf8'),
+        ok: success,
+        output: {
+          stdout,
+          stderr,
+          stdout_bytes,
+          stderr_bytes,
+          bytes_observed: stdout_bytes + stderr_bytes,
+          bytes_captured: captured_bytes,
+          truncated: output_limited,
+        },
+        stdout,
+        stderr,
         stdout_bytes,
         stderr_bytes,
         captured_bytes,
         output_truncated: output_limited,
+        limits: {
+          timeout_ms: limits.timeout_ms,
+          max_output_bytes: limits.max_output_bytes,
+          kill_grace_ms: limits.kill_grace_ms,
+        },
       });
     });
 

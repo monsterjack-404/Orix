@@ -193,3 +193,17 @@ A manifest is untrusted input. It is descriptive metadata, not a signed identity
 - run_static_provider(options) — bounded shell-free process launch for a declared static provider.
 - analyze_rizin_imports(options) — Rizin CLI adapter returning an `orix.rizin-imports.v1` report.
 - RIZIN_PROVIDER_MANIFEST and RIZIN_ADAPTER_VERSION — Rizin integration metadata.
+
+
+## 9. Executable, workspace and environment policy
+
+The static runner accepts two optional allowlists:
+
+- `allowed_executables`: absolute executable paths. If omitted, the requested `executable` is the single permitted path. If supplied, the selected executable must canonicalize to one regular, non-symlink entry.
+- `allowed_working_directories`: absolute directory roots. If omitted, the chosen `cwd` is its own permitted root (or the current process directory when `cwd` is omitted). If supplied, the canonical working directory must be equal to or beneath one of the listed regular, non-symlink roots.
+
+Allowlist arrays reject sparse entries, accessors and custom properties. The child does not inherit the full parent environment. Explicit overrides reject command-search and executable-loader keys including `PATH`, `PATHEXT`, `NODE_OPTIONS`, `NODE_PATH`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `PYTHONPATH`, `PERL5OPT` and `RUBYOPT`.
+
+Execution results include a versioned `orix.provider-execution.v1` receipt defined by [provider-execution.v1.schema.json](../schemas/provider-execution.v1.schema.json). Legacy result properties remain available for the current Rizin adapter. POSIX termination signals the detached process group; Windows currently terminates only the direct child.
+
+These path checks constrain the selected executable and working directory; they do not confine every file the child can read or write. The manifest still cannot enforce provider behavior.

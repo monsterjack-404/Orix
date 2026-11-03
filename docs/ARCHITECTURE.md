@@ -156,3 +156,10 @@ The canonical evidence ledger implementation lives in `src/core/evidence-ledger.
 `web/app.mjs` reads the selected report in the browser, renders report-controlled values through DOM text nodes and exports formula-guarded CSV. It does not fetch report contents, evaluate report-provided code or modify the source report. `scripts/serve-web.mjs` is a loopback-only static server with an exact asset allowlist, GET/HEAD-only handling, no-store responses and a restrictive Content Security Policy (`connect-src 'none'`).
 
 This is a local report explorer, not a server-side workspace, desktop shell, live scanner or plugin host. It displays evidence already in a report and cannot create new findings.
+
+
+## Provider launch policy and receipt
+
+The static process runner supports exact canonical executable allowlists and working-directory root allowlists. When omitted, the selected absolute executable and cwd are each treated as a one-entry allowlist for backward compatibility. Final symlink entries, sparse/accessor-backed lists, and paths outside the allowed roots are rejected. Environment inheritance is disabled; explicit overrides reject command-search and runtime-loader injection keys. The result preserves the Rizin adapter fields and adds a versioned `orix.provider-execution.v1` receipt with applied limits and a normalized termination reason.
+
+These checks do not provide OS-level file, process or network isolation. Windows descendant-process cleanup remains a documented limitation.

@@ -321,3 +321,8 @@ A small set of credential-shaped patterns is reported with file and line metadat
 ORIX can append compact inspection, scan and project records to a local SHA-256 hash-chained JSONL ledger. Use `orix inspect ./sample.exe --ledger ./.orix/evidence.jsonl` to record an inspection. Verify the chain with `orix ledger verify ./.orix/evidence.jsonl` or list verified records with `orix ledger list ./.orix/evidence.jsonl`.
 
 The ledger detects content changes, broken ordering and partial writes. It is tamper-evident, not tamper-proof: it is not a digital signature, trusted timestamp authority, remote transparency log or write-once medium.
+
+
+### Provider process allowlists and execution receipts
+
+`run_static_provider()` accepts `allowed_executables` and `allowed_working_directories` arrays. When omitted, the exact executable and cwd already selected by the caller become single-entry allowlists; when supplied, each entry is canonicalized and checked, and symlinked entries are rejected. The child receives a minimal environment. Explicit overrides reject command-search and executable-loader variables such as `PATH`, `NODE_OPTIONS`, `LD_PRELOAD`, and `DYLD_INSERT_LIBRARIES`. Each run includes a versioned `orix.provider-execution.v1` receipt while preserving the Rizin adapter's existing result fields. These controls are not filesystem or network sandboxing.

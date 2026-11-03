@@ -56,6 +56,14 @@ test('static provider runner uses argv without shell interpolation and returns b
   assert.equal(result.stdout, 'literal $(not-a-shell) value');
   assert.equal(result.stderr, 'diagnostic');
   assert.equal(result.provider.id, 'test.static');
+  assert.equal(result.schema_version, 'orix.provider-execution.v1');
+  assert.ok(Number.isFinite(Date.parse(result.started_at)));
+  assert.ok(Number.isFinite(Date.parse(result.completed_at)));
+  assert.equal(result.termination_reason, null);
+  assert.equal(result.success, true);
+  assert.equal(result.output.stdout, result.stdout);
+  assert.equal(result.output.bytes_captured, result.captured_bytes);
+  assert.equal(result.limits.timeout_ms, 1000);
   assert.equal(result.stdout_bytes, Buffer.byteLength(result.stdout));
   assert.equal(result.stderr_bytes, Buffer.byteLength(result.stderr));
 });
@@ -228,4 +236,97 @@ test('static provider runner rejects non-absolute executable paths before spawni
     run_static_provider({ manifest: manifest(), executable: 'node', args: [] }),
     /absolute filesystem path/,
   );
+});
+
+
+test('static provider runner restricts executable launch to the exact canonical allowlist', async () => {
+  const executable = await node_executable();
+  await assert.rejects(
+    run_static_provider({
+      manifest: manifest(),
+      executable,
+      allowed_executables: [],
+      args: [],
+    }),
+    /allowed_executables must contain/,
+  );
+  await assert.rejects(
+    run_static_provider({
+      manifest: manifest(),
+      executable,
+      allowed_executables: ['/definitely/not/the/node/executable'],
+      args: [],
+    }),
+    error => error.code === 'ORIX_PROVIDER_ALLOWLIST_UNAVAILABLE',
+  );
+});
+
+test('static provider runner confines its working directory to an explicit allowed root', async () => {
+  await with_directory(async allowed_root => {
+    const outside = await mkdtemp(path.join(tmpdir(), 'orix-cwd-outside-'));
+    try {
+      await assert.rejects(
+        run_static_provider({
+          manifest: manifest(),
+          executable: await node_executable(),
+          args: [],
+          cwd: outside,
+          allowed_working_directories: [allowed_root],
+        }),
+        error => error.code === 'ORIX_PROVIDER_CWD_DENIED',
+      );
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test('static provider runner rejects symlinks inside executable and working-directory allowlists', async context => {
+  if (process.platform === 'win32') {
+    context.skip('POSIX symlink semantics differ on Windows');
+    return;
+  }
+  await with_directory(async directory => {
+    const executable = await node_executable();
+    const executable_link = path.join(directory, 'node-allowlist-link');
+    const root_link = path.join(directory, 'cwd-allowlist-link');
+    const root_target = path.join(directory, 'cwd-allowlist-target');
+    await symlink(executable, executable_link);
+    await import('node:fs/promises').then(fs => fs.mkdir(root_target));
+    await symlink(root_target, root_link);
+    await assert.rejects(
+      run_static_provider({
+        manifest: manifest(),
+        executable,
+        allowed_executables: [executable_link],
+        args: [],
+      }),
+      error => error.code === 'ORIX_PROVIDER_ALLOWLIST_UNSAFE',
+    );
+    await assert.rejects(
+      run_static_provider({
+        manifest: manifest(),
+        executable,
+        args: [],
+        cwd: root_target,
+        allowed_working_directories: [root_link],
+      }),
+      error => error.code === 'ORIX_PROVIDER_CWD_ALLOWLIST_UNSAFE',
+    );
+  });
+});
+
+test('static provider runner rejects PATH and executable-loader environment overrides', async () => {
+  const executable = await node_executable();
+  for (const key of ['PATH', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES']) {
+    await assert.rejects(
+      run_static_provider({
+        manifest: manifest(),
+        executable,
+        args: [],
+        env: { [key]: 'attacker-controlled-value' },
+      }),
+      /enumerable string data properties with valid names/,
+    );
+  }
 });
