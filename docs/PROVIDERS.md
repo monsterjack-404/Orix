@@ -137,7 +137,7 @@ console.log(report.artifact.sha256);
 console.log(report.imports);
 ~~~
 
-The adapter report contract is defined in [rizin-imports.v1.schema.json](../schemas/rizin-imports.v1.schema.json). The adapter uses Rizin's `-N` no-user-settings option and `-q -c iij` command form. See the [Rizin CLI options](https://book.rizin.re/src/first_steps/commandline_options.html) and [Rizin command-line guide](https://book.rizin.re/src/first_steps/commandline_rizin.html). Rizin remains an optional external installation; ORIX does not bundle it or claim it was run when it is unavailable. The automated adapter tests use a deterministic executable fixture and do not substitute for verification against every supported upstream Rizin release.
+The adapter report contract is defined in [rizin-imports.v1.schema.json](../schemas/rizin-imports.v1.schema.json). The adapter uses Rizin's `-N` no-user-settings option and `-q -c iij` command form. See the [Rizin CLI options](https://book.rizin.re/src/first_steps/commandline_options.html) and [Rizin command-line guide](https://book.rizin.re/src/first_steps/commandline_rizin.html). Rizin remains an optional external installation; ORIX does not bundle it or claim it was run when it is unavailable. The upstream repository contains files under multiple licenses, including LGPL and GPL; the manifest therefore uses SPDX `NOASSERTION` rather than claiming one license covers the whole installation. The automated adapter tests use a deterministic executable fixture and do not substitute for verification against every supported upstream Rizin release.
 
 ### CLI
 
