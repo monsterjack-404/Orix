@@ -164,11 +164,21 @@ async function acquire_lock(ledger_path, options = {}) {
   if (!Number.isSafeInteger(wait_ms) || wait_ms < 0 || wait_ms > 60000) fail('ORIX_LEDGER_BAD_LOCK_LIMIT', 'lock_wait_ms must be between 0 and 60000');
   const started = Date.now();
   while (true) {
+    let created = false;
     try {
       await fs.mkdir(lock_path, { mode: 0o700 });
-      await fs.writeFile(path.join(lock_path, 'owner.json'), JSON.stringify({ pid: process.pid, token: randomUUID(), created_at: new Date().toISOString() }), { flag: 'wx', mode: 0o600 });
-      return async () => { await fs.rm(lock_path, { recursive: true, force: true }); };
+      created = true;
+      const token = randomUUID();
+      const owner_path = path.join(lock_path, 'owner.json');
+      await fs.writeFile(owner_path, JSON.stringify({ pid: process.pid, token, created_at: new Date().toISOString() }), { flag: 'wx', mode: 0o600 });
+      return async () => {
+        try {
+          const owner = JSON.parse(await fs.readFile(owner_path, 'utf8'));
+          if (owner.token === token) await fs.rm(lock_path, { recursive: true, force: true });
+        } catch {}
+      };
     } catch (error) {
+      if (created) await fs.rm(lock_path, { recursive: true, force: true }).catch(() => {});
       if (error.code !== 'EEXIST') fail('ORIX_LEDGER_LOCK_FAILED', 'Cannot acquire evidence-ledger append lock', { path: lock_path, reason: error.code }, error);
       if (Date.now() - started >= wait_ms) fail('ORIX_LEDGER_LOCK_TIMEOUT', 'Timed out waiting for evidence-ledger append lock', { path: lock_path, wait_ms });
       await new Promise(resolve => setTimeout(resolve, LOCK_RETRY_MS));
