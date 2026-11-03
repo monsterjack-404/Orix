@@ -41,7 +41,7 @@ Example static provider:
 
 The execution object describes declared side effects. Target execution, target writes, and network access require requires_authorization to be true. A static provider cannot declare those side effects. This is a policy validation rule, not proof that a third-party executable behaves as declared.
 
-Resource limits are mandatory declarations. They do not enforce a process timeout by themselves; a future process adapter must enforce them at the execution boundary.
+Resource limits are mandatory declarations. The static process runner enforces the declared timeout and output ceilings when invoked, but cannot enforce a provider's filesystem, network or child-process behavior.
 
 The license redistribution field distinguishes components that ORIX may bundle from separately installed or proprietary providers. This is metadata for review, not legal advice or a substitute for reading the upstream license.
 
@@ -95,10 +95,10 @@ The registry:
 - Returns deterministic ID-sorted results.
 - Keeps registered manifests immutable.
 - Produces an immutable metadata snapshot.
-- Does not probe, invoke, install, or switch providers.
+- Does not probe, install, or automatically switch providers. Invocation is a separate explicit API call.
 
 
-## Static process runner
+## 4. Static process runner
 
 The public `run_static_provider` API launches a provider through a validated absolute executable path and an argument vector. It uses `shell: false`, does not inherit the full parent environment, caps argument and environment sizes, bounds runtime and captured output, supports `AbortSignal` cancellation, and records exit/timeout/cancellation details.
 
@@ -120,7 +120,7 @@ if (!result.ok) {
 
 This runner is a process-control boundary, **not an operating-system sandbox**. It cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. POSIX process groups are signalled on timeout/cancellation; Windows currently signals the direct child and does not guarantee process-tree teardown. Do not run untrusted provider binaries on a sensitive host. Strong isolation requires an OS/container/VM policy supplied and verified separately.
 
-## Rizin import adapter
+## 5. Rizin import adapter
 
 `analyze_rizin_imports` is the first concrete optional adapter. It probes the installed Rizin version, invokes the documented command-line JSON import command, normalizes import name/library/binding/type/ordinal/PLT fields, hashes the input, and rejects an input whose identity or metadata changes during the run.
 
@@ -137,9 +137,9 @@ console.log(report.artifact.sha256);
 console.log(report.imports);
 ~~~
 
-The adapter uses Rizin's `-N` no-user-settings option and `-q -c iij` command form. See the [Rizin CLI options](https://book.rizin.re/src/first_steps/commandline_options.html) and [Rizin command-line guide](https://book.rizin.re/src/first_steps/commandline_rizin.html). Rizin remains an optional external installation; ORIX does not bundle it or claim it was run when it is unavailable. The automated adapter tests use a deterministic executable fixture and do not substitute for verification against every supported upstream Rizin release.
+The adapter report contract is defined in [rizin-imports.v1.schema.json](../schemas/rizin-imports.v1.schema.json). The adapter uses Rizin's `-N` no-user-settings option and `-q -c iij` command form. See the [Rizin CLI options](https://book.rizin.re/src/first_steps/commandline_options.html) and [Rizin command-line guide](https://book.rizin.re/src/first_steps/commandline_rizin.html). Rizin remains an optional external installation; ORIX does not bundle it or claim it was run when it is unavailable. The automated adapter tests use a deterministic executable fixture and do not substitute for verification against every supported upstream Rizin release.
 
-## 5. Runtime adapter requirements
+## 6. Runtime adapter requirements
 
 A provider is not an implemented analysis integration merely because its manifest validates or appears in the registry. Before an adapter can be advertised as operational, it must implement and test:
 
@@ -156,11 +156,11 @@ A provider is not an implemented analysis integration merely because its manifes
 
 Provider failure must remain visible. ORIX must not silently substitute another engine or imply that an unavailable provider ran.
 
-## 6. Security boundary
+## 7. Security boundary
 
 A manifest is untrusted input. It is descriptive metadata, not a signed identity, executable policy, sandbox, or authorization token. Provider installation and execution remain separate operations. Dynamic analysis must be explicitly scoped to systems the operator owns or is authorized to assess.
 
-## 7. Public API
+## 8. Public API
 
 - validate_provider_manifest(value) — validate an in-memory data object.
 - parse_provider_manifest_json(text, options) — parse bounded JSON text.
@@ -168,3 +168,6 @@ A manifest is untrusted input. It is descriptive metadata, not a signed identity
 - ProviderRegistry — register, query, snapshot, and unregister manifest metadata.
 - PROVIDER_CONTRACT_VERSION — current contract identifier.
 - DEFAULT_PROVIDER_MANIFEST_LIMIT — default 64 KiB input ceiling.
+- run_static_provider(options) — bounded shell-free process launch for a declared static provider.
+- analyze_rizin_imports(options) — Rizin CLI adapter returning an `orix.rizin-imports.v1` report.
+- RIZIN_PROVIDER_MANIFEST and RIZIN_ADAPTER_VERSION — Rizin integration metadata.
