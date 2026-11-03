@@ -25,6 +25,9 @@ export function parse_wasm(buffer, options = {}) {
   if (reader.ascii(0, 4, 'WebAssembly magic') !== '\0asm') throw new OrixError('ORIX_WASM_BAD_MAGIC', 'Input does not contain the WebAssembly magic', { recoverable: true });
   const version = reader.u32(4, true, 'WebAssembly version');
   const maximum_sections = options.max_sections ?? 4_096;
+  if (!Number.isSafeInteger(maximum_sections) || maximum_sections < 1 || maximum_sections > 65_535) {
+    throw new TypeError('max_sections must be an integer between 1 and 65535');
+  }
   const sections = [];
   let cursor = 8;
   while (cursor < buffer.length) {
