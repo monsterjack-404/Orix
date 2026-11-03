@@ -87,7 +87,7 @@ test('SARIF 2.1 export maps findings, severity, evidence byte ranges and artifac
   assert.equal(sarif.runs[0].tool.driver.semanticVersion, '0.5.0');
   assert.equal(sarif.runs[0].tool.driver.rules[0].id, 'ORIX-PE-WX-001');
   assert.equal(sarif.runs[0].results[0].level, 'error');
-  assert.equal(sarif.runs[0].results[0].locations[0].location.physicalLocation.region.byteOffset, 128);
+  assert.equal(sarif.runs[0].results[0].locations[0].physicalLocation.region.byteOffset, 128);
   assert.equal(sarif.runs[0].results[0].properties.artifact_sha256, 'c'.repeat(64));
   assert.match(sarif.runs[0].results[0].locations[0].location.physicalLocation.artifactLocation.uri, /^file:/);
 });
