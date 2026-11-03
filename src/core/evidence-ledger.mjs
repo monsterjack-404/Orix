@@ -28,9 +28,9 @@ function canonical_value(value, seen = new Set()) {
   let result;
   if (Array.isArray(value)) {
     const descriptors = Object.getOwnPropertyDescriptors(value);
-    const expected_indices = new Set(Array.from({ length: value.length }, (_, index) => String(index)));
     for (const key of Object.keys(descriptors)) {
-      if (key !== 'length' && !expected_indices.has(key)) {
+      if (key === 'length') continue;
+      if (!/^(?:0|[1-9][0-9]*)$/.test(key) || Number(key) >= value.length) {
         fail('ORIX_LEDGER_ARRAY_PROPERTY', 'Ledger arrays must not contain custom properties', { key });
       }
     }
