@@ -18,6 +18,7 @@
 - Provider runtime limits are enforced at the process boundary; the runner is not an OS sandbox and cannot enforce provider filesystem/network behavior.
 - Rizin input size, digest and before/after file identity are checked; the provider receives a byte-bounded private snapshot rather than the original file, and snapshot content is verified after execution.
 - Rizin analysis timeout spans hashing, bounded snapshot creation, version probe and import extraction.
+- Rizin adapter and doctor reject execution when the selected manifest excludes the current normalized runtime platform.
 - Provider stdout/stderr capture, argument/environment sizes and import result counts are bounded.
 
 ### Boundaries
