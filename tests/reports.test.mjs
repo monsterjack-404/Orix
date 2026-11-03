@@ -89,7 +89,7 @@ test('SARIF 2.1 export maps findings, severity, evidence byte ranges and artifac
   assert.equal(sarif.runs[0].results[0].level, 'error');
   assert.equal(sarif.runs[0].results[0].locations[0].physicalLocation.region.byteOffset, 128);
   assert.equal(sarif.runs[0].results[0].properties.artifact_sha256, 'c'.repeat(64));
-  assert.match(sarif.runs[0].results[0].locations[0].location.physicalLocation.artifactLocation.uri, /^file:/);
+  assert.match(sarif.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri, /^file:/);
 });
 
 test('SARIF export aggregates scan findings and rejects unsupported report kinds', async () => {
