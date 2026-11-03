@@ -32,6 +32,7 @@ The lockfile reader currently supports:
 - Cargo `Cargo.lock` versions 1 through 4, package sources, checksums and workspace/package dependency relationships.
 - Composer `composer.lock` runtime/development packages, package requirements, checksums and root manifest edges.
 - Poetry `poetry.lock` package groups, dependency requirements, package hashes and root edges derived from `pyproject.toml`.
+- Astral uv `uv.lock` workspace packages, registry/source identities, dependency constraints and package-to-package edges.
 - Pipenv `Pipfile.lock` resolved versions and hashes, matched to `Pipfile` root declarations. Pipfile.lock does not encode package-to-package edges, so ORIX explicitly marks that graph incomplete.
 - Go `go.sum` module checksums, matched against exact `go.mod` declarations where available.\n- Ruby `Gemfile.lock` specs, platforms, source metadata and dependency edges.\n- NuGet `packages.lock.json` direct/transitive package records, target-framework aggregation, content hashes and dependency edges.\n- Gradle `gradle.lockfile` module versions and configuration memberships. Gradle lockfiles do not encode package-to-package edges, so ORIX marks the graph incomplete.
 
@@ -41,7 +42,7 @@ Unresolved selectors and malformed records are surfaced as warnings rather than 
  
 ## CycloneDX export
 
-`--format cyclonedx` emits a CycloneDX 1.5 SBOM. When supported npm, Yarn, pnpm, Cargo, Composer or Poetry lockfiles are present, ORIX uses exact locked package versions and the observed dependency relationships. Without a supported lockfile, the export falls back to recognized declared dependencies and their manifest provenance.
+`--format cyclonedx` emits a CycloneDX 1.5 SBOM. When supported npm, Yarn, pnpm, Cargo, Composer, Poetry or uv lockfiles are present, ORIX uses exact locked package versions and the observed dependency relationships. Without a supported lockfile, the export falls back to recognized declared dependencies and their manifest provenance.
 
 Package URLs are emitted only for recognized ecosystems. Development dependencies are marked optional where that classification is available. Unknown ecosystems are omitted rather than assigned guessed package URLs. A lockfile graph is an inventory of recorded package metadata, not a vulnerability assessment, publisher-authenticity check or guarantee that the lockfile matches an installed tree.
 
