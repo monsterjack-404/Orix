@@ -8,7 +8,7 @@ import { MCP_PROTOCOL_VERSION } from '../src/mcp/server.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = relative => fs.readFile(path.join(root, relative), 'utf8');
-const [package_text, readme, cli, formats, indicators, roadmap, charter, matrix, mcp] = await Promise.all([
+const [package_text, readme, cli, formats, indicators, roadmap, charter, matrix, mcp, indicator_source] = await Promise.all([
   read('package.json'),
   read('README.md'),
   read('docs/CLI.md'),
@@ -18,6 +18,7 @@ const [package_text, readme, cli, formats, indicators, roadmap, charter, matrix,
   read('docs/PRODUCT_CHARTER.md'),
   read('docs/CAPABILITY_MATRIX.md'),
   read('docs/MCP.md'),
+  read('src/analyzer/indicators.mjs'),
 ]);
 const pkg = JSON.parse(package_text);
 const errors = [];
@@ -28,7 +29,8 @@ function check(label, action) {
 }
 
 check('README release marker', () => {
-  assert.match(readme, new RegExp('Current release line: \\\\*\\\\*' + pkg.version.replaceAll('.', '\\\\.') + ' —'));
+  assert.ok(readme.includes('Current release line: **' + pkg.version + ' —'),
+    'README release marker does not match package version ' + pkg.version);
 });
 check('CLI guide release marker', () => {
   assert.ok(cli.includes('ORIX ' + pkg.version), 'CLI guide does not mention package version ' + pkg.version);
@@ -39,6 +41,7 @@ check('Product charter discoverability', () => {
   assert.ok(readme.includes('[CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md)'));
   assert.ok(charter.includes('Definition of done'));
   assert.ok(matrix.includes('Priority order'));
+  assert.ok(roadmap.includes('P0 — Truth'));
 });
 check('MCP protocol documentation', () => {
   assert.ok(mcp.includes(MCP_PROTOCOL_VERSION), 'MCP docs must state implemented protocol ' + MCP_PROTOCOL_VERSION);
@@ -57,8 +60,9 @@ check('format table matches parser registry', () => {
   }
 });
 check('indicator catalogue covers source rules', () => {
-  const source = await fs.readFile(path.join(root, 'src/analyzer/indicators.mjs'), 'utf8');
-  const rule_ids = [...source.matchAll(/make_indicator\(\s*['"]([^'"]+)['"]/g)].map(match => match[1]);
+  const inline_rules = [...indicator_source.matchAll(/make_indicator\(\s*['"]([^'"]+)['"]/g)].map(match => match[1]);
+  const grouped_rules = [...indicator_source.matchAll(/rule_id:\s*['"]([^'"]+)['"]/g)].map(match => match[1]);
+  const rule_ids = [...new Set([...inline_rules, ...grouped_rules])];
   assert.ok(rule_ids.length > 0, 'no source indicator rules found');
   for (const rule_id of rule_ids) assert.ok(indicators.includes(rule_id), 'missing indicator documentation: ' + rule_id);
 });
