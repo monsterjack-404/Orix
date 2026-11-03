@@ -9,6 +9,7 @@ function validate_report(report) {
 
 function cell(value) {
   return String(value ?? '')
+    .replace(/\\/g, '\\\\')
     .replace(/&/g, '&amp;')
     .replace(/\|/g, '\\|')
     .replace(/[\r\n]+/g, ' ')
