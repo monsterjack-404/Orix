@@ -278,3 +278,24 @@ test('CLI validates read-prefix limits against default and overridden file limit
   );
   assert.equal(parse_arguments(['inspect', 'sample.bin', '--max-file-mib', '1']).flags.max_file_bytes, 1024 * 1024);
 });
+
+
+test('CLI emits SARIF for project source findings without exporting matched values', async () => {
+  await with_temp_dir(async directory => {
+    const source = path.join(directory, 'src');
+    await mkdir(source);
+    const secret = 'this-is-a-local-fixture-token-12345';
+    await writeFile(path.join(source, 'config.js'), 'const api_key = "' + secret + '";\\n');
+    const cli = spawnSync(process.execPath, ['src/cli.mjs', 'project', directory, '--format', 'sarif'], {
+      encoding: 'utf8',
+      cwd: path.resolve('.'),
+    });
+    assert.equal(cli.status, 0, cli.stderr);
+    const sarif = JSON.parse(cli.stdout);
+    assert.equal(sarif.version, '2.1.0');
+    assert.equal(sarif.runs[0].results.length, 1);
+    assert.equal(sarif.runs[0].results[0].ruleId, 'ORIX-PROJECT-SECRET-GENERIC-001');
+    assert.equal(sarif.runs[0].results[0].locations[0].location.physicalLocation.region.startLine, 1);
+    assert.equal(JSON.stringify(sarif).includes(secret), false);
+  });
+});
