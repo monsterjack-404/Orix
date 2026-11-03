@@ -100,3 +100,16 @@ test('SARIF export aggregates scan findings and rejects unsupported report kinds
   assert.equal(sarif.runs[0].results.length, 2);
   assert.throws(() => render_sarif({ schema_version: 'orix.project.v1' }), /supports artifact and directory-scan/);
 });
+
+
+test('Markdown reports contain untrusted backticks and multiline error text safely', () => {
+  const report = inspection_report();
+  const tick = String.fromCharCode(96);
+  report.artifact.name = 'evil' + tick + 'name.bin';
+  report.artifact.path = '/tmp/evil' + tick + 'path.bin';
+  report.metrics.strings.values[0].value = 'token' + tick + 'value|tail';
+  report.parser.result = { value: 'untrusted ' + tick.repeat(3) + ' marker' };
+  const markdown = render_inspection_markdown(report);
+  assert.ok(markdown.includes(tick.repeat(2) + 'evil' + tick + 'name.bin' + tick.repeat(2)));
+  assert.ok(markdown.includes('untrusted ' + tick.repeat(3) + ' marker'));
+});
