@@ -47,10 +47,24 @@ function validate_arguments(value) {
   if (!Array.isArray(value) || value.length > MAX_ARGUMENTS) {
     throw new TypeError('args must be an array with at most ' + MAX_ARGUMENTS + ' strings');
   }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string' || key === 'length' ||
+        !/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= value.length) {
+      throw new TypeError('args must not contain custom array properties');
+    }
+    const descriptor = descriptors[key];
+    if (!descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) {
+      throw new TypeError('args must contain enumerable data elements only');
+    }
+  }
   let total = 0;
   const result = [];
-  for (const [index, argument] of value.entries()) {
-    if (typeof argument !== 'string' || argument.includes('\0')) {
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = descriptors[String(index)];
+    if (!descriptor) throw new TypeError('args must not be sparse');
+    const argument = descriptor.value;
+    if (typeof argument !== 'string' || argument.includes('\\0')) {
       throw new TypeError('args[' + index + '] must be a string without NUL bytes');
     }
     const bytes = Buffer.byteLength(argument, 'utf8');
@@ -116,8 +130,16 @@ async function validate_executable(value) {
       path: value,
     });
   }
-  const canonical = await realpath(value);
-  const canonical_details = await stat(canonical);
+  let canonical;
+  let canonical_details;
+  try {
+    canonical = await realpath(value);
+    canonical_details = await stat(canonical);
+  } catch (error) {
+    runner_error('ORIX_PROVIDER_EXECUTABLE_UNAVAILABLE', 'Provider executable could not be resolved', {
+      path: value, reason: error.code ?? 'filesystem-error',
+    });
+  }
   if (!canonical_details.isFile()) {
     runner_error('ORIX_PROVIDER_EXECUTABLE_NOT_REGULAR', 'Resolved provider executable is not a regular file', {
       path: canonical,
@@ -155,7 +177,12 @@ async function validate_working_directory(value) {
       path: value,
     });
   }
-  return realpath(value);
+  try { return await realpath(value); }
+  catch (error) {
+    runner_error('ORIX_PROVIDER_CWD_UNAVAILABLE', 'Provider working directory could not be resolved', {
+      path: value, reason: error.code ?? 'filesystem-error',
+    });
+  }
 }
 
 function validate_runtime_limits(manifest, options) {
