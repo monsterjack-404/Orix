@@ -27,7 +27,9 @@
     "./project/lockfiles": "./src/project/lockfiles.mjs",
     "./project/git-metadata": "./src/project/git-metadata.mjs",
     "./providers/manifest": "./src/providers/manifest.mjs",
-    "./providers/registry": "./src/providers/registry.mjs"
+    "./providers/registry": "./src/providers/registry.mjs",
+    "./providers/process-runner": "./src/providers/process-runner.mjs",
+    "./providers/rizin": "./src/providers/rizin.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
