@@ -93,6 +93,70 @@ function provider_import(report, item, index) {
   };
 }
 
+function wasm_symbols(report, base_record) {
+  const parsed = report.parser?.result;
+  if (report.detection?.format !== 'WebAssembly' || parsed?.format !== 'WebAssembly') return [];
+  const records = [];
+  const names = new Map((Array.isArray(parsed.function_names) ? parsed.function_names : [])
+    .filter(item => Number.isSafeInteger(item?.index) && typeof item.name === 'string')
+    .map(item => [item.index, item.name]));
+  let function_index = 0;
+  for (const item of Array.isArray(parsed.imports) ? parsed.imports : []) {
+    if (!item || typeof item !== 'object') continue;
+    if (item.kind === 'function') {
+      const resolved_name = names.get(function_index);
+      records.push({
+        id: base_record.id + ':wasm-import:' + function_index,
+        kind: 'wasm-symbol',
+        path: base_record.path,
+        name: resolved_name || item.module + '.' + item.name,
+        library: item.module,
+        format: 'WebAssembly import',
+        size_bytes: 0,
+        sha256: base_record.sha256,
+        parser_status: 'indexed',
+        findings: [],
+        raw: { symbol_kind: 'import', function_index, import: item, resolved_name: resolved_name ?? null },
+      });
+      function_index += 1;
+    }
+  }
+  for (const item of Array.isArray(parsed.exports) ? parsed.exports : []) {
+    if (!item || typeof item !== 'object') continue;
+    const resolved_name = item.kind === 'function' ? names.get(item.index) : null;
+    records.push({
+      id: base_record.id + ':wasm-export:' + item.kind + ':' + item.index + ':' + item.name,
+      kind: 'wasm-symbol',
+      path: base_record.path,
+      name: resolved_name || item.name,
+      library: item.kind,
+      format: 'WebAssembly export',
+      size_bytes: 0,
+      sha256: base_record.sha256,
+      parser_status: 'indexed',
+      findings: [],
+      raw: { symbol_kind: 'export', export: item, resolved_name: resolved_name ?? null },
+    });
+  }
+  for (const item of Array.isArray(parsed.function_names) ? parsed.function_names : []) {
+    if (!item || !Number.isSafeInteger(item.index) || typeof item.name !== 'string') continue;
+    records.push({
+      id: base_record.id + ':wasm-function:' + item.index,
+      kind: 'wasm-symbol',
+      path: base_record.path,
+      name: item.name,
+      library: 'function #' + item.index,
+      format: 'WebAssembly function',
+      size_bytes: 0,
+      sha256: base_record.sha256,
+      parser_status: 'indexed',
+      findings: [],
+      raw: { symbol_kind: 'function-name', function: item },
+    });
+  }
+  return records;
+}
+
 function summarize(records, report, kind) {
   const formats = new Map();
   const severity = new Map(severities.map(value => [value, 0]));
@@ -128,7 +192,8 @@ export function build_report_view(report) {
   let records;
   if (report.schema_version === 'orix.artifact.v1') {
     kind = 'artifact';
-    records = [artifact(report, 0)];
+    const base_record = artifact(report, 0);
+    records = [base_record, ...wasm_symbols(report, base_record)];
     root = report.artifact.path;
   } else if (report.schema_version === 'orix.scan.v1') {
     kind = 'scan';
