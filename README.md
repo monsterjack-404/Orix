@@ -31,7 +31,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Evidence model | Stable report evidence plus append-only SHA-256 chained JSONL ledger, verify/list commands and append receipts | Not a signature, trusted timestamp or external transparency log |
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
 | MCP integration | Local stdio JSON-RPC server with eight typed tools for inspect, scan, project, formats, comparison and evidence ledger | No HTTP listener, remote auth, resource subscription or prompt catalog |
-| Provider integrations | Declarative manifests, immutable registry, bounded shell-free process runner, optional Rizin static-import adapter, provider discovery/list CLI and JSON/Markdown reports | No OS sandbox, dynamic execution provider, installer, daemon or automatic provider discovery |
+| Provider integrations | Declarative manifests, immutable registry, bounded shell-free process runner, Rizin version doctor, snapshot-isolated static-import adapter, provider discovery/list CLI and JSON/Markdown reports | No OS sandbox, dynamic execution provider, installer, daemon or automatic provider discovery |
 
 | Reports | JSON, Markdown, SARIF 2.1.0 for artifact, directory-scan and source-project findings, report comparison and CycloneDX 1.5 SBOM | No hosted dashboard or relational database |
 
@@ -85,6 +85,7 @@ node src/cli.mjs formats
 
 # List optional providers and invoke Rizin static import extraction
 node src/cli.mjs providers list --json
+node src/cli.mjs providers rizin doctor --executable /usr/bin/rizin --json
 node src/cli.mjs providers rizin imports ./sample.elf --executable /usr/bin/rizin --json --timeout-ms 30000 --max-output-kib 4096 --max-imports 100000
 
 # Start local MCP stdio server
@@ -103,7 +104,7 @@ node src/cli.mjs ledger verify ./.orix/evidence.jsonl
 
 ## Local report explorer
 
-Open saved artifact, directory-scan and project JSON reports in ORIX's browser-local viewer. It includes inventory search, severity/format filters, summary charts, record details and findings CSV export. Report contents stay in the browser.
+Open saved artifact, directory-scan, project, Rizin-import and provider-diagnostic JSON reports in ORIX's browser-local viewer. It includes inventory search, severity/format filters, summary charts, record details and CSV export for findings and imported symbols. Report contents stay in the browser.
 
 ```bash
 npm run web
