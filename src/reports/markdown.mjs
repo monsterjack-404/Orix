@@ -34,7 +34,7 @@ export function render_inspection_markdown(report) {
     `- **Path:** ${code_span(report.artifact.path)}`,
     `- **Size:** ${byte_size(report.artifact.size_bytes)}`,
     `- **Format:** ${report.detection.format} (${report.detection.confidence})`,
-    `- **SHA-256:** \`${report.integrity.digest}\``,
+    `- **SHA-256:** ${code_span(report.integrity.digest)}`,
     `- **Stable during read:** ${report.integrity.stable_during_read ? 'yes' : 'no'}`,
     '', '## Parser result', '',
   ];
@@ -57,7 +57,7 @@ export function render_inspection_markdown(report) {
   }
   lines.push('', '## Extracted strings', '',
     '| Offset | Encoding | Length | Value |', '|---:|---|---:|---|');
-  for (const item of report.metrics.strings.values) lines.push(`| ${item.offset} | ${item.encoding} | ${item.length} | ${escape_cell(item.value)} |`);
+  for (const item of report.metrics.strings.values) lines.push(`| ${item.offset} | ${item.encoding} | ${item.length} | ${code_span(item.value)} |`);
   lines.push('', '## Evidence', '', '| ID | Kind | Confidence | Offset | Summary |', '|---|---|---|---:|---|');
   for (const evidence of report.evidence) lines.push(`| ${evidence.id} | ${evidence.kind} | ${evidence.confidence} | ${evidence.offset ?? '—'} | ${escape_cell(evidence.summary)} |`);
   if (report.warnings.length) lines.push('', '## Warnings', '', ...report.warnings.map(value => `- ${escape_cell(value)}`));
@@ -80,20 +80,20 @@ export function render_scan_markdown(report) {
   for (const [format, count] of Object.entries(report.scan.formats)) lines.push(`| ${format} | ${count} |`);
   lines.push('', '## Artifacts', '', '| File | Format | Size | SHA-256 | Parser |', '|---|---|---:|---|---|');
   for (const artifact of report.artifacts) {
-    lines.push(`| \`${escape_cell(artifact.artifact.path)}\` | ${artifact.detection.format} | ${byte_size(artifact.artifact.size_bytes)} | \`${artifact.integrity.digest}\` | ${artifact.parser.status} |`);
+    lines.push(`| ${code_span(artifact.artifact.path)} | ${artifact.detection.format} | ${byte_size(artifact.artifact.size_bytes)} | ${code_span(artifact.integrity.digest)} | ${artifact.parser.status} |`);
   }
   const indicators = report.artifacts.flatMap(artifact => (artifact.indicators ?? []).map(indicator => ({ path: artifact.artifact.path, ...indicator })));
   if (indicators.length) {
     lines.push('', '## Static indicators', '', '| Severity | Rule | File | Finding |', '|---|---|---|---|');
-    for (const indicator of indicators) lines.push(`| ${indicator.severity} | ${indicator.rule_id} | \`${escape_cell(indicator.path)}\` | ${escape_cell(indicator.summary)} |`);
+    for (const indicator of indicators) lines.push(`| ${indicator.severity} | ${indicator.rule_id} | ${code_span(indicator.path)} | ${escape_cell(indicator.summary)} |`);
   }
   if (report.errors.length) {
     lines.push('', '## File errors', '');
-    for (const item of report.errors) lines.push(`- \`${item.path}\`: ${item.error.code} — ${item.error.message}`);
+    for (const item of report.errors) lines.push(`- ${code_span(item.path)}: ${item.error.code} — ${escape_cell(item.error.message)}`);
   }
   if (report.inventory_skips.length) {
     lines.push('', '## Inventory skips', '');
-    for (const item of report.inventory_skips) lines.push(`- \`${item.path}\`: ${item.reason}`);
+    for (const item of report.inventory_skips) lines.push(`- ${code_span(item.path)}: ${escape_cell(item.reason)}`);
   }
   lines.push('', '## Coverage', '', `- Directories examined: ${report.scan.coverage.directories_examined}`, `- Inventory truncated: ${report.scan.coverage.truncated ? 'yes' : 'no'}`, '', ...report.limitations.map(item => `- ${item}`), '');
   return lines.join('\n');
