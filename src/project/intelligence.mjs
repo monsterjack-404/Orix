@@ -8,7 +8,7 @@ import { scan_git_metadata } from './git-metadata.mjs';
 const DEFAULTS={max_files:50000,max_entries:200000,max_depth:24,max_file_bytes:1048576,max_total_bytes:134217728,max_symbols_per_file:100,max_imports_per_file:200,max_lockfile_packages:100000,max_lockfile_edges:500000,max_git_refs:5000,max_git_ref_depth:24,max_git_metadata_bytes:4194304,max_git_object_bytes:2097152,max_git_pack_files:1000,include_hidden:false};
 const IGNORED=new Set(['.git','.hg','.svn','node_modules','vendor','dist','build','coverage','.next','.nuxt','.turbo','.cache','.venv','venv','__pycache__','target','bin','obj']);
 const EXT={'.js':'JavaScript','.mjs':'JavaScript','.cjs':'JavaScript','.jsx':'JavaScript','.ts':'TypeScript','.tsx':'TypeScript','.py':'Python','.go':'Go','.rs':'Rust','.c':'C','.h':'C/C++','.cc':'C++','.cpp':'C++','.hpp':'C++','.java':'Java','.kt':'Kotlin','.swift':'Swift','.cs':'C#','.php':'PHP','.rb':'Ruby','.sh':'Shell','.sql':'SQL','.html':'HTML','.css':'CSS','.xml':'XML','.yaml':'YAML','.yml':'YAML','.toml':'TOML','.json':'JSON','.md':'Markdown','.mdx':'MDX','.vue':'Vue','.svelte':'Svelte'};
-const LOCKFILES=new Set(['package-lock.json','yarn.lock','Cargo.lock','pnpm-lock.yaml','composer.lock','poetry.lock','Pipfile.lock','go.sum','packages.lock.json','gradle.lockfile','Gemfile.lock','packages.lock.json','gradle.lockfile']);
+const LOCKFILES=new Set(['package-lock.json','yarn.lock','Cargo.lock','pnpm-lock.yaml','composer.lock','poetry.lock','Pipfile.lock','uv.lock','go.sum','packages.lock.json','gradle.lockfile','Gemfile.lock']);
 const LOCKFILE_FAILURE_IDENTITIES = Object.freeze({
  'package-lock.json': { ecosystem: 'npm', format: 'npm-package-lock' },
  'yarn.lock': { ecosystem: 'npm', format: 'yarn-lock' },
@@ -17,6 +17,7 @@ const LOCKFILE_FAILURE_IDENTITIES = Object.freeze({
  'composer.lock': { ecosystem: 'composer', format: 'composer-lock' },
  'poetry.lock': { ecosystem: 'python', format: 'poetry-lock' },
  'Pipfile.lock': { ecosystem: 'python', format: 'pipfile-lock' },
+ 'uv.lock': { ecosystem: 'python', format: 'uv-lock' },
  'go.sum': { ecosystem: 'go', format: 'go-sum' },
  'Gemfile.lock': { ecosystem: 'rubygems', format: 'gemfile-lock' },
  'packages.lock.json': { ecosystem: 'nuget', format: 'nuget-packages-lock' },
