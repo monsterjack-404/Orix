@@ -228,10 +228,12 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       if (args.max_depth !== undefined) limits.max_depth = args.max_depth;
       const target = await resolve_workspace_path(args.path, roots, { kind: 'directory' });
       const project = await scan_project(target.path, limits);
+      // Keep default MCP graph results comfortably below the 2 MiB transport
+      // result ceiling. Callers can raise these ceilings explicitly when needed.
       return analyze_project_architecture(project, {
-        max_nodes: args.max_nodes,
-        max_edges: args.max_edges,
-        max_hotspots: args.max_hotspots,
+        max_nodes: args.max_nodes ?? 4000,
+        max_edges: args.max_edges ?? 8000,
+        max_hotspots: args.max_hotspots ?? 25,
       });
     }
     case 'orix.formats':
