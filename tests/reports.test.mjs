@@ -84,6 +84,7 @@ test('SARIF 2.1 export maps findings, severity, evidence byte ranges and artifac
   const sarif = JSON.parse(render_sarif(report));
   assert.equal(sarif.version, '2.1.0');
   assert.equal(sarif.runs[0].tool.driver.name, 'ORIX');
+  assert.equal(sarif.runs[0].tool.driver.semanticVersion, '0.5.0');
   assert.equal(sarif.runs[0].tool.driver.rules[0].id, 'ORIX-PE-WX-001');
   assert.equal(sarif.runs[0].results[0].level, 'error');
   assert.equal(sarif.runs[0].results[0].locations[0].location.physicalLocation.region.byteOffset, 128);
