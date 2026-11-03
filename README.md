@@ -104,7 +104,7 @@ node src/cli.mjs ledger verify ./.orix/evidence.jsonl
 
 ## Local report explorer
 
-Open saved artifact, directory-scan, project, Rizin-import and provider-diagnostic JSON reports in ORIX's browser-local viewer. It includes inventory search, severity/format filters, summary charts, record details and CSV export for findings and imported symbols. Report contents stay in the browser.
+Open saved artifact, directory-scan, project, Rizin-import, WebAssembly-symbol and provider-diagnostic JSON reports in ORIX's browser-local viewer. It includes inventory search, severity/format filters, summary charts, record details and CSV export for findings, imported symbols and WebAssembly names. Report contents stay in the browser.
 
 ```bash
 npm run web
