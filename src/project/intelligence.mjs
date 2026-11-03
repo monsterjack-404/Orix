@@ -34,10 +34,34 @@ const unique=values=>[...new Set(values)].sort((a,b)=>String(a).localeCompare(St
 const digest=value=>createHash('sha256').update(value).digest('hex');
 function get_limits(input){const source=input.limits??input,result={...DEFAULTS};for(const key of Object.keys(DEFAULTS)){if(key==='include_hidden'){if(typeof source[key]==='boolean')result[key]=source[key];continue;}if(source[key]===undefined)continue;const value=Number(source[key]);if(!Number.isSafeInteger(value)||value<0)throw new TypeError('Invalid project limit: '+key);result[key]=Math.min(value,DEFAULTS[key]);}return result;}
 function add_dep(out,name,version,ecosystem,kind='runtime'){const clean=String(name??'').trim();if(clean&&clean.length<=256)out.push({name:clean,version:String(version??'*').slice(0,160),ecosystem,dependency_type:kind});}
+function manifest_entries(data, field, warnings) {
+ const value=data[field];
+ if(value===undefined)return [];
+ if(!value||typeof value!=='object'||Array.isArray(value)){
+  warnings.push(field+' must be an object; invalid declarations were ignored.');
+  return [];
+ }
+ return Object.entries(value);
+}
 function parse_manifest(file,text){
  const base=path.posix.basename(file),dependencies=[],scripts=[],warnings=[];let ecosystem=null,name=null,version=null;
  try{
-  if(base==='package.json'||base==='composer.json'){const data=JSON.parse(text);ecosystem=base==='package.json'?'npm':'composer';name=data.name??null;version=data.version??null;const fields=base==='package.json'?['dependencies','devDependencies','peerDependencies','optionalDependencies']:['require','require-dev'];for(const field of fields)for(const [dep,v]of Object.entries(data[field]??{}))add_dep(dependencies,dep,v,ecosystem,field);if(base==='package.json')for(const [key,command]of Object.entries(data.scripts??{}))scripts.push({name:key,command:String(command).slice(0,500)});}
+  if(base==='package.json'||base==='composer.json'){
+   const data=JSON.parse(text);
+   if(!data||typeof data!=='object'||Array.isArray(data))throw new TypeError('Manifest root must be a JSON object');
+   ecosystem=base==='package.json'?'npm':'composer';
+   name=typeof data.name==='string'?data.name:null;
+   version=typeof data.version==='string'?data.version:null;
+   const fields=base==='package.json'?['dependencies','devDependencies','peerDependencies','optionalDependencies']:['require','require-dev'];
+   for(const field of fields)for(const [dep,value]of manifest_entries(data,field,warnings)){
+    if(typeof value!=='string'){warnings.push(field+' entry '+dep+' must be a version string; declaration was ignored.');continue;}
+    add_dep(dependencies,dep,value,ecosystem,field);
+   }
+   if(base==='package.json')for(const [key,command]of manifest_entries(data,'scripts',warnings)){
+    if(typeof command!=='string'){warnings.push('scripts entry '+key+' must be a string; script metadata was ignored.');continue;}
+    scripts.push({name:key,command:command.slice(0,500)});
+   }
+  }
   else if(base==='requirements.txt'){ecosystem='pip';for(const line of text.split(/\r?\n/)){const value=line.trim();if(!value||value.startsWith('#')||value.startsWith('-'))continue;const m=/^([A-Za-z0-9_.-]+)\s*(?:==|~=|>=|<=|!=|>|<)\s*([A-Za-z0-9_.+!-]+)/.exec(value);if(m)add_dep(dependencies,m[1],m[2],ecosystem);else if(/^[A-Za-z0-9_.-]+$/.test(value))add_dep(dependencies,value,'*',ecosystem);}}
   else if(base==='go.mod'){ecosystem='go';name=/^module\s+(\S+)/m.exec(text)?.[1]??null;let block=false;for(const line of text.split(/\r?\n/)){const value=line.trim();if(/^require\s*\($/.test(value)){block=true;continue;}if(block&&value===')'){block=false;continue;}const m=/^(?:require\s+)?([A-Za-z0-9._~/-]+)\s+(v[0-9][A-Za-z0-9.+-]*)/.exec(value);if(m)add_dep(dependencies,m[1],m[2],ecosystem);}}
   else if(base==='Cargo.toml'){ecosystem='cargo';let section='';for(const line of text.split(/\r?\n/)){const h=/^\s*\[([^\]]+)\]\s*$/.exec(line);if(h){section=h[1];continue;}if(!['dependencies','dev-dependencies','build-dependencies'].includes(section))continue;const m=/^\s*([A-Za-z0-9_-]+)\s*=\s*(?:["']([^"']+)["']|\{[^}]*version\s*=\s*["']([^"']+)["'])/.exec(line);if(m)add_dep(dependencies,m[1],m[2]??m[3],ecosystem,section);}name=/^name\s*=\s*["']([^"']+)["']/m.exec(text)?.[1]??null;version=/^version\s*=\s*["']([^"']+)["']/m.exec(text)?.[1]??null;}
