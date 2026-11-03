@@ -13,7 +13,7 @@ ORIX distinguishes **signature recognition**, **structural parsing**, **semantic
 | WebAssembly | Yes | Yes | Version, bounded section framing/order, strict UTF-8 names, types, imports, exports, function/type indices, start function, code-body ranges and standard name-section maps | Instruction decoding, stack/type validation, control-flow analysis, global initializers, full table/memory/data/element semantics, DWARF and decompilation |
 | ZIP | Yes | Yes | EOCD, ZIP64 EOCD/locator, central directory, ZIP64 per-entry sizes/offsets, path/symlink flags, local data ranges and encryption metadata | Multi-disk archives, bounded decompression/extraction and CRC verification |
 | PDF | Yes | Yes | PDF 1.x header, classic xref tables, trailer metadata, incremental /Prev chain, indirect-object framing, encryption and active-content lexical triage | Xref-stream entries, object streams, filters/decompression, page-tree semantics, attachment extraction and digital-signature verification |
-| PNG | Yes | No | Eight-byte PNG signature | Chunk validation, metadata and decoding |
+| PNG | Yes | Yes | Signature, IHDR fields, chunk boundaries/order, PLTE/tRNS constraints, IDAT sequence, IEND and bounded CRC validation | IDAT inflation, scanline/pixel decoding, color management and full ancillary-chunk semantics |
 | JPEG | Yes | No | JPEG SOI marker | Marker/segment parser and metadata |
 | SQLite | Yes | No | Sixteen-byte database signature | Page layout, schema, WAL and freelist parsing |
 | GZIP | Yes | No | GZIP magic | Header flags, bounded decompression and trailer validation |
@@ -45,6 +45,10 @@ Universal Mach-O parses FAT/FAT64 architecture tables, rejects overlapping or ou
 ### WebAssembly
 
 The parser validates the versioned preamble and standard section ordering, bounded unsigned LEB128 payload lengths, section boundaries, UTF-8 names, function types, imports, exports, type/function references, start-function indices, code-body framing and standard name custom-section maps. It reports code-body byte ranges but does not decode guest instructions or prove full module validity. See [WASM Analysis](WASM_ANALYSIS.md) for exact fields, ceilings and exclusions.
+
+### PNG
+
+The parser indexes PNG chunks without inflating or decoding image pixels. It validates the eight-byte signature, first/unique IHDR placement, non-zero dimensions, legal bit-depth/color-type combinations, supported compression/filter/interlace method values, chunk type letters and reserved bit, chunk boundaries, PLTE and tRNS constraints, consecutive IDAT chunks, required IEND placement and CRC values within a configurable work budget. It reports unknown critical chunks and CRCs skipped after the budget is exhausted. Chunk offsets and lengths are retained for independent inspection. It does not inflate IDAT, decode scanlines, validate pixel filters, apply color profiles or claim that an image is fully renderable.
 
 ### ZIP
 

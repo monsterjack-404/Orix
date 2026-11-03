@@ -40,7 +40,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | WebAssembly parser | Partial | Bounded section framing, types, imports, exports, references, code-body ranges and name section | Instruction decoding, validation, control flow, debug info and component model |
 | ZIP parser | Partial | EOCD/ZIP64, entries, paths, flags, local ranges | Safe bounded decompression, CRC verification, multi-disk support |
 | PDF parser | Partial | Classic xref tables, trailers, /Prev, object framing and active-content lexical markers | Xref/object streams, filters, page tree, attachments and signature verification |
-| PNG | Signature only | Eight-byte signature recognition | Chunk structure and metadata parser |
+| PNG | Partial | Bounded chunk structure, IHDR, ordering, palette/transparency constraints and CRC budget | IDAT decompression, scanline and pixel decoding, color management |
 | JPEG | Signature only | SOI recognition | Marker/segment parser |
 | SQLite | Signature only | Database signature recognition | Page/schema/WAL parser |
 | GZIP | Signature only | Magic recognition | Header/trailer and bounded decompression |
