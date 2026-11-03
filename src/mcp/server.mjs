@@ -109,7 +109,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
       type: 'object',
       properties: {
         path: { type: 'string', minLength: 1 },
-        type: { type: 'string', minLength: 2, maxLength: 80, pattern: '^[a-z][a-z0-9_.-]{1,79}
+        type: { type: 'string', minLength: 2, maxLength: 80, pattern: '^[a-z][a-z0-9_.-]{1,79}$' },
         payload: { type: 'object' },
       },
       required: ['path', 'type', 'payload'],
