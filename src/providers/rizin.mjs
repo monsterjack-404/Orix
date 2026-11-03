@@ -175,6 +175,16 @@ export async function analyze_rizin_imports(options = {}) {
   const input_path = descriptors.input_path?.value;
   validate_input_path(input_path);
   const maximum_bytes = manifest.limits.max_input_bytes;
+  const timeout_ms = descriptors.timeout_ms?.value ?? manifest.limits.timeout_ms;
+  const max_output_bytes = descriptors.max_output_bytes?.value ?? manifest.limits.max_output_bytes;
+  if (!Number.isSafeInteger(timeout_ms) || timeout_ms < 1 || timeout_ms > manifest.limits.timeout_ms) {
+    throw new TypeError('timeout_ms must be between 1 and the provider manifest timeout limit');
+  }
+  if (!Number.isSafeInteger(max_output_bytes) || max_output_bytes < 1 ||
+      max_output_bytes > manifest.limits.max_output_bytes) {
+    throw new TypeError('max_output_bytes must be between 1 and the provider manifest output limit');
+  }
+  const analysis_started_at = Date.now();
   const before = await file_snapshot(input_path, maximum_bytes);
   const maximum_imports = descriptors.max_imports?.value ?? 100_000;
   if (!Number.isSafeInteger(maximum_imports) || maximum_imports < 0 || maximum_imports > 1_000_000) {
@@ -191,8 +201,8 @@ export async function analyze_rizin_imports(options = {}) {
     executable: descriptors.executable?.value,
     cwd: descriptors.cwd?.value,
     env: descriptors.env?.value,
-    timeout_ms: descriptors.timeout_ms?.value,
-    max_output_bytes: descriptors.max_output_bytes?.value,
+    timeout_ms,
+    max_output_bytes,
     signal: descriptors.signal?.value,
   };
 
@@ -202,7 +212,10 @@ export async function analyze_rizin_imports(options = {}) {
     max_output_bytes: Math.min(common.max_output_bytes ?? manifest.limits.max_output_bytes, 16_384),
   });
   if (!version_result.ok) {
-    provider_error('ORIX_RIZIN_VERSION_FAILED', 'Rizin version probe failed', {
+    const code = version_result.cancelled
+      ? 'ORIX_RIZIN_CANCELLED'
+      : version_result.timed_out ? 'ORIX_RIZIN_TIMEOUT' : 'ORIX_RIZIN_VERSION_FAILED';
+    provider_error(code, 'Rizin version probe did not complete successfully', {
       exit_code: version_result.exit_code,
       timed_out: version_result.timed_out,
       cancelled: version_result.cancelled,
@@ -210,13 +223,23 @@ export async function analyze_rizin_imports(options = {}) {
     });
   }
   const engine_version = parse_engine_version(version_result.stdout);
+  const remaining_timeout_ms = timeout_ms - (Date.now() - analysis_started_at);
+  if (remaining_timeout_ms < 1) {
+    provider_error('ORIX_RIZIN_TIMEOUT', 'Rizin analysis exceeded the total provider deadline', {
+      timeout_ms,
+    });
+  }
 
   const import_result = await run_static_provider({
     ...common,
+    timeout_ms: remaining_timeout_ms,
     args: ['-N', '-q', '-c', 'iij', before.canonical_path],
   });
   if (!import_result.ok) {
-    provider_error('ORIX_RIZIN_IMPORT_FAILED', 'Rizin import extraction did not complete successfully', {
+    const code = import_result.cancelled
+      ? 'ORIX_RIZIN_CANCELLED'
+      : import_result.timed_out ? 'ORIX_RIZIN_TIMEOUT' : 'ORIX_RIZIN_IMPORT_FAILED';
+    provider_error(code, 'Rizin import extraction did not complete successfully', {
       exit_code: import_result.exit_code,
       timed_out: import_result.timed_out,
       cancelled: import_result.cancelled,
