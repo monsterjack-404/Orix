@@ -2,6 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
+import path from 'node:path';
 import { lstat, realpath, stat } from 'node:fs/promises';
 import { OrixError } from '../core/errors.mjs';
 import { validate_provider_manifest } from './manifest.mjs';
