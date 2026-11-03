@@ -156,9 +156,9 @@ test('WebAssembly parser indexes table, shared-memory, global and tag imports', 
 
 test('WebAssembly parser rejects invalid import limits, reference types and mutability', () => {
   const bad_table_type = section(2, Buffer.from([1, 0, 0, 1, 0x7f, 0, 1]));
-  assert.throws(() => parse_wasm(module_with(bad_table_type)), error => error.code === 'ORIX_WASM_UNSUPPORTED_VALUE_TYPE');
+  assert.throws(() => parse_wasm(module_with(bad_table_type)), error => error.code === 'ORIX_WASM_BAD_TABLE_TYPE');
 
-  const shared_without_maximum = section(2, Buffer.from([1, 0, 0, 2, 3, 1]));
+  const shared_without_maximum = section(2, Buffer.from([1, 0, 0, 2, 2, 1]));
   assert.throws(() => parse_wasm(module_with(shared_without_maximum)), error => error.code === 'ORIX_WASM_INVALID_LIMITS');
 
   const maximum_below_minimum = section(2, Buffer.from([1, 0, 0, 2, 1, 5, 4]));
