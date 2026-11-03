@@ -156,33 +156,39 @@ export function analyze_project_architecture(project_report, options = {}) {
   const outgoing_sets = new Map(nodes.map(node => [node.id, new Set()]));
   const incoming_sets = new Map(nodes.map(node => [node.id, new Set()]));
   const accepted_edges = [];
+  const seen_edge_keys = new Set();
   let invalid_edges = 0;
   let duplicate_edges = 0;
   let omitted_edges = 0;
+  let node_limit_edge_omissions = 0;
+  let edge_limit_omissions = 0;
   const raw_edges = [...project_report.graph.edges]
     .sort((a, b) => String(a?.from).localeCompare(String(b?.from)) ||
       String(a?.to).localeCompare(String(b?.to)) ||
       String(a?.label ?? '').localeCompare(String(b?.label ?? '')));
 
-  for (let edge_index = 0; edge_index < raw_edges.length; edge_index += 1) {
-    const edge = raw_edges[edge_index];
+  for (const edge of raw_edges) {
     if (!edge || !retained_input_ids.has(edge.from) || !retained_input_ids.has(edge.to)) {
       invalid_edges += 1;
       continue;
     }
-    if (!node_by_id.has(edge.from) || !node_by_id.has(edge.to)) {
-      omitted_edges += 1;
-      continue;
-    }
     const from = edge.from;
     const to = edge.to;
-    if (outgoing_sets.get(from).has(to)) {
+    const edge_key = JSON.stringify([from, to]);
+    if (seen_edge_keys.has(edge_key)) {
       duplicate_edges += 1;
       continue;
     }
+    seen_edge_keys.add(edge_key);
+    if (!node_by_id.has(from) || !node_by_id.has(to)) {
+      omitted_edges += 1;
+      node_limit_edge_omissions += 1;
+      continue;
+    }
     if (accepted_edges.length >= max_edges) {
-      omitted_edges += raw_edges.length - edge_index;
-      break;
+      omitted_edges += 1;
+      edge_limit_omissions += 1;
+      continue;
     }
     outgoing_sets.get(from).add(to);
     incoming_sets.get(to).add(from);
@@ -194,7 +200,8 @@ export function analyze_project_architecture(project_report, options = {}) {
     });
   }
   if (invalid_edges > 0) warnings.push('Ignored ' + invalid_edges + ' edge(s) whose endpoints were not retained.');
-  if (omitted_edges > 0) warnings.push('Edge limit reached; ' + omitted_edges + ' graph edge(s) were not analyzed.');
+  if (node_limit_edge_omissions > 0) warnings.push('Node limit excluded ' + node_limit_edge_omissions + ' graph edge(s) because at least one endpoint was omitted.');
+  if (edge_limit_omissions > 0) warnings.push('Edge limit reached; ' + edge_limit_omissions + ' eligible graph edge(s) were omitted.');
 
   const outgoing = new Map();
   const incoming = new Map();

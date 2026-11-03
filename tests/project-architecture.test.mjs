@@ -116,3 +116,19 @@ test('Markdown report cells escape backslashes before table delimiters', () => {
   assert.ok(markdown.includes('module\\|name\\\\root'));
   assert.ok(markdown.includes('C:\\\\workspace\\|orix'));
 });
+
+test('edge-limit coverage excludes invalid and duplicate edges from omitted counts', () => {
+  const input = fixture();
+  input.graph.edges.push(
+    { from: 'src/index.js', to: 'src/alpha.js', kind: 'source-import', label: 'duplicate declaration' },
+    { from: 'src/index.js', to: 'missing.js', kind: 'source-import', label: './missing' },
+  );
+  const report = analyze_project_architecture(input, { max_edges: 1 });
+
+  assert.equal(report.coverage.analyzed_edges, 1);
+  assert.equal(report.coverage.omitted_edges, 3);
+  assert.equal(report.coverage.invalid_edges, 1);
+  assert.equal(report.coverage.duplicate_edges, 1);
+  assert.ok(report.warnings.includes('Edge limit reached; 3 eligible graph edge(s) were omitted.'));
+  assert.equal(report.coverage.graph_analysis_complete, false);
+});
