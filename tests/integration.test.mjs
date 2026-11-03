@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { inspect_file } from '../src/core/inspect.mjs';
 import { scan_directory } from '../src/analyzer/scan.mjs';
+import { verify_ledger } from '../src/evidence/ledger.mjs';
 import { parse_arguments } from '../src/cli/arguments.mjs';
 import { create_elf_fixture, create_pe_fixture, create_zip_fixture } from './helpers.mjs';
 
@@ -237,5 +238,21 @@ test('CLI emits a CycloneDX SBOM from project dependency declarations', async ()
     assert.equal(bom.specVersion, '1.5');
     assert.equal(bom.metadata.component.name, 'sbom-fixture');
     assert.equal(bom.components.length, 2);
+  });
+});
+
+
+test('directory scan initializes and appends its evidence ledger receipt', async () => {
+  await with_temp_dir(async directory => {
+    const file = path.join(directory, 'sample.bin');
+    const ledger = path.join(directory, '.orix', 'nested', 'scan.jsonl');
+    await writeFile(file, Buffer.from('scan evidence ledger regression'));
+    const report = await scan_directory(directory, { evidence_ledger: ledger });
+    assert.equal(report.evidence_ledger.sequence, 1);
+    assert.equal(report.evidence_ledger.hash.length, 64);
+    assert.equal(report.evidence_ledger.artifacts_recorded, 1);
+    const verified = await verify_ledger(ledger);
+    assert.equal(verified.valid, true);
+    assert.equal(verified.records_verified, 1);
   });
 });
