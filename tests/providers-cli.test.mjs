@@ -153,6 +153,7 @@ test('Rizin Markdown renderer escapes table delimiters and bounds displayed rows
 
 test('provider help documents the opt-in provider commands and limits', () => {
   assert.match(HELP_TEXT, /providers list/);
+  assert.match(HELP_TEXT, /providers rizin doctor/);
   assert.match(HELP_TEXT, /providers rizin imports/);
   assert.match(HELP_TEXT, /not an OS sandbox/);
 });
