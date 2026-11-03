@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp,mkdir,rm,symlink,writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { scan_project,render_project_markdown } from '../src/project/intelligence.mjs';
 async function with_project(callback){const root=await mkdtemp(path.join(os.tmpdir(),'orix-project-'));try{await callback(root);}finally{await rm(root,{recursive:true,force:true});}}
 test('indexes languages, manifests, dependencies, symbols and local imports',async()=>with_project(async root=>{
@@ -43,7 +44,7 @@ test('invalid manifest remains a warning and markdown renders',async()=>with_pro
 test('project CLI emits the versioned JSON report without executing scripts',async()=>with_project(async root=>{
  await writeFile(path.join(root,'package.json'),JSON.stringify({name:'cli-fixture',scripts:{postinstall:'throw new Error("must not execute")'}}));
  const {spawnSync}=await import('node:child_process');
- const result=spawnSync(process.execPath,['src/cli.mjs','project',root,'--json'],{cwd:path.resolve(path.dirname(new URL(import.meta.url).pathname),'..'),encoding:'utf8'});
+ const result=spawnSync(process.execPath,['src/cli.mjs','project',root,'--json'],{cwd:path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),encoding:'utf8'});
  assert.equal(result.status,0,result.stderr);
  const report=JSON.parse(result.stdout);
  assert.equal(report.schema_version,'orix.project.v1');
