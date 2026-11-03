@@ -30,7 +30,7 @@ export async function walk_directory(root_path, options = {}) {
     if (directories_examined > limits.max_scan_directories) { truncated = true; break; }
     let entries;
     try { entries = await fs.readdir(current.directory, { withFileTypes: true }); }
-    catch (error) { skipped.push({ path: current.directory, reason: 'directory-unreadable', system_code: error.code ?? null }); continue; }
+    catch (error) { truncated = true; skipped.push({ path: current.directory, reason: 'directory-unreadable', system_code: error.code ?? null }); continue; }
     entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
     for (const entry of entries) {
       entries_examined += 1;
