@@ -113,3 +113,59 @@ test('Markdown reports contain untrusted backticks and multiline error text safe
   assert.ok(markdown.includes(tick.repeat(2) + 'evil' + tick + 'name.bin' + tick.repeat(2)));
   assert.ok(markdown.includes('untrusted ' + tick.repeat(3) + ' marker'));
 });
+
+
+test('project SARIF exports redacted source findings with file, line and stable fingerprints', async () => {
+  const { render_sarif } = await import('../src/reports/sarif.mjs');
+  const secret = 'super-secret-value-that-must-never-escape';
+  const report = {
+    schema_version: 'orix.project.v1',
+    project: { root: '/tmp/orix-project' },
+    files: [{ path: 'src/config.js', sha256: 'd'.repeat(64) }],
+    findings: [{
+      rule_id: 'ORIX-PROJECT-SECRET-GENERIC-001',
+      severity: 'high',
+      confidence: 'heuristic',
+      file: 'src/config.js',
+      line: 17,
+      label: 'Credential-like assignment',
+      evidence: 'Credential-shaped match; value redacted.',
+      matched_value: secret,
+    }],
+  };
+  const document = JSON.parse(render_sarif(report));
+  const run = document.runs[0];
+  assert.equal(document.version, '2.1.0');
+  assert.equal(run.results.length, 1);
+  assert.equal(run.results[0].ruleId, 'ORIX-PROJECT-SECRET-GENERIC-001');
+  assert.equal(run.results[0].level, 'error');
+  assert.equal(run.results[0].locations[0].physicalLocation.region.startLine, 17);
+  assert.match(run.results[0].locations[0].physicalLocation.artifactLocation.uri, /src\/config\.js$/);
+  assert.equal(run.results[0].properties.artifact_sha256, 'd'.repeat(64));
+  assert.equal(run.artifacts.length, 1);
+  assert.ok(run.results[0].partialFingerprints.primaryLocationLineHash.length === 64);
+  assert.equal(JSON.stringify(document).includes(secret), false);
+  assert.equal(run.properties.project_findings_redacted, true);
+});
+
+test('project SARIF rejects absolute and escaping finding paths', async () => {
+  const { render_sarif } = await import('../src/reports/sarif.mjs');
+  const base = {
+    schema_version: 'orix.project.v1',
+    project: { root: '/tmp/orix-project' },
+    files: [],
+    findings: [{
+      rule_id: 'ORIX-TEST-001',
+      severity: 'low',
+      confidence: 'heuristic',
+      file: '../outside.js',
+      line: 1,
+      label: 'Test finding',
+    }],
+  };
+  assert.throws(() => render_sarif(base), /escapes the project root/);
+  assert.throws(() => render_sarif({
+    ...base,
+    findings: [{ ...base.findings[0], file: '/etc/passwd' }],
+  }), /must be relative/);
+});
