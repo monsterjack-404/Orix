@@ -71,16 +71,24 @@ function boolean_value(value, field) {
 
 function unique_array(value, field, maximum, validate_item) {
   if (!Array.isArray(value) || value.length > maximum) invalid(field, field + ' must be an array with at most ' + maximum + ' entries');
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key === 'symbol' || key === 'length') invalid(field, 'Array custom properties are not accepted');
+    if (!/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= value.length) {
+      invalid(field, 'Array custom properties are not accepted');
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !Object.hasOwn(descriptor, 'value')) invalid(field + '[' + key + ']', 'Accessor elements are not accepted');
+  }
   const seen = new Set();
   const result = [];
   for (let index = 0; index < value.length; index += 1) {
-    if (!Object.hasOwn(value, index)) invalid(field + '[' + index + ']', 'Sparse arrays are not accepted');
-    const item = validate_item(value[index], field + '[' + index + ']');
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor) invalid(field + '[' + index + ']', 'Sparse arrays are not accepted');
+    const item = validate_item(descriptor.value, field + '[' + index + ']');
     if (seen.has(item)) invalid(field + '[' + index + ']', 'Duplicate values are not accepted');
     seen.add(item);
     result.push(item);
   }
-  if (Object.keys(value).length !== value.length) invalid(field, 'Array custom properties are not accepted');
   return result;
 }
 
