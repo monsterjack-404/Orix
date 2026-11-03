@@ -27,6 +27,10 @@ test('string extraction returns offsets and supports UTF-16LE', () => {
   assert.ok(strings.every(item => Number.isSafeInteger(item.offset) && item.offset >= 0));
 });
 
+test('string extraction rejects inverted minimum and maximum lengths', () => {
+  assert.throws(() => extract_strings(Buffer.from('some text'), { minimum: 10, maximum: 5 }), /minimum cannot exceed maximum/);
+});
+
 test('resource limits enforce cross-field invariants', () => {
   assert.throws(() => resolve_limits({ max_read_bytes: 100, max_file_bytes: 50 }), /cannot exceed/);
   assert.equal(resolve_limits({ max_scan_concurrency: 2 }).max_scan_concurrency, 2);
