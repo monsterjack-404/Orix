@@ -43,7 +43,8 @@ function package_url(dependency) {
 }
 
 function uuid_from_hash(value) {
-  const bytes = createHash('sha256').update(value).digest().subarray(0, 16);
+  const namespace = Buffer.from('6ba7b8109dad11d180b400c04fd430c8', 'hex');
+  const bytes = createHash('sha1').update(namespace).update(value).digest().subarray(0, 16);
   bytes[6] = (bytes[6] & 0x0f) | 0x50;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = bytes.toString('hex');
