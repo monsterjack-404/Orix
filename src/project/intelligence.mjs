@@ -32,7 +32,7 @@ const SECRET_RULES=[
 ];
 const unique=values=>[...new Set(values)].sort((a,b)=>String(a).localeCompare(String(b)));
 const digest=value=>createHash('sha256').update(value).digest('hex');
-function get_limits(input){const source=input.limits??input,result={...DEFAULTS};for(const key of Object.keys(DEFAULTS)){if(key==='include_hidden'){if(typeof source[key]==='boolean')result[key]=source[key];continue;}if(source[key]===undefined)continue;const value=Number(source[key]);if(!Number.isSafeInteger(value)||value<0)throw new TypeError('Invalid project limit: '+key);result[key]=Math.min(value,DEFAULTS[key]);}return result;}
+function get_limits(input){const source=input.limits??input,result={...DEFAULTS};for(const key of Object.keys(DEFAULTS)){if(key==='include_hidden'){if(typeof source[key]==='boolean')result[key]=source[key];continue;}if(source[key]===undefined)continue;const value=Number(source[key]);const minimum=key.startsWith('max_git_')?1:0;if(!Number.isSafeInteger(value)||value<minimum)throw new TypeError('Invalid project limit: '+key);result[key]=Math.min(value,DEFAULTS[key]);}return result;}
 function add_dep(out,name,version,ecosystem,kind='runtime'){const clean=String(name??'').trim();if(clean&&clean.length<=256)out.push({name:clean,version:String(version??'*').slice(0,160),ecosystem,dependency_type:kind});}
 function manifest_entries(data, field, warnings) {
  const value=data[field];
