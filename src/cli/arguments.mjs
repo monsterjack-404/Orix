@@ -71,12 +71,18 @@ export function parse_arguments(argv) {
       }
     } else if (result.provider_id === 'rizin') {
       result.provider_action = result.positionals.shift() ?? null;
-      if (result.provider_action !== 'imports') {
-        throw new OrixError('ORIX_CLI_PROVIDER_ACTION', 'providers rizin requires the imports action', { recoverable: true });
-      }
-      result.target = result.positionals.shift() ?? null;
-      if (!result.target) {
-        throw new OrixError('ORIX_CLI_PROVIDER_INPUT', 'providers rizin imports requires an input file path', { recoverable: true });
+      if (result.provider_action === 'imports') {
+        result.target = result.positionals.shift() ?? null;
+        if (!result.target) {
+          throw new OrixError('ORIX_CLI_PROVIDER_INPUT', 'providers rizin imports requires an input file path', { recoverable: true });
+        }
+      } else if (result.provider_action === 'doctor') {
+        result.target = null;
+        if (result.positionals.length > 0) {
+          throw new OrixError('ORIX_CLI_PROVIDER_ARGUMENTS', 'providers rizin doctor accepts no positional arguments', { recoverable: true });
+        }
+      } else {
+        throw new OrixError('ORIX_CLI_PROVIDER_ACTION', 'providers rizin requires the doctor or imports action', { recoverable: true });
       }
     } else {
       throw new OrixError('ORIX_CLI_PROVIDER_UNKNOWN', 'Unknown provider: ' + result.provider_id, { recoverable: true });
