@@ -232,7 +232,7 @@ export async function handle_mcp_message(message, options = {}) {
   const has_id = Object.hasOwn(message, 'id');
   const id = has_id ? message.id : null;
   if (typeof message.method !== 'string') {
-    return has_id ? jsonrpc_error(id, -32600, 'Request method must be a string') : null;
+    return jsonrpc_error(id, -32600, 'Request method must be a string');
   }
   if (!has_id) return null;
   if (message.method === 'ping') return { jsonrpc: '2.0', id, result: {} };
