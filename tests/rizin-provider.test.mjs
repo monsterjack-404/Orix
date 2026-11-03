@@ -158,7 +158,7 @@ test('Rizin adapter applies one total timeout across version and import probes',
     const script = [
       '#!/bin/sh',
       'if [ "$1" = "-v" ]; then printf "%s\\n" "rizin 0.8.2"; exit 0; fi',
-      'if [ "$1" = "-N" ] && [ "$4" = "iij" ]; then sleep 5; exit 0; fi',
+      'if [ "$1" = "-N" ] && [ "$4" = "iij" ]; then /bin/sleep 5; exit 0; fi',
       'exit 64',
       '',
     ].join('\n');
