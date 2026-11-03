@@ -1,0 +1,361 @@
+// JavaScript, src/providers/process-runner.mjs, Node.js 20+, bounded static-provider process execution.
+
+import { constants as FS_CONSTANTS } from 'node:fs';
+import { access, lstat, realpath, stat } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { OrixError } from '../core/errors.mjs';
+import { validate_provider_manifest } from './manifest.mjs';
+
+const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const MAX_ARGUMENTS = 256;
+const MAX_ARGUMENT_BYTES = 32 * 1024;
+const MAX_TOTAL_ARGUMENT_BYTES = 64 * 1024;
+const MAX_ENVIRONMENT_ENTRIES = 64;
+const MAX_ENVIRONMENT_BYTES = 32 * 1024;
+
+function runner_error(code, message, details = {}) {
+  throw new OrixError(code, message, { details, recoverable: true });
+}
+
+function plain_options(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('Provider process options must be an object');
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError('Provider process options must be a plain object');
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const allowed = new Set([
+    'manifest', 'executable', 'args', 'cwd', 'env',
+    'timeout_ms', 'max_output_bytes', 'kill_grace_ms', 'signal',
+  ]);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string' || !allowed.has(key)) {
+      throw new TypeError('Unknown provider process option: ' + String(key));
+    }
+    const descriptor = descriptors[key];
+    if (!descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) {
+      throw new TypeError('Provider process options must use enumerable data properties');
+    }
+  }
+  return descriptors;
+}
+
+function validate_arguments(value) {
+  if (!Array.isArray(value) || value.length > MAX_ARGUMENTS) {
+    throw new TypeError('args must be an array with at most ' + MAX_ARGUMENTS + ' strings');
+  }
+  let total = 0;
+  const result = [];
+  for (const [index, argument] of value.entries()) {
+    if (typeof argument !== 'string' || argument.includes('\0')) {
+      throw new TypeError('args[' + index + '] must be a string without NUL bytes');
+    }
+    const bytes = Buffer.byteLength(argument, 'utf8');
+    if (bytes > MAX_ARGUMENT_BYTES) {
+      throw new TypeError('args[' + index + '] exceeds the per-argument byte limit');
+    }
+    total += bytes;
+    if (total > MAX_TOTAL_ARGUMENT_BYTES) {
+      throw new TypeError('args exceed the total argument byte limit');
+    }
+    result.push(argument);
+  }
+  return result;
+}
+
+function validate_environment(value) {
+  if (value === undefined) return Object.freeze({});
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('env must be a plain object of string values');
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError('env must be a plain object');
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const entries = Reflect.ownKeys(value);
+  if (entries.length > MAX_ENVIRONMENT_ENTRIES) {
+    throw new TypeError('env contains too many entries');
+  }
+  const result = Object.create(null);
+  let total = 0;
+  for (const key of entries) {
+    const descriptor = descriptors[key];
+    if (typeof key !== 'string' || !ENV_KEY.test(key) ||
+        !descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) {
+      throw new TypeError('env must contain enumerable string data properties with valid names');
+    }
+    const item = descriptor.value;
+    if (typeof item !== 'string' || item.includes('\0')) {
+      throw new TypeError('env values must be strings without NUL bytes');
+    }
+    total += Buffer.byteLength(key, 'utf8') + Buffer.byteLength(item, 'utf8');
+    if (total > MAX_ENVIRONMENT_BYTES) throw new TypeError('env exceeds the total byte limit');
+    result[key] = item;
+  }
+  return Object.freeze(result);
+}
+
+async function validate_executable(value) {
+  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
+    throw new TypeError('executable must be an absolute filesystem path');
+  }
+  let details;
+  try {
+    details = await lstat(value);
+  } catch (error) {
+    runner_error('ORIX_PROVIDER_EXECUTABLE_UNAVAILABLE', 'Provider executable cannot be inspected', {
+      path: value, reason: error.code ?? 'filesystem-error',
+    });
+  }
+  if (details.isSymbolicLink() || !details.isFile()) {
+    runner_error('ORIX_PROVIDER_EXECUTABLE_NOT_REGULAR', 'Provider executable must be a regular non-symlink file', {
+      path: value,
+    });
+  }
+  const canonical = await realpath(value);
+  const canonical_details = await stat(canonical);
+  if (!canonical_details.isFile()) {
+    runner_error('ORIX_PROVIDER_EXECUTABLE_NOT_REGULAR', 'Resolved provider executable is not a regular file', {
+      path: canonical,
+    });
+  }
+  try {
+    await access(canonical, FS_CONSTANTS.X_OK);
+  } catch {
+    runner_error('ORIX_PROVIDER_EXECUTABLE_NOT_RUNNABLE', 'Provider executable does not have execute permission', {
+      path: canonical,
+    });
+  }
+  if (process.platform === 'win32' && /\.(bat|cmd|ps1)$/i.test(canonical)) {
+    runner_error('ORIX_PROVIDER_EXECUTABLE_SCRIPT', 'Script launchers are not accepted as provider executables on Windows', {
+      path: canonical,
+    });
+  }
+  return canonical;
+}
+
+async function validate_working_directory(value) {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
+    throw new TypeError('cwd must be an absolute filesystem path');
+  }
+  let details;
+  try { details = await lstat(value); }
+  catch (error) {
+    runner_error('ORIX_PROVIDER_CWD_UNAVAILABLE', 'Provider working directory cannot be inspected', {
+      path: value, reason: error.code ?? 'filesystem-error',
+    });
+  }
+  if (details.isSymbolicLink() || !details.isDirectory()) {
+    runner_error('ORIX_PROVIDER_CWD_INVALID', 'Provider working directory must be a non-symlink directory', {
+      path: value,
+    });
+  }
+  return realpath(value);
+}
+
+function validate_runtime_limits(manifest, options) {
+  const timeout_ms = options.timeout_ms ?? manifest.limits.timeout_ms;
+  const max_output_bytes = options.max_output_bytes ?? manifest.limits.max_output_bytes;
+  const kill_grace_ms = options.kill_grace_ms ?? 500;
+  if (!Number.isSafeInteger(timeout_ms) || timeout_ms < 1 || timeout_ms > manifest.limits.timeout_ms) {
+    throw new TypeError('timeout_ms must be between 1 and the provider manifest timeout limit');
+  }
+  if (!Number.isSafeInteger(max_output_bytes) || max_output_bytes < 1 || max_output_bytes > manifest.limits.max_output_bytes) {
+    throw new TypeError('max_output_bytes must be between 1 and the provider manifest output limit');
+  }
+  if (!Number.isSafeInteger(kill_grace_ms) || kill_grace_ms < 0 || kill_grace_ms > 10_000) {
+    throw new TypeError('kill_grace_ms must be an integer between 0 and 10000');
+  }
+  return { timeout_ms, max_output_bytes, kill_grace_ms };
+}
+
+function minimal_environment(overrides) {
+  const result = Object.create(null);
+  if (process.platform === 'win32') {
+    for (const key of ['SystemRoot', 'WINDIR', 'TEMP', 'TMP']) {
+      if (typeof process.env[key] === 'string') result[key] = process.env[key];
+    }
+  }
+  for (const [key, value] of Object.entries(overrides)) result[key] = value;
+  return result;
+}
+
+function signal_process(child, detached, signal) {
+  if (!child.pid) return;
+  if (detached && process.platform !== 'win32') {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // Fall through to direct child signalling.
+    }
+  }
+  try { child.kill(signal); } catch {
+    // The process may have exited between the state check and signal.
+  }
+}
+
+/**
+ * Run an explicitly declared read-only static provider.
+ *
+ * The child is started with an argument vector and shell:false. This function
+ * bounds time and captured output; it does not create an OS sandbox or enforce
+ * filesystem/network isolation for a provider that lies about its behavior.
+ */
+export async function run_static_provider(options) {
+  const descriptors = plain_options(options);
+  const manifest = validate_provider_manifest(descriptors.manifest?.value);
+  if (manifest.execution.mode !== 'static' ||
+      manifest.execution.executes_target || manifest.execution.writes_target ||
+      manifest.execution.uses_network || manifest.execution.requires_authorization) {
+    runner_error('ORIX_PROVIDER_EXECUTION_NOT_STATIC', 'Only providers declared as read-only static and non-network are accepted');
+  }
+  const executable = await validate_executable(descriptors.executable?.value);
+  const args = validate_arguments(descriptors.args?.value ?? []);
+  const cwd = await validate_working_directory(descriptors.cwd?.value);
+  const env = validate_environment(descriptors.env?.value);
+  const limits = validate_runtime_limits(manifest, {
+    timeout_ms: descriptors.timeout_ms?.value,
+    max_output_bytes: descriptors.max_output_bytes?.value,
+    kill_grace_ms: descriptors.kill_grace_ms?.value,
+  });
+  const signal = descriptors.signal?.value;
+  if (signal !== undefined && (
+    signal === null || typeof signal.addEventListener !== 'function' ||
+    typeof signal.removeEventListener !== 'function' || typeof signal.aborted !== 'boolean'
+  )) {
+    throw new TypeError('signal must be an AbortSignal');
+  }
+  if (signal?.aborted) {
+    runner_error('ORIX_PROVIDER_CANCELLED', 'Provider process was cancelled before launch', {
+      provider_id: manifest.id,
+    });
+  }
+
+  const started_at = new Date().toISOString();
+  const started_clock = Date.now();
+  const windows = process.platform === 'win32';
+  const detached = !windows;
+  const launch_env = minimal_environment(env);
+
+  return await new Promise((resolve, reject) => {
+    let child;
+    let settled = false;
+    let termination_started = false;
+    let timed_out = false;
+    let cancelled = false;
+    let output_limited = false;
+    let captured_bytes = 0;
+    let stdout_bytes = 0;
+    let stderr_bytes = 0;
+    const stdout_chunks = [];
+    const stderr_chunks = [];
+    let timeout_timer = null;
+    let kill_timer = null;
+
+    function cleanup() {
+      if (timeout_timer) clearTimeout(timeout_timer);
+      if (kill_timer) clearTimeout(kill_timer);
+      if (signal) signal.removeEventListener('abort', on_abort);
+    }
+
+    function finish_error(error) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new OrixError('ORIX_PROVIDER_SPAWN_FAILED', 'Provider process could not be started', {
+        details: {
+          provider_id: manifest.id,
+          executable,
+          reason: error?.code ?? error?.name ?? 'spawn-error',
+        },
+        cause: error,
+        recoverable: true,
+      }));
+    }
+
+    function terminate() {
+      if (termination_started || !child || settled) return;
+      termination_started = true;
+      signal_process(child, detached, 'SIGTERM');
+      kill_timer = setTimeout(() => signal_process(child, detached, 'SIGKILL'), limits.kill_grace_ms);
+      kill_timer.unref?.();
+    }
+
+    function on_abort() {
+      cancelled = true;
+      terminate();
+    }
+
+    function capture(stream, chunk) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (stream === 'stdout') stdout_bytes += buffer.length;
+      else stderr_bytes += buffer.length;
+      const remaining = limits.max_output_bytes - captured_bytes;
+      if (remaining > 0) {
+        const retained = buffer.subarray(0, remaining);
+        if (retained.length > 0) {
+          (stream === 'stdout' ? stdout_chunks : stderr_chunks).push(retained);
+          captured_bytes += retained.length;
+        }
+      }
+      if (buffer.length > remaining) {
+        output_limited = true;
+        terminate();
+      }
+    }
+
+    try {
+      child = spawn(executable, args, {
+        cwd,
+        env: launch_env,
+        shell: false,
+        windowsHide: true,
+        detached,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      finish_error(error);
+      return;
+    }
+
+    child.stdout.on('data', chunk => capture('stdout', chunk));
+    child.stderr.on('data', chunk => capture('stderr', chunk));
+    child.once('error', finish_error);
+    child.once('close', (exit_code, exit_signal) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({
+        provider: { id: manifest.id, version: manifest.version },
+        executable,
+        started_at,
+        duration_ms: Math.max(0, Date.now() - started_clock),
+        exit_code,
+        exit_signal,
+        timed_out,
+        cancelled,
+        output_limited,
+        ok: exit_code === 0 && !timed_out && !cancelled && !output_limited,
+        stdout: Buffer.concat(stdout_chunks).toString('utf8'),
+        stderr: Buffer.concat(stderr_chunks).toString('utf8'),
+        stdout_bytes,
+        stderr_bytes,
+        captured_bytes,
+        output_truncated: output_limited,
+      });
+    });
+
+    if (signal) signal.addEventListener('abort', on_abort, { once: true });
+    timeout_timer = setTimeout(() => {
+      timed_out = true;
+      terminate();
+    }, limits.timeout_ms);
+    timeout_timer.unref?.();
+  });
+}
