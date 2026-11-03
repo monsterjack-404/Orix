@@ -295,7 +295,7 @@ test('CLI emits SARIF for project source findings without exporting matched valu
     assert.equal(sarif.version, '2.1.0');
     assert.equal(sarif.runs[0].results.length, 1);
     assert.equal(sarif.runs[0].results[0].ruleId, 'ORIX-PROJECT-SECRET-GENERIC-001');
-    assert.equal(sarif.runs[0].results[0].locations[0].location.physicalLocation.region.startLine, 1);
+    assert.equal(sarif.runs[0].results[0].locations[0].physicalLocation.region.startLine, 1);
     assert.equal(JSON.stringify(sarif).includes(secret), false);
   });
 });
