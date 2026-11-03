@@ -28,4 +28,5 @@ export { read_json_report } from './core/read-report.mjs';
 export { create_evidence_ledger, append_evidence_event, verify_evidence_ledger, read_evidence_ledger } from './core/evidence-ledger.mjs';
 export { parse_lockfile } from './project/lockfiles.mjs';
 export { scan_git_metadata } from './project/git-metadata.mjs';
-\nexport { PROVIDER_CONTRACT_VERSION, DEFAULT_PROVIDER_MANIFEST_LIMIT, validate_provider_manifest, parse_provider_manifest_json, read_provider_manifest } from './providers/manifest.mjs';\n
+
+export { PROVIDER_CONTRACT_VERSION, DEFAULT_PROVIDER_MANIFEST_LIMIT, validate_provider_manifest, parse_provider_manifest_json, read_provider_manifest } from './providers/manifest.mjs';
