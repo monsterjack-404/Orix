@@ -65,6 +65,12 @@ test('WebAssembly parser rejects invalid direct section limits', () => {
   }
 });
 
+test('WebAssembly parser rejects unsupported binary versions', () => {
+  const malformed = create_wasm_fixture();
+  malformed.writeUInt32LE(2, 4);
+  assert.throws(() => parse_wasm(malformed), error => error.code === 'ORIX_WASM_UNSUPPORTED_VERSION');
+});
+
 test('WebAssembly parser rejects a section that exceeds the file', () => {
   const malformed = Buffer.from([0,97,115,109,1,0,0,0,1,8,0]);
   assert.throws(() => parse_wasm(malformed), error => error.code === 'ORIX_WASM_SECTION_OUT_OF_RANGE');
