@@ -9,4 +9,4 @@ The JSON Schema documents in this directory describe the public JSON report cont
 | `indicator.v1.schema.json` | One deterministic static finding | Referenced by artifact indicators |
 | `ledger.v1.schema.json` | One hash-chained evidence ledger record | `orix.evidence-ledger.v1` |
 
-The schemas document shape and basic constraints. They do not prove that a parser result is truthful, that a report was generated from authentic bytes, or that a file is safe. Consumers that need runtime validation should use a JSON Schema Draft 2020-12 validator and pin the exact schema files they accept.
+The provider manifest describes declared capabilities, execution side effects, resource ceilings and redistribution status. It is metadata only: a valid manifest does not prove a provider is installed, trusted, safe, or authorized to run.\n\nThe schemas document shape and basic constraints. They do not prove that a parser result is truthful, that a report was generated from authentic bytes, or that a file is safe. Consumers that need runtime validation should use a JSON Schema Draft 2020-12 validator and pin the exact schema files they accept.
