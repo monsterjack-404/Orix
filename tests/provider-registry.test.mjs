@@ -92,6 +92,15 @@ test('provider registry validates platform and query filters', () => {
   assert.throws(() => registry.list({ input_format: '../escape' }), /input_format is not a valid/);
   assert.throws(() => registry.list({ platform: 'freebsd' }), /platform must be/);
   assert.throws(() => registry.list(null), /filters must be an object/);
+  assert.throws(() => registry.list({ unreviewed: true }), /Unknown provider registry filter/);
+  let getter_called = false;
+  const accessor = {};
+  Object.defineProperty(accessor, 'capability', {
+    enumerable: true,
+    get() { getter_called = true; throw new Error('must not execute'); },
+  });
+  assert.throws(() => registry.list(accessor), /data properties/);
+  assert.equal(getter_called, false);
 });
 
 test('provider registry unregisters without executing provider code', () => {
