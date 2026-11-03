@@ -182,14 +182,14 @@ test('Rizin adapter isolates the original artifact and discards results if a pro
       '#!/bin/sh',
       'if [ "$1" = "-v" ]; then printf "%s\\n" "rizin 0.8.2"; exit 0; fi',
       'if [ "$1" = "-N" ] && [ "$4" = "iij" ]; then',
-      '  chmod u+w "$5"',
+      '  /bin/chmod u+w "$5"',
       '  printf "%s" "provider-mutated-snapshot" > "$5"',
       '  printf "%s" "[]"',
       '  exit 0',
       'fi',
       'exit 64',
       '',
-    ].join('\\n');
+    ].join('\n');
     await writeFile(executable, script, { mode: 0o700 });
     await chmod(executable, 0o700);
     await assert.rejects(
