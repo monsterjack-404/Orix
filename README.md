@@ -31,6 +31,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Evidence model | Stable report evidence plus append-only SHA-256 chained JSONL ledger, verify/list commands and append receipts | Not a signature, trusted timestamp or external transparency log |
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
 | MCP integration | Local stdio JSON-RPC server with eight typed tools for inspect, scan, project, formats, comparison and evidence ledger | No HTTP listener, remote auth, resource subscription or prompt catalog |
+| Provider metadata | Versioned provider manifest schema, bounded safe reader, semantic validation and immutable capability registry | No external process adapter, plugin loader, provider installation or execution yet |
 | Reports | JSON, Markdown, SARIF 2.1.0 for artifact, directory-scan and source-project findings, report comparison and CycloneDX 1.5 SBOM | No hosted dashboard or relational database |
 
 Static indicator rules operate only on already-parsed metadata and bounded extracted strings. Each finding includes a rule ID, severity, confidence and supporting evidence. A clean report means only that the built-in rules did not match; it is not a safety certification.
