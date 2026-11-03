@@ -46,6 +46,18 @@ function provider_error(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
 }
 
+function assert_rizin_platform(manifest) {
+  const platform = process.platform === 'win32'
+    ? 'windows'
+    : process.platform === 'darwin' ? 'macos' : process.platform;
+  if (!manifest.supported_platforms.includes(platform)) {
+    provider_error('ORIX_RIZIN_PLATFORM_UNSUPPORTED', 'Rizin provider manifest does not support this runtime platform', {
+      platform,
+      supported_platforms: manifest.supported_platforms,
+    });
+  }
+}
+
 function validate_input_path(input_path) {
   if (typeof input_path !== 'string' || input_path.trim() === '' ||
       input_path.includes('\0') || !path.isAbsolute(input_path)) {
@@ -210,6 +222,7 @@ export async function analyze_rizin_imports(options = {}) {
   if (manifest.id !== 'rizin.static') {
     throw new TypeError('Rizin adapter requires the rizin.static provider manifest');
   }
+  assert_rizin_platform(manifest);
   const input_path = descriptors.input_path?.value;
   validate_input_path(input_path);
   const signal = descriptors.signal?.value;
@@ -434,6 +447,7 @@ export async function probe_rizin(options = {}) {
   if (manifest.id !== 'rizin.static') {
     throw new TypeError('Rizin probe requires the rizin.static provider manifest');
   }
+  assert_rizin_platform(manifest);
   const timeout_ms = descriptors.timeout_ms?.value ?? Math.min(manifest.limits.timeout_ms, 10_000);
   const max_output_bytes = descriptors.max_output_bytes?.value ?? Math.min(manifest.limits.max_output_bytes, 16_384);
   if (!Number.isSafeInteger(timeout_ms) || timeout_ms < 1 || timeout_ms > manifest.limits.timeout_ms) {
