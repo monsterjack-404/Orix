@@ -221,7 +221,7 @@ test('WebAssembly name custom section rejects duplicate, out-of-range and malfor
   const code = section(10, Buffer.from([1, 2, 0, 0x0b]));
   const duplicate_function_names = Buffer.from([
     4, 0x6e, 0x61, 0x6d, 0x65,
-    1, 7, 2, 0, 1, 0x61, 1, 1, 0x62,
+    1, 7, 2, 0, 1, 0x61, 0, 1, 0x62,
   ]);
   assert.throws(
     () => parse_wasm(module_with(types, functions, code, section(0, duplicate_function_names))),
