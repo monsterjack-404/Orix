@@ -19,13 +19,16 @@ test('format support documentation names every registered signature and parser s
       documentation.includes(capability.format),
       `docs/FORMATS.md must document registered format: ${capability.format}`,
     );
-    if (capability.parser_status === 'available') {
-      assert.match(
-        documentation,
-        new RegExp(`\\|\\s*${capability.format.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\s*\\|[^\\n]*\\|\\s*Yes\\s*\\|`),
-        `docs/FORMATS.md must mark ${capability.format} as structurally parsed`,
-      );
-    }
+    const row = documentation.split('\n').find(line =>
+      line.startsWith('|') && line.includes(capability.format)
+    );
+    assert.ok(row, `docs/FORMATS.md must include a matrix row for ${capability.format}`);
+    const columns = row.split('|').map(column => column.trim());
+    assert.equal(
+      columns[3],
+      capability.parser_status === 'available' ? 'Yes' : 'No',
+      `docs/FORMATS.md parser status must match runtime for ${capability.format}`,
+    );
   }
 });
 
