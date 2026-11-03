@@ -85,7 +85,7 @@ node src/cli.mjs formats
 
 # List optional providers and invoke Rizin static import extraction
 node src/cli.mjs providers list --json
-node src/cli.mjs providers rizin imports ./sample.elf --executable /usr/bin/rizin --json
+node src/cli.mjs providers rizin imports ./sample.elf --executable /usr/bin/rizin --json --timeout-ms 30000 --max-output-kib 4096 --max-imports 100000
 
 # Start local MCP stdio server
 npm run mcp
