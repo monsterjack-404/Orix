@@ -106,6 +106,16 @@ test('provider manifest rejects malformed identifiers, versions, duplicate capab
   }
 });
 
+test('provider manifest rejects non-enumerable unknown fields and custom array properties', () => {
+  const hidden = valid_manifest();
+  Object.defineProperty(hidden, 'hidden_policy', { value: 'bypass', enumerable: false });
+  assert.throws(() => validate_provider_manifest(hidden), /Unknown property/);
+
+  const custom_array = valid_manifest();
+  custom_array.capabilities.extra = 'unreviewed';
+  assert.throws(() => validate_provider_manifest(custom_array), /Array custom properties/);
+});
+
 test('provider manifest array validation rejects sparse arrays and accessors without invoking getters', () => {
   const sparse = valid_manifest();
   sparse.capabilities = new Array(1);
