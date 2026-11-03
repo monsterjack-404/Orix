@@ -61,6 +61,30 @@ node src/cli.mjs formats
 
 This command lists both recognized signatures and, by implication, formats that still need structural parsers. Use the format support matrix for the precise parser state. Static indicator rules are separate from signature recognition; see [`INDICATORS.md`](INDICATORS.md) for trigger conditions and false-positive guidance.
 
+
+### Optional static providers
+
+List the providers declared in this ORIX build. Listing does not probe or install third-party tools:
+
+```bash
+node src/cli.mjs providers list --json
+```
+
+Use Rizin to extract static import metadata from an artifact. The executable path is explicit and must identify an installed Rizin binary:
+
+```bash
+node src/cli.mjs providers rizin imports ./sample.elf \
+  --executable /opt/rizin/bin/rizin \
+  --format json \
+  --timeout-ms 30000 \
+  --max-output-kib 4096 \
+  --max-imports 100000
+```
+
+The command writes an `orix.rizin-imports.v1` report containing the normalized import list, Rizin version, input SHA-256, input size and stability status. The default output is Markdown; `--json` preserves the full normalized result. `--out` remains create-only.
+
+The timeout is a total deadline across input hashing, the version probe and import extraction. Output capture is bounded per provider process. The process runner uses argv without a shell and does not inherit the entire parent environment. It is **not an OS sandbox**: the provider executable can still access resources available to its account. POSIX process groups are signalled during termination; Windows process-tree teardown is not guaranteed. The inspected target is not executed by this adapter. See [Provider Integrations](PROVIDERS.md) for the full contract and threat boundary.
+
 ## Output contracts
 
 `--json` is intended for scripts and downstream tools. Do not parse the human Markdown table output as an API. The top-level `schema_version` field identifies the current report contract. Unknown fields should be ignored by consumers so the contract can grow without breaking compatible readers.
