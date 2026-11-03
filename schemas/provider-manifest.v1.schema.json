@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orix.provider-manifest.v1.schema.json",
+  "title": "ORIX Provider Manifest v1",
+  "description": "Declarative provider capability and execution-risk contract. It does not authorize or execute a provider.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "id",
+    "name",
+    "version",
+    "description",
+    "capabilities",
+    "supported_platforms",
+    "input_formats",
+    "execution",
+    "limits",
+    "license"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "orix.provider.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 96,
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$",
+        "maxLength": 96
+      }
+    },
+    "supported_platforms": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "windows",
+          "linux",
+          "macos",
+          "any"
+        ]
+      }
+    },
+    "input_formats": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9.+_-]{0,63}$"
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "requires_authorization",
+        "executes_target",
+        "writes_target",
+        "uses_network"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "static",
+            "dynamic",
+            "network",
+            "mixed"
+          ]
+        },
+        "requires_authorization": {
+          "type": "boolean"
+        },
+        "executes_target": {
+          "type": "boolean"
+        },
+        "writes_target": {
+          "type": "boolean"
+        },
+        "uses_network": {
+          "type": "boolean"
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timeout_ms",
+        "max_input_bytes",
+        "max_output_bytes"
+      ],
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600000
+        },
+        "max_input_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483648
+        },
+        "max_output_bytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 268435456
+        }
+      }
+    },
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "spdx_id",
+        "redistribution"
+      ],
+      "properties": {
+        "spdx_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "redistribution": {
+          "enum": [
+            "bundled",
+            "external-install",
+            "proprietary",
+            "unknown"
+          ]
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "documentation_url": {
+      "type": "string",
+      "format": "uri"
+    }
+  }
+}
