@@ -40,6 +40,11 @@ test('provider CLI parser accepts list and Rizin import operations', () => {
   assert.equal(listing.provider_action, 'list');
   assert.equal(listing.flags.format, 'json');
 
+  const doctor = parse_arguments(['providers', 'rizin', 'doctor', '--executable', '/opt/rizin/bin/rizin', '--json']);
+  assert.equal(doctor.provider_action, 'doctor');
+  assert.equal(doctor.target, null);
+  assert.equal(doctor.flags.provider_executable, '/opt/rizin/bin/rizin');
+
   const invocation = parse_arguments([
     'providers', 'rizin', 'imports', './sample.elf',
     '--executable', '/opt/rizin/bin/rizin',
@@ -150,4 +155,38 @@ test('provider help documents the opt-in provider commands and limits', () => {
   assert.match(HELP_TEXT, /providers list/);
   assert.match(HELP_TEXT, /providers rizin imports/);
   assert.match(HELP_TEXT, /not an OS sandbox/);
+});
+
+test('providers rizin doctor performs a real explicit executable version probe', async context => {
+  if (process.platform === 'win32') {
+    context.skip('POSIX executable fixture is used for the provider CLI test');
+    return;
+  }
+  await with_fixture(async ({ directory, executable }) => {
+    const output = path.join(directory, 'rizin-doctor.json');
+    const exit_code = await main([
+      'providers', 'rizin', 'doctor',
+      '--executable', executable,
+      '--json',
+      '--out', output,
+    ]);
+    assert.equal(exit_code, 0);
+    const report = JSON.parse(await readFile(output, 'utf8'));
+    assert.equal(report.schema_version, 'orix.provider-probe.v1');
+    assert.equal(report.status, 'available');
+    assert.equal(report.provider.id, 'rizin.static');
+    assert.equal(report.provider.engine_version, '0.8.2');
+    assert.equal(report.runtime.platform, process.platform);
+  });
+});
+
+test('providers rizin doctor requires an explicit executable and rejects extra positionals', async () => {
+  await assert.rejects(
+    main(['providers', 'rizin', 'doctor']),
+    /requires --executable/,
+  );
+  assert.throws(
+    () => parse_arguments(['providers', 'rizin', 'doctor', 'unexpected']),
+    error => error.code === 'ORIX_CLI_PROVIDER_ARGUMENTS',
+  );
 });
