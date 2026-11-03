@@ -58,6 +58,13 @@ test('WebAssembly parser indexes bounded sections', () => {
   assert.equal(parsed.sections[0].payload_size, 1);
 });
 
+test('WebAssembly parser rejects invalid direct section limits', () => {
+  const fixture = create_wasm_fixture();
+  for (const max_sections of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 65_536]) {
+    assert.throws(() => parse_wasm(fixture, { max_sections }), /max_sections must be an integer/);
+  }
+});
+
 test('WebAssembly parser rejects a section that exceeds the file', () => {
   const malformed = Buffer.from([0,97,115,109,1,0,0,0,1,8,0]);
   assert.throws(() => parse_wasm(malformed), error => error.code === 'ORIX_WASM_SECTION_OUT_OF_RANGE');
