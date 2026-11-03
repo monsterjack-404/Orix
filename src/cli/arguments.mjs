@@ -3,7 +3,7 @@
 import { OrixError } from '../core/errors.mjs';
 import { DEFAULT_LIMITS } from '../core/limits.mjs';
 
-const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib']);
+const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports']);
 const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--help','-h']);
 
 function positive_integer(value, option, minimum, maximum) {
@@ -47,6 +47,7 @@ export function parse_arguments(argv) {
       else if (token === '--executable') result.flags.provider_executable = raw;
       else if (token === '--timeout-ms') result.flags.timeout_ms = positive_integer(raw, token, 1, 60_000);
       else if (token === '--max-output-kib') result.flags.max_output_bytes = positive_integer(raw, token, 1, 8_192) * 1024;
+      else if (token === '--max-imports') result.flags.max_imports = positive_integer(raw, token, 0, 1_000_000);
       continue;
     }
     if (token.startsWith('-')) throw new OrixError('ORIX_CLI_UNKNOWN_OPTION', `Unknown option: ${token}`, { recoverable: true });
