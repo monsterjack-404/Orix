@@ -1,6 +1,12 @@
 # ORIX MCP Integration
 
-ORIX includes a dependency-free Model Context Protocol server using the standard input/output transport.
+ORIX 0.5.0 includes a dependency-free Model Context Protocol server using the standard input/output transport. The implementation currently negotiates MCP protocol version `2025-03-26` and exposes eight bounded tools. This is the implemented version, not the newest published MCP specification.
+
+## Protocol compatibility
+
+The MCP implementation constant in `src/mcp/server.mjs` is `2025-03-26`. The latest specification reviewed for the current product plan is `2026-07-28`. ORIX does not claim support for that newer revision yet. Compatibility work must be incremental and tested against official protocol fixtures before changing the negotiated version. See the [2026-07-28 specification](https://modelcontextprotocol.io/specification/2026-07-28) and [release notes](https://blog.modelcontextprotocol.io/posts/2026-07-28/).
+
+The present transport is stdio. HTTP transport is not implemented and must not be enabled by simply binding a socket; it requires a separate authorization, origin, session and deployment threat model.
 
 ## Start
 

@@ -11,6 +11,12 @@ ORIX is a local-first engineering intelligence workbench for inspecting software
 
 ---
 
+## Product direction and implementation truth
+
+ORIX's long-term product target, architecture, user workflows, security rules and completion gates are defined in [PRODUCT_CHARTER.md](docs/PRODUCT_CHARTER.md). The current source-backed status of each subsystem is tracked in [CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md), and the phased engineering plan is in [ROADMAP.md](docs/ROADMAP.md).
+
+These documents deliberately separate implemented behavior from partial capabilities and planned work. A roadmap item, provider manifest, schema or UI placeholder is not an implemented feature. Promote a capability only after source, tests, documentation and CI all agree.
+
 ## What exists today
 
 This repository contains working source code, bounded parsers, a usable CLI, programmatic exports, integration tests, and a CI workflow. The implemented surface is intentionally narrower than the long-term product vision; each capability below is tied to code and tests in this repository.

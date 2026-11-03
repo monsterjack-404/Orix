@@ -1,6 +1,6 @@
 # CLI and Automation Guide
 
-The CLI is the supported human and automation entry point for ORIX 0.2.1. It is a thin command layer over the same programmatic functions exported from `src/index.mjs`.
+The current repository release line is ORIX 0.5.0. This guide describes the main-branch CLI implemented by `src/cli/main.mjs`, with the programmatic services exported from `src/index.mjs`. The CLI version and supported options must be checked against source and tests before a release.
 
 ## Commands
 

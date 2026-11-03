@@ -1,155 +1,162 @@
-# ORIX Roadmap
+# ORIX Engineering Roadmap
 
-This roadmap is a sequence of testable product capabilities, not a promise that every item already exists. Work is accepted into the implemented status only when source, tests, docs and CI agree.
+This roadmap describes testable product milestones, not promises that every listed capability already exists. The current implementation truth is the [Capability Matrix](CAPABILITY_MATRIX.md); the full target is the [Product Charter](PRODUCT_CHARTER.md).
 
-## Release 0.2.x — Artifact Intelligence Core
+## Current baseline
 
-**Status: implemented in this repository**
+- Current main-branch release line: 0.5.0.
+- Current runtime: Node.js 20.11 or newer.
+- Runtime dependencies: Node.js built-ins only.
+- Working surfaces: CLI, public JavaScript API, bounded static parsers, project inventory, lockfile analysis, reports, evidence ledger, local MCP stdio server, optional Rizin static-import adapter and browser-local report viewer.
+- Current MCP protocol implementation: 2025-03-26.
+- No public npm release, hosted service, desktop app, persistent case database, built-in LLM agent, full decompiler, vulnerability database or dynamic-analysis lab is claimed.
 
-- Local CLI and public programmatic entry points.
-- Signature registry for common executable, archive, document, image and database formats.
-- Bounded PE32/PE32+, ELF, thin Mach-O, WebAssembly and ZIP structural parsing.
-- Streaming SHA-256, entropy, bounded string extraction and evidence records.
-- Symlink-safe directory inventory and bounded concurrent inspection.
-- JSON and Markdown report renderers.
-- SARIF 2.1.0 renderer for artifact and directory-scan findings, with rule metadata, severity mapping, byte ranges and artifact hashes.
-- Deterministic static indicator rules with severity, confidence, rule IDs and supporting evidence.
-- Aggregated indicator counts in directory scans.
-- Hash-chained append-only evidence ledger with writer lock, bounded records, tamper detection and verify/list commands.
-- SARIF 2.1.0 output for artifact and directory-scan findings.
-- Baseline/current report comparison with artifact change classes and indicator deltas.
-- CycloneDX 1.5 SBOM export from recognized direct dependency declarations, package URLs and manifest provenance.
-- Malformed input, parser, indicator, report, filesystem and CLI integration tests.
+## P0 — Truth, correctness and release quality
 
-## 0.3 — Repository and Source Intelligence
+**Goal:** ensure that the current product is accurately described, reliably tested and safe to extend.
 
-**Status: first vertical slice implemented**
+- [ ] Complete documentation/source consistency checks in CI.
+- [ ] Synchronize README, CLI, format matrix, indicator catalogue, provider docs and schemas.
+- [ ] Add current fixtures for every supported format and documented feature.
+- [ ] Add differential parser checks against trusted upstream tools where practical.
+- [ ] Retain reproducible malformed-input and fuzz corpora.
+- [ ] Verify clean install, npm package contents and documented commands on a fresh host.
+- [ ] Exercise Windows, Linux and macOS file-system edge cases.
+- [ ] Review every provider invocation for timeout, cancellation, output ceilings and cleanup.
+- [ ] Add explicit coverage summaries for truncation, skipped entries and unsupported structures.
+- [ ] Audit dependencies, GitHub Actions, license declarations and repository secrets policy.
+- [ ] Add reproducible performance and memory baselines before claiming speed or scale.
 
-- Deterministic local project inventory with symlink rejection and bounded traversal.
-- Language classification and per-file SHA-256 identity.
-- Selected dependency manifests for npm, Python, Cargo, Go, Composer, Maven, NuGet and Ruby.
-- Dependency declaration inventory, script metadata and source-manifest provenance.
-- [x] Bounded npm package-lock v1-v3, Yarn classic/Berry, pnpm v5-v6/v9, Cargo.lock v1-v4, Composer lock, Go sum and Ruby Gemfile.lock inventory with resolved package identities, integrity metadata and dependency edges.
-- [x] CycloneDX 1.5 export consumes lockfile-resolved packages and package-to-package relationships when lockfiles are present.
-- Best-effort source import extraction, local import edges and symbol candidates.
-- Project structure signals for README, license, CI, tests and container files.
-- Redacted credential-shaped indicators and versioned project report schema.
+**Exit gate:** source, tests, docs and CI agree; no known documentation drift; no undocumented destructive or network side effects.
 
-**Remaining:** additional Python/Go lockfile graph formats, packed Git object and commit-history indexing, compiler-backed symbol resolution, incremental cache, workspace persistence and deeper language parsers.
+## P1 — Persistent evidence and workspaces
 
-**Exit criteria:** deterministic results, explicit coverage, cache invalidation tests and no implicit build or package scripts.
+**Goal:** move from isolated report files to durable, searchable investigations.
 
-## 0.4 — Structural Analysis Expansion
+- [ ] Decide the storage adapter and minimum Node/runtime policy before choosing a SQLite implementation.
+- [ ] Define migrations, transactions, locking, recovery, backup and integrity checks.
+- [ ] Add content-addressed artifact records and immutable analysis-run records.
+- [ ] Persist normalized findings, evidence, provider receipts and coverage.
+- [ ] Add stable evidence IDs and parent/child lineage across runs.
+- [ ] Add local workspace and case model with annotations and artifact relationships.
+- [ ] Add case search, timeline, compare and portable export/import.
+- [ ] Keep the hash-chained ledger independently verifiable; support signed checkpoints only through a documented trust model.
+- [ ] Add retention and deletion controls that do not silently break evidence references.
 
-**Status: PE, ELF, Mach-O and ZIP64 structural-analysis slices implemented; other format work remains planned.**
+**Exit gate:** interrupted writes recover safely; schema migrations are tested; exports can be verified without the database; large cases remain bounded.
 
-- [x] PE import/export tables and file-backed RVA mapping, including named/ordinal imports, named exports and forwarded-export markers.
-- [x] PE resource directory traversal and WIN_CERTIFICATE record framing.
-- [x] PE base-relocation block and entry parsing (metadata only; no relocation application).
-- [ ] CLR metadata and Authenticode trust verification.
-- [x] ELF program headers, PT_INTERP, PT_DYNAMIC tags, GNU build identifiers, symbol tables and REL/RELA relocation records.
-- [x] GNU version requirements, definitions and version-symbol table mapping.
-- [x] GNU hash bloom filters, bucket arrays and terminal-bit chain decoding with aggregate work limits.
-- [ ] Extended ELF numbering and DWARF decoding.
-- [x] Mach-O FAT/FAT64 architecture tables, bounded slices, segment/section commands, bounded LC_SYMTAB nlist decoding, LC_DYSYMTAB symbol groups/indirect entries and CodeDirectory metadata.
-- [ ] Chained fixups, cryptographic trust verification and Objective-C metadata.
-- [x] ZIP64 EOCD/locator and per-entry extended size/offset parsing with safe-integer and central-directory bounds.
-- [ ] Decompression-bomb safeguards and bounded safe entry streaming; extraction remains opt-in.
-- [x] Deterministic malformed-input mutation and truncation smoke corpus for all registered binary parsers.
-- [x] PDF classic xref tables, trailer metadata, bounded incremental /Prev chain, xref-stream recognition and indirect-object index with explicit active-content triage; compressed xref/object streams remain unsupported.
-- [x] Bounded structural indexing of WebAssembly function types, imports, exports, function/type indices, start function and code-body ranges, with vector/name limits and malformed-boundary tests.
-- Versioned JSON Schema documents and golden report fixtures.
-- [x] SARIF 2.1.0 export and baseline/current report comparison.
-- [x] SARIF 2.1.0 export for artifact and directory reports.
+## P2 — Specialist provider foundation
 
-**Exit criteria:** each parser has valid and malformed fixtures, explicit unsupported cases, resource bounds, and format documentation. Fuzz harnesses must demonstrate bounded failures before release.
+**Goal:** make specialist tooling reliable, observable and interchangeable without losing provenance.
 
-## 0.4 — Repository and Project Intelligence
+- [ ] Define provider installation, health, capability, identity and version-state contracts.
+- [ ] Separate metadata discovery from provider invocation.
+- [ ] Add a general provider result envelope with original output digest and normalized evidence.
+- [ ] Improve POSIX/Windows process-tree ownership and cleanup.
+- [ ] Evaluate OS-level containment for providers that process untrusted artifacts.
+- [ ] Add Ghidra headless adapter for authorized static analysis and decompilation.
+- [ ] Expand Rizin to symbols, functions, disassembly and metadata only after real-version compatibility testing.
+- [ ] Add JADX APK/DEX adapter.
+- [ ] Add Semgrep finding import and SARIF normalization.
+- [ ] Add Syft SBOM adapter and inventory reconciliation.
+- [ ] Add OSV-Scanner advisory enrichment with database/source timestamps and exact version matching.
+- [ ] Add Trivy integration for image/configuration/security findings where overlap is justified.
+- [ ] Keep IDA/Binary Ninja integrations optional and user-licensed.
+- [ ] Define provider conformance fixtures, timeout fixtures, failure cases and license checks.
 
-- Git repository inventory without executing project hooks.
-- Language and build-system detection based on bounded manifests.
-- [x] npm package-lock v1-v3 and Yarn classic/Berry dependency graph analysis.
-- [x] npm, Yarn, pnpm, Cargo, Composer, Poetry, Pipenv, uv, Go, Ruby, NuGet and Gradle lockfile readers (format-specific graph completeness is reported).
-- Source symbol index and cross-reference model.
-- Architecture map assembled from observed files and declared dependencies.
-- Incremental cache keyed by content hash, parser version and analysis options.
+**Exit gate:** a provider is never advertised as available without a real probe; every result has provider/version/input provenance; failure and partial output are explicit.
 
-**Exit criteria:** deterministic results, explicit coverage, cache invalidation tests and no implicit build or package scripts.
+## P3 — Correlated engineering intelligence
 
-## 0.5 — Analysis Providers and Disassembly Adapters
+**Goal:** connect source, binary, dependencies, findings and build provenance into a coherent model.
 
-- [x] Declarative `orix.provider.v1` JSON Schema for provider identity, capabilities, platform/format support, execution side effects, resource ceilings and licensing metadata. This is a metadata contract, not a plugin loader or execution authorization.
-- [x] Bounded static-provider process runner with absolute executable validation, argv-only launch, minimal environment, per-run deadlines, cancellation and captured-output ceilings. This is not an OS sandbox.
-- [x] Optional Rizin static import adapter: version probe, JSON import normalization, input SHA-256 and pre/post identity checks.
-- [x] CLI provider listing and explicit Rizin import command with JSON/Markdown output and executable/version provenance.
-- [x] Bounded timeouts, cancellation, output caps and structured process diagnostics.
-- [ ] Broader Ghidra/IDA/Hopper adapters and independently verified OS-level containment for untrusted providers.
-- Function, symbol, callgraph and disassembly evidence contracts.
-- External process ownership, cancellation and cleanup tests.
-- Offline mode and provider-free operation as first-class paths.
+- [ ] Improve language analysis with AST/compiler/LSP integrations by ecosystem.
+- [ ] Index functions, symbols, references, imports, call graphs and cross-module relationships.
+- [ ] Add APK/DEX and package/container structure analysis.
+- [ ] Build artifact-to-source and package-to-binary relationship contracts.
+- [ ] Add vulnerability matching over exact package URL, ecosystem, version ranges and advisory aliases.
+- [ ] Add license evidence and policy evaluation.
+- [ ] Add SBOM import and SPDX interoperability.
+- [ ] Add build provenance and attestation verification.
+- [ ] Add baseline comparisons across source revisions, providers and policy versions.
+- [ ] Preserve missing/ambiguous graph links instead of guessing.
 
-**Exit criteria:** adapters are opt-in, respect upstream licenses, never claim a provider ran when it did not, and preserve exact tool/version provenance.
+**Exit gate:** every relationship has a source and confidence; graph construction is reproducible; vulnerability matches are independently testable.
 
-## 0.6 — Evidence Store and Workspaces
+## P4 — AI intelligence and controlled engineering agents
 
-- SQLite-backed local artifact and evidence store.
-- Content-addressed artifact identity and immutable analysis runs.
-- Search, comparison, annotations and exportable case bundles.
-- Schema migrations, recovery and database integrity checks.
-- Workspace-level access and retention controls.
+**Goal:** enable AI-assisted investigation based on actual evidence, not ungrounded guesses.
 
-**Exit criteria:** interrupted writes recover safely; evidence can be exported and validated without the database.
+- [ ] Define a model-provider interface with local/remote capability, privacy, cost and retention metadata.
+- [ ] Add explicit offline behavior and deterministic non-LLM workflows.
+- [ ] Build a planner that uses repository and evidence context.
+- [ ] Add a tool policy layer for filesystem, network, process, write and execution capabilities.
+- [ ] Require human approval for code edits, builds, network access and destructive operations.
+- [ ] Add execution receipts, structured logs, budgets, cancellation and replay.
+- [ ] Add evidence citations and uncertainty statements to agent responses.
+- [ ] Prevent file content, extracted strings, provider output and repository instructions from changing system policy.
+- [ ] Add approved patch workflows with diffs, tests and rollback guidance.
+- [ ] Integrate with external coding agents through versioned MCP and API contracts.
 
-## 0.7 — Agent and MCP Interface
+**Exit gate:** actions are policy-checked; every agent conclusion links to evidence; every write has an approval and recoverable patch; runs can be replayed or inspected.
 
-**Status: local stdio tools vertical slice implemented; protocol expansion remains planned**
+## P5 — Web and desktop product workspace
 
-- [x] JSON-RPC stdio server with MCP 2025-03-26 initialize, ping, tools/list and tools/call.
-- [x] Workspace-confined artifact, directory, project, format, comparison and evidence-ledger tools.
-- [x] Tool argument contracts, path checks, no-follow report reads and input/output byte budgets.
-- [ ] Tool catalog generated from typed operation contracts.
-- [x] MCP server exposing artifact, project, comparison and evidence workflows.
-- [ ] HTTP transport, resource/prompt subscriptions and remote authentication.
-- Compact and full argument profiles with canonical server validation.
-- Pagination, cancellation and report-size budgets.
-- Prompt-injection-resistant handling of strings and metadata extracted from artifacts.
+**Goal:** turn the report viewer into an operator workspace without making the current local viewer unsafe.
 
-**Exit criteria:** tool schemas validate against the selected MCP dialect; every advertised tool has integration tests and real, documented behavior. The current stdio slice is not a remote service.
+- [ ] Add live local analysis through a narrow application API.
+- [ ] Add workspaces, cases, artifacts, runs, findings and evidence navigation.
+- [ ] Add interactive dependency, symbol, import and call-graph visualizations.
+- [ ] Add comparison, filters, saved views and investigation timeline.
+- [ ] Add provider health/installation guidance and explicit invocation controls.
+- [ ] Add accessible keyboard navigation and large-report virtualization.
+- [ ] Add desktop shell only after local service and storage boundaries stabilize.
+- [ ] Add import/export, backup, migration and recovery flows.
+- [ ] Add remote collaboration only after authentication, authorization and tenant isolation reviews.
 
-## 0.8 — Desktop and Web Workspace
+**Exit gate:** UI is a presentation of canonical services; report content is safely rendered; local data does not leave the machine without consent.
 
-- Desktop shell with local-first storage.
-- Artifact overview, parser views, evidence timeline and project graph.
-- Keyboard-accessible navigation, virtualization and large-report handling.
-- Optional local API with explicit binding and authentication model.
-- Import/export case workflows.
+## P6 — Authorized runtime investigation
 
-**Exit criteria:** installation, upgrades, storage migrations, accessibility and security review pass on supported operating systems.
+**Goal:** support runtime observation only within an explicit, disposable, auditable lab.
 
-## 0.9 — Isolated Runtime Observation
+- [ ] Define authorization record and target scope.
+- [ ] Define disposable VM/container/snapshot requirements per supported OS.
+- [ ] Enforce process, filesystem, network, memory, CPU and time policies outside the provider process.
+- [ ] Add process ownership and descendant cleanup guarantees.
+- [ ] Add read-only observation mode before instrumentation.
+- [ ] Integrate runtime providers such as Frida only with explicit scope and isolation.
+- [ ] Capture event provenance and distinguish observed runtime behavior from static inference.
+- [ ] Test crashes, hangs, cancellation, host isolation and cleanup failure.
+- [ ] Preserve complete audit records and safe lab reset behavior.
 
-- Explicitly authorized dynamic observation in disposable environments.
-- Snapshot, process and network observation providers.
-- Enforced resource, duration and network policies.
-- Cancellation and cleanup guarantees.
-- Runtime evidence linked to static evidence without conflating confidence.
+**Exit gate:** no dynamic target executes on the host by accident; policy is enforced by the isolation layer; all outcomes and cleanup failures are visible.
 
-**Exit criteria:** isolation design review, threat model, failure-injection tests, provider ownership tests and documented containment limitations.
+## 1.0 — Stable platform
 
-## 1.0 — Stable Platform
+- [ ] Versioned and supported public APIs, schemas and provider SDK.
+- [ ] Reproducible release artifacts and signed provenance.
+- [ ] Documented supported OS/runtime matrix and compatibility policy.
+- [ ] Release, migration, backup, incident and vulnerability-response processes.
+- [ ] Full security and privacy review.
+- [ ] Benchmark results with reproducible corpora and no unsupported superiority claims.
+- [ ] Maintainer documentation and verified installation paths.
 
-- Versioned public APIs and report schemas.
-- Reproducible release artifacts and signed provenance.
-- Supported operating-system matrix and long-term compatibility policy.
-- Plugin SDK with capability and trust boundaries.
-- Full documentation, migration guides and maintainer operations.
+## Cross-cutting quality gates
 
-## Quality gates for every milestone
+1. No placeholder module is presented as a capability.
+2. Every advertised feature maps to source and meaningful tests.
+3. Every untrusted-input loop and process boundary has resource limits.
+4. Malformed, truncated and boundary input is tested.
+5. Coverage and unsupported states are visible.
+6. Public report and provider contracts are versioned.
+7. No inspected artifact or project script runs implicitly.
+8. Network access and data egress are explicit.
+9. External provider licensing and attribution are reviewed.
+10. CI passes on each claimed platform and runtime.
+11. Documentation is checked against source contracts.
+12. A feature is complete only when its acceptance criteria and failure behavior are tested.
 
-1. No empty placeholder modules advertised as features.
-2. Every user-facing capability maps to source and tests.
-3. Every untrusted-input loop has a resource ceiling.
-4. Malformed, truncated and boundary-sized input is covered.
-5. Coverage and parser limitations are explicit in reports.
-6. CI checks syntax, tests and dependency/license changes.
-7. No external project code or assets are copied without license and attribution review.
+## Release discipline
+
+Use small, reviewable changes. Prefer a focused PR for one vertical slice over a giant unreviewable change. Do not merge a provider adapter on the strength of a fake executable fixture alone; require real-tool verification or label the adapter experimental. Do not claim benchmarks without a repeatable protocol. Keep the main branch as the source of truth and remove stale branches only after their unique work has been reviewed.

@@ -73,6 +73,24 @@ Bounded extracted strings exactly match selected API names associated with cross
 
 Bounded extracted strings exactly match selected API names associated with credential enumeration or process-dump workflows. Context, symbol resolution and call-site analysis are outside the current release.
 
+### \`ORIX-PDF-ACTIVE-CONTENT-001\`
+
+**Severity:** medium. **Confidence:** observed.
+
+The bounded PDF lexical scan found one or more JavaScript or action-related dictionary names: JavaScript, open actions, additional actions or launch actions. These are lexical markers, not a full PDF object-graph reachability analysis. They do not prove that an action is reachable, permitted by a viewer or executed.
+
+### \`ORIX-PDF-EMBEDDED-CONTENT-001\`
+
+**Severity:** info. **Confidence:** observed.
+
+The bounded PDF lexical scan found embedded-file or file-specification markers. ORIX currently does not extract or inspect attachment contents through this parser. The marker does not prove an attachment is reachable or successfully extractable.
+
+### \`ORIX-PDF-ENCRYPTED-001\`
+
+**Severity:** info. **Confidence:** observed.
+
+The parsed PDF metadata reports an encryption dictionary/reference. ORIX does not decrypt the document or validate plaintext content. Encryption metadata is not itself a malware signal.
+
 ## Ordering and limits
 
 Findings are ordered by severity (`critical`, `high`, `medium`, `low`, `info`) and then by `rule_id`. Supporting string and archive-entry evidence is capped at 100 records per finding. The global file read, string extraction, parser count and directory scan ceilings continue to apply.
