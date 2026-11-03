@@ -41,9 +41,9 @@ function plain_record(value, field) {
 
 function exact_keys(value, field, allowed, required = allowed) {
   plain_record(value, field);
-  const keys = Object.keys(value);
+  const keys = Reflect.ownKeys(value);
   for (const key of keys) {
-    if (!allowed.includes(key)) invalid(field + '.' + key, 'Unknown property in provider manifest');
+    if (typeof key !== 'string' || !allowed.includes(key)) invalid(field + '.' + String(key), 'Unknown property in provider manifest');
   }
   for (const key of required) {
     if (!Object.hasOwn(value, key)) invalid(field + '.' + key, 'Required property is missing');
