@@ -81,8 +81,9 @@ function provider_import(report, item, index) {
   return {
     id: 'provider-import:' + index + ':' + name + ':' + library,
     kind: 'provider-import',
-    path: report.artifact.path + ' :: ' + name,
+    path: report.artifact.path,
     name,
+    library,
     format: 'Native import',
     size_bytes: 0,
     sha256: report.artifact.sha256,
@@ -209,7 +210,7 @@ export function filter_report_view(view, filters = {}) {
     if (severity !== 'all' && !record.findings.some(finding => finding.severity === severity)) return false;
     if (!query) return true;
     return [
-      record.path, record.name, record.format, record.sha256 ?? '',
+      record.path, record.name, record.library ?? '', record.format, record.sha256 ?? '',
       ...record.findings.flatMap(finding => [finding.rule_id, finding.title, finding.summary]),
     ].join(' ').toLocaleLowerCase('en').includes(query);
   });
