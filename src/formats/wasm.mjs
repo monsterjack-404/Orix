@@ -12,6 +12,9 @@ function read_varuint(reader, offset, max_bytes = 5, end_limit = reader.buffer.l
   for (let count = 0; count < max_bytes; count += 1) {
     if (cursor >= end_limit) throw new OrixError('ORIX_WASM_TRUNCATED_LEB128', 'WebAssembly integer crosses its containing boundary', { details: { offset, end_limit }, recoverable: true });
     const byte = reader.u8(cursor, 'WebAssembly varuint');
+    if (count === max_bytes - 1 && (byte & 0x7f) > 0x0f) {
+      throw new OrixError('ORIX_WASM_BAD_LEB128', 'WebAssembly u32 integer exceeds its 32-bit encoding range', { details: { offset, byte, max_bytes }, recoverable: true });
+    }
     value += (byte & 0x7f) * multiplier;
     cursor += 1;
     if ((byte & 0x80) === 0) return { value, next: cursor };
