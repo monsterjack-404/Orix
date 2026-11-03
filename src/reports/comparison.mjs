@@ -1,7 +1,7 @@
 // JavaScript, src/reports/comparison.mjs, Node.js 20+, readable artifact comparison report.
 
 function cell(value) {
-  return String(value ?? '').replaceAll('\\', '\\\\').replaceAll('|', '\\|').replace(/[\\r\\n]+/g, ' ');
+  return String(value ?? '').replaceAll('\\', '\\\\').replaceAll('|', '\\|').replace(/[\r\n]+/g, ' ');
 }
 
 function code_span(value) {
