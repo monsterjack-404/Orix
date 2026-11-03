@@ -64,7 +64,7 @@ function validate_arguments(value) {
     const descriptor = descriptors[String(index)];
     if (!descriptor) throw new TypeError('args must not be sparse');
     const argument = descriptor.value;
-    if (typeof argument !== 'string' || argument.includes('\\0')) {
+    if (typeof argument !== 'string' || argument.includes('\0')) {
       throw new TypeError('args[' + index + '] must be a string without NUL bytes');
     }
     const bytes = Buffer.byteLength(argument, 'utf8');
