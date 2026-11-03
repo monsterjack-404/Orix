@@ -5,7 +5,7 @@ function escape_cell(value) {
 }
 
 function code_span(value) {
-  const text = String(value ?? '').replace(/[\r\n]+/g, '\\n');
+  const text = escape_cell(value);
   const marker = String.fromCharCode(96);
   const runs = [...text.matchAll(new RegExp(marker + '+', 'g'))].map(match => match[0].length);
   const fence = marker.repeat(Math.max(1, ...runs.map(length => length + 1)));
