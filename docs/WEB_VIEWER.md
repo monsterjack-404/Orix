@@ -19,9 +19,10 @@ Open http://127.0.0.1:4173. Set `ORIX_WEB_PORT` to select a port from 1 through 
 - `orix.scan.v1`: directory inventory and per-artifact findings.
 - `orix.project.v1`: source inventory and redacted project findings.
 - `orix.rizin-imports.v1`: native import-symbol inventory, library, ordinal, binding, type and PLT metadata.
+- WebAssembly artifacts: searchable import, export and name-section function records derived from the parsed artifact report.
 - `orix.provider-probe.v1`: explicit provider version and runtime diagnostics.
 
-Reports larger than 64 MiB, unsupported schemas and malformed identity/hash values are rejected. Search covers paths, hashes, rule IDs, titles, finding summaries and imported symbol names. Severity and format filters can be combined. Select a row to review identity, parser state, findings and structured details. CSV export includes report findings and Rizin import metadata; provider imports are not misrepresented as security findings.
+Reports larger than 64 MiB, unsupported schemas and malformed identity/hash values are rejected. Search covers paths, hashes, rule IDs, titles, finding summaries, imported symbol names, WebAssembly export names and function names. Severity and format filters can be combined. Select a row to review identity, parser state, findings and structured details. CSV export includes report findings, Rizin imports and WebAssembly symbol records; symbol inventories are not misrepresented as security findings.
 
 ## Privacy and security
 
