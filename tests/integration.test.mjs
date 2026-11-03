@@ -260,6 +260,11 @@ test('directory scan initializes and appends its evidence ledger receipt', async
 });
 
 
+test('CLI rejects command-specific options that would otherwise be ignored', async () => {
+  await assert.rejects(cli_main(['project', '.', '--concurrency', '4']), /project does not support option/);
+  await assert.rejects(cli_main(['compare', 'before.json', 'after.json', '--ledger', 'events.jsonl']), /compare does not support option/);
+});
+
 test('CLI rejects output formats unsupported by compare, ledger and formats commands', async () => {
   await assert.rejects(cli_main(['compare', 'before.json', 'after.json', '--format', 'cyclonedx']), /compare output supports JSON or Markdown/);
   await assert.rejects(cli_main(['ledger', 'verify', 'events.jsonl', '--format', 'sarif']), /ledger output currently supports JSON only/);
