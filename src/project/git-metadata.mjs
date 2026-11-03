@@ -190,7 +190,20 @@ function parse_loose_commit(buffer, expected_oid, object_format, maximum) {
   if (split < 0) return { status: 'unavailable', reason: 'commit-header-terminator-missing' };
   const header_lines = text.slice(0, split).split('\n');
   const oid_length = object_format === 'sha256' ? 64 : 40;
-  const oid_pattern = new RegExp('^[a-f0-9]{' + oid_length + '}
+  const oid_pattern = new RegExp('^[a-f0-9]{' + oid_length + '}$');
+  const tree_lines = header_lines.filter(line => line.startsWith('tree '));
+  const parent_lines = header_lines.filter(line => line.startsWith('parent '));
+  const author_lines = header_lines.filter(line => line.startsWith('author '));
+  const committer_lines = header_lines.filter(line => line.startsWith('committer '));
+  if (tree_lines.length !== 1 || !oid_pattern.test(tree_lines[0].slice(5)) ||
+      parent_lines.some(line => !oid_pattern.test(line.slice(7))) ||
+      author_lines.length !== 1 || committer_lines.length !== 1) {
+    return { status: 'unavailable', reason: 'commit-headers-invalid' };
+  }
+  const tree = tree_lines[0].slice(5);
+  const parents = parent_lines.map(line => line.slice(7));
+  const author = author_lines[0];
+  const committer = committer_lines[0];
   const timestamp = line => {
     const value = /\s(\d{9,12})\s[+-]\d{4}$/.exec(line);
     return value ? Number(value[1]) : null;
