@@ -72,7 +72,8 @@ function boolean_value(value, field) {
 function unique_array(value, field, maximum, validate_item) {
   if (!Array.isArray(value) || value.length > maximum) invalid(field, field + ' must be an array with at most ' + maximum + ' entries');
   for (const key of Reflect.ownKeys(value)) {
-    if (typeof key === 'symbol' || key === 'length') invalid(field, 'Array custom properties are not accepted');
+    if (typeof key === 'symbol') invalid(field, 'Array custom properties are not accepted');
+    if (key === 'length') continue;
     if (!/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= value.length) {
       invalid(field, 'Array custom properties are not accepted');
     }
