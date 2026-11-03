@@ -331,3 +331,18 @@ test('malformed JSON manifest maps do not create phantom dependencies or scripts
   assert.ok(report.manifests[0].warnings.length >= 3);
   assert.equal(report.summary.declared_dependencies, 0);
 }));
+
+
+test('project intelligence treats files with late NUL bytes as binary', async () => with_project(async root => {
+  const binary = Buffer.concat([
+    Buffer.from('export const visiblePrefix = 1;\\n' + 'A'.repeat(9000)),
+    Buffer.from([0]),
+    Buffer.from('const api_key = "late-secret-value-123456";'),
+  ]);
+  await writeFile(path.join(root, 'payload.js'), binary);
+  const report = await scan_project(root);
+  assert.equal(report.files.length, 1);
+  assert.equal(report.files[0].text_analyzed, false);
+  assert.equal(report.files[0].symbols.length, 0);
+  assert.equal(report.findings.length, 0);
+}));
