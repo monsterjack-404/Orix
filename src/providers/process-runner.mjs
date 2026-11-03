@@ -49,7 +49,8 @@ function validate_arguments(value) {
   }
   const descriptors = Object.getOwnPropertyDescriptors(value);
   for (const key of Reflect.ownKeys(value)) {
-    if (typeof key !== 'string' || key === 'length' ||
+    if (key === 'length') continue;
+    if (typeof key !== 'string' ||
         !/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= value.length) {
       throw new TypeError('args must not contain custom array properties');
     }
