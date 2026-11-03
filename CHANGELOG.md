@@ -5,7 +5,8 @@
 ### Added
 - Bounded WebAssembly structure indexing for function types, imports, exports, function/type references, start function metadata and code-body byte ranges.
 - Optional Rizin static import adapter with input SHA-256 provenance, version probing, bounded JSON normalization and a versioned report schema.
-- Shell-free static provider process runner with executable validation, explicit environment, timeout, cancellation and captured-output ceilings.
+- Shell-free static provider runner with exact canonical executable and working-directory allowlists, symlink rejection, blocked command-search/loader environment overrides, timeout, cancellation and captured-output ceilings.
+- Versioned `orix.provider-execution.v1` process outcome receipts with exit/termination details and effective resource limits.
 - `providers list` and `providers rizin imports` CLI commands with JSON and Markdown output.
 
 ### Security and correctness
