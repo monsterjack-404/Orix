@@ -7,7 +7,7 @@ ORIX parses WebAssembly binary version 1 as a bounded structure index. It does n
 The parser validates and exposes:
 
 - Module magic and binary version.
-- Standard section framing, bounded section counts and duplicate standard-section detection.
+- Standard section framing, specification-order validation, bounded section counts and duplicate standard-section detection.
 - Strict UTF-8 decoding for custom-section names, import module/field names and export names.
 - Function types, parameter types and result types.
 - Function, table, memory, global and tag import descriptors.
