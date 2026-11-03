@@ -147,6 +147,14 @@ List adapters without probing external installations:
 node src/cli.mjs providers list --json
 ~~~
 
+Check an explicit Rizin installation without opening an artifact:
+
+~~~sh
+node src/cli.mjs providers rizin doctor --executable /opt/rizin/bin/rizin --json
+~~~
+
+The doctor command launches only the version probe. It never searches PATH and does not prove that all Rizin analysis commands work.
+
 Run import extraction with an explicit Rizin executable:
 
 ~~~sh
@@ -191,7 +199,8 @@ A manifest is untrusted input. It is descriptive metadata, not a signed identity
 - PROVIDER_CONTRACT_VERSION — current contract identifier.
 - DEFAULT_PROVIDER_MANIFEST_LIMIT — default 64 KiB input ceiling.
 - run_static_provider(options) — bounded shell-free process launch for a declared static provider.
-- analyze_rizin_imports(options) — Rizin CLI adapter returning an `orix.rizin-imports.v1` report.
+- analyze_rizin_imports(options) — Rizin CLI adapter returning an `orix.rizin-imports.v1` report. The adapter hashes the source, creates a private read-only temporary snapshot, analyzes the snapshot rather than the caller's original path, and verifies the snapshot digest after provider execution.
+- probe_rizin(options) — invoke an explicitly selected executable with `-v` and return an `orix.provider-probe.v1` availability/version report. This does not search PATH or claim compatibility beyond the version probe.
 - RIZIN_PROVIDER_MANIFEST and RIZIN_ADAPTER_VERSION — Rizin integration metadata.
 
 
