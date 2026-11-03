@@ -12,6 +12,7 @@ const schema_paths = [
   new URL('../schemas/comparison.v1.schema.json', import.meta.url),
   new URL('../schemas/project.v1.schema.json', import.meta.url),
   new URL('../schemas/provider-manifest.v1.schema.json', import.meta.url),
+  new URL('../schemas/rizin-imports.v1.schema.json', import.meta.url),
 ];
 
 test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
@@ -40,4 +41,8 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.ok(schemas[6].properties.execution.required.includes('requires_authorization'));
   assert.ok(schemas[6].properties.limits.required.includes('timeout_ms'));
   assert.ok(schemas[6].properties.license.properties.redistribution.enum.includes('proprietary'));
+  assert.equal(schemas[7].properties.schema_version.const, 'orix.rizin-imports.v1');
+  assert.equal(schemas[7].properties.provider.properties.id.const, 'rizin.static');
+  assert.ok(schemas[7].required.includes('artifact'));
+  assert.ok(schemas[7].properties.artifact.properties.sha256.pattern.includes('a-f'));
 });
