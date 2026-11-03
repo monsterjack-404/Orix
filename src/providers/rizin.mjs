@@ -32,7 +32,7 @@ export const RIZIN_PROVIDER_MANIFEST = Object.freeze({
     max_output_bytes: 8_388_608,
   }),
   license: Object.freeze({
-    spdx_id: 'LGPL-3.0-only',
+    spdx_id: 'NOASSERTION',
     redistribution: 'external-install',
     source_url: 'https://github.com/rizinorg/rizin',
   }),
