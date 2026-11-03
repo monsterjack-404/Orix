@@ -146,6 +146,7 @@ function validate_chain(records) {
     const expected_keys = ['event','format','hash','payload','previous_hash','record_id','sequence','timestamp'];
     const actual_keys = Object.keys(record).sort();
     if (actual_keys.length !== expected_keys.length || actual_keys.some((key, key_index) => key !== expected_keys[key_index])) fail('ORIX_LEDGER_RECORD_SHAPE', 'Ledger record contains missing or unexpected fields', { line: expected_sequence, actual_keys });
+    if (!record.payload || typeof record.payload !== 'object' || Array.isArray(record.payload)) fail('ORIX_LEDGER_PAYLOAD_SHAPE', 'Ledger payload must be a JSON object', { line: expected_sequence });
     if (record.format !== LEDGER_FORMAT) fail('ORIX_LEDGER_FORMAT_MISMATCH', 'Ledger record has an unsupported format identifier', { line: expected_sequence, format: record.format });
     if (record.sequence !== expected_sequence) fail('ORIX_LEDGER_SEQUENCE_MISMATCH', 'Ledger sequence is not contiguous', { line: expected_sequence, actual: record.sequence });
     if (typeof record.record_id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(record.record_id) || typeof record.timestamp !== 'string' || Number.isNaN(Date.parse(record.timestamp))) fail('ORIX_LEDGER_RECORD_METADATA', 'Ledger record metadata is invalid', { line: expected_sequence });
@@ -206,6 +207,7 @@ export async function create_evidence_ledger(file_path) {
 export async function append_evidence_event(file_path, event, payload, options = {}) {
   const absolute = path.resolve(file_path);
   if (typeof event !== 'string' || !/^[a-z][a-z0-9_.-]{1,79}$/.test(event)) fail('ORIX_LEDGER_EVENT_INVALID', 'Event must be 2-80 lowercase letters, digits, dots, underscores or hyphens');
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) fail('ORIX_LEDGER_PAYLOAD_SHAPE', 'Ledger payload must be a JSON object');
   const safe_payload = canonical_value(payload);
   const release = await acquire_lock(absolute, options);
   try {
