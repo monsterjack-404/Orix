@@ -78,11 +78,11 @@ function same_file_identity(left, right) {
     left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 }
 
-async function sha256_file(file_path, maximum_bytes) {
+async function sha256_file(file_path, maximum_bytes, signal) {
   const hash = createHash('sha256');
   let bytes_read = 0;
   try {
-    for await (const chunk of createReadStream(file_path)) {
+    for await (const chunk of createReadStream(file_path, { signal })) {
       bytes_read += chunk.length;
       if (bytes_read > maximum_bytes) {
         provider_error('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin input grew beyond its manifest byte limit while hashing', {
@@ -93,6 +93,7 @@ async function sha256_file(file_path, maximum_bytes) {
     }
   } catch (error) {
     if (error instanceof OrixError) throw error;
+    if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled while hashing its input');
     provider_error('ORIX_RIZIN_INPUT_READ_FAILED', 'Rizin input could not be hashed before analysis', {
       reason: error.code ?? 'read-error',
     });
@@ -174,6 +175,11 @@ export async function analyze_rizin_imports(options = {}) {
   }
   const input_path = descriptors.input_path?.value;
   validate_input_path(input_path);
+  const signal = descriptors.signal?.value;
+  if (signal !== undefined && !(signal instanceof AbortSignal)) {
+    throw new TypeError('signal must be an AbortSignal');
+  }
+  if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled before input acquisition');
   const maximum_bytes = manifest.limits.max_input_bytes;
   const timeout_ms = descriptors.timeout_ms?.value ?? manifest.limits.timeout_ms;
   const max_output_bytes = descriptors.max_output_bytes?.value ?? manifest.limits.max_output_bytes;
@@ -190,7 +196,8 @@ export async function analyze_rizin_imports(options = {}) {
   if (!Number.isSafeInteger(maximum_imports) || maximum_imports < 0 || maximum_imports > 1_000_000) {
     throw new TypeError('max_imports must be an integer between 0 and 1000000');
   }
-  const input_hash = await sha256_file(before.canonical_path, maximum_bytes);
+  if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled before input hashing');
+  const input_hash = await sha256_file(before.canonical_path, maximum_bytes, signal);
   if (input_hash.bytes_read !== before.info.size) {
     provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input size changed while it was hashed', {
       expected_size_bytes: before.info.size, actual_size_bytes: input_hash.bytes_read,
@@ -203,11 +210,18 @@ export async function analyze_rizin_imports(options = {}) {
     env: descriptors.env?.value,
     timeout_ms,
     max_output_bytes,
-    signal: descriptors.signal?.value,
+    signal,
   };
 
+  const remaining_before_probe = timeout_ms - (Date.now() - analysis_started_at);
+  if (remaining_before_probe < 1) {
+    provider_error('ORIX_RIZIN_TIMEOUT', 'Rizin analysis exceeded the total provider deadline before version probing', {
+      timeout_ms,
+    });
+  }
   const version_result = await run_static_provider({
     ...common,
+    timeout_ms: remaining_before_probe,
     args: ['-v'],
     max_output_bytes: Math.min(common.max_output_bytes ?? manifest.limits.max_output_bytes, 16_384),
   });
