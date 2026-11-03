@@ -10,7 +10,8 @@ const schema_paths = [
   new URL('../schemas/indicator.v1.schema.json', import.meta.url),
   new URL('../schemas/ledger.v1.schema.json', import.meta.url),
   new URL('../schemas/comparison.v1.schema.json', import.meta.url),
-  new URL('../schemas/project.v1.schema.json', import.meta.url),\n  new URL('../schemas/provider-manifest.v1.schema.json', import.meta.url),
+  new URL('../schemas/project.v1.schema.json', import.meta.url),
+  new URL('../schemas/provider-manifest.v1.schema.json', import.meta.url),
 ];
 
 test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
@@ -33,5 +34,10 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.equal(schemas[4].additionalProperties, false);
   assert.equal(schemas[5].properties.schema_version.const, 'orix.project.v1');
   assert.ok(schemas[5].required.includes('lockfiles'));
-  assert.ok(schemas[5].properties.summary.required.includes('locked_packages'));\n  assert.equal(schemas[6].properties.contract_version.const, 'orix.provider.v1');\n  assert.equal(schemas[6].additionalProperties, false);\n  assert.ok(schemas[6].properties.execution.required.includes('requires_authorization'));\n  assert.ok(schemas[6].properties.limits.required.includes('timeout_ms'));\n  assert.ok(schemas[6].properties.license.properties.redistribution.enum.includes('proprietary'));
+  assert.ok(schemas[5].properties.summary.required.includes('locked_packages'));
+  assert.equal(schemas[6].properties.contract_version.const, 'orix.provider.v1');
+  assert.equal(schemas[6].additionalProperties, false);
+  assert.ok(schemas[6].properties.execution.required.includes('requires_authorization'));
+  assert.ok(schemas[6].properties.limits.required.includes('timeout_ms'));
+  assert.ok(schemas[6].properties.license.properties.redistribution.enum.includes('proprietary'));
 });
