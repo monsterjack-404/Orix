@@ -112,7 +112,7 @@ try{
 }catch(error){skipped.push({path:relative,reason:'read-failed',message:String(error.message).slice(0,160)});continue;}
 finally{if(handle)await handle.close().catch(()=>{});}
 total_bytes+=buffer.length;
-const text=!buffer.subarray(0,Math.min(buffer.length,8192)).includes(0)?buffer.toString('utf8'):null;
+const text=!buffer.includes(0)?buffer.toString('utf8'):null;
 raw.push({path:relative,size_bytes:buffer.length,sha256:digest(buffer),language:EXT[path.extname(relative).toLowerCase()]??'Unknown',extension:path.extname(relative).toLowerCase(),text});}}
  await visit(root,0);
  const git=await scan_git_metadata(root,{max_refs:limits.max_git_refs,max_ref_depth:limits.max_git_ref_depth,max_metadata_bytes:limits.max_git_metadata_bytes,max_object_bytes:limits.max_git_object_bytes,max_pack_files:limits.max_git_pack_files});
