@@ -39,7 +39,7 @@ test('WebAssembly parser indexes function types, imports, exports and code body 
   assert.deepEqual(result.imports, [{ module: 'm', name: 'f', kind: 'function', type_index: 0 }]);
   assert.deepEqual(result.exports, [{ name: 'f', kind: 'function', index: 1 }]);
   assert.equal(result.start_function_index, 1);
-  assert.deepEqual(result.code_bodies, [{ offset: 48, size: 2 }]);
+  assert.deepEqual(result.code_bodies, [{ offset: 40, size: 2 }]);
   assert.deepEqual(result.counts, {
     types: 1, imports: 1, imported_functions: 1,
     defined_functions: 1, exports: 1, code_bodies: 1,
