@@ -50,7 +50,8 @@ check('MCP protocol documentation', () => {
 check('format table matches parser registry', () => {
   const table_lines = formats.split(/\r?\n/).filter(line => line.startsWith('|'));
   for (const capability of list_format_capabilities()) {
-    const label = capability.format === 'PE' ? 'PE / COFF (PE)' : capability.format;
+    const labels = { PE: 'PE / COFF (PE)', 'Mach-O': 'Thin Mach-O', 'Mach-O Universal': 'Universal Mach-O' };
+    const label = labels[capability.format] ?? capability.format;
     const row = table_lines.find(line => line.startsWith('| ' + label + ' |'));
     assert.ok(row, 'missing format row for ' + capability.format);
     const columns = row.split('|').map(value => value.trim());
