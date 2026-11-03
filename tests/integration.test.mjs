@@ -11,7 +11,6 @@ import { scan_directory } from '../src/analyzer/scan.mjs';
 import { main as cli_main } from '../src/cli/main.mjs';
 import { parse_arguments } from '../src/cli/arguments.mjs';
 import { verify_ledger } from '../src/evidence/ledger.mjs';
-import { parse_arguments } from '../src/cli/arguments.mjs';
 import { create_elf_fixture, create_pe_fixture, create_zip_fixture } from './helpers.mjs';
 
 async function with_temp_dir(callback) {
