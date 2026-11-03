@@ -66,6 +66,6 @@ export const HELP_TEXT = [
   '  provider commands start an explicitly configured analysis tool, not the target.',
   '  The provider process is time/output bounded but is not an OS sandbox. Project',
   '  intelligence does not run package scripts, build hooks or project code.',
-  '  Symlinks are not followed and incomplete analysis coverage is reported.'
+  '  Symlinks are not followed and incomplete analysis coverage is reported.',
   '',
 ].join('\n');
