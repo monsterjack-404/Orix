@@ -32,3 +32,6 @@ export { scan_git_metadata } from './project/git-metadata.mjs';
 export { PROVIDER_CONTRACT_VERSION, DEFAULT_PROVIDER_MANIFEST_LIMIT, validate_provider_manifest, parse_provider_manifest_json, read_provider_manifest } from './providers/manifest.mjs';
 
 export { ProviderRegistry } from './providers/registry.mjs';
+
+export { run_static_provider } from './providers/process-runner.mjs';
+export { RIZIN_ADAPTER_VERSION, RIZIN_PROVIDER_MANIFEST, analyze_rizin_imports } from './providers/rizin.mjs';
