@@ -53,6 +53,12 @@ test('static provider runner uses argv without shell interpolation and returns b
     timeout_ms: 1000,
   });
   assert.equal(result.ok, true);
+  assert.equal(result.schema_version, 'orix.provider-execution.v1');
+  assert.equal(result.success, true);
+  assert.equal(result.termination_reason, null);
+  assert.equal(result.args_count, 3);
+  assert.equal(result.output.bytes_captured, result.captured_bytes);
+  assert.ok(result.completed_at);
   assert.equal(result.stdout, 'literal $(not-a-shell) value');
   assert.equal(result.stderr, 'diagnostic');
   assert.equal(result.provider.id, 'test.static');
@@ -106,6 +112,7 @@ test('static provider runner enforces the per-run output ceiling', async () => {
     kill_grace_ms: 20,
   });
   assert.equal(result.output_limited, true);
+  assert.equal(result.termination_reason, 'output-limit');
   assert.equal(result.output_truncated, true);
   assert.ok(result.captured_bytes <= 1024);
   assert.equal(result.ok, false);
@@ -120,6 +127,7 @@ test('static provider runner terminates providers at the configured deadline', a
     kill_grace_ms: 20,
   });
   assert.equal(result.timed_out, true);
+  assert.equal(result.termination_reason, 'timeout');
   assert.equal(result.ok, false);
 });
 
@@ -136,6 +144,7 @@ test('static provider runner supports AbortSignal cancellation', async () => {
       kill_grace_ms: 20,
     });
     assert.equal(result.cancelled, true);
+    assert.equal(result.termination_reason, 'cancelled');
     assert.equal(result.timed_out, false);
     assert.equal(result.ok, false);
   } finally {
