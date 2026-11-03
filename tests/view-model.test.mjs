@@ -24,6 +24,7 @@ test('normalizes Rizin import reports as searchable symbol inventory without mis
   assert.equal(filter_report_view(view,{query:'libssl.so'}).length,1);
   const ssl_record=view.records.find(record=>record.name==='SSL_connect');
   assert.equal(ssl_record.sha256,hash);
+  assert.equal(ssl_record.library,'libssl.so');
   assert.equal(ssl_record.raw.import.library,'libssl.so');
 });
 
