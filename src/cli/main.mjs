@@ -26,9 +26,23 @@ async function write_or_print(content,output_path) {
 }
 
 function select_report(report,format,renderer){if(format==='json')return render_json(report);if(format==='sarif')return render_sarif(report);return renderer(report);}
+function validate_command_flags(command, flags) {
+  const allowed = {
+    inspect: ['format', 'out', 'ledger', 'extract_strings', 'max_strings', 'max_read_bytes', 'max_file_bytes'],
+    scan: ['format', 'out', 'ledger', 'extract_strings', 'max_strings', 'max_scan_files', 'max_scan_directories', 'max_scan_entries', 'max_scan_depth', 'max_read_bytes', 'max_file_bytes', 'max_scan_concurrency'],
+    project: ['format', 'out', 'ledger', 'max_scan_files', 'max_scan_entries', 'max_scan_depth'],
+    compare: ['format', 'out'],
+    formats: ['format', 'out'],
+    ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
+  }[command];
+  if (!allowed) return;
+  const unsupported = Object.keys(flags).filter(key => !allowed.includes(key));
+  if (unsupported.length) throw new Error(command + ' does not support option(s): ' + unsupported.join(', '));
+}
 export async function main(argv=process.argv.slice(2)) {
   const parsed=parse_arguments(argv);
   if(parsed.flags.help||parsed.command==='help'||!parsed.command){process.stdout.write(HELP_TEXT);return 0;}
+  validate_command_flags(parsed.command, parsed.flags);
   if(parsed.command==='ledger'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('ledger output currently supports JSON only');
   if(parsed.command==='compare'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('compare output supports JSON or Markdown only');
   if(parsed.command==='formats'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('formats output currently supports JSON only');
