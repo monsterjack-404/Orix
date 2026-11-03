@@ -127,8 +127,12 @@ export function parse_zip(buffer, options = {}) {
   const resolved_entries = directory.total_entries;
   const resolved_central_size = directory.central_size;
   const resolved_central_offset = directory.central_offset;
-  if (resolved_entries > (options.max_entries ?? 100_000)) {
-    throw new OrixError('ORIX_ZIP_ENTRY_LIMIT', 'ZIP entry count exceeds configured parser limit', { details: { total_entries, max_entries: options.max_entries ?? 100_000 }, recoverable: true });
+  const maximum_entries = options.max_entries ?? 100_000;
+  if (!Number.isSafeInteger(maximum_entries) || maximum_entries < 1 || maximum_entries > 1_000_000) {
+    throw new TypeError('max_entries must be an integer between 1 and 1000000');
+  }
+  if (resolved_entries > maximum_entries) {
+    throw new OrixError('ORIX_ZIP_ENTRY_LIMIT', 'ZIP entry count exceeds configured parser limit', { details: { total_entries, max_entries: maximum_entries }, recoverable: true });
   }
   const directory_boundary = directory.zip64 ? directory.zip64_eocd_offset : eocd_offset;
   if (resolved_central_offset > directory_boundary || resolved_central_size > directory_boundary - resolved_central_offset || resolved_central_offset + resolved_central_size > directory_boundary) {
