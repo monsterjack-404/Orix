@@ -35,6 +35,7 @@ function plain_record(value, field) {
   }
   for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
     if (!Object.hasOwn(descriptor, 'value')) invalid(field + '.' + key, 'Accessor properties are not accepted');
+    if (!descriptor.enumerable) invalid(field + '.' + key, 'Non-enumerable manifest properties are not accepted');
   }
   return value;
 }
@@ -79,6 +80,7 @@ function unique_array(value, field, maximum, validate_item) {
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (!descriptor || !Object.hasOwn(descriptor, 'value')) invalid(field + '[' + key + ']', 'Accessor elements are not accepted');
+    if (!descriptor.enumerable) invalid(field + '[' + key + ']', 'Non-enumerable array elements are not accepted');
   }
   const seen = new Set();
   const result = [];
