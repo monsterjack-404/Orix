@@ -17,6 +17,8 @@ import { render_comparison_markdown } from '../reports/comparison.mjs';
 import { read_json_report } from '../core/read-report.mjs';
 import { hash_buffer } from '../core/hash.mjs';
 import { render_cyclonedx } from '../reports/cyclonedx.mjs';
+import { RIZIN_PROVIDER_MANIFEST, analyze_rizin_imports } from '../providers/rizin.mjs';
+import { render_rizin_imports_markdown } from '../reports/rizin.mjs';
 async function write_or_print(content,output_path) {
   if(!output_path){process.stdout.write(content.endsWith('\n')?content:content+'\n');return;}
   const destination=path.resolve(output_path);
@@ -34,6 +36,7 @@ function validate_command_flags(command, flags) {
     compare: ['format', 'out'],
     formats: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
+    providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes'],
   }[command];
   if (!allowed) return;
   const unsupported = Object.keys(flags).filter(key => !allowed.includes(key));
@@ -44,8 +47,46 @@ export async function main(argv=process.argv.slice(2)) {
   if(parsed.flags.help||parsed.command==='help'||!parsed.command){process.stdout.write(HELP_TEXT);return 0;}
   validate_command_flags(parsed.command, parsed.flags);
   if(parsed.command==='ledger'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('ledger output currently supports JSON only');
+  if(parsed.command==='providers'&&parsed.provider_action==='list'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('providers list output currently supports JSON only');
+  if(parsed.command==='providers'&&parsed.provider_action==='imports'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('provider import output supports JSON or Markdown only');
   if(parsed.command==='compare'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('compare output supports JSON or Markdown only');
   if(parsed.command==='formats'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('formats output currently supports JSON only');
+  if(parsed.command==='providers'){
+    if(parsed.provider_action==='list'){
+      const report={
+        schema_version:'orix.providers.v1',
+        providers:[{
+          id:RIZIN_PROVIDER_MANIFEST.id,
+          name:RIZIN_PROVIDER_MANIFEST.name,
+          version:RIZIN_PROVIDER_MANIFEST.version,
+          capabilities:RIZIN_PROVIDER_MANIFEST.capabilities,
+          supported_platforms:RIZIN_PROVIDER_MANIFEST.supported_platforms,
+          input_formats:RIZIN_PROVIDER_MANIFEST.input_formats,
+          execution:RIZIN_PROVIDER_MANIFEST.execution,
+          license:RIZIN_PROVIDER_MANIFEST.license,
+          availability:'external-install-not-probed',
+        }],
+      };
+      await write_or_print(render_json(report),parsed.flags.out);
+      return 0;
+    }
+    if(parsed.provider_action==='imports'){
+      if(!parsed.flags.provider_executable){
+        throw new Error('providers rizin imports requires --executable <absolute-path>');
+      }
+      const report=await analyze_rizin_imports({
+        executable:parsed.flags.provider_executable,
+        input_path:parsed.target,
+        timeout_ms:parsed.flags.timeout_ms,
+        max_output_bytes:parsed.flags.max_output_bytes,
+      });
+      const output=parsed.flags.format==='json'
+        ? render_json(report)
+        : render_rizin_imports_markdown(report);
+      await write_or_print(output,parsed.flags.out);
+      return 0;
+    }
+  }
   if(parsed.command==='ledger'){
     const result=parsed.flags.ledger_operation==='verify'
       ? await verify_ledger(parsed.flags.ledger_path)
