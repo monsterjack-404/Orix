@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { inspect_file } from '../src/core/inspect.mjs';
 import { scan_directory } from '../src/analyzer/scan.mjs';
 import { main as cli_main } from '../src/cli/main.mjs';
+import { parse_arguments } from '../src/cli/arguments.mjs';
 import { verify_ledger } from '../src/evidence/ledger.mjs';
 import { parse_arguments } from '../src/cli/arguments.mjs';
 import { create_elf_fixture, create_pe_fixture, create_zip_fixture } from './helpers.mjs';
@@ -263,4 +264,13 @@ test('CLI rejects output formats unsupported by compare, ledger and formats comm
   await assert.rejects(cli_main(['compare', 'before.json', 'after.json', '--format', 'cyclonedx']), /compare output supports JSON or Markdown/);
   await assert.rejects(cli_main(['ledger', 'verify', 'events.jsonl', '--format', 'sarif']), /ledger output currently supports JSON only/);
   await assert.rejects(cli_main(['formats', '--format', 'markdown']), /formats output currently supports JSON only/);
+});
+
+
+test('CLI validates read-prefix limits against default and overridden file limits', () => {
+  assert.throws(
+    () => parse_arguments(['inspect', 'sample.bin', '--max-read-mib', '512']),
+    error => error.code === 'ORIX_CLI_LIMIT_CONFLICT',
+  );
+  assert.equal(parse_arguments(['inspect', 'sample.bin', '--max-file-mib', '1']).flags.max_file_bytes, 1024 * 1024);
 });
