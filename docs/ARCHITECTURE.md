@@ -83,7 +83,7 @@ Implemented structural parsers:
 - **PE/COFF:** DOS header pointer, PE signature, COFF fields, PE32/PE32+ fixed fields, data-directory bounds and section headers.
 - **ELF:** class, byte order, fixed header, section-header table and optional section-name table.
 - **Mach-O:** thin header, CPU metadata and load-command framing.
-- **WebAssembly:** version and section framing, including bounded custom-section names.
+- **WebAssembly:** version and section framing, strict UTF-8 names, function types, imports, exports, function/type indices, start function and code-body byte ranges. Table, memory, global, element, data, data-count and tag sections currently expose only bounded vector counts; instructions and initializers are not decoded.
 - **ZIP:** end-of-central-directory lookup and bounded central-directory entry metadata; no extraction or decompression.
 
 Parser output contains `notes` describing unimplemented work. The absence of a field is not evidence that the field or structure is absent from the original artifact.
