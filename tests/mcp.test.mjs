@@ -219,3 +219,23 @@ test('MCP transport discards oversized frames and continues with the next reques
   assert.equal(messages[0].id, 99);
   assert.match(diagnostics, /input line exceeded/);
 });
+
+
+test('MCP ledger event schema matches accepted underscore and minimum-length names', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-event-schema-'));
+  try {
+    const ledger_path = path.join(directory, 'events.jsonl');
+    const accepted = await handle_mcp_message({
+      jsonrpc: '2.0', id: 51, method: 'tools/call',
+      params: { name: 'orix.ledger.append', arguments: { path: ledger_path, type: 'analysis_started', payload: {} } },
+    }, { roots: [directory] });
+    assert.equal(accepted.result.isError, false);
+    const rejected = await handle_mcp_message({
+      jsonrpc: '2.0', id: 52, method: 'tools/call',
+      params: { name: 'orix.ledger.append', arguments: { path: ledger_path, type: 'a', payload: {} } },
+    }, { roots: [directory] });
+    assert.equal(rejected.result.isError, true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
