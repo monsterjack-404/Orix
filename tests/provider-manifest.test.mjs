@@ -109,7 +109,7 @@ test('provider manifest rejects malformed identifiers, versions, duplicate capab
 test('provider manifest rejects non-enumerable unknown fields and custom array properties', () => {
   const hidden = valid_manifest();
   Object.defineProperty(hidden, 'hidden_policy', { value: 'bypass', enumerable: false });
-  assert.throws(() => validate_provider_manifest(hidden), /Unknown property/);
+  assert.throws(() => validate_provider_manifest(hidden), /Non-enumerable manifest properties/);
 
   const custom_array = valid_manifest();
   custom_array.capabilities.extra = 'unreviewed';
@@ -154,6 +154,14 @@ test('provider manifest reader loads a bounded regular file without executing it
     const manifest = await read_provider_manifest(manifest_path);
     assert.equal(manifest.id, 'rizin.static');
     assert.equal((await readFile(manifest_path, 'utf8')).includes('rizin.static'), true);
+  });
+});
+
+test('provider manifest reader rejects invalid UTF-8 bytes', async () => {
+  await with_temp_directory(async directory => {
+    const manifest_path = path.join(directory, 'invalid.json');
+    await writeFile(manifest_path, Buffer.from([0xff, 0xfe, 0xfd]));
+    await assert.rejects(read_provider_manifest(manifest_path), error => error.code === 'ORIX_PROVIDER_MANIFEST_ENCODING');
   });
 });
 
