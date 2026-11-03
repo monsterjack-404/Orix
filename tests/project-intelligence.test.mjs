@@ -315,3 +315,19 @@ test('project intelligence resolves uv.lock workspace roots and transitive depen
   assert.equal(report.lockfiles[0].complete, true);
   assert.equal(report.summary.locked_packages, 3);
 }));
+
+
+test('malformed JSON manifest maps do not create phantom dependencies or scripts', async () => with_project(async root => {
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({
+    name: 'malformed-fixture',
+    dependencies: 'not-an-object',
+    devDependencies: ['not-a-map'],
+    scripts: { postinstall: { command: 'must-not-be-stringified' } },
+  }));
+  const report = await scan_project(root);
+  assert.equal(report.manifests.length, 1);
+  assert.equal(report.manifests[0].dependencies.length, 0);
+  assert.equal(report.manifests[0].scripts.length, 0);
+  assert.ok(report.manifests[0].warnings.length >= 3);
+  assert.equal(report.summary.declared_dependencies, 0);
+}));
