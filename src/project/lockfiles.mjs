@@ -902,12 +902,13 @@ function parse_uv_lock(file, text, limits, manifests) {
   const blocks = [];
   const warnings = [];
   let current = null;
+  let lockfile_version = null;
   let reading_dependencies = false;
   let dependency_buffer = '';
 
   const inline_fields = value => {
     const fields = {};
-    for (const match of value.matchAll(/([A-Za-z0-9_-]+)\\s*=\\s*("(?:\\\\.|[^"\\\\])*"|'[^']*'|[^,}]+)/g)) {
+    for (const match of value.matchAll(/([A-Za-z0-9_-]+)\s*=\s*("(?:\\.|[^"\\])*"|'[^']*'|[^,}]+)/g)) {
       const raw = match[2].trim();
       fields[match[1]] = decode_toml_string(raw) ?? raw.replace(/,$/, '').trim();
     }
@@ -923,7 +924,7 @@ function parse_uv_lock(file, text, limits, manifests) {
       const character = value[index];
       if (quote) {
         if (escaped) escaped = false;
-        else if (character === '\\\\' && quote === '"') escaped = true;
+        else if (character === '\\' && quote === '"') escaped = true;
         else if (character === quote) quote = null;
         continue;
       }
@@ -948,7 +949,7 @@ function parse_uv_lock(file, text, limits, manifests) {
     for (const character of value) {
       if (quote) {
         if (escaped) escaped = false;
-        else if (character === '\\\\' && quote === '"') escaped = true;
+        else if (character === '\\' && quote === '"') escaped = true;
         else if (character === quote) quote = null;
         continue;
       }
@@ -966,7 +967,8 @@ function parse_uv_lock(file, text, limits, manifests) {
         warnings.push({ code: 'ORIX_LOCKFILE_DEPENDENCY_IDENTITY', package: record.name });
         continue;
       }
-      const source = fields.source && typeof fields.source === 'object' ? fields.source : {};
+      const source_text = typeof fields.source === 'string' ? fields.source.trim() : '';
+      const source = source_text.startsWith('{') ? inline_fields(source_text.slice(1, source_text.lastIndexOf('}'))) : {};
       const source_label = Object.entries(source).map(([key, item]) => key + '=' + item).join(',');
       record.dependencies.push({
         name,
@@ -976,8 +978,9 @@ function parse_uv_lock(file, text, limits, manifests) {
     }
   };
 
-  for (const [index, line] of text.split(/\\r?\\n/).entries()) {
-    if (/^\\s*\\[\\[package\\]\\]\\s*(?:#.*)?$/.test(line)) {
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    if (line.length > 16384) fail('ORIX_LOCKFILE_LINE_LIMIT', 'uv.lock line exceeds configured limit', { file, line: index + 1 });
+    if (/^\s*\[\[package\]\]\s*(?:#.*)?$/.test(line)) {
       current = { name: null, version: null, source: null, dependencies: [] };
       blocks.push(current);
       reading_dependencies = false;
@@ -985,12 +988,16 @@ function parse_uv_lock(file, text, limits, manifests) {
       if (blocks.length > limits.max_packages) fail('ORIX_LOCKFILE_PACKAGE_LIMIT', 'uv.lock package count exceeds configured limit', { file, maximum: limits.max_packages });
       continue;
     }
-    if (/^\\s*\\[/.test(line)) {
+    if (/^\s*\[/.test(line)) {
       reading_dependencies = false;
       dependency_buffer = '';
       continue;
     }
-    if (!current) continue;
+    if (!current) {
+      const version_match = /^\s*version\s*=\s*(\d+)/.exec(line);
+      if (version_match) lockfile_version = Number(version_match[1]);
+      continue;
+    }
     if (reading_dependencies) {
       dependency_buffer += ' ' + line.trim();
       if (array_is_closed(dependency_buffer)) {
@@ -1000,7 +1007,7 @@ function parse_uv_lock(file, text, limits, manifests) {
       }
       continue;
     }
-    const field = /^\\s*([A-Za-z0-9_-]+)\\s*=\\s*(.*?)\\s*(?:#.*)?$/.exec(line);
+    const field = /^\s*([A-Za-z0-9_-]+)\s*=\s*(.*?)\s*(?:#.*)?$/.exec(line);
     if (!field) continue;
     const key = field[1];
     const value = field[2];
@@ -1017,7 +1024,8 @@ function parse_uv_lock(file, text, limits, manifests) {
     } else if (key === 'version') {
       current.version = decode_toml_string(value);
     } else if (key === 'source') {
-      current.source_fields = inline_fields(value);
+      const source_text = value.trim();
+      current.source_fields = inline_fields(source_text.startsWith('{') ? source_text.slice(1, source_text.lastIndexOf('}')) : source_text);
       current.source = Object.entries(current.source_fields).map(([name, item]) => name + '=' + item).join(',');
     }
     if (index >= 0 && line.length > 16384) fail('ORIX_LOCKFILE_LINE_LIMIT', 'uv.lock line exceeds configured limit', { file, line: index + 1 });
@@ -1054,7 +1062,7 @@ function parse_uv_lock(file, text, limits, manifests) {
 
   const resolve = (dependency, context) => {
     const candidates = by_name.get(dependency.name.toLowerCase()) ?? [];
-    const exact = /^(?:==|===)?([0-9]+(?:\\.[0-9A-Za-z_-]+){1,5})$/.exec(dependency.requirement ?? '');
+    const exact = /^(?:==|===)?([0-9]+(?:\.[0-9A-Za-z_-]+){1,5})$/.exec(dependency.requirement ?? '');
     const version_matches = exact ? candidates.filter(item => item.version === exact[1]) : candidates;
     const source_matches = dependency.source
       ? version_matches.filter(item => item.resolved?.includes(dependency.source.split('=').slice(1).join('=')))
@@ -1069,7 +1077,7 @@ function parse_uv_lock(file, text, limits, manifests) {
   for (const item of packages) {
     for (const dependency of item.dependencies) {
       const target = resolve(dependency, item.location);
-      if (target && !local_packages.includes(target)) edges.push({
+      if (target) edges.push({
         from: item.location, to: target.location, name: dependency.name,
         requirement: dependency.requirement, resolved_version: target.version,
       });
@@ -1086,7 +1094,7 @@ function parse_uv_lock(file, text, limits, manifests) {
       for (const dependency of root.dependencies) {
         root_dependencies.push({ name: dependency.name, requirement: dependency.requirement, dependency_type: 'runtime' });
         const target = resolve(dependency, root.location);
-        if (target && !local_packages.includes(target)) root_edges.push({
+        if (target) root_edges.push({
           name: dependency.name, requirement: dependency.requirement,
           dependency_type: 'runtime', to: target.location, resolved_version: target.version,
         });
@@ -1107,7 +1115,7 @@ function parse_uv_lock(file, text, limits, manifests) {
   }
   if (edges.length + root_edges.length > limits.max_edges) fail('ORIX_LOCKFILE_EDGE_LIMIT', 'uv.lock total dependency edge count exceeds configured limit', { file, maximum: limits.max_edges });
   return {
-    path: file, ecosystem: 'python', format: 'uv-lock', lockfile_version: 1,
+    path: file, ecosystem: 'python', format: 'uv-lock', lockfile_version,
     packages: [...packages, ...local_packages], edges, root_dependencies, root_edges,
     warnings, complete: warnings.length === 0,
   };
