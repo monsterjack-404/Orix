@@ -239,3 +239,11 @@ test('MCP ledger event schema matches accepted underscore and minimum-length nam
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+
+test('MCP returns JSON-RPC invalid-request errors for malformed notification objects', async () => {
+  const response = await handle_mcp_message({ jsonrpc: '2.0', params: {} });
+  assert.equal(response.jsonrpc, '2.0');
+  assert.equal(response.id, null);
+  assert.equal(response.error.code, -32600);
+});
