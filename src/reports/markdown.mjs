@@ -1,7 +1,23 @@
 // JavaScript, src/reports/markdown.mjs, Node.js 20+, human-readable evidence report rendering.
 
 function escape_cell(value) {
-  return String(value ?? '').replaceAll('|', '\\|').replaceAll('\n', ' ');
+  return String(value ?? '').replaceAll('\\', '\\\\').replaceAll('|', '\\|').replace(/[\r\n]+/g, ' ');
+}
+
+function code_span(value) {
+  const text = String(value ?? '').replace(/[\r\n]+/g, '\\n');
+  const marker = String.fromCharCode(96);
+  const runs = [...text.matchAll(new RegExp(marker + '+', 'g'))].map(match => match[0].length);
+  const fence = marker.repeat(Math.max(1, ...runs.map(length => length + 1)));
+  const padding = text.startsWith(marker) || text.endsWith(marker) || text.startsWith(' ') || text.endsWith(' ') ? ' ' : '';
+  return fence + padding + text + padding + fence;
+}
+
+function fenced_block(value, language = '') {
+  const text = String(value ?? '');
+  const runs = [...text.matchAll(/^~{3,}/gm)].map(match => match[0].length);
+  const fence = '~'.repeat(Math.max(3, ...runs.map(length => length + 1)));
+  return [fence + language, text, fence];
 }
 
 function byte_size(value) {
@@ -14,8 +30,8 @@ function byte_size(value) {
 export function render_inspection_markdown(report) {
   const lines = [
     `# ORIX Artifact Report`, '',
-    `- **Artifact:** \`${report.artifact.name}\``,
-    `- **Path:** \`${report.artifact.path}\``,
+    `- **Artifact:** ${code_span(report.artifact.name)}`,
+    `- **Path:** ${code_span(report.artifact.path)}`,
     `- **Size:** ${byte_size(report.artifact.size_bytes)}`,
     `- **Format:** ${report.detection.format} (${report.detection.confidence})`,
     `- **SHA-256:** \`${report.integrity.digest}\``,
@@ -23,15 +39,15 @@ export function render_inspection_markdown(report) {
     '', '## Parser result', '',
   ];
   if (report.parser.status === 'parsed') {
-    lines.push('```json', JSON.stringify(report.parser.result, null, 2), '```');
+    lines.push(...fenced_block(JSON.stringify(report.parser.result, null, 2), 'json'));
   } else {
     lines.push(`Parser status: **${report.parser.status}**`);
-    if (report.parser.error) lines.push(`- Error: \`${report.parser.error.code}\` — ${report.parser.error.message}`);
+    if (report.parser.error) lines.push(`- Error: ${code_span(report.parser.error.code)} — ${escape_cell(report.parser.error.message)}`);
   }
   lines.push('', '## Metrics', '',
     `- Shannon entropy: **${report.metrics.entropy.bits_per_byte} bits/byte** (${report.metrics.entropy.scope})`,
     `- Extracted strings: **${report.metrics.strings.count}**`,
-    `- Hex preview: \`${report.metrics.hex_preview || '(empty)'}\``,
+    `- Hex preview: ${code_span(report.metrics.hex_preview || '(empty)')}`,
     '', '## Static indicators', '');
   if (report.indicators?.length) {
     lines.push('| Severity | Rule | Confidence | Finding |', '|---|---|---|---|');
@@ -44,7 +60,7 @@ export function render_inspection_markdown(report) {
   for (const item of report.metrics.strings.values) lines.push(`| ${item.offset} | ${item.encoding} | ${item.length} | ${escape_cell(item.value)} |`);
   lines.push('', '## Evidence', '', '| ID | Kind | Confidence | Offset | Summary |', '|---|---|---|---:|---|');
   for (const evidence of report.evidence) lines.push(`| ${evidence.id} | ${evidence.kind} | ${evidence.confidence} | ${evidence.offset ?? '—'} | ${escape_cell(evidence.summary)} |`);
-  if (report.warnings.length) lines.push('', '## Warnings', '', ...report.warnings.map(value => `- ${value}`));
+  if (report.warnings.length) lines.push('', '## Warnings', '', ...report.warnings.map(value => `- ${escape_cell(value)}`));
   lines.push('', '> ORIX performs static, read-only inspection. A recognized format or parsed header does not establish that an artifact is benign.', '');
   return lines.join('\n');
 }
@@ -52,7 +68,7 @@ export function render_inspection_markdown(report) {
 export function render_scan_markdown(report) {
   const lines = [
     '# ORIX Directory Scan', '',
-    `- **Root:** \`${report.scan.root}\``,
+    `- **Root:** ${code_span(report.scan.root)}`,
     `- **Files analyzed:** ${report.scan.files_analyzed}`,
     `- **Files skipped:** ${report.scan.files_skipped}`,
     `- **Files with indicators:** ${report.scan.files_with_indicators ?? 0}`,
