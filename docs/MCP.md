@@ -38,6 +38,6 @@ Every tool validates its input server-side against the same schema advertised by
 - Ledger append is explicit, workspace-confined and serialized through the ledger writer lock; records are hash-chained and size-bounded.
 - Input frames are streamed with a 4 MiB maximum; tool responses are capped at 2 MiB.
 
-Architecture analysis uses only the scanner's resolved local-import graph. It is not compiler-backed, a runtime call graph, or proof that a module is dead code. Its limits are independently bounded before the result is returned.
+Architecture analysis uses only the scanner's resolved local-import graph. It is not compiler-backed, a runtime call graph, or proof that a module is dead code. Its default graph ceilings are 4,000 nodes, 8,000 edges and 25 hotspots to keep ordinary responses within the transport budget; callers can request higher limits up to the tool schema ceilings. Its limits are independently bounded before the result is returned.
 
 MCP is a transport adapter over ORIX's existing public analysis functions; it does not fork or reimplement parsers.
