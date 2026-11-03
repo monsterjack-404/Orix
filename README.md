@@ -31,7 +31,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Evidence model | Stable report evidence plus append-only SHA-256 chained JSONL ledger, verify/list commands and append receipts | Not a signature, trusted timestamp or external transparency log |
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
 | MCP integration | Local stdio JSON-RPC server with eight typed tools for inspect, scan, project, formats, comparison and evidence ledger | No HTTP listener, remote auth, resource subscription or prompt catalog |
-| Reports | JSON, Markdown, SARIF 2.1.0, report comparison and CycloneDX 1.5 SBOM | No hosted dashboard or relational database |
+| Reports | JSON, Markdown, SARIF 2.1.0 for artifact, directory-scan and source-project findings, report comparison and CycloneDX 1.5 SBOM | No hosted dashboard or relational database |
 
 Static indicator rules operate only on already-parsed metadata and bounded extracted strings. Each finding includes a rule ID, severity, confidence and supporting evidence. A clean report means only that the built-in rules did not match; it is not a safety certification.
 
@@ -44,7 +44,7 @@ The `project` command builds a bounded source and manifest index without running
 ```bash
 node src/cli.mjs project ./source-tree
 node src/cli.mjs project ./source-tree --json
-node src/cli.mjs project ./source-tree --format cyclonedx --out ./sbom.cdx.json
+node src/cli.mjs project ./source-tree --format cyclonedx --out ./sbom.cdx.json\nnode src/cli.mjs project ./source-tree --format sarif --out ./project-findings.sarif
 ```
 
 It records file hashes, language counts, selected dependency declarations, npm package-lock v1-v3, Yarn classic/Berry, pnpm v5/v6/v9, Cargo.lock v1-v4, Composer.lock, Poetry and Pipfile.lock resolved package inventories, plus Go checksums, source import edges, symbol candidates, redacted credential-shaped findings and bounded Git repository metadata (refs, tags, sanitized remotes and loose HEAD commit identity). Packed Git objects and linked-worktree gitdir targets are not decoded or followed. CycloneDX export includes resolved lockfile components and package relationships when supported lockfiles are present; otherwise it reports declared dependencies only. See [`docs/PROJECT_INTELLIGENCE.md`](docs/PROJECT_INTELLIGENCE.md) for parser boundaries and resource limits.
@@ -131,7 +131,7 @@ Comparison classifies added, removed, modified and unchanged artifacts by normal
 
 ### Reports and safe output files
 
-Use `--format json` or `--json` for automation, `--format sarif` for GitHub code-scanning-compatible static findings, and Markdown for review and sharing. SARIF is supported by `inspect` and `scan`; project reports remain JSON/Markdown. `--out` creates a new report file with restrictive permissions; it refuses to overwrite an existing path. Report output is not written into the target artifact or directory unless the caller explicitly names that location.
+Use `--format json` or `--json` for automation, `--format sarif` for GitHub code-scanning-compatible static findings, and Markdown for review and sharing. SARIF is supported by `inspect`, `scan` and `project`. Project SARIF exports redacted source findings with file and line locations; matched credential values are never copied into SARIF messages or properties. `--out` creates a new report file with restrictive permissions; it refuses to overwrite an existing path. Report output is not written into the target artifact or directory unless the caller explicitly names that location.
 
 ## MCP server
 
