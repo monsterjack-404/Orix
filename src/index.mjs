@@ -38,3 +38,6 @@ export { RIZIN_ADAPTER_VERSION, RIZIN_PROVIDER_MANIFEST, analyze_rizin_imports, 
 
 export { build_report_view, filter_report_view, REPORT_VIEW_SEVERITIES } from './reports/view-model.mjs';
 export { render_rizin_imports_markdown } from './reports/rizin.mjs';
+
+export { analyze_project_architecture } from './project/architecture.mjs';
+export { render_architecture_markdown, render_architecture_mermaid } from './reports/architecture.mjs';
