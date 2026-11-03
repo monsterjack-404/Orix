@@ -65,7 +65,6 @@ export async function main(argv=process.argv.slice(2)) {
   if(!['inspect','scan','project'].includes(parsed.command))throw new Error('Unknown command: '+parsed.command);
   if(!parsed.target)throw new Error(parsed.command+' requires a target path');
   const options={...parsed.flags,limits:parsed.flags};
-  if(parsed.flags.format==='sarif'&&parsed.command==='project')throw new Error('SARIF output currently supports inspect and scan reports, not project reports');
   if(parsed.flags.format==='cyclonedx'&&parsed.command!=='project')throw new Error('CycloneDX output requires the project command');
   let report,renderer;
   if(parsed.command==='inspect'){report=await inspect_file(parsed.target,options);renderer=render_inspection_markdown;}
