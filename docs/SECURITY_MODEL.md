@@ -2,7 +2,7 @@
 
 ## Current security posture
 
-ORIX 0.2.1 is a static local inspector. It reads file bytes, calculates hashes, extracts printable strings, calculates entropy, parses selected headers and writes optional reports. It does not execute the target, load a target library, attach to another process, modify the artifact, elevate privileges, connect to the network or dynamically load third-party parser code.
+ORIX's built-in analysis remains static and read-only: it reads file bytes, calculates hashes, extracts strings, calculates entropy, parses supported formats and writes optional reports. It does not execute the inspected target, load target libraries, attach to target processes or modify the artifact. An operator can explicitly invoke an optional external static provider such as Rizin. ORIX executes that provider process—not the inspected sample—through a shell-free argument vector with a timeout and captured-output ceiling. This is process control, not a sandbox: a provider can still access files, spawn children or use the network unless the operating system or a separately managed container/VM restricts it.
 
 ## Threats considered
 
@@ -15,6 +15,7 @@ ORIX 0.2.1 is a static local inspector. It reads file bytes, calculates hashes, 
 | File mutation during analysis | Before/after metadata comparison and `stable_during_read` result | A sufficiently unusual filesystem or timestamp behavior may evade metadata comparison |
 | Report overwrite | `--out` uses exclusive-create semantics | Parent-directory permissions and storage integrity remain OS responsibilities |
 | False confidence | Evidence confidence labels, explicit parser status and limitations | Users can still over-interpret results; reports must be read with their warnings |
+| External provider process | Absolute executable path, no shell interpolation, minimal explicit environment, timeout, cancellation and output-byte cap | Provider binaries are not sandboxed; filesystem/network side effects and Windows child-tree teardown are not enforced |
 | Dependency supply chain | No third-party runtime dependencies in current package | Node.js runtime, npm and development tooling still require trusted acquisition |
 
 ## Static indicator interpretation
@@ -36,9 +37,9 @@ These findings are not detections of malicious behavior. API-name strings do not
 
 ## Future dynamic-analysis boundary
 
-Dynamic analysis is not part of this release. A future implementation must be a separately documented opt-in subsystem. Minimum design requirements include explicit authorization context, a disposable isolated environment, resource/time limits, network policy, process ownership and identity verification, cancellation, cleanup on every exit path, audit events, and evidence provenance that distinguishes observed runtime behavior from static inference.
+Executing the inspected target is not part of this release. The static provider runner starts only explicitly selected analysis tools. A future dynamic-analysis subsystem must be separate and opt-in. Minimum design requirements include explicit authorization context, a disposable isolated environment, resource/time limits, network policy, process ownership and identity verification, cancellation, cleanup on every exit path, audit events, and evidence provenance that distinguishes observed runtime behavior from static inference.
 
-A sandbox is a risk reduction control, not a guarantee. Dynamic analysis must not silently start from `inspect` or `scan`.
+A sandbox is a risk reduction control, not a guarantee. Dynamic analysis must not silently start from `inspect`, `scan`, or a static provider adapter.
 
 ## Vulnerability reporting
 
