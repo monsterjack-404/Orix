@@ -346,3 +346,13 @@ test('project intelligence treats files with late NUL bytes as binary', async ()
   assert.equal(report.files[0].symbols.length, 0);
   assert.equal(report.findings.length, 0);
 }));
+
+
+test('project file-size skips make inventory coverage explicitly incomplete', async () => with_project(async root => {
+  await writeFile(path.join(root, 'large.js'), 'export const largePayload = 123456789;');
+  const report = await scan_project(root, { max_file_bytes: 8 });
+  assert.equal(report.files.length, 0);
+  assert.equal(report.coverage.complete, false);
+  assert.equal(report.coverage.truncated, true);
+  assert.ok(report.coverage.skipped_entries.some(item => item.reason === 'file-size-limit'));
+}));
