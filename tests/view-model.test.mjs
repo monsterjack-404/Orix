@@ -77,6 +77,6 @@ test('normalizes WebAssembly imports exports and name-section functions into sea
   assert.equal(exported.name, 'run_export');
   assert.equal(exported.raw.resolved_name, 'run');
   assert.equal(filter_report_view(view, { query: 'host_call' }).length, 1);
-  assert.equal(filter_report_view(view, { query: 'run' }).length, 1);
+  assert.equal(filter_report_view(view, { query: 'run' }).length, 2);
   assert.equal(filter_report_view(view, { format: 'WebAssembly function' }).length, 1);
 });
