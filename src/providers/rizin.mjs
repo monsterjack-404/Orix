@@ -372,3 +372,80 @@ export async function analyze_rizin_imports(options = {}) {
     ],
   };
 }
+
+/**
+ * Check an explicitly selected Rizin executable without opening an artifact.
+ * This is a real version probe, not a PATH search or an installation claim.
+ */
+export async function probe_rizin(options = {}) {
+  if (options === null || typeof options !== 'object' || Array.isArray(options)) {
+    throw new TypeError('Rizin probe options must be an object');
+  }
+  const allowed = new Set(['executable', 'manifest', 'cwd', 'env', 'timeout_ms', 'max_output_bytes', 'signal']);
+  const descriptors = Object.getOwnPropertyDescriptors(options);
+  for (const key of Reflect.ownKeys(options)) {
+    if (typeof key !== 'string' || !allowed.has(key) ||
+        !descriptors[key] || !Object.hasOwn(descriptors[key], 'value') || !descriptors[key].enumerable) {
+      throw new TypeError('Rizin probe options must use known enumerable data properties');
+    }
+  }
+  const manifest = validate_provider_manifest(descriptors.manifest?.value ?? RIZIN_PROVIDER_MANIFEST);
+  if (manifest.id !== 'rizin.static') {
+    throw new TypeError('Rizin probe requires the rizin.static provider manifest');
+  }
+  const timeout_ms = descriptors.timeout_ms?.value ?? Math.min(manifest.limits.timeout_ms, 10_000);
+  const max_output_bytes = descriptors.max_output_bytes?.value ?? Math.min(manifest.limits.max_output_bytes, 16_384);
+  if (!Number.isSafeInteger(timeout_ms) || timeout_ms < 1 || timeout_ms > manifest.limits.timeout_ms) {
+    throw new TypeError('timeout_ms must be between 1 and the provider manifest timeout limit');
+  }
+  if (!Number.isSafeInteger(max_output_bytes) || max_output_bytes < 1 ||
+      max_output_bytes > manifest.limits.max_output_bytes) {
+    throw new TypeError('max_output_bytes must be between 1 and the provider manifest output limit');
+  }
+  const result = await run_static_provider({
+    manifest,
+    executable: descriptors.executable?.value,
+    cwd: descriptors.cwd?.value,
+    env: descriptors.env?.value,
+    args: ['-v'],
+    timeout_ms,
+    max_output_bytes,
+    signal: descriptors.signal?.value,
+  });
+  if (!result.ok) {
+    const code = result.cancelled
+      ? 'ORIX_RIZIN_CANCELLED'
+      : result.timed_out ? 'ORIX_RIZIN_TIMEOUT' : 'ORIX_RIZIN_VERSION_FAILED';
+    provider_error(code, 'Rizin version probe did not complete successfully', {
+      exit_code: result.exit_code,
+      timed_out: result.timed_out,
+      cancelled: result.cancelled,
+      stderr: result.stderr.slice(0, 1024),
+    });
+  }
+  return {
+    schema_version: 'orix.provider-probe.v1',
+    provider: {
+      id: manifest.id,
+      adapter_version: RIZIN_ADAPTER_VERSION,
+      engine_version: parse_engine_version(result.stdout),
+      executable: result.executable,
+    },
+    runtime: {
+      platform: process.platform,
+      architecture: process.arch,
+      node_version: process.version,
+    },
+    status: 'available',
+    diagnostics: {
+      duration_ms: result.duration_ms,
+      exit_code: result.exit_code,
+      stderr: result.stderr.slice(0, 1024),
+    },
+    notes: [
+      'The executable was invoked by its explicit absolute path; ORIX did not search PATH.',
+      'This probe confirms version output only; it does not validate every Rizin command or supported binary format.',
+      'The process runner is not an OS sandbox.',
+    ],
+  };
+}
