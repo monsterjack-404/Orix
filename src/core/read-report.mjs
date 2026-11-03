@@ -11,11 +11,12 @@ export async function read_json_report(file_path) {
   catch (error) { throw new OrixError('ORIX_COMPARE_FILE_UNAVAILABLE', 'Cannot access comparison report: ' + absolute, { cause: error, details: { system_code: error.code }, recoverable: true }); }
   if (before.isSymbolicLink() || !before.isFile()) throw new OrixError('ORIX_COMPARE_UNSAFE_FILE', 'Comparison input must be a regular non-symlink file', { details: { path: absolute }, recoverable: true });
   if (!Number.isSafeInteger(before.size) || before.size > 64 * 1024 * 1024) throw new OrixError('ORIX_COMPARE_FILE_LIMIT', 'Comparison report exceeds the 64 MiB input limit', { details: { size: before.size }, recoverable: true });
-  const handle = await fs.open(absolute, FS_CONSTANTS.O_RDONLY | (FS_CONSTANTS.O_NOFOLLOW ?? 0));
+  let handle;
   let text;
   try {
+    handle = await fs.open(absolute, FS_CONSTANTS.O_RDONLY | (FS_CONSTANTS.O_NOFOLLOW ?? 0));
     const opened = await handle.stat();
-    if (!opened.isFile() || opened.size !== before.size || String(opened.ino) !== String(before.ino)) {
+    if (!opened.isFile() || opened.size !== before.size || String(opened.ino) !== String(before.ino) || String(opened.dev) !== String(before.dev)) {
       throw new OrixError('ORIX_COMPARE_FILE_CHANGED', 'Comparison report changed between metadata lookup and open', { recoverable: true });
     }
     const bytes = Buffer.alloc(opened.size);
@@ -30,7 +31,14 @@ export async function read_json_report(file_path) {
       throw new OrixError('ORIX_COMPARE_FILE_CHANGED', 'Comparison report changed during bounded read', { recoverable: true });
     }
     text = bytes.toString('utf8');
-  } finally { await handle.close(); }
+  } catch (error) {
+    if (error instanceof OrixError) throw error;
+    throw new OrixError('ORIX_COMPARE_FILE_UNAVAILABLE', 'Cannot open or read comparison report: ' + absolute, {
+      cause: error,
+      details: { path: absolute, system_code: error.code ?? null },
+      recoverable: true,
+    });
+  } finally { await handle?.close().catch(() => {}); }
   try { return JSON.parse(text); }
   catch (error) { throw new OrixError('ORIX_COMPARE_INVALID_JSON', 'Comparison input is not valid JSON: ' + absolute, { cause: error, details: { path: absolute }, recoverable: true }); }
 }
