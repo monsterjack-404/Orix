@@ -98,7 +98,7 @@ test('SARIF export aggregates scan findings and rejects unsupported report kinds
   const scan = { schema_version: 'orix.scan.v1', artifacts: [artifact, artifact] };
   const sarif = JSON.parse(render_sarif(scan));
   assert.equal(sarif.runs[0].results.length, 2);
-  assert.throws(() => render_sarif({ schema_version: 'orix.project.v1' }), /supports artifact and directory-scan/);
+  assert.throws(() => render_sarif({ schema_version: 'orix.unknown.v1' }), /supports artifact, directory-scan and project reports only/);
 });
 
 
