@@ -532,6 +532,7 @@ export function parse_elf(buffer, options = {}) {
   const type = reader.u16(16, little, 'ELF type');
   const machine = reader.u16(18, little, 'ELF machine');
   const version = reader.u32(20, little, 'ELF version');
+  if (version !== 1) throw new OrixError('ORIX_ELF_UNSUPPORTED_VERSION', 'Only the current ELF header version is supported', { details: { version }, recoverable: true });
   const entry = is_64 ? reader.u64(24, little, 'ELF entry point') : reader.u32(24, little, 'ELF entry point');
   const program_header_offset = is_64 ? reader.u64(32, little, 'program header offset') : reader.u32(28, little, 'program header offset');
   const section_header_offset = is_64 ? reader.u64(40, little, 'section header offset') : reader.u32(32, little, 'section header offset');
