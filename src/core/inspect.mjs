@@ -51,9 +51,17 @@ export async function inspect_file(file_path, options = {}) {
   const no_follow = FS_CONSTANTS.O_NOFOLLOW ?? 0;
   let handle;
   try {
-    handle = await fs.open(absolute_path, FS_CONSTANTS.O_RDONLY | no_follow);
+    try {
+      handle = await fs.open(absolute_path, FS_CONSTANTS.O_RDONLY | no_follow);
+    } catch (error) {
+      throw new OrixError('ORIX_FILE_UNAVAILABLE', `Cannot open file: ${absolute_path}`, {
+        cause: error,
+        details: { path: absolute_path, system_code: error.code ?? null },
+        recoverable: true,
+      });
+    }
     const opened = await handle.stat();
-    if (!opened.isFile() || opened.size !== before.size || String(opened.ino) !== String(before.ino)) {
+    if (!opened.isFile() || opened.size !== before.size || String(opened.ino) !== String(before.ino) || String(opened.dev) !== String(before.dev)) {
       throw new OrixError('ORIX_FILE_REPLACED', 'File identity changed between metadata lookup and open', { recoverable: true });
     }
 
