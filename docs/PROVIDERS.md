@@ -1,6 +1,6 @@
 # ORIX Provider Manifests and Registry
 
-The provider layer starts with a deliberately narrow contract: ORIX can validate provider metadata and maintain an in-memory capability catalog. It does **not** load JavaScript plugins, execute external tools, install software, grant authorization, or claim that a provider is available.
+The provider layer validates metadata, maintains an in-memory capability catalog, and supports an opt-in bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, grant authorization, create an OS sandbox, or claim that a provider is available before it has actually been located and invoked.
 
 ## 1. Manifest format
 
@@ -97,7 +97,49 @@ The registry:
 - Produces an immutable metadata snapshot.
 - Does not probe, invoke, install, or switch providers.
 
-## 4. Runtime adapter requirements
+
+## Static process runner
+
+The public `run_static_provider` API launches a provider through a validated absolute executable path and an argument vector. It uses `shell: false`, does not inherit the full parent environment, caps argument and environment sizes, bounds runtime and captured output, supports `AbortSignal` cancellation, and records exit/timeout/cancellation details.
+
+~~~js
+import { run_static_provider } from '@orix/cli';
+
+const result = await run_static_provider({
+  manifest,
+  executable: '/opt/rizin/bin/rizin',
+  args: ['-N', '-q', '-c', 'iij', '/evidence/sample.bin'],
+  timeout_ms: 30000,
+  max_output_bytes: 4 * 1024 * 1024,
+});
+
+if (!result.ok) {
+  throw new Error('Provider did not complete successfully');
+}
+~~~
+
+This runner is a process-control boundary, **not an operating-system sandbox**. It cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. POSIX process groups are signalled on timeout/cancellation; Windows currently signals the direct child and does not guarantee process-tree teardown. Do not run untrusted provider binaries on a sensitive host. Strong isolation requires an OS/container/VM policy supplied and verified separately.
+
+## Rizin import adapter
+
+`analyze_rizin_imports` is the first concrete optional adapter. It probes the installed Rizin version, invokes the documented command-line JSON import command, normalizes import name/library/binding/type/ordinal/PLT fields, hashes the input, and rejects an input whose identity or metadata changes during the run.
+
+~~~js
+import { analyze_rizin_imports } from '@orix/cli';
+
+const report = await analyze_rizin_imports({
+  executable: '/opt/rizin/bin/rizin',
+  input_path: '/evidence/sample.elf',
+});
+
+console.log(report.provider.engine_version);
+console.log(report.artifact.sha256);
+console.log(report.imports);
+~~~
+
+The adapter uses Rizin's `-N` no-user-settings option and `-q -c iij` command form. See the [Rizin CLI options](https://book.rizin.re/src/first_steps/commandline_options.html) and [Rizin command-line guide](https://book.rizin.re/src/first_steps/commandline_rizin.html). Rizin remains an optional external installation; ORIX does not bundle it or claim it was run when it is unavailable. The automated adapter tests use a deterministic executable fixture and do not substitute for verification against every supported upstream Rizin release.
+
+## 5. Runtime adapter requirements
 
 A provider is not an implemented analysis integration merely because its manifest validates or appears in the registry. Before an adapter can be advertised as operational, it must implement and test:
 
@@ -114,11 +156,11 @@ A provider is not an implemented analysis integration merely because its manifes
 
 Provider failure must remain visible. ORIX must not silently substitute another engine or imply that an unavailable provider ran.
 
-## 5. Security boundary
+## 6. Security boundary
 
 A manifest is untrusted input. It is descriptive metadata, not a signed identity, executable policy, sandbox, or authorization token. Provider installation and execution remain separate operations. Dynamic analysis must be explicitly scoped to systems the operator owns or is authorized to assess.
 
-## 6. Public API
+## 7. Public API
 
 - validate_provider_manifest(value) — validate an in-memory data object.
 - parse_provider_manifest_json(text, options) — parse bounded JSON text.
