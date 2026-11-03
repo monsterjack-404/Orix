@@ -60,7 +60,7 @@ export function render_sarif(report, options = {}) {
         driver: {
           name: 'ORIX',
           informationUri: options.information_uri ?? 'https://github.com/monsterjack-404/Orix',
-          semanticVersion: options.version ?? '0.4.0',
+          semanticVersion: options.version ?? '0.5.0',
           rules: [...rules.values()].sort((a, b) => a.id.localeCompare(b.id)),
         },
       },
