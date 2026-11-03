@@ -1,6 +1,6 @@
 # ORIX Architecture
 
-This document describes the 0.4.x implementation and the constraints new modules must preserve. The architecture is intentionally layered: file acquisition owns filesystem facts, the binary reader owns offset validation, format parsers own format interpretation, analyzers own orchestration, evidence owns provenance, renderers own presentation, and optional exports adapt findings to external report standards.
+This document describes the 0.5.x implementation and the constraints new modules must preserve. The architecture is intentionally layered: file acquisition owns filesystem facts, the binary reader owns offset validation, format parsers own format interpretation, analyzers own orchestration, evidence owns provenance, renderers own presentation, and optional exports adapt findings to external report standards.
 
 ## 1. Runtime boundaries
 
@@ -28,7 +28,11 @@ src/core/evidence-ledger.mjs owns persistent ledger integrity; src/evidence/ledg
 src/index.mjs exposes the supported programmatic surface, including SARIF rendering, report comparison and MCP server entry points. The dedicated `src/mcp.mjs` executable provides a JSON-RPC stdio transport. `src/evidence/ledger.mjs` owns the optional append-only hash-chained evidence journal.
 ```
 
-## 2. Ownership rules
+## 2. Provider contract boundary
+
+`schemas/provider-manifest.v1.schema.json` defines the declarative `orix.provider.v1` metadata contract. It records provider identity, capabilities, supported platforms and formats, execution side effects, resource ceilings, and redistribution status. A valid manifest is not proof that a provider is installed or trustworthy, does not authorize execution, and is not a plugin loader. Runtime adapters remain opt-in and must add process ownership, version probing, timeouts, cancellation, output caps, cleanup, and provenance before they are considered implemented.
+
+## 3. Ownership rules
 
 | Component | Owns | Must not own |
 |---|---|---|
@@ -47,7 +51,7 @@ src/index.mjs exposes the supported programmatic surface, including SARIF render
 
 Consumers must use the owning component's normalized facts. Do not duplicate parsing logic in a report renderer or CLI command.
 
-## 3. Acquisition and consistency
+## 4. Acquisition and consistency
 
 The inspector first obtains `lstat` metadata. It rejects symbolic links and non-regular files. It then opens the path read-only, requests no-follow behavior where the runtime exposes it, and compares opened-file identity metadata with the original lookup. This reduces path substitution risk but is not a universal guarantee against every filesystem race on every platform.
 
@@ -55,7 +59,7 @@ The inspector reads a bounded prefix for parsing and computes SHA-256 over the c
 
 `max_file_bytes` bounds the total file size eligible for hashing. `max_read_bytes` bounds the prefix retained for structural parsing and metrics. A full-file hash with prefix-only parsing is explicitly represented by `analysis_complete_for_file: false`.
 
-## 4. Binary reader contract
+## 5. Binary reader contract
 
 `BinaryReader` wraps one immutable Buffer view and provides unsigned/signed integer reads, byte slices, ASCII reads and bounded C strings. Every read validates integer offsets and lengths before accessing the underlying `DataView` or Buffer.
 
@@ -70,7 +74,7 @@ Parser code must:
 
 A direct parser call may throw `OrixError`. `analyze_known_format` catches parser failures and returns the detected format together with `parser_status: rejected` and a stable error object.
 
-## 5. Parsing pipeline
+## 6. Parsing pipeline
 
 The registry identifies a candidate format from a leading signature. A parser is selected only when a corresponding parser is registered. After parsing, the indicator engine evaluates an explicit set of bounded rules against the parser result, entropy metrics, selected extracted strings and file-stability metadata. The engine emits rule IDs, severity, confidence and evidence references; it never executes the artifact. A signature can be forged, truncated or embedded in unrelated content; parsers therefore validate the relevant structures again.
 
@@ -84,13 +88,13 @@ Implemented structural parsers:
 
 Parser output contains `notes` describing unimplemented work. The absence of a field is not evidence that the field or structure is absent from the original artifact.
 
-## 6. Static indicator model
+## 7. Static indicator model
 
 The initial indicator rules are intentionally transparent. They cover PE sections marked both writable and executable, PE section raw ranges outside supplied bytes, ZIP absolute/parent-traversal or symbolic-link entries, encrypted ZIP entries, high-entropy samples above a documented minimum size, selected process-memory and credential-access API-name strings, parser rejection, and metadata changes during acquisition.
 
 Severity is triage priority, not a probability. High entropy is low severity because compression and encryption are common in benign data. API strings are heuristic because their presence does not prove an import or call. Parser rejection is an observed structural result, not a maliciousness verdict. The rules sort deterministically so the same report data yields the same finding order.
 
-## 7. Evidence model
+## 8. Evidence model
 
 Evidence is emitted with:
 
@@ -104,7 +108,7 @@ Evidence is emitted with:
 
 The model is intended to evolve into persisted, cross-tool evidence without coupling parsers to a database. Future identifiers should be stable across process restarts, and evidence should gain artifact identity, tool version and parent-evidence references before cross-session reuse.
 
-## 8. Directory scanning
+## 9. Directory scanning
 
 The walker uses `Dirent` data, sorts entries deterministically and does not follow symlinks. Common generated directories are excluded. It returns both discovered files and skipped-entry reasons. Limits apply to file count and depth.
 
