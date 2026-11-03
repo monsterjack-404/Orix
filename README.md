@@ -32,7 +32,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
 | Evidence model | Stable report evidence plus append-only SHA-256 chained JSONL ledger, verify/list commands and append receipts | Not a signature, trusted timestamp or external transparency log |
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
-| MCP integration | Local stdio JSON-RPC server with eight typed tools for inspect, scan, project, formats, comparison and evidence ledger | No HTTP listener, remote auth, resource subscription or prompt catalog |
+| MCP integration | Local stdio JSON-RPC server with nine typed tools, including bounded project architecture analysis, inspect, scan, project, formats, comparison and evidence-ledger operations | No HTTP listener, remote auth, resource subscription or prompt catalog |
 | Provider integrations | Declarative manifests, immutable registry, bounded shell-free process runner, Rizin version doctor, snapshot-isolated static-import adapter, provider discovery/list CLI and JSON/Markdown reports | No OS sandbox, dynamic execution provider, installer, daemon or automatic provider discovery |
 
 | Reports | JSON, Markdown, SARIF 2.1.0 for artifact, directory-scan and source-project findings, report comparison and CycloneDX 1.5 SBOM | No hosted dashboard or relational database |
@@ -44,6 +44,18 @@ Formats without a parser are still identified where their signatures are recogni
 The WebAssembly parser now exposes a bounded structural index of type, import, export, function and code-body metadata. Its exact validation boundary and API fields are documented in [`docs/WASM_ANALYSIS.md`](docs/WASM_ANALYSIS.md).
 
 ## Repository intelligence
+
+### Project architecture analysis
+
+The `architecture` command turns the source-import graph discovered by `project` into a separate, versioned structural report. It identifies candidate entry points, circular-import groups, reachable modules, isolated/leaf files, high-connectivity modules and observed external import specifiers.
+
+```bash
+node src/cli.mjs architecture ./source-tree
+node src/cli.mjs architecture ./source-tree --json --out ./architecture.json
+node src/cli.mjs architecture ./source-tree --format mermaid --out ./architecture.mmd
+```
+
+The same analysis is available to local MCP clients as `orix.analyze_architecture`, restricted to configured workspace roots and bounded by explicit inventory/graph ceilings. This is a source-import graph heuristic, not a compiler call graph, runtime tracer or proof that a file is unused. See [Architecture Analysis](docs/ARCHITECTURE-ANALYSIS.md).
 
 The `project` command builds a bounded source and manifest index without running project scripts, builds or tests:
 
