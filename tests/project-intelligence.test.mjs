@@ -267,3 +267,51 @@ test('malformed JSON lockfiles retain their ecosystem and format identity', asyn
     });
   }
 });
+
+
+test('project intelligence resolves uv.lock workspace roots and transitive dependencies', async () => with_project(async root => {
+  await writeFile(path.join(root, 'pyproject.toml'), [
+    '[project]',
+    'name = "uv-fixture"',
+    'version = "1.0.0"',
+    'dependencies = ["requests>=2.31.0"]',
+  ].join('\\n'));
+  await writeFile(path.join(root, 'uv.lock'), [
+    'version = 1',
+    'revision = 3',
+    'requires-python = ">=3.11"',
+    '',
+    '[[package]]',
+    'name = "uv-fixture"',
+    'version = "1.0.0"',
+    'source = { editable = "." }',
+    'dependencies = [',
+    '  { name = "requests", version = ">=2.31.0" },',
+    ']',
+    '',
+    '[[package]]',
+    'name = "requests"',
+    'version = "2.31.0"',
+    'source = { registry = "https://pypi.org/simple" }',
+    'dependencies = [',
+    '  { name = "urllib3", version = ">=1.26" },',
+    ']',
+    '',
+    '[[package]]',
+    'name = "urllib3"',
+    'version = "2.2.0"',
+    'source = { registry = "https://pypi.org/simple" }',
+  ].join('\\n'));
+  const report = await scan_project(root);
+  assert.equal(report.lockfiles.length, 1);
+  assert.equal(report.lockfiles[0].ecosystem, 'python');
+  assert.equal(report.lockfiles[0].format, 'uv-lock');
+  assert.equal(report.lockfiles[0].lockfile_version, 1);
+  assert.equal(report.lockfiles[0].packages.length, 3);
+  assert.equal(report.lockfiles[0].root_edges.length, 1);
+  assert.equal(report.lockfiles[0].root_edges[0].name, 'requests');
+  assert.equal(report.lockfiles[0].edges.length, 1);
+  assert.equal(report.lockfiles[0].edges[0].resolved_version, '2.2.0');
+  assert.equal(report.lockfiles[0].complete, true);
+  assert.equal(report.summary.locked_packages, 3);
+}));
