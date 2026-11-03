@@ -25,7 +25,7 @@ function inspection_report(status = 'parsed') {
 test('inspection Markdown includes parsed structure, indicators, escaped cells and warnings', () => {
   const markdown = render_inspection_markdown(inspection_report());
   assert.match(markdown, /ORIX Artifact Report/);
-  assert.match(markdown, /```json/);
+  assert.match(markdown, /~~~json/);
   assert.match(markdown, /ORIX-PE-WX-001/);
   assert.match(markdown, /A\\\|B C/);
   assert.match(markdown, /MZ \\\| header/);
