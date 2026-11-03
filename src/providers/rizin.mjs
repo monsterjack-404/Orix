@@ -394,37 +394,6 @@ export async function analyze_rizin_imports(options = {}) {
   } finally {
     await rm(snapshot_directory, { recursive: true, force: true });
   }
-  const imports = normalize_imports(import_result.stdout, maximum_imports);
-  return {
-    schema_version: 'orix.rizin-imports.v1',
-    provider: {
-      id: manifest.id,
-      adapter_version: RIZIN_ADAPTER_VERSION,
-      engine_version,
-      executable: version_result.executable,
-    },
-    artifact: {
-      path: before.canonical_path,
-      size_bytes: before.info.size,
-      sha256: input_hash.digest,
-      stable_during_analysis: true,
-    },
-    imports,
-    summary: {
-      imports: imports.length,
-      libraries: new Set(imports.map(item => item.library).filter(Boolean)).size,
-    },
-    diagnostics: {
-      version_probe_duration_ms: version_result.duration_ms,
-      import_scan_duration_ms: import_result.duration_ms,
-      stderr: import_result.stderr.slice(0, 1024),
-    },
-    notes: [
-      'Uses Rizin -N -q -c iij for static import metadata; the target is not executed.',
-      'Rizin remains an optional external installation and is not bundled by ORIX.',
-      'The process runner bounds runtime and captured output but is not an OS sandbox.',
-    ],
-  };
 }
 
 /**
