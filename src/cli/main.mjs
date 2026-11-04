@@ -46,7 +46,7 @@ function validate_command_flags(command, flags) {
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
     providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes', 'max_imports'],
     audit: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'osv_lookup', 'max_osv_packages', 'max_osv_advisories', 'max_osv_response_bytes', 'timeout_ms'],
-    har: ['format', 'out', 'max_har_entries'],
+    har: ['format', 'out', 'max_har_entries', 'max_har_hosts'],
   }[command];
   if (!allowed) return;
   const unsupported = Object.keys(flags).filter(key => !allowed.includes(key));
@@ -160,7 +160,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
   if(parsed.command==='har'){
     if(!parsed.target)throw new Error('har requires a .har capture file');
     if(parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('har output supports JSON or Markdown only');
-    const report=await analyze_har_file(parsed.target,{max_entries:parsed.flags.max_har_entries});
+    const report=await analyze_har_file(parsed.target,{max_entries:parsed.flags.max_har_entries,max_hosts:parsed.flags.max_har_hosts});
     const output=parsed.flags.format==='json'?render_json(report):render_har_markdown(report);
     await write_or_print(output,parsed.flags.out);
     return 0;
