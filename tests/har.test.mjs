@@ -107,6 +107,20 @@ test('HAR parser enforces byte and entry budgets', () => {
   assert.throws(() => parse_har(make_har([]), { max_entries: 0 }), /max_entries must be/);
 });
 
+test('HAR Markdown renderer escapes hostile creator metadata', () => {
+  const document = JSON.parse(make_har([entry()]).toString('utf8'));
+  document.log.creator.name = '<img src=x>|[capture]*_';
+  document.log.creator.version = '`javascript:alert(1)`';
+  const report = parse_har(Buffer.from(JSON.stringify(document)));
+  const markdown = render_har_markdown(report);
+  assert.equal(markdown.includes('<img src=x>'), false);
+  assert.ok(markdown.includes('&lt;img src=x&gt;'));
+  assert.ok(markdown.includes('\\|'));
+  assert.ok(markdown.includes('\\['));
+  assert.ok(markdown.includes('\\*'));
+  assert.ok(markdown.includes('\\_'));
+});
+
 test('HAR file analyzer rejects symlinks and returns a hashed source receipt', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-har-'));
   const file = path.join(directory, 'capture.har');
