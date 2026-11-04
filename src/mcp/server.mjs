@@ -287,7 +287,10 @@ export async function handle_mcp_message(message, options = {}) {
     const responses = [];
     for (const item of message) {
       if (is_json_object(item) && item.method === 'initialize') {
-        const item_id = Object.hasOwn(item, 'id') && is_request_id(item.id) ? item.id : null;
+        // Preserve JSON-RPC's no-response rule for notifications, even though
+        // initialize requests themselves are forbidden inside a batch.
+        if (!Object.hasOwn(item, 'id')) continue;
+        const item_id = is_request_id(item.id) ? item.id : null;
         responses.push(jsonrpc_error(item_id, -32600, 'initialize requests must not be sent in a JSON-RPC batch'));
         continue;
       }
@@ -296,8 +299,14 @@ export async function handle_mcp_message(message, options = {}) {
     }
     return responses.length > 0 ? responses : null;
   }
-  if (!message || typeof message !== 'object' || message.jsonrpc !== '2.0') {
-    return jsonrpc_error(message?.id ?? null, -32600, 'Invalid JSON-RPC request');
+  if (!message || typeof message !== 'object' || Array.isArray(message)) {
+    return jsonrpc_error(null, -32600, 'Invalid JSON-RPC request');
+  }
+  if (message.jsonrpc !== '2.0') {
+    const invalid_version_id = Object.hasOwn(message, 'id') && is_request_id(message.id)
+      ? message.id
+      : null;
+    return jsonrpc_error(invalid_version_id, -32600, 'Invalid JSON-RPC request');
   }
   const has_id = Object.hasOwn(message, 'id');
   if (has_id && !is_request_id(message.id)) {
