@@ -81,6 +81,25 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
 });
 
+test('MCP Rizin tool validates executable argument prefixes before resolving workspace paths', async () => {
+  await assert.rejects(
+    call_orix_tool('orix.rizin_functions', {
+      path: '/not/used/sample.elf',
+      executable: '/not/used/rizin',
+      executable_args: 'not-an-array',
+    }),
+    /executable_args must be an array/,
+  );
+  await assert.rejects(
+    call_orix_tool('orix.rizin_functions', {
+      path: '/not/used/sample.elf',
+      executable: '/not/used/rizin',
+      executable_args: Array.from({ length: 17 }, () => 'prefix'),
+    }),
+    /executable_args must be an array/,
+  );
+});
+
 test('MCP Rizin function tool runs an explicit provider through a bounded argv prefix', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-'));
   try {
