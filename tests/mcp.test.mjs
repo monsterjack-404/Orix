@@ -45,6 +45,22 @@ test('MCP rejects incomplete initialize parameters with JSON-RPC invalid-params'
   assert.equal(response.error.code, -32602);
 });
 
+test('MCP exposes only the capability families it actually implements', async () => {
+  const initialized = await handle_mcp_message({
+    jsonrpc: '2.0', id: 70, method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'capability-test-client', version: '1.0.0' },
+    },
+  });
+  assert.deepEqual(Object.keys(initialized.result.capabilities), ['tools']);
+  for (const method of ['resources/list', 'prompts/list']) {
+    const unsupported = await handle_mcp_message({ jsonrpc: '2.0', id: 71, method });
+    assert.equal(unsupported.error.code, -32601);
+  }
+});
+
 test('MCP tools/list exposes the complete local ORIX tool surface', async () => {
   const response = await handle_mcp_message({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
   assert.deepEqual(response.result.tools.map(tool => tool.name), ORIX_MCP_TOOLS.map(tool => tool.name));
