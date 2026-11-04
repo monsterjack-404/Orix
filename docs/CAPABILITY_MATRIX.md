@@ -22,7 +22,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Public npm release | Planned | package.json marks package private | Package validation, tarball, provenance and release process |
 | Cross-platform CI | Partial | Linux Node 20/22/24; Windows/macOS Node 22 smoke jobs | Expanded OS/runtime matrix and release gates |
 | Syntax checks | Implemented | scripts/check-syntax.mjs | Keep CI enforced |
-| Documentation consistency gate | In progress | Added by the product-completion foundation change | CI must prove it passes |
+| Documentation consistency gate | Implemented | `npm run check` validates release, parser registry, format docs, MCP version and indicator-rule coverage | Expand contracts to capability registry and generated docs |
 | Reproducible release artifacts | Planned | No signed release artifact pipeline or published version | Build provenance and signatures |
 | Desktop installer / updater | Planned | No desktop shell | Architecture after stable workspace APIs |
 | Telemetry | Not planned by default | Local-first privacy posture | Any opt-in telemetry needs explicit consent and minimization |
@@ -75,7 +75,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Static indicator engine | Partial | Deterministic structural and lexical rules | More rules, precision review and rule test corpus |
 | PDF active-content triage | Implemented | Lexical action markers, no reachability proof | Object graph and stream decoding before stronger claims |
 | Source credential-shaped patterns | Partial | Redacted heuristic findings | Secret scanner providers and precision/false-positive evaluation |
-| Vulnerability database matching | Planned | No advisory database integration | OSV provider, exact package/version matching and timestamps |
+| Vulnerability database matching | Partial | Explicit opt-in OSV querybatch audit for exact lockfile-resolved versions; bounded advisory details and affected-range records | Local ecosystem-specific range evaluation, offline snapshots/cache and reachability evidence |
 | License inventory | Partial | Some package metadata exists; no complete license decision engine | Evidence-based SPDX normalization and policy engine |
 | SBOM CycloneDX | Partial | CycloneDX 1.5 export from declared and resolved packages | Import, validation, SPDX and broader ecosystems |
 | SARIF | Implemented | SARIF 2.1.0 for artifact, scan and project findings | Import, validation and external-provider ingestion |
@@ -121,8 +121,8 @@ This file is the status ledger for product claims. It is deliberately conservati
 
 | Capability | Status | Current evidence / boundary | Completion direction |
 |---|---|---|---|
-| MCP stdio server | Implemented | Eight tools, workspace-confined operations | Protocol evolution and richer context |
-| MCP protocol current support | Implemented | 2025-03-26 | Evaluate 2026-07-28 compatibility before upgrade |
+| MCP stdio server | Implemented | Nine tools, workspace-confined operations, lifecycle validation, bounded batches and per-session rate limits | Per-tool authorization policy and append-only tool audit receipts |
+| MCP protocol current support | Implemented | 2025-03-26; JSON-RPC validation, initialization lifecycle, notification/batch semantics and tool safety annotations | Evaluate 2026-07-28 compatibility before upgrade |
 | MCP HTTP transport | Planned | No HTTP listener or remote auth | Streamable HTTP, auth, origin/session policy |
 | MCP resources/prompts/subscriptions | Planned | Tools only | Typed resources and prompts with trust labeling |
 | Built-in LLM/model router | Planned | No direct model provider | Replaceable provider API, privacy/cost metadata |
