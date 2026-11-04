@@ -175,9 +175,11 @@ This backlog turns the product charter into reviewable engineering work. It is i
 - Acceptance: golden fixtures for PE/ELF/Mach-O architectures; no target execution.
 
 ### G4.3 — Rizin adapter expansion
-- Add symbols, sections, strings, functions, xrefs and disassembly as separate bounded capabilities.
-- Compare output against native parsers; preserve provider warnings and unsupported formats.
-- Acceptance: adapter contract tests across supported Rizin versions/platforms.
+- [x] Add bounded function inventory with `-A` + `aflj`, explicit output ceilings, private input snapshot and SHA-256 provenance.
+- [x] Add address-validated, instruction-limited `pdj` disassembly (assembly only; not decompilation).
+- [ ] Add sections, strings, symbols and xrefs as separate bounded capabilities.
+- [ ] Compare provider results against native parsers; preserve provider warnings and unsupported formats.
+- Acceptance: adapter contract tests across supported Rizin versions/platforms; golden checks against real Rizin releases remain outstanding.
 
 ### G4.4 — Android provider adapters
 - Integrate JADX and Apktool through explicit executable paths and safe snapshots.
