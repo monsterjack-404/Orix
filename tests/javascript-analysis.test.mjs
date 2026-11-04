@@ -17,7 +17,7 @@ test('extracts static imports, re-exports, require and dynamic import without co
     "const a = require('./common.cjs');",
     "const b = import('./lazy.js');",
     "const template = 'import(\\\'not-real.js\\\')';",
-  ].join('\\n');
+  ].join('\n');
   const report = analyze_javascript_source(source);
   assert.deepEqual(report.imports.map(item => [item.specifier, item.kind]), [
     ['./side-effect.js', 'side-effect-import'],
@@ -39,7 +39,7 @@ test('collects function, class, interface, type, enum and exported variable decl
     'enum State { Ready }',
     'export const enabled = true;',
     'const internal = 1;',
-  ].join('\\n'));
+  ].join('\n'));
   assert.deepEqual(report.symbols.map(item => [item.name, item.kind]), [
     ['start', 'function'],
     ['Engine', 'class'],
@@ -59,8 +59,8 @@ test('enforces token and result bounds and rejects invalid limits', () => {
 test('project scanner uses structural JS/TS imports and records token coverage', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'orix-js-'));
   try {
-    await writeFile(path.join(root, 'index.ts'), "import { run } from './runner.js';\\nexport function main() { return run(); }\\n");
-    await writeFile(path.join(root, 'runner.js'), 'export function run() { return true; }\\n');
+    await writeFile(path.join(root, 'index.ts'), "import { run } from './runner.js';\nexport function main() { return run(); }\n");
+    await writeFile(path.join(root, 'runner.js'), 'export function run() { return true; }\n');
     const report = await scan_project(root);
     const entry = report.files.find(item => item.path === 'index.ts');
     assert.equal(entry.imports[0].specifier, './runner.js');
