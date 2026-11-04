@@ -112,6 +112,7 @@ test('providers rizin imports writes the actual normalized JSON report', async (
     const exit_code = await main([
       'providers', 'rizin', 'imports', input,
       '--executable', executable,
+      ...executable_args.flatMap(argument => ['--executable-arg', argument]),
       '--format', 'json',
       '--out', output,
     ]);
@@ -130,6 +131,7 @@ test('providers rizin functions writes the actual bounded function/disassembly r
     const exit_code = await main([
       'providers', 'rizin', 'functions', input,
       '--executable', executable,
+      ...executable_args.flatMap(argument => ['--executable-arg', argument]),
       '--address', '0x401000',
       '--max-instructions', '1',
       '--decompile',
@@ -223,6 +225,7 @@ test('providers rizin doctor performs a real explicit executable version probe',
     const exit_code = await main([
       'providers', 'rizin', 'doctor',
       '--executable', executable,
+      ...executable_args.flatMap(argument => ['--executable-arg', argument]),
       '--json',
       '--out', output,
     ]);
