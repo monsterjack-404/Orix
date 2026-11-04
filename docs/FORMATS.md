@@ -6,6 +6,7 @@ ORIX distinguishes **signature recognition**, **structural parsing**, **semantic
 
 | Format | Signature recognized | Structural parser | Implemented coverage | Not implemented yet |
 |---|---:|---:|---|---|
+| Dalvik Executable (DEX) | Yes (DEX magic) | Yes | Bounded DEX 035/037-040 fixed header, endian tag, file size, link/map offsets and string/type/proto/field/method/class table ranges | DEX 041 containers, optimized/OAT formats, string/class/code decoding, bytecode disassembly and decompilation |
 | PE / COFF (PE) | Yes (MZ candidate) | Yes | PE32/PE32+ headers, file-backed RVA mapping, sections, imports and delay imports, exports/forwarders, bounded resources, WIN_CERTIFICATE framing and base-relocation records | Relocation application, CLR metadata, Authenticode digest verification and certificate-chain trust |
 | ELF | Yes | Yes | ELF32/ELF64, program and section headers, PT_INTERP/PT_DYNAMIC, build IDs, symbol tables, REL/RELA, GNU versions and GNU hash bloom/bucket/chain tables | Extended numbering, relocation application, DWARF, architecture-specific relocation names and full dynamic symbol resolution |
 | Thin Mach-O | Yes | Yes | 32/64-bit headers, load commands, segments/sections, LC_SYMTAB, LC_DYSYMTAB and CodeDirectory metadata | Chained fixups, Objective-C metadata, CMS/hash/certificate verification and other unsupported command payloads |
@@ -30,7 +31,7 @@ The import directory is decoded into DLL names and name/ordinal thunks. Delay im
 
 Certificate framing is not Authenticode verification. The parser does not calculate the Authenticode digest, validate CMS signatures, construct certificate chains or apply a trust policy.
 
-### ELF
+### DEX\n\nThe DEX parser validates the fixed 112-byte header, supported version, byte order, declared file size, link and map offsets, and bounded ranges for the six fixed identifier/definition tables. It reports checksum and SHA-1 fields without verifying them. It does not decode strings, types, methods, class definitions, code items or instructions; no bytecode is executed. DEX 041 container layout and optimized/OAT formats are not supported.\n\n### ELF
 
 The parser validates class and byte order before selecting ELF32 or ELF64 layouts. It decodes bounded program-header tables, segment permissions and ranges, PT_INTERP, PT_DYNAMIC tags, DT_NEEDED, DT_SONAME, DT_RPATH and DT_RUNPATH through valid file-backed PT_LOAD mappings. GNU build IDs are extracted from bounded PT_NOTE records.
 
