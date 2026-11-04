@@ -105,6 +105,7 @@ export function build_capability_report({
       { id: 'project-source-intelligence', status: 'partial', boundary: 'Syntax-pattern inventory, not a compiler or complete dependency resolver.' },
       { id: 'architecture-graph', status: 'partial', boundary: 'Static local-import graph; not a runtime call graph or dead-code proof.' },
       { id: 'dependency-vulnerability-audit', status: 'partial', boundary: 'Opt-in OSV exact-version queries; no reachability proof or full local ecosystem range evaluation.' },
+      { id: 'network-har-analysis', status: 'implemented', boundary: 'Offline HAR 1.2 metadata analysis with bounded entries; payloads and header/query values are excluded, and captured traffic is not independently verified.' },
       { id: 'evidence-ledger', status: 'implemented', boundary: 'Tamper-evident hash chain, not a digital signature or trusted timestamp.' },
       { id: 'dynamic-analysis', status: 'planned', boundary: 'No target execution or process instrumentation is shipped.' },
       { id: 'ai-agent-workflows', status: 'planned', boundary: 'No autonomous model router or code-editing agent is shipped.' },
