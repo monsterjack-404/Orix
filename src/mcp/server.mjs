@@ -61,6 +61,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
       properties: {
         path: { type: 'string', minLength: 1 },
         executable: { type: 'string', minLength: 1, maxLength: 4096 },
+        executable_args: { type: 'array', maxItems: 16, items: { type: 'string', maxLength: 32768 }, description: 'Optional literal argv prefix passed to the selected executable without shell evaluation.' },
         max_functions: integer('Maximum Rizin functions retained.', 100000, 1),
         address: { type: 'string', minLength: 1, maxLength: 18, pattern: '^(?:0x[0-9a-fA-F]{1,14}|[0-9]{1,16})$' },
         max_instructions: integer('Maximum instructions in the optional disassembly window.', 1000, 1),
