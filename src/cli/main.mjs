@@ -21,8 +21,8 @@ import { render_comparison_markdown } from '../reports/comparison.mjs';
 import { read_json_report } from '../core/read-report.mjs';
 import { hash_buffer } from '../core/hash.mjs';
 import { render_cyclonedx } from '../reports/cyclonedx.mjs';
-import { RIZIN_PROVIDER_MANIFEST, analyze_rizin_imports, probe_rizin } from '../providers/rizin.mjs';
-import { render_rizin_imports_markdown } from '../reports/rizin.mjs';
+import { RIZIN_PROVIDER_MANIFEST, analyze_rizin_imports, analyze_rizin_functions, probe_rizin } from '../providers/rizin.mjs';
+import { render_rizin_imports_markdown, render_rizin_functions_markdown } from '../reports/rizin.mjs';
 import { audit_project_dependencies, render_vulnerability_audit_markdown } from '../vulnerability/osv.mjs';
 async function write_or_print(content,output_path) {
   if(!output_path){process.stdout.write(content.endsWith('\n')?content:content+'\n');return;}
@@ -43,7 +43,7 @@ function validate_command_flags(command, flags) {
     formats: ['format', 'out'],
     capabilities: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
-    providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes', 'max_imports'],
+    providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes', 'max_imports', 'max_functions', 'rizin_address', 'max_instructions'],
     audit: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'osv_lookup', 'max_osv_packages', 'max_osv_advisories', 'max_osv_response_bytes', 'timeout_ms'],
   }[command];
   if (!allowed) return;
@@ -58,6 +58,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
   if(parsed.command==='ledger'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('ledger output currently supports JSON only');
   if(parsed.command==='providers'&&parsed.provider_action==='list'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('providers list output currently supports JSON only');
   if(parsed.command==='providers'&&parsed.provider_action==='imports'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('provider import output supports JSON or Markdown only');
+  if(parsed.command==='providers'&&parsed.provider_action==='functions'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('provider function output supports JSON or Markdown only');
   if(parsed.command==='providers'&&parsed.provider_action==='doctor'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('provider doctor output currently supports JSON only');
   if(parsed.command==='compare'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('compare output supports JSON or Markdown only');
   if(parsed.command==='formats'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('formats output currently supports JSON only');
@@ -91,6 +92,25 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
         max_output_bytes:parsed.flags.max_output_bytes,
       });
       await write_or_print(render_json(report),parsed.flags.out);
+      return 0;
+    }
+    if(parsed.provider_action==='functions'){
+      if(!parsed.flags.provider_executable){
+        throw new Error('providers rizin functions requires --executable <absolute-path>');
+      }
+      const report=await analyze_rizin_functions({
+        executable:parsed.flags.provider_executable,
+        input_path:parsed.target,
+        timeout_ms:parsed.flags.timeout_ms,
+        max_output_bytes:parsed.flags.max_output_bytes,
+        max_functions:parsed.flags.max_functions,
+        address:parsed.flags.rizin_address,
+        max_instructions:parsed.flags.max_instructions,
+      });
+      const output=parsed.flags.format==='json'
+        ? render_json(report)
+        : render_rizin_functions_markdown(report);
+      await write_or_print(output,parsed.flags.out);
       return 0;
     }
     if(parsed.provider_action==='imports'){
