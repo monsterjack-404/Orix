@@ -72,3 +72,12 @@ test('project scanner uses structural JS/TS imports and records token coverage',
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('does not treat object methods as module loaders and accepts import attributes', () => {
+  const report = analyze_javascript_source([
+    "const ignored = obj.require('./not-a-module');",
+    "const alsoIgnored = obj.import('./not-a-module');",
+    "const actual = import('./real-module.js', { with: { type: 'json' } });",
+  ].join('\\n'));
+  assert.deepEqual(report.imports.map(item => item.specifier), ['./real-module.js']);
+});
