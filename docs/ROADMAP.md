@@ -8,7 +8,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 - Local CLI and public programmatic entry points.
 - Signature registry for common executable, archive, document, image and database formats.
-- Bounded PE32/PE32+, ELF, thin Mach-O, WebAssembly and ZIP structural parsing.
+- Bounded PE32/PE32+, ELF, thin Mach-O, WebAssembly, ZIP and PNG structural parsing.
 - Streaming SHA-256, entropy, bounded string extraction and evidence records.
 - Symlink-safe directory inventory and bounded concurrent inspection.
 - JSON and Markdown report renderers.
@@ -34,6 +34,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - Best-effort source import extraction, local import edges and symbol candidates.
 - Project structure signals for README, license, CI, tests and container files.
 - Redacted credential-shaped indicators and versioned project report schema.
+- Opt-in OSV dependency audit over exact resolved lockfile versions, with bounded batches, pagination, advisory details and explicit partial-coverage status.
 
 **Implemented extension:** an opt-in OSV dependency audit queries exact versions from the supported lockfile inventory, follows per-package pagination, retrieves advisory details and reports partial coverage without uploading project files.
 

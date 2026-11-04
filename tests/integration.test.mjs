@@ -86,7 +86,7 @@ test('formats command distinguishes structural parsers from signature-only forma
   const pdf = report.formats.find(item => item.format === 'PDF');
   const png = report.formats.find(item => item.format === 'PNG');
   assert.equal(pdf.parser_status, 'available');
-  assert.equal(png.parser_status, 'signature-only');
+  assert.equal(png.parser_status, 'available');
 });
 
 test('scan coverage marks an actually exceeded file cap as truncated', async () => {

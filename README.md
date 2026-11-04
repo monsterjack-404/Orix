@@ -2,7 +2,7 @@
 
 **Understand. Analyze. Engineer.**
 
-> Product direction: [ORIX Product Charter](docs/PRODUCT_CHARTER.md) · [Engineering Gap Register & Implementation Backlog](docs/IMPLEMENTATION_BACKLOG.md). These define the long-term target and planned work; they do not imply planned capabilities are already implemented.
+> Product direction: [ORIX Product Charter](docs/PRODUCT_CHARTER.md) · [Capability Matrix](docs/CAPABILITY_MATRIX.md) · [Engineering Gap Register & Implementation Backlog](docs/IMPLEMENTATION_BACKLOG.md). These define the long-term target and planned work; they do not imply planned capabilities are already implemented.
 
 ORIX is a local-first engineering intelligence workbench for inspecting software artifacts, reconstructing file-format structure, and preserving the evidence behind every conclusion. It is designed as a serious, extensible foundation for authorized reverse engineering and software research—not a wrapper that hides its methods and not a collection of aspirational feature folders.
 
@@ -27,9 +27,10 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Mach-O parser | Thin and FAT/FAT64 universal images, per-slice parsing, segment/section commands, LC_SYMTAB symbols, LC_DYSYMTAB groups/indirect symbols and CodeDirectory metadata | Does not cryptographically verify signatures or decode chained fixups and Objective-C metadata |
 | ZIP parser | ZIP32/ZIP64 central-directory indexing, extended entry sizes and offsets, unsafe path and symlink metadata | Multi-disk archives, extraction, decompression and CRC verification are not implemented |
 | PDF parser | Classic xref tables, trailer metadata, incremental /Prev chain, indirect-object framing, encryption and active-content marker triage | Xref-stream entries, object streams, filters, attachment extraction, page-tree semantics and signature verification are not implemented |
+| PNG parser | Bounded chunk index, IHDR, palette/transparency constraints, IDAT ordering, IEND and configurable CRC validation | Does not inflate IDAT, decode scanlines/pixels or validate color management |
 | WebAssembly parser | Versioned module header, bounded specification-ordered section framing, strict UTF-8 names, module/function name maps, function types, imports, exports, function/type indices, start function and code-body ranges | Does not decode instructions or initializers, validate all section semantics, or decompile code |
 | Static metrics | Shannon entropy, ASCII/UTF-16LE string extraction and bounded hex preview | Metrics are descriptive, not malware verdicts |
-| Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
+| Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, PDF active-content/embedded-content/encryption markers, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
 | Evidence model | Stable report evidence plus append-only SHA-256 chained JSONL ledger, verify/list commands and append receipts | Not a signature, trusted timestamp or external transparency log |
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
 | Dependency vulnerability audit | Explicit opt-in OSV lookup for exact lockfile-resolved versions, bounded batch pagination, advisory details and partial-coverage reporting | No offline advisory cache, local affected-range engine, reachability proof or exploitability verdict |
