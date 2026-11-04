@@ -19,6 +19,7 @@ import {
 export const MCP_PROTOCOL_VERSION = '2025-03-26';
 export const MCP_MAX_LINE_BYTES = 4 * 1024 * 1024;
 export const MCP_MAX_RESULT_BYTES = 2 * 1024 * 1024;
+export const MCP_MAX_BATCH_MESSAGES = 100;
 
 const integer = (description, maximum, minimum = 0) => ({ type: 'integer', minimum, maximum, description });
 const path_schema = {
@@ -278,7 +279,24 @@ export async function call_orix_tool(name, args = {}, options = {}) {
 }
 
 export async function handle_mcp_message(message, options = {}) {
-  if (!message || typeof message !== 'object' || Array.isArray(message) || message.jsonrpc !== '2.0') {
+  if (Array.isArray(message)) {
+    if (message.length === 0) return jsonrpc_error(null, -32600, 'Empty JSON-RPC batch');
+    if (message.length > MCP_MAX_BATCH_MESSAGES) {
+      return jsonrpc_error(null, -32600, 'JSON-RPC batch exceeds the configured message limit');
+    }
+    const responses = [];
+    for (const item of message) {
+      if (is_json_object(item) && item.method === 'initialize') {
+        const item_id = Object.hasOwn(item, 'id') && is_request_id(item.id) ? item.id : null;
+        responses.push(jsonrpc_error(item_id, -32600, 'initialize requests must not be sent in a JSON-RPC batch'));
+        continue;
+      }
+      const response = await handle_mcp_message(item, options);
+      if (response !== null) responses.push(response);
+    }
+    return responses.length > 0 ? responses : null;
+  }
+  if (!message || typeof message !== 'object' || message.jsonrpc !== '2.0') {
     return jsonrpc_error(message?.id ?? null, -32600, 'Invalid JSON-RPC request');
   }
   const has_id = Object.hasOwn(message, 'id');
