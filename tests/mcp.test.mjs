@@ -2,9 +2,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { PassThrough } from 'node:stream';
 import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool, start_mcp_server } from '../src/mcp/server.mjs';
 import { append_ledger } from '../src/evidence/ledger.mjs';
@@ -66,6 +67,7 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   assert.deepEqual(response.result.tools.map(tool => tool.name), ORIX_MCP_TOOLS.map(tool => tool.name));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.inspect_file'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_architecture'));
+  assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_har'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.capabilities'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.ledger.verify'));
   for (const tool of response.result.tools) {
@@ -91,6 +93,21 @@ test('MCP capability tool returns the source-backed inventory including its own 
   assert.ok(mcp.tools.some(tool => tool.name === 'orix.capabilities'));
   assert.equal(mcp.tools.length, ORIX_MCP_TOOLS.length);
   assert.ok(report.intelligence.some(item => item.id === 'dynamic-analysis' && item.status === 'planned'));
+});
+
+test('MCP HAR tool analyzes only workspace-confined captures and omits secret values', async () => {
+  const file_path = fileURLToPath(new URL('./fixtures/network/basic.har', import.meta.url));
+  const workspace = path.dirname(file_path);
+  {
+    const result = await call_orix_tool('orix.analyze_har', { path: file_path, max_entries: 10 }, { roots: [workspace] });
+    assert.equal(result.schema_version, 'orix.har.v1');
+    assert.equal(result.summary.entries_analyzed, 1);
+    assert.equal(JSON.stringify(result).includes('secret-value'), false);
+    await assert.rejects(
+      call_orix_tool('orix.analyze_har', { path: path.resolve('README.md') }, { roots: [workspace] }),
+      /workspace|outside|root/i,
+    );
+  }
 });
 
 test('MCP inspect tool returns the same versioned artifact report as the library API', async () => {

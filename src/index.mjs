@@ -45,3 +45,4 @@ export { render_architecture_markdown, render_architecture_mermaid } from './rep
 export { audit_project_dependencies, render_vulnerability_audit_markdown } from './vulnerability/osv.mjs';
 
 export { build_capability_report } from './capabilities/registry.mjs';
+export { parse_har, analyze_har_file, render_har_markdown } from './network/har.mjs';

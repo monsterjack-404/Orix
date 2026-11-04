@@ -147,6 +147,25 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Performance benchmarks | Planned | No reproducible benchmark harness | Corpora, metrics, baselines and regression budgets |
 | Documentation contract test | In progress | Added in this foundation change | Keep required docs/source invariants enforced |
 
+## I. Extended platform workstreams
+
+| Capability | Status | Current evidence / boundary | Completion direction |
+|---|---|---|---|
+| Native binary structural analysis | Partial | PE, ELF, Mach-O and WebAssembly parsers | Complete format semantics and address model |
+| Native decompilation | Planned | No decompiler adapter; Rizin imports only | Provider-neutral function/xref/disassembly/decompiler contract |
+| JavaScript / Electron | Partial | Source inventory and regex import/symbol candidates | AST analysis and Electron main/preload/renderer/IPC model |
+| .NET / CLR / IL | Planned | C# source and NuGet inventory only | PE/CLI metadata, IL, PDB and reviewed decompiler provider |
+| Android APK / AAB / DEX | Planned | ZIP central-directory metadata only | Binary manifest/resources/DEX parser and JADX/Apktool adapters |
+| Android device observations | Planned | No ADB/emulator/Frida provider | Explicit device approval, scope, capture budgets and cleanup |
+| Website structure | Planned | No dedicated HTML/DOM/source-map analyzer | Offline asset graph and static script analysis |
+| Browser observations | Planned | No live browser provider | Disposable Playwright/CDP session and local fixture corpus |
+| HAR network analysis | Implemented | Bounded offline HAR 1.2 metadata parser, CLI/API/MCP, evidence IDs and SHA-256 | Broader validation, corpus, normalized browser/proxy input |
+| PCAP / PCAPNG | Planned | No packet capture parser or live capture | Bounded metadata/flow decoder; payload inspection remains separate |
+| Firmware and filesystems | Planned | No firmware-specific parser or extraction | Superblock/container parsers and decompression safety model |
+| Evidence investigation workflows | Partial | Reports, ledger and report comparison | Case store, finding lifecycle, evidence graph and case bundles |
+| Recorded behavior replay | Planned | No event trace or replay runtime | Versioned trace schema and deterministic test-environment replay |
+| AI / RL environments | Planned | No environment adapter/training integration | Allowlisted observation/action API and replay/permission gates |
+
 ## Priority order
 
 1. **P0 — Truth and release quality:** reconcile docs, enforce documentation contracts, validate CI on all current platforms, strengthen parser/provider tests and clean install/package verification.

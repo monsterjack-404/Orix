@@ -36,6 +36,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Dependency vulnerability audit | Explicit opt-in OSV lookup for exact lockfile-resolved versions, bounded batch pagination, advisory details and partial-coverage reporting | No offline advisory cache, local affected-range engine, reachability proof or exploitability verdict |
 | MCP integration | Local stdio JSON-RPC server with ten typed tools, including bounded project architecture analysis, inspect, scan, project, formats, comparison and evidence-ledger operations | No HTTP listener, remote auth, resource subscription or prompt catalog |
 | Provider integrations | Declarative manifests, immutable registry, bounded shell-free process runner, Rizin version doctor, snapshot-isolated static-import adapter, provider discovery/list CLI and JSON/Markdown reports | No OS sandbox, dynamic execution provider, installer, daemon or automatic provider discovery |
+| HAR network analysis | Offline HAR 1.2 request inventory, host/status/timing summaries, review findings and SHA-256 evidence; bodies and secret header/query values are excluded | Does not capture live traffic, validate TLS certificates or prove that a capture is authentic |
 
 | Reports | JSON, Markdown, SARIF 2.1.0 for artifact, directory-scan and source-project findings, report comparison and CycloneDX 1.5 SBOM | No hosted dashboard or relational database |
 
@@ -123,6 +124,19 @@ npm run web
 node src/cli.mjs inspect ./sample.exe --ledger ./.orix/evidence.jsonl
 node src/cli.mjs ledger verify ./.orix/evidence.jsonl
 ```
+
+## HAR network investigation
+
+Analyze a browser or proxy-exported HAR 1.2 capture without contacting its hosts or replaying requests:
+
+```bash
+node src/cli.mjs har ./capture.har
+node src/cli.mjs har ./capture.har --json --max-har-entries 20000 --max-har-hosts 5000
+```
+
+The analyzer records a SHA-256 digest, bounded request metadata, host/method/status summaries, timing totals and evidence-linked review findings. It does not export request or response bodies, header values, cookie values or query parameter values. Shared operating-system temporary-directory paths are rejected; copy captures into a private workspace before analysis. URL paths and server IP addresses can still be sensitive; review reports before sharing. HAR observations describe the supplied capture, not independently verified live traffic. The same analyzer is available as the public API and the workspace-confined `orix.analyze_har` MCP tool.
+
+See [Platform Expansion](docs/PLATFORM_EXPANSION.md) for the engineering plan covering Android, Electron/JavaScript, .NET, decompilation, firmware, browser observations and replayable AI/RL environments.
 
 ## Local report explorer
 

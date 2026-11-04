@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile, symlink, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { inspect_file } from '../src/core/inspect.mjs';
 import { scan_directory } from '../src/analyzer/scan.mjs';
@@ -77,6 +78,19 @@ test('CLI JSON output is valid machine-readable JSON', async () => {
     const parsed = JSON.parse(cli.stdout);
     assert.equal(parsed.schema_version, 'orix.artifact.v1');
   });
+});
+
+test('CLI analyzes HAR captures and emits a bounded JSON evidence report', async () => {
+  const file = fileURLToPath(new URL('./fixtures/network/basic.har', import.meta.url));
+  const cli = spawnSync(process.execPath, ['src/cli.mjs', 'har', file, '--json'], { encoding: 'utf8', cwd: path.resolve('.') });
+  assert.equal(cli.status, 0, cli.stderr);
+  const report = JSON.parse(cli.stdout);
+  assert.equal(report.schema_version, 'orix.har.v1');
+  assert.equal(report.summary.entries_analyzed, 1);
+  assert.equal(cli.stdout.includes('secret-value'), false);
+  assert.equal(cli.stdout.includes('private-cookie-value'), false);
+  assert.equal(parse_arguments(['har', file, '--max-har-entries', '12']).flags.max_har_entries, 12);
+  assert.equal(parse_arguments(['har', file, '--max-har-hosts', '8']).flags.max_har_hosts, 8);
 });
 
 test('capabilities command emits source-backed implemented, partial and planned inventory', () => {
