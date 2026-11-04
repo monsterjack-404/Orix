@@ -114,3 +114,61 @@ test('PNG parser requires IEND and rejects trailing bytes and invalid reserved c
   assert.throws(() => parse_png(png([chunk('IHdR', header()), chunk('IDAT', IDAT), chunk('IEND')])),
     error => error.code === 'ORIX_PNG_RESERVED_CHUNK_BIT');
 });
+
+
+test('PNG parser validates grayscale and truecolor tRNS sample values against bit depth', () => {
+  const grayscale = Buffer.alloc(2);
+  grayscale.writeUInt16BE(255);
+  const valid_gray = png([
+    chunk('IHDR', header({ bit_depth: 8, color_type: 0 })),
+    chunk('tRNS', grayscale),
+    chunk('IDAT', IDAT),
+    chunk('IEND'),
+  ]);
+  assert.equal(parse_png(valid_gray).chunks.find(item => item.type === 'tRNS').length, 2);
+
+  const invalid_gray = Buffer.alloc(2);
+  invalid_gray.writeUInt16BE(256);
+  assert.throws(() => parse_png(png([
+    chunk('IHDR', header({ bit_depth: 8, color_type: 0 })),
+    chunk('tRNS', invalid_gray),
+    chunk('IDAT', IDAT),
+    chunk('IEND'),
+  ])), error => error.code === 'ORIX_PNG_TRNS_SAMPLE_OUT_OF_RANGE');
+
+  const invalid_rgb = Buffer.alloc(6);
+  invalid_rgb.writeUInt16BE(255, 0);
+  invalid_rgb.writeUInt16BE(256, 2);
+  invalid_rgb.writeUInt16BE(0, 4);
+  assert.throws(() => parse_png(png([
+    chunk('IHDR', header({ bit_depth: 8, color_type: 2 })),
+    chunk('tRNS', invalid_rgb),
+    chunk('IDAT', IDAT),
+    chunk('IEND'),
+  ])), error => error.code === 'ORIX_PNG_TRNS_SAMPLE_OUT_OF_RANGE');
+});
+
+
+test('PNG parser requires a truecolor PLTE chunk to precede tRNS when both are present', () => {
+  const transparency = Buffer.alloc(6);
+  transparency.writeUInt16BE(1, 0);
+  transparency.writeUInt16BE(2, 2);
+  transparency.writeUInt16BE(3, 4);
+  const invalid = png([
+    chunk('IHDR', header({ color_type: 2 })),
+    chunk('tRNS', transparency),
+    chunk('PLTE', Buffer.from([255, 0, 0])),
+    chunk('IDAT', IDAT),
+    chunk('IEND'),
+  ]);
+  assert.throws(() => parse_png(invalid), error => error.code === 'ORIX_PNG_PLTE_AFTER_TRNS');
+
+  const valid = png([
+    chunk('IHDR', header({ color_type: 2 })),
+    chunk('PLTE', Buffer.from([255, 0, 0])),
+    chunk('tRNS', transparency),
+    chunk('IDAT', IDAT),
+    chunk('IEND'),
+  ]);
+  assert.equal(parse_png(valid).chunks.find(item => item.type === 'tRNS').length, 6);
+});
