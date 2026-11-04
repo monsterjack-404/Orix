@@ -19,6 +19,7 @@ const schema_paths = [
   new URL('../schemas/capabilities.v1.schema.json', import.meta.url),
   new URL('../schemas/capabilities.v1.schema.json', import.meta.url),
   new URL('../schemas/har.v1.schema.json', import.meta.url),
+  new URL('../schemas/rizin-functions.v1.schema.json', import.meta.url),
 ];
 
 test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
@@ -82,4 +83,9 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.ok(schemas[13].properties.coverage.required.includes('max_hosts'));
   assert.ok(schemas[13].properties.entries.items.properties.status_text);
   assert.equal(schemas[13].properties.privacy.properties.request_bodies_included.const, false);
+  const rizinFunctions = schemas[schemas.length - 1];
+  assert.equal(rizinFunctions.properties.schema_version.const, 'orix.rizin-functions.v1');
+  assert.equal(rizinFunctions.additionalProperties, false);
+  assert.ok(rizinFunctions.properties.functions.items.required.includes('offset'));
+  assert.equal(rizinFunctions.properties.disassembly.oneOf.length, 2);
 });
