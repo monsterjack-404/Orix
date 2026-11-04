@@ -13,6 +13,7 @@ The JSON Schema documents in this directory describe the public JSON report cont
 | `provider-probe.v1.schema.json` | Explicit provider executable version/availability probe | `orix.provider-probe.v1` |
 | `rizin-imports.v1.schema.json` | Normalized Rizin native import inventory | `orix.rizin-imports.v1` |
 | `vulnerability-audit.v1.schema.json` | Opt-in OSV dependency vulnerability audit | `orix.vulnerability-audit.v1` |
+| `capabilities.v1.schema.json` | Source-backed capability inventory | `orix.capabilities.v1` |
 
 The provider manifest describes declared capabilities, execution side effects, resource ceilings and redistribution status. It is metadata only: a valid manifest does not prove a provider is installed, trusted, safe, or authorized to run.
 
