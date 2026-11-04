@@ -18,6 +18,34 @@ function is_identifier_part(code) {
   return is_identifier_start(code) || (code >= 48 && code <= 57);
 }
 
+function can_start_regex(previous) {
+  if (!previous) return true;
+  if (previous.type === 'identifier') {
+    return new Set(['return', 'throw', 'case', 'delete', 'void', 'typeof', 'instanceof', 'in', 'of', 'yield', 'await', 'else', 'do']).has(previous.value);
+  }
+  if (previous.type === 'string' || previous.type === 'number' || previous.type === 'template' || previous.type === 'regex') return false;
+  return new Set(['(', '{', '[', ',', ':', ';', '=', '!', '?', '&', '|', '+', '-', '*', '%', '~', '^', '<', '>']).has(previous.value);
+}
+
+function read_regex(source, start) {
+  let cursor = start + 1;
+  let in_class = false;
+  while (cursor < source.length) {
+    const character = source[cursor];
+    if (character === '\\\\') { cursor += 2; continue; }
+    if (character === '\\n' || character === '\\r') return null;
+    if (character === '[') in_class = true;
+    else if (character === ']') in_class = false;
+    else if (character === '/' && !in_class) {
+      cursor += 1;
+      while (cursor < source.length && is_identifier_part(source.charCodeAt(cursor))) cursor += 1;
+      return cursor;
+    }
+    cursor += 1;
+  }
+  return null;
+}
+
 function read_string(source, start, quote) {
   let cursor = start + 1;
   let value = '';
@@ -75,6 +103,14 @@ function tokenize(source, maximum) {
       cursor += 2;
       while (cursor < source.length && source[cursor] !== '\n') cursor += 1;
       continue;
+    }
+    if (character === '/' && can_start_regex(tokens[tokens.length - 1])) {
+      const end = read_regex(source, cursor);
+      if (end !== null) {
+        tokens.push({ type: 'regex', value: '', line });
+        cursor = end;
+        continue;
+      }
     }
     if (character === '/' && source[cursor + 1] === '*') {
       cursor += 2;
@@ -139,7 +175,8 @@ function collect_imports(tokens, maximum) {
     const token = tokens[index];
     if (token.type !== 'identifier') continue;
     const previous = tokens[index - 1]?.value;
-    if (previous === '.' || (previous === '.' && tokens[index - 2]?.value === '?')) continue;
+    const module_require = token.value === 'require' && previous === '.' && tokens[index - 2]?.value === 'module';
+    if ((previous === '.' || (previous === '.' && tokens[index - 2]?.value === '?')) && !module_require) continue;
     if (token.value === 'require' && tokens[index + 1]?.value === '(') {
       const argument = tokens[index + 2];
       if (tokens[index + 3]?.value === ')') add_import(imports, seen, argument, 'require', token);
