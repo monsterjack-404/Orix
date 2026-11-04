@@ -19,6 +19,7 @@ import {
 export const MCP_PROTOCOL_VERSION = '2025-03-26';
 export const MCP_MAX_LINE_BYTES = 4 * 1024 * 1024;
 export const MCP_MAX_RESULT_BYTES = 2 * 1024 * 1024;
+export const MCP_MAX_BATCH_MESSAGES = 100;
 
 const integer = (description, maximum, minimum = 0) => ({ type: 'integer', minimum, maximum, description });
 const path_schema = {
@@ -147,6 +148,14 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   },
 ]);
 
+function is_request_id(value) {
+  return typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function is_json_object(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function jsonrpc_error(id, code, message, data = undefined) {
   return {
     jsonrpc: '2.0',
@@ -270,22 +279,63 @@ export async function call_orix_tool(name, args = {}, options = {}) {
 }
 
 export async function handle_mcp_message(message, options = {}) {
-  if (!message || typeof message !== 'object' || Array.isArray(message) || message.jsonrpc !== '2.0') {
+  if (Array.isArray(message)) {
+    if (message.length === 0) return jsonrpc_error(null, -32600, 'Empty JSON-RPC batch');
+    if (message.length > MCP_MAX_BATCH_MESSAGES) {
+      return jsonrpc_error(null, -32600, 'JSON-RPC batch exceeds the configured message limit');
+    }
+    const responses = [];
+    for (const item of message) {
+      if (is_json_object(item) && item.method === 'initialize') {
+        const item_id = Object.hasOwn(item, 'id') && is_request_id(item.id) ? item.id : null;
+        responses.push(jsonrpc_error(item_id, -32600, 'initialize requests must not be sent in a JSON-RPC batch'));
+        continue;
+      }
+      const response = await handle_mcp_message(item, options);
+      if (response !== null) responses.push(response);
+    }
+    return responses.length > 0 ? responses : null;
+  }
+  if (!message || typeof message !== 'object' || message.jsonrpc !== '2.0') {
     return jsonrpc_error(message?.id ?? null, -32600, 'Invalid JSON-RPC request');
   }
   const has_id = Object.hasOwn(message, 'id');
-  const id = has_id ? message.id : null;
-  if (typeof message.method !== 'string') {
-    return jsonrpc_error(id, -32600, 'Request method must be a string');
+  if (has_id && !is_request_id(message.id)) {
+    return jsonrpc_error(null, -32600, 'Invalid JSON-RPC request ID');
   }
+  const id = has_id ? message.id : null;
+  if (typeof message.method !== 'string' || message.method.length === 0) {
+    return jsonrpc_error(id, -32600, 'Request method must be a non-empty string');
+  }
+  // A valid notification never receives a response, including for unsupported methods.
   if (!has_id) return null;
+  if (message.params !== undefined && !is_json_object(message.params)) {
+    return jsonrpc_error(id, -32602, 'Request params must be a JSON object');
+  }
   if (message.method === 'ping') return { jsonrpc: '2.0', id, result: {} };
   if (message.method === 'initialize') {
+    const params = message.params;
+    if (
+      !is_json_object(params)
+      || typeof params.protocolVersion !== 'string'
+      || params.protocolVersion.length === 0
+      || !is_json_object(params.capabilities)
+      || !is_json_object(params.clientInfo)
+      || typeof params.clientInfo.name !== 'string'
+      || params.clientInfo.name.length === 0
+      || typeof params.clientInfo.version !== 'string'
+      || params.clientInfo.version.length === 0
+    ) {
+      return jsonrpc_error(id, -32602, 'initialize requires protocolVersion, capabilities, and clientInfo.name/version');
+    }
+    const protocol_version = params.protocolVersion === MCP_PROTOCOL_VERSION
+      ? params.protocolVersion
+      : MCP_PROTOCOL_VERSION;
     return {
       jsonrpc: '2.0',
       id,
       result: {
-        protocolVersion: MCP_PROTOCOL_VERSION,
+        protocolVersion: protocol_version,
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: 'orix', version: '0.5.0' },
         instructions: 'ORIX performs local static analysis only. Tool calls do not execute samples, project scripts, build hooks or tests.',
@@ -296,8 +346,17 @@ export async function handle_mcp_message(message, options = {}) {
     return { jsonrpc: '2.0', id, result: { tools: ORIX_MCP_TOOLS } };
   }
   if (message.method === 'tools/call') {
-    const name = message.params?.name;
-    const args = message.params?.arguments ?? {};
+    const params = message.params;
+    if (
+      !is_json_object(params)
+      || typeof params.name !== 'string'
+      || params.name.trim().length === 0
+      || (params.arguments !== undefined && !is_json_object(params.arguments))
+    ) {
+      return jsonrpc_error(id, -32602, 'tools/call requires a tool name and an optional JSON object for arguments');
+    }
+    const name = params.name;
+    const args = params.arguments ?? {};
     try {
       return { jsonrpc: '2.0', id, result: tool_result(await call_orix_tool(name, args, options)) };
     } catch (error) {
@@ -305,8 +364,6 @@ export async function handle_mcp_message(message, options = {}) {
       return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(normalized) }], isError: true } };
     }
   }
-  if (message.method === 'resources/list') return { jsonrpc: '2.0', id, result: { resources: [] } };
-  if (message.method === 'prompts/list') return { jsonrpc: '2.0', id, result: { prompts: [] } };
   return jsonrpc_error(id, -32601, 'Method not found: ' + message.method);
 }
 
