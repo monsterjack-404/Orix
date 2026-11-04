@@ -29,6 +29,9 @@ This backlog turns the product charter into reviewable engineering work. It is i
 - Acceptance: a clean checkout reproduces the same validation; release cannot be cut on failing required jobs.
 
 ### G0.3 — Threat-model and adversarial regression suite
+- [x] Document MCP JSON-RPC/workspace boundaries, viewer CSP/CSV formula handling, OSV disclosure limits, evidence-ledger integrity and future case-store requirements.
+- [x] Add CSV formula-injection regression tests for the browser report export.
+- [ ] Add dedicated symlink-swap race tests, malicious provider output corpus and prompt-injection fixtures for future agent workflows.
 - Add explicit threat models for parsers, directory walking, provider process runner, MCP, viewer and future database.
 - Add adversarial fixtures for symlink swaps, path traversal, malformed lengths, integer overflow, huge counts, zip bombs (metadata-only tests until decompression exists), malicious provider output, prompt injection in scanned text and cancellation races.
 - Acceptance: every fixed security issue gains a regression test; tests remain deterministic and bounded.
