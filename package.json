@@ -44,7 +44,7 @@
   "scripts": {
     "start": "node ./src/cli.mjs",
     "orix": "node ./src/cli.mjs",
-    "check": "node scripts/check-syntax.mjs && node scripts/check-docs.mjs",
+    "check": "node scripts/check-syntax.mjs && node scripts/check-docs.mjs && node scripts/check-test-skips.mjs",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage",
     "mcp": "node ./src/mcp.mjs",
