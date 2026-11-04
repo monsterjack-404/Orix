@@ -56,6 +56,24 @@ test('enforces token and result bounds and rejects invalid limits', () => {
   assert.throws(() => analyze_javascript_source('x', { max_tokens: 0 }), /max_tokens/);
 });
 
+test('reports result truncation only when additional imports or symbols exceed their caps', () => {
+  const exact = analyze_javascript_source([
+    "import first from './first.js';",
+    "export function run() {}",
+  ].join('\\n'), { max_imports: 1, max_symbols: 1 });
+  assert.equal(exact.coverage.imports_truncated, false);
+  assert.equal(exact.coverage.symbols_truncated, false);
+
+  const over = analyze_javascript_source([
+    "import first from './first.js';",
+    "import second from './second.js';",
+    "export function run() {}",
+    "export class Worker {}",
+  ].join('\\n'), { max_imports: 1, max_symbols: 1 });
+  assert.equal(over.coverage.imports_truncated, true);
+  assert.equal(over.coverage.symbols_truncated, true);
+});
+
 test('project scanner uses structural JS/TS imports and records token coverage', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'orix-js-'));
   try {
