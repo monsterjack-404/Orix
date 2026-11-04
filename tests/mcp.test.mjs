@@ -99,7 +99,7 @@ test('MCP Rizin function tool runs only an explicit provider against a workspace
       'fi',
       'exit 64',
       '',
-    ].join('\\n');
+    ].join('\n');
     await writeFile(executable, script, { mode: 0o700 });
     await chmod(executable, 0o700);
     const response = await handle_mcp_message({
