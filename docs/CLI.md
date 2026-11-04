@@ -9,7 +9,17 @@ node src/cli.mjs compare ./baseline.json ./current.json --json
 node src/cli.mjs inspect ./sample.exe --ledger ./.orix/evidence.jsonl
 node src/cli.mjs ledger verify ./.orix/evidence.jsonl
 node src/cli.mjs ledger list ./.orix/evidence.jsonl
+node src/cli.mjs capabilities --json
 ```
+
+### Capability inventory
+
+```bash
+node src/cli.mjs capabilities --json
+node src/cli.mjs capabilities --json --out ./orix-capabilities.json
+```
+
+The inventory is assembled from the live format parser registry, MCP tool definitions and provider manifest. It labels interfaces, reports and intelligence domains as implemented, partial or planned and includes explicit boundaries. Provider availability is reported as `external-install-not-probed`; this command does not execute or probe external tools.
 
 ### Inspect one artifact
 
