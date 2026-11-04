@@ -22,6 +22,7 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | `orix.scan_directory` | `path`, optional file/entry/depth/concurrency limits | Bounded directory scan and artifact reports |
 | `orix.scan_project` | `path`, optional file/entry/depth limits | Project inventory, manifests, imports and symbol candidates |
 | `orix.analyze_architecture` | `path`, optional inventory and graph limits | Static source-import graph with entry-point candidates, cycles, reachability, hotspots and explicit limitations |
+| `orix.analyze_har` | `path`, optional `max_entries` | Offline HAR 1.2 request metadata, host/status/timing summaries and evidence-linked review findings |
 | `orix.formats` | No arguments | Recognized signatures and parser capability metadata |
 | `orix.capabilities` | No arguments | Source-backed implemented/partial/planned inventory, format registry, provider declarations and explicit boundaries |
 | `orix.compare_reports` | `baseline_path`, `current_path` | Deterministic artifact/scan comparison, SHA-256 deltas and indicator changes |
@@ -39,7 +40,7 @@ Tool definitions also publish MCP safety annotations: inspection, inventory, com
 
 ## Security boundary
 
-- Analysis tools are static and read-only; the explicit `orix.ledger.append` tool is the only state-changing operation and is confined to workspace ledger files. No target file or project code is executed.
+- Analysis tools are static and read-only; HAR analysis reads a user-supplied local capture and never replays network requests or exports payload/header/query values. The explicit `orix.ledger.append` tool is the only state-changing operation and is confined to workspace ledger files. No target file or project code is executed.
 - No shell, arbitrary command, plugin, network or remote URL tools are exposed.
 - Symlinks are not followed by the underlying scanners.
 - Existing parser, traversal and file-size limits remain active.
