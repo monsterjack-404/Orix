@@ -19,7 +19,7 @@ export const RIZIN_PROVIDER_MANIFEST = Object.freeze({
   name: 'Rizin static binary analysis',
   version: RIZIN_ADAPTER_VERSION,
   description: 'Read-only extraction of native binary imports, function metadata and bounded instruction disassembly through the Rizin CLI.',
-  capabilities: Object.freeze(['binary.imports', 'binary.functions', 'binary.disassembly']),
+  capabilities: Object.freeze(['binary.imports', 'binary.functions', 'binary.disassembly', 'binary.decompilation']),
   supported_platforms: Object.freeze(['linux', 'windows', 'macos']),
   input_formats: Object.freeze(['pe', 'elf', 'macho']),
   execution: Object.freeze({
@@ -332,6 +332,29 @@ export async function analyze_rizin_imports(options = {}) {
       });
     }
 
+    if (decompile) {
+      const decompilation_result = await invoke([
+        '-N', '-q', '-c', 'pdg @ ' + address_text, snapshot_path,
+      ], 'decompilation');
+      const raw_source = decompilation_result.stdout.replace(/\0/g, '').trim();
+      const provider_message = (raw_source + '\n' + decompilation_result.stderr).slice(0, 2048);
+      if (!raw_source || /(?:unknown|invalid) command|command not found|pdg.{0,80}not found/i.test(provider_message)) {
+        provider_error('ORIX_RIZIN_DECOMPILER_UNAVAILABLE', 'Rizin pdg decompiler command is unavailable or returned no pseudocode; install and verify the optional rz-ghidra plugin', {
+          address, stderr: decompilation_result.stderr.slice(0, 1024),
+        });
+      }
+      decompilation = {
+        function_name: selected_function.name,
+        address,
+        backend: 'rizin-pdg',
+        source: raw_source.slice(0, max_decompilation_chars),
+        characters_returned: Math.min(raw_source.length, max_decompilation_chars),
+        truncated: raw_source.length > max_decompilation_chars,
+      };
+      decompilation_duration_ms = decompilation_result.duration_ms;
+      decompilation_stderr = decompilation_result.stderr.slice(0, 1024);
+    }
+
     let after_link;
     let after;
     let after_realpath;
@@ -503,7 +526,7 @@ export async function analyze_rizin_functions(options = {}) {
   const allowed = new Set([
     'executable', 'input_path', 'manifest', 'cwd', 'env',
     'timeout_ms', 'max_output_bytes', 'max_functions',
-    'address', 'max_instructions', 'signal',
+    'address', 'max_instructions', 'decompile', 'max_decompilation_chars', 'signal',
   ]);
   const descriptors = Object.getOwnPropertyDescriptors(options);
   for (const key of Reflect.ownKeys(options)) {
@@ -531,6 +554,13 @@ export async function analyze_rizin_functions(options = {}) {
   const max_functions = descriptors.max_functions?.value ?? 10_000;
   const max_instructions = descriptors.max_instructions?.value ?? 100;
   const address = requested_rizin_address(descriptors.address?.value);
+  const decompile = descriptors.decompile?.value ?? false;
+  const max_decompilation_chars = descriptors.max_decompilation_chars?.value ?? 64_000;
+  if (typeof decompile !== 'boolean') throw new TypeError('decompile must be a boolean');
+  if (!Number.isSafeInteger(max_decompilation_chars) || max_decompilation_chars < 1 || max_decompilation_chars > 256_000) {
+    throw new TypeError('max_decompilation_chars must be an integer between 1 and 256000');
+  }
+  if (decompile && address === null) throw new TypeError('decompile requires an exact function-entry address');
   if (!Number.isSafeInteger(timeout_ms) || timeout_ms < 1 || timeout_ms > manifest.limits.timeout_ms) {
     throw new TypeError('timeout_ms must be between 1 and the provider manifest timeout limit');
   }
@@ -599,6 +629,7 @@ export async function analyze_rizin_functions(options = {}) {
           ? 'ORIX_RIZIN_CANCELLED'
           : result.timed_out ? 'ORIX_RIZIN_TIMEOUT'
             : result.output_limited ? 'ORIX_RIZIN_OUTPUT_LIMIT' : 'ORIX_RIZIN_' + label.toUpperCase() + '_FAILED';
+        if (label === 'decompilation') code = 'ORIX_RIZIN_DECOMPILER_UNAVAILABLE_OR_FAILED';
         provider_error(code, 'Rizin ' + label + ' operation did not complete successfully', {
           exit_code: result.exit_code,
           timed_out: result.timed_out,
@@ -618,20 +649,25 @@ export async function analyze_rizin_functions(options = {}) {
     let disassembly = null;
     let disassembly_duration_ms = null;
     let disassembly_stderr = '';
+    let decompilation = null;
+    let decompilation_duration_ms = null;
+    let decompilation_stderr = '';
+    let selected_function = null;
+    let address_text = null;
     if (address !== null) {
-      const target_function = normalized.functions.find(item => item.offset === address);
-      if (!target_function) {
+      selected_function = normalized.functions.find(item => item.offset === address);
+      if (!selected_function) {
         provider_error('ORIX_RIZIN_FUNCTION_NOT_FOUND', 'Requested address is not the entry offset of a function returned by Rizin', {
           address, functions_returned: normalized.total,
         });
       }
-      const address_text = '0x' + address.toString(16);
+      address_text = '0x' + address.toString(16);
       const disassembly_result = await invoke([
         '-N', '-q', '-c', 'pdj ' + max_instructions + ' @ ' + address_text, snapshot_path,
       ], 'disassembly');
       const parsed_disassembly = normalize_rizin_disassembly(disassembly_result.stdout, max_instructions);
       disassembly = {
-        function_name: target_function.name,
+        function_name: selected_function.name,
         address,
         instruction_limit: max_instructions,
         instructions: parsed_disassembly.instructions,
@@ -678,22 +714,26 @@ export async function analyze_rizin_functions(options = {}) {
       },
       functions: normalized.functions,
       disassembly,
+      decompilation,
       summary: {
         functions_total: normalized.total,
         functions_returned: normalized.functions.length,
         functions_truncated: normalized.truncated,
         disassembly_included: disassembly !== null,
+        decompilation_included: decompilation !== null,
       },
       diagnostics: {
         version_probe_duration_ms: version_result.duration_ms,
         function_scan_duration_ms: function_result.duration_ms,
         disassembly_duration_ms,
+        decompilation_duration_ms,
         captured_output_bytes,
-        stderr: (function_result.stderr + (disassembly_stderr ? '\n' + disassembly_stderr : '')).slice(0, 1024),
+        stderr: (function_result.stderr + (disassembly_stderr ? '\n' + disassembly_stderr : '') + (decompilation_stderr ? '\n' + decompilation_stderr : '')).slice(0, 1024),
       },
       notes: [
         'Uses Rizin -A and aflj to enumerate functions; automatic analysis may miss or misclassify code.',
         'Optional pdj output is a bounded instruction disassembly window at a returned function entry, not decompiled source.',
+        'Optional pdg output requires the external rz-ghidra plugin; pseudocode is heuristic and is not a source-level proof or a compilable reconstruction.',
         'The inspected target is not executed; Rizin itself is an external optional process.',
         'Rizin analyzes a private temporary copy; the original input path is never passed to the provider.',
         'The process runner bounds runtime and output but is not an OS sandbox.',
