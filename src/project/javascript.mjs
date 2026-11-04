@@ -163,14 +163,17 @@ function tokenize(source, maximum) {
   return { tokens, truncated };
 }
 
-function add_import(imports, token, kind, from_token) {
-  if (!token || token.type !== 'string' || !token.static_value || !token.value || token.value.length > 2048) return;
+function add_import(imports, token, kind, from_token, maximum) {
+  if (!token || token.type !== 'string' || !token.static_value || !token.value || token.value.length > 2048) return false;
+  if (imports.length >= maximum) return true;
   imports.push({ specifier: token.value, kind, line: from_token?.line ?? token.line, confidence: 'static-literal' });
+  return false;
 }
 
 function collect_imports(tokens, maximum) {
   const imports = [];
-  for (let index = 0; index < tokens.length && imports.length < maximum; index += 1) {
+  let truncated = false;
+  for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (token.type !== 'identifier') continue;
     const previous = tokens[index - 1]?.value;
@@ -178,16 +181,16 @@ function collect_imports(tokens, maximum) {
     if ((previous === '.' || (previous === '.' && tokens[index - 2]?.value === '?')) && !module_require) continue;
     if (token.value === 'require' && tokens[index + 1]?.value === '(') {
       const argument = tokens[index + 2];
-      if (tokens[index + 3]?.value === ')') add_import(imports, argument, 'require', token);
+      if (tokens[index + 3]?.value === ')') truncated = add_import(imports, argument, 'require', token, maximum) || truncated;
       continue;
     }
     if (token.value !== 'import' && token.value !== 'export') continue;
     if (token.value === 'import' && tokens[index + 1]?.value === '(') {
-      if (tokens[index + 3]?.value === ')' || tokens[index + 3]?.value === ',') add_import(imports, tokens[index + 2], 'dynamic-import', token);
+      if (tokens[index + 3]?.value === ')' || tokens[index + 3]?.value === ',') truncated = add_import(imports, tokens[index + 2], 'dynamic-import', token, maximum) || truncated;
       continue;
     }
     if (token.value === 'import' && tokens[index + 1]?.type === 'string') {
-      add_import(imports, tokens[index + 1], 'side-effect-import', token);
+      truncated = add_import(imports, tokens[index + 1], 'side-effect-import', token, maximum) || truncated;
       continue;
     }
     const start_line = token.line;
@@ -195,21 +198,22 @@ function collect_imports(tokens, maximum) {
       const current = tokens[index + offset];
       if (current.value === ';') break;
       if (current.value === 'from' && tokens[index + offset + 1]?.type === 'string') {
-        add_import(imports, tokens[index + offset + 1], token.value === 'import' ? 'import' : 're-export', token);
+        truncated = add_import(imports, tokens[index + offset + 1], token.value === 'import' ? 'import' : 're-export', token, maximum) || truncated;
         break;
       }
       if (offset > 1 && current.line > start_line && current.type === 'identifier' &&
           ['const', 'let', 'var', 'function', 'class', 'return', 'export', 'import'].includes(current.value)) break;
     }
   }
-  return imports;
+  return { imports, truncated };
 }
 
 function collect_symbols(tokens, maximum) {
   const symbols = [];
   const seen = new Set();
+  let truncated = false;
   const declarations = new Set(['function', 'class', 'interface', 'type', 'enum']);
-  for (let index = 0; index < tokens.length && symbols.length < maximum; index += 1) {
+  for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (token.type !== 'identifier') continue;
     let kind = declarations.has(token.value) ? token.value : null;
@@ -224,9 +228,10 @@ function collect_symbols(tokens, maximum) {
     const key = kind + '\0' + name.value + '\0' + token.line;
     if (seen.has(key)) continue;
     seen.add(key);
+    if (symbols.length >= maximum) { truncated = true; continue; }
     symbols.push({ name: name.value, kind, line: token.line, confidence: 'declaration-token' });
   }
-  return symbols;
+  return { symbols, truncated };
 }
 
 /**
@@ -241,16 +246,16 @@ export function analyze_javascript_source(source, options = {}) {
   const max_imports = bounded_option(options, 'max_imports', DEFAULT_MAX_IMPORTS, 10000);
   const max_symbols = bounded_option(options, 'max_symbols', DEFAULT_MAX_SYMBOLS, 10000);
   const scanned = tokenize(source, max_tokens);
-  const imports = collect_imports(scanned.tokens, max_imports);
-  const symbols = collect_symbols(scanned.tokens, max_symbols);
+  const import_result = collect_imports(scanned.tokens, max_imports);
+  const symbol_result = collect_symbols(scanned.tokens, max_symbols);
   return {
-    imports,
-    symbols,
+    imports: import_result.imports,
+    symbols: symbol_result.symbols,
     coverage: {
       tokens: scanned.tokens.length,
       token_limit_reached: scanned.truncated,
-      imports_truncated: imports.length >= max_imports,
-      symbols_truncated: symbols.length >= max_symbols,
+      imports_truncated: import_result.truncated,
+      symbols_truncated: symbol_result.truncated,
     },
     limitations: [
       'This is bounded lexical and shallow declaration analysis, not a complete ECMAScript or TypeScript AST.',
