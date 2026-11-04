@@ -97,6 +97,38 @@ test('OSV audit sends only exact package identifiers and maps advisory matches t
   assert.match(render_vulnerability_audit_markdown(report), /unsupported/i);
 });
 
+test('OSV maps every currently supported lockfile ecosystem to OSV identifiers', async () => {
+  const inputs = [
+    ['npm', 'alpha', '1.0.0', 'npm'],
+    ['pnpm', 'beta', '2.0.0', 'npm'],
+    ['cargo', 'serde', '1.0.0', 'crates.io'],
+    ['python', 'requests', '2.0.0', 'PyPI'],
+    ['pip', 'urllib3', '2.0.0', 'PyPI'],
+    ['go', 'example.org/module', 'v1.0.0', 'Go'],
+    ['maven', 'org.example:demo', '1.0.0', 'Maven'],
+    ['nuget', 'Example.Package', '1.0.0', 'NuGet'],
+    ['composer', 'vendor/package', '1.0.0', 'Packagist'],
+    ['rubygems', 'rack', '1.0.0', 'RubyGems'],
+  ];
+  let submitted = [];
+  const report = await audit_project_dependencies(project(inputs.map(([ecosystem, name, version]) =>
+    dep(name, version, ecosystem),
+  )), {
+    fetch_impl: async (url, init) => {
+      if (String(url).endsWith('/querybatch')) {
+        submitted = JSON.parse(init.body).queries;
+        return json_response({ results: submitted.map(() => ({})) });
+      }
+      throw new Error('No advisory detail requests expected');
+    },
+  });
+  assert.deepEqual(submitted, inputs.map(([, name, version, ecosystem]) => ({
+    package: { ecosystem, name }, version,
+  })));
+  assert.equal(report.summary.queried_packages, inputs.length);
+  assert.equal(report.summary.status, 'complete');
+});
+
 test('OSV treats inherited object property names as unsupported ecosystems', async () => {
   let calls = 0;
   const report = await audit_project_dependencies(project([
