@@ -163,7 +163,7 @@ export function parse_har(input, options = {}) {
     if (!Number.isSafeInteger(response.status) || response.status < 0 || response.status > 999) {
       fail('ORIX_HAR_INVALID_STATUS', 'HAR response status must be an integer from 0 to 999', { entry_index: index, status: response.status });
     }
-    if (typeof raw.startedDateTime !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$/.test(raw.startedDateTime) || !Number.isFinite(Date.parse(raw.startedDateTime))) {
+    if (typeof raw.startedDateTime !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(raw.startedDateTime) || !Number.isFinite(Date.parse(raw.startedDateTime))) {
       fail('ORIX_HAR_INVALID_TIMESTAMP', 'HAR entry startedDateTime must be a parseable date-time', { entry_index: index });
     }
     const total_time = valid_time(raw.time, 'entry.time', index);
