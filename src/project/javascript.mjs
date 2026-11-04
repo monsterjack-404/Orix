@@ -173,7 +173,7 @@ function add_import(imports, token, kind, from_token, maximum) {
 function collect_imports(tokens, maximum) {
   const imports = [];
   let truncated = false;
-  for (let index = 0; index < tokens.length; index += 1) {
+  for (let index = 0; index < tokens.length && !truncated; index += 1) {
     const token = tokens[index];
     if (token.type !== 'identifier') continue;
     const previous = tokens[index - 1]?.value;
@@ -213,7 +213,7 @@ function collect_symbols(tokens, maximum) {
   const seen = new Set();
   let truncated = false;
   const declarations = new Set(['function', 'class', 'interface', 'type', 'enum']);
-  for (let index = 0; index < tokens.length; index += 1) {
+  for (let index = 0; index < tokens.length && !truncated; index += 1) {
     const token = tokens[index];
     if (token.type !== 'identifier') continue;
     let kind = declarations.has(token.value) ? token.value : null;
