@@ -33,9 +33,20 @@ function local_stored_prefix(buffer, entry, minimum) {
   if (offset < 0 || offset > buffer.length - 30 || buffer.readUInt32LE(offset) !== LOCAL_HEADER) return { status: 'invalid-local-header' };
   const flags = buffer.readUInt16LE(offset + 6);
   const method = buffer.readUInt16LE(offset + 8);
+  const local_crc = buffer.readUInt32LE(offset + 14);
+  const local_compressed_size = buffer.readUInt32LE(offset + 18);
+  const local_uncompressed_size = buffer.readUInt32LE(offset + 22);
+  const expected_flags = (entry.encrypted ? 1 : 0) | (entry.data_descriptor ? 8 : 0) | (entry.utf8_name ? 0x0800 : 0);
+  const central_crc = Number.parseInt(entry.crc32, 16);
+  const descriptor_mismatch = entry.data_descriptor
+    ? (local_crc !== 0 && local_crc !== central_crc) ||
+      (local_compressed_size !== 0 && local_compressed_size !== entry.compressed_size) ||
+      (local_uncompressed_size !== 0 && local_uncompressed_size !== entry.uncompressed_size)
+    : local_crc !== central_crc || local_compressed_size !== entry.compressed_size ||
+      local_uncompressed_size !== entry.uncompressed_size;
   const name_length = buffer.readUInt16LE(offset + 26);
   const extra_length = buffer.readUInt16LE(offset + 28);
-  if ((flags & 1) !== 0 || method !== 0) return { status: 'local-header-mismatch' };
+  if ((flags & 0x0809) !== expected_flags || method !== 0 || descriptor_mismatch) return { status: 'local-header-mismatch' };
   const name_start = offset + 30;
   const data_offset = name_start + name_length + extra_length;
   if (name_start > buffer.length - name_length || data_offset > buffer.length || entry.compressed_size > buffer.length - data_offset) {
