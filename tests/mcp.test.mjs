@@ -112,6 +112,17 @@ test('MCP validates JSON-RPC request IDs and echoes valid string and numeric IDs
     assert.equal(response.error.code, -32600);
     assert.equal(response.id, null);
   }
+  const invalid_version_with_invalid_id = await handle_mcp_message({
+    jsonrpc: '1.0', id: { unexpected: true }, method: 'ping',
+  });
+  assert.equal(invalid_version_with_invalid_id.error.code, -32600);
+  assert.equal(invalid_version_with_invalid_id.id, null);
+
+  const invalid_version_with_valid_id = await handle_mcp_message({
+    jsonrpc: '1.0', id: 'legacy-request', method: 'ping',
+  });
+  assert.equal(invalid_version_with_valid_id.error.code, -32600);
+  assert.equal(invalid_version_with_valid_id.id, 'legacy-request');
 });
 
 test('MCP rejects malformed request params before invoking a tool', async () => {
@@ -156,6 +167,7 @@ test('MCP processes bounded JSON-RPC batches and omits notification responses', 
 
   const notifications_only = await handle_mcp_message([
     { jsonrpc: '2.0', method: 'notifications/initialized' },
+    { jsonrpc: '2.0', method: 'initialize' },
   ]);
   assert.equal(notifications_only, null);
 
