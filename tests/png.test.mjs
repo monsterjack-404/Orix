@@ -42,6 +42,11 @@ function png(chunks) {
 
 const IDAT = Buffer.from([0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01]);
 
+test('PNG parser is available through the documented package subpath', async () => {
+  const public_api = await import('@orix/cli/formats/png');
+  assert.equal(typeof public_api.parse_png, 'function');
+});
+
 test('PNG parser indexes image metadata, chunks and CRCs without decoding pixels', () => {
   const input = png([chunk('IHDR', header({ width: 640, height: 480, color_type: 6 })), chunk('IDAT', IDAT), chunk('IEND')]);
   const result = parse_png(input);
