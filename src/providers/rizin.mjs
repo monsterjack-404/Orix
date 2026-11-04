@@ -332,29 +332,6 @@ export async function analyze_rizin_imports(options = {}) {
       });
     }
 
-    if (decompile) {
-      const decompilation_result = await invoke([
-        '-N', '-q', '-c', 'pdg @ ' + address_text, snapshot_path,
-      ], 'decompilation');
-      const raw_source = decompilation_result.stdout.replace(/\0/g, '').trim();
-      const provider_message = (raw_source + '\n' + decompilation_result.stderr).slice(0, 2048);
-      if (!raw_source || /(?:unknown|invalid) command|command not found|pdg.{0,80}not found/i.test(provider_message)) {
-        provider_error('ORIX_RIZIN_DECOMPILER_UNAVAILABLE', 'Rizin pdg decompiler command is unavailable or returned no pseudocode; install and verify the optional rz-ghidra plugin', {
-          address, stderr: decompilation_result.stderr.slice(0, 1024),
-        });
-      }
-      decompilation = {
-        function_name: selected_function.name,
-        address,
-        backend: 'rizin-pdg',
-        source: raw_source.slice(0, max_decompilation_chars),
-        characters_returned: Math.min(raw_source.length, max_decompilation_chars),
-        truncated: raw_source.length > max_decompilation_chars,
-      };
-      decompilation_duration_ms = decompilation_result.duration_ms;
-      decompilation_stderr = decompilation_result.stderr.slice(0, 1024);
-    }
-
     let after_link;
     let after;
     let after_realpath;
@@ -676,6 +653,29 @@ export async function analyze_rizin_functions(options = {}) {
       };
       disassembly_duration_ms = disassembly_result.duration_ms;
       disassembly_stderr = disassembly_result.stderr.slice(0, 1024);
+    }
+
+    if (decompile) {
+      const decompilation_result = await invoke([
+        '-N', '-q', '-c', 'pdg @ ' + address_text, snapshot_path,
+      ], 'decompilation');
+      const raw_source = decompilation_result.stdout.replace(/\0/g, '').trim();
+      const provider_message = (raw_source + '\n' + decompilation_result.stderr).slice(0, 2048);
+      if (!raw_source || /(?:unknown|invalid) command|command not found|pdg.{0,80}not found/i.test(provider_message)) {
+        provider_error('ORIX_RIZIN_DECOMPILER_UNAVAILABLE', 'Rizin pdg decompiler command is unavailable or returned no pseudocode; install and verify the optional rz-ghidra plugin', {
+          address, stderr: decompilation_result.stderr.slice(0, 1024),
+        });
+      }
+      decompilation = {
+        function_name: selected_function.name,
+        address,
+        backend: 'rizin-pdg',
+        source: raw_source.slice(0, max_decompilation_chars),
+        characters_returned: Math.min(raw_source.length, max_decompilation_chars),
+        truncated: raw_source.length > max_decompilation_chars,
+      };
+      decompilation_duration_ms = decompilation_result.duration_ms;
+      decompilation_stderr = decompilation_result.stderr.slice(0, 1024);
     }
 
     let after_link;
