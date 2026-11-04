@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool, start_mcp_server } from '../src/mcp/server.mjs';
-import { append_ledger } from '../src/evidence/ledger.mjs';
+import { append_ledger, list_ledger, verify_ledger } from '../src/evidence/ledger.mjs';
 
 test('MCP initialize negotiates protocol and advertises tool capability', async () => {
   const response = await handle_mcp_message({
@@ -62,7 +62,7 @@ test('MCP exposes only the capability families it actually implements', async ()
 });
 
 test('MCP tools/list exposes the complete local ORIX tool surface', async () => {
-  const response = await handle_mcp_message({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
+  const response = await handle_mcp_message({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, { allow_write_tools: true });
   assert.deepEqual(response.result.tools.map(tool => tool.name), ORIX_MCP_TOOLS.map(tool => tool.name));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.inspect_file'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_architecture'));
@@ -91,6 +91,73 @@ test('MCP capability tool returns the source-backed inventory including its own 
   assert.ok(mcp.tools.some(tool => tool.name === 'orix.capabilities'));
   assert.equal(mcp.tools.length, ORIX_MCP_TOOLS.length);
   assert.ok(report.intelligence.some(item => item.id === 'dynamic-analysis' && item.status === 'planned'));
+});
+
+test('MCP denies state-changing tools by default and supports explicit per-tool allowlists', async () => {
+  const defaults = await handle_mcp_message({ jsonrpc: '2.0', id: 101, method: 'tools/list' });
+  assert.ok(!defaults.result.tools.some(tool => tool.name === 'orix.ledger.append'));
+  const denied = await handle_mcp_message({
+    jsonrpc: '2.0', id: 102, method: 'tools/call',
+    params: { name: 'orix.ledger.append', arguments: { path: 'events.jsonl', type: 'analysis.started', payload: {} } },
+  });
+  assert.equal(denied.result.isError, true);
+  assert.match(denied.result.content[0].text, /ORIX_MCP_TOOL_NOT_AUTHORIZED/);
+
+  const restricted = await handle_mcp_message(
+    { jsonrpc: '2.0', id: 103, method: 'tools/list' },
+    { allowed_tools: ['orix.formats'] },
+  );
+  assert.deepEqual(restricted.result.tools.map(tool => tool.name), ['orix.formats']);
+  const hidden_call = await handle_mcp_message({
+    jsonrpc: '2.0', id: 104, method: 'tools/call',
+    params: { name: 'orix.capabilities', arguments: {} },
+  }, { allowed_tools: ['orix.formats'] });
+  assert.equal(hidden_call.result.isError, true);
+  assert.match(hidden_call.result.content[0].text, /ORIX_MCP_TOOL_NOT_AUTHORIZED/);
+});
+
+test('MCP requires explicit write enablement for ledger append', async () => {
+  await assert.rejects(
+    start_mcp_server({
+      input: new PassThrough(), output: new PassThrough(), error_output: new PassThrough(),
+      allowed_tools: ['orix.ledger.append'],
+    }),
+    /Write tool requires allow_write_tools/,
+  );
+});
+
+test('MCP audit receipts are append-only, workspace-confined and omit tool arguments', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-audit-'));
+  try {
+    const { mkdir, readFile } = await import('node:fs/promises');
+    await mkdir(path.join(directory, '.orix'));
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const errors = new PassThrough();
+    let captured = '';
+    output.setEncoding('utf8');
+    output.on('data', chunk => { captured += chunk; });
+    const running = start_mcp_server({
+      input, output, error_output: errors, roots: [directory],
+      audit_path: path.join(directory, '.orix', 'mcp-audit.jsonl'),
+    });
+    input.write(JSON.stringify({
+      jsonrpc: '2.0', id: 'audit-1', method: 'tools/call',
+      params: { name: 'orix.formats', arguments: {} },
+    }) + '\\n');
+    input.end();
+    await running;
+    const messages = captured.trim().split('\\n').map(line => JSON.parse(line));
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].result.isError, false);
+    const ledger = await list_ledger(path.join(directory, '.orix', 'mcp-audit.jsonl'));
+    assert.equal(ledger.records.length, 2);
+    assert.deepEqual(ledger.records.map(record => record.payload.event), ['started', 'completed']);
+    assert.ok(ledger.records.every(record => record.payload.tool === 'orix.formats'));
+    assert.ok(ledger.records.every(record => record.payload.request_id === 'audit-1'));
+    assert.ok(ledger.records.every(record => !Object.hasOwn(record.payload, 'arguments')));
+    assert.equal((await verify_ledger(path.join(directory, '.orix', 'mcp-audit.jsonl'))).valid, true);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test('MCP inspect tool returns the same versioned artifact report as the library API', async () => {
@@ -461,7 +528,7 @@ test('MCP exposes an explicit append operation for hash-chained evidence', async
     const { mkdir } = await import('node:fs/promises');
     await mkdir(path.join(directory, '.orix'));
     const ledger = path.join(directory, '.orix', 'evidence.jsonl');
-    const response = await handle_mcp_message({ jsonrpc: '2.0', id: 40, method: 'tools/call', params: { name: 'orix.ledger.append', arguments: { path: ledger, type: 'analysis.completed', payload: { artifacts: 2 } } } }, { roots: [directory] });
+    const response = await handle_mcp_message({ jsonrpc: '2.0', id: 40, method: 'tools/call', params: { name: 'orix.ledger.append', arguments: { path: ledger, type: 'analysis.completed', payload: { artifacts: 2 } } } }, { roots: [directory], allow_write_tools: true });
     assert.equal(response.result.isError, false);
     const receipt = JSON.parse(response.result.content[0].text);
     assert.equal(receipt.sequence, 1);
@@ -501,12 +568,12 @@ test('MCP ledger event schema matches accepted underscore and minimum-length nam
     const accepted = await handle_mcp_message({
       jsonrpc: '2.0', id: 51, method: 'tools/call',
       params: { name: 'orix.ledger.append', arguments: { path: ledger_path, type: 'analysis_started', payload: {} } },
-    }, { roots: [directory] });
+    }, { roots: [directory], allow_write_tools: true });
     assert.equal(accepted.result.isError, false);
     const rejected = await handle_mcp_message({
       jsonrpc: '2.0', id: 52, method: 'tools/call',
       params: { name: 'orix.ledger.append', arguments: { path: ledger_path, type: 'a', payload: {} } },
-    }, { roots: [directory] });
+    }, { roots: [directory], allow_write_tools: true });
     assert.equal(rejected.result.isError, true);
   } finally {
     await rm(directory, { recursive: true, force: true });
