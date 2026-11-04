@@ -646,3 +646,12 @@ test('MCP architecture analysis reuses the bounded scanner and reports local cyc
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('MCP exposes a read-only workspace-confined Android package analysis tool', async () => {
+  const tool = ORIX_MCP_TOOLS.find(item => item.name === 'orix.analyze_android_package');
+  assert.ok(tool);
+  assert.equal(tool.annotations.readOnlyHint, true);
+  assert.equal(tool.annotations.openWorldHint, false);
+  assert.deepEqual(tool.inputSchema.required, ['path']);
+  assert.equal(tool.inputSchema.additionalProperties, false);
+});
