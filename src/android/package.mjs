@@ -94,7 +94,7 @@ export function analyze_android_package(buffer, options = {}) {
   const is_apk = apk_manifest && !is_aab;
   const dex_entries = entries.filter(entry => is_dex_entry(entry.name));
   const manifest_entries = entries.filter(entry => entry.name === 'AndroidManifest.xml' || entry.name.endsWith('/manifest/AndroidManifest.xml'));
-  const native_libraries = entries.filter(entry => entry.name.startsWith('lib/') && entry.name.endsWith('.so'));
+  const native_libraries = entries.filter(entry => (entry.name.startsWith('lib/') || entry.name.includes('/lib/')) && entry.name.endsWith('.so'));
   const signatures = entries.filter(entry => is_v1_signature(entry.name));
   const dex = dex_entries.map(entry => {
     const prefix = local_stored_prefix(buffer, entry, 112);
