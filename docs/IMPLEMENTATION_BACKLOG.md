@@ -2,7 +2,8 @@
 
 **Status:** Planned work; this document does not claim these capabilities are implemented.  
 **Source of truth:** [Product Charter](PRODUCT_CHARTER.md)  
-**Baseline reviewed:** repository release line 0.5.0, branch `main`.
+**Baseline reviewed:** repository release line 0.5.0, branch `main`.  
+**Expanded platform scope:** see [Platform Expansion Blueprint](PLATFORM_EXPANSION.md) for explicit Android, Electron/JavaScript, .NET, website/browser, HAR/PCAP, firmware, evidence-workflow and AI/RL workstreams. HAR metadata analysis is the first implemented vertical slice; the remaining workstreams remain planned or partial until source, tests and CI prove otherwise.
 
 This backlog turns the product charter into reviewable engineering work. It is intentionally ordered by dependency and risk, not by how impressive a feature sounds. Each work package must be split into small pull requests with tests and evidence.
 
