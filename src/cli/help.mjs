@@ -70,6 +70,7 @@ export const HELP_TEXT = [
   '  orix architecture ./source --max-nodes 10000 --max-edges 50000 --max-hotspots 40',
   '  orix architecture ./source --format mermaid --out ./architecture.mmd',
   '  orix audit ./source --osv --json --out ./vulnerabilities.json',
+  '  orix audit ./source --osv --max-packages 1000 --max-network-mib 32',
   '  orix project ./source --format sarif --out ./project-findings.sarif',
   '  orix compare ./baseline.json ./current.json --json',
   '  orix inspect ./sample.exe --ledger ./.orix/evidence.jsonl',
