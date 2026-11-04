@@ -1174,3 +1174,13 @@ test('DEX parser rejects malformed magic, endian, map and resource limits', () =
   assert.throws(() => parse_dex(create_dex_fixture(), { max_map_items: 1 }), error => error.code === 'ORIX_DEX_MAP_LIMIT');
   assert.throws(() => parse_dex(create_dex_fixture(), { max_file_bytes: 112 }), error => error.code === 'ORIX_DEX_FILE_LIMIT');
 });
+
+
+test('DEX parser rejects inconsistent file and overlapping fixed-table ranges', () => {
+  const trailing = create_dex_fixture(); trailing.writeUInt32LE(trailing.length - 1, 32);
+  assert.throws(() => parse_dex(trailing), error => error.code === 'ORIX_DEX_FILE_SIZE');
+  const overlap = create_dex_fixture();
+  overlap.writeUInt32LE(1, 56); overlap.writeUInt32LE(116, 60);
+  overlap.writeUInt32LE(1, 64); overlap.writeUInt32LE(116, 68);
+  assert.throws(() => parse_dex(overlap), error => error.code === 'ORIX_DEX_TABLE_OVERLAP');
+});
