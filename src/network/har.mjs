@@ -1,6 +1,7 @@
 // JavaScript, src/network/har.mjs, Node.js 20+, bounded read-only HAR 1.2 analysis.
 import { constants as FS_CONSTANTS, promises as fs } from 'node:fs';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { TextDecoder } from 'node:util';
 import { OrixError } from '../core/errors.mjs';
@@ -353,9 +354,24 @@ export function parse_har(input, options = {}) {
 export async function analyze_har_file(file_path, options = {}) {
   if (typeof file_path !== 'string' || file_path.length === 0) throw new TypeError('file_path must be a non-empty string');
   const max_bytes = safe_limit(options.max_bytes, DEFAULT_MAX_BYTES, 'max_bytes', DEFAULT_MAX_BYTES);
-  const absolute = path.resolve(file_path);
+  const requested_path = path.resolve(file_path);
   let handle;
   try {
+    // Shared OS temporary directories are rejected: they are commonly writable by
+    // other local users/processes and are not a trustworthy evidence intake area.
+    // Callers can copy a capture into a private workspace before analysis.
+    const [absolute, temporary_root] = await Promise.all([
+      fs.realpath(requested_path),
+      fs.realpath(tmpdir()),
+    ]);
+    const relative_to_temp = path.relative(temporary_root, absolute);
+    const in_temporary_root = relative_to_temp === '' ||
+      (!path.isAbsolute(relative_to_temp) && relative_to_temp !== '..' &&
+       !relative_to_temp.startsWith('..' + path.sep));
+    if (in_temporary_root) {
+      fail('ORIX_HAR_TEMP_PATH_REJECTED', 'HAR files inside the shared operating-system temporary directory are not accepted; copy the capture to a private workspace', { path: absolute });
+    }
+
     // Open first, then inspect the descriptor. Never make a security decision from
     // path metadata obtained before opening the file that will actually be read.
     const no_follow = FS_CONSTANTS.O_NOFOLLOW ?? 0;
