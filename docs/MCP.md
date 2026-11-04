@@ -1,5 +1,7 @@
 # ORIX MCP Integration
 
+ORIX currently negotiates MCP protocol version `2025-03-26` over stdio. The newer `2026-07-28` specification is a research target, not a compatibility claim. HTTP transport and remote authorization are not implemented; stdio clients should use credentials from their local environment rather than the HTTP OAuth flow. See the [implemented protocol](https://modelcontextprotocol.io/specification/2025-03-26) and [authorization guidance](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization).
+
 ORIX includes a dependency-free Model Context Protocol server using the standard input/output transport.
 
 ## Start
