@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { PassThrough } from 'node:stream';
 import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool, start_mcp_server } from '../src/mcp/server.mjs';
 import { append_ledger } from '../src/evidence/ledger.mjs';
@@ -95,8 +96,7 @@ test('MCP capability tool returns the source-backed inventory including its own 
 });
 
 test('MCP HAR tool analyzes only workspace-confined captures and omits secret values', async () => {
-  const file = new URL('./fixtures/network/basic.har', import.meta.url);
-  const file_path = path.resolve(file.pathname);
+  const file_path = fileURLToPath(new URL('./fixtures/network/basic.har', import.meta.url));
   const workspace = path.dirname(file_path);
   {
     const result = await call_orix_tool('orix.analyze_har', { path: file_path, max_entries: 10 }, { roots: [workspace] });
