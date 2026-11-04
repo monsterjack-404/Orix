@@ -37,6 +37,27 @@ Every tool validates its input server-side against the same schema advertised by
 
 Tool definitions also publish MCP safety annotations: inspection, inventory, comparison and ledger-read tools are marked read-only and idempotent; `orix.ledger.append` is marked as a state-changing, non-idempotent operation. These annotations are client-facing hints, not an authorization boundary. Workspace confinement and server-side validation remain authoritative.
 
+## Authorization policy and audit receipts
+
+By default, only read-only tools are exposed by `tools/list`. The state-changing `orix.ledger.append` tool is disabled unless the operator explicitly enables writes.
+
+For the stdio process, configure:
+
+```bash
+ORIX_MCP_ALLOW_WRITES=true
+ORIX_MCP_ALLOWED_TOOLS=orix.inspect_file,orix.formats,orix.capabilities
+ORIX_MCP_AUDIT_PATH=/absolute/workspace/.orix/mcp-audit.jsonl
+```
+
+- `ORIX_MCP_ALLOW_WRITES=true` opts into write-capable tools; the default is false.
+- `ORIX_MCP_ALLOWED_TOOLS` optionally restricts the exposed tool names further. Unknown names and attempts to enable write tools without explicit write permission are rejected.
+- `ORIX_MCP_AUDIT_PATH` enables append-only hash-chained receipts. The path must be inside a configured workspace and its parent directory must already exist.
+- The programmatic server options are `allowed_tools`, `allow_write_tools` and `audit_path`.
+
+When auditing is enabled, a start receipt is committed before tool execution and a completion/denial receipt records the outcome, duration and error code. Receipts do not include tool arguments, artifact paths or report contents. If the start receipt cannot be written, the tool is not run. If completion recording fails after an operation, the server returns `ORIX_MCP_AUDIT_INCOMPLETE`; inspect the audit ledger before retrying because the operation may already have occurred.
+
+Audit ledgers are tamper-evident, not tamper-proof. They are not signed or remotely timestamped. Tool policy and audit configuration are local operator controls, not remote authentication.
+
 ## Security boundary
 
 - Analysis tools are static and read-only; the explicit `orix.ledger.append` tool is the only state-changing operation and is confined to workspace ledger files. No target file or project code is executed.
