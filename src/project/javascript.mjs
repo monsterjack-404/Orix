@@ -35,7 +35,7 @@ function read_regex(source, start) {
   let in_class = false;
   while (cursor < source.length) {
     const character = source[cursor];
-    if (character === '\\\\') { cursor += 2; continue; }
+    if (character === '\\') { cursor += 2; continue; }
     if (character === '\\n' || character === '\\r') return null;
     if (character === '[') in_class = true;
     else if (character === ']') in_class = false;
