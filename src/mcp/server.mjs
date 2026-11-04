@@ -286,6 +286,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       return analyze_rizin_functions({
         input_path: target.path,
         executable: args.executable,
+        executable_args: args.executable_args,
         max_functions: args.max_functions ?? 1000,
         address: args.address,
         max_instructions: args.max_instructions ?? 100,
