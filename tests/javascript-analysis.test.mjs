@@ -84,8 +84,8 @@ test('does not treat object methods as module loaders and accepts import attribu
 
 test('does not discover imports embedded in regular-expression literals', () => {
   const report = analyze_javascript_source([
-    "const matcher = /import\\\\('fake-module'\\\\)/g;",
-    "const classMatcher = /[\\\\/]require\\\\('also-fake'\\\\)/;",
+    "const matcher = /import\('fake-module'\)/g;",
+    "const classMatcher = /require\('also-fake'\)/;",
     "const real = require('./actual.cjs');",
   ].join('\n'));
   assert.deepEqual(report.imports.map(item => item.specifier), ['./actual.cjs']);
