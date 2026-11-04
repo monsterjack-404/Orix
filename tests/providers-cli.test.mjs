@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +24,7 @@ async function with_fixture(callback) {
         { name: 'open', libname: 'libc.so.6', ordinal: 4, bind: 'GLOBAL', type: 'FUNC', plt: 4096 },
       ]),
     }));
-    const executable = process.execPath;
+    const executable = await realpath(process.execPath);
     const executable_args = [RIZIN_STUB, config_path];
     await callback({ directory, executable, executable_args, input });
   } finally {
