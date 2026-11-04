@@ -1,6 +1,10 @@
 // JavaScript, tests/dex.test.mjs, Node.js 20+, DEX header parser contracts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { inspect_file } from '../src/core/inspect.mjs';
 import { parse_dex } from '../src/formats/dex.mjs';
 
 function dex_fixture({ version = '035', file_size = 112, endian = 'little', string_count = 0, string_offset = 0 } = {}) {
@@ -53,4 +57,24 @@ test('registers DEX for standard format detection and parser dispatch', async ()
   assert.equal(result.detection.format, 'DEX');
   assert.equal(result.parser_status, 'parsed');
   assert.equal(result.parsed.format, 'DEX');
+});
+
+test('artifact inspector parses a DEX header from a bounded prefix using complete-file size', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'orix-dex-inspect-'));
+  try {
+    const file = path.join(root, 'classes.dex');
+    const dex = Buffer.alloc(4096);
+    dex.set(dex_fixture({ file_size: 4096 }), 0);
+    await writeFile(file, dex);
+    const report = await inspect_file(file, {
+      limits: { max_file_bytes: 4096, max_read_bytes: 112 },
+      extract_strings: false,
+    });
+    assert.equal(report.detection.format, 'DEX');
+    assert.equal(report.parser.status, 'parsed');
+    assert.equal(report.parser.result.header.file_size, 4096);
+    assert.equal(report.artifact.analysis_complete_for_file, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
