@@ -96,7 +96,9 @@ test('MCP capability tool returns the source-backed inventory including its own 
 
 test('MCP HAR tool analyzes only workspace-confined captures and omits secret values', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-har-'));
+  const allowed_root = path.join(directory, 'workspace');
   try {
+    await mkdir(allowed_root);
     const file = path.join(directory, 'capture.har');
     await writeFile(file, JSON.stringify({ log: {
       version: '1.2', creator: { name: 'MCP fixture', version: '1' },
