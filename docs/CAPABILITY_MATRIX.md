@@ -122,7 +122,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 
 | Capability | Status | Current evidence / boundary | Completion direction |
 |---|---|---|---|
-| MCP stdio server | Implemented | Ten tools, workspace-confined operations, lifecycle validation, bounded batches and per-session rate limits | Per-tool authorization policy and append-only tool audit receipts |
+| MCP stdio server | Implemented | Ten tools, workspace confinement, default-deny write tools, per-tool allowlists, optional hash-chained audit receipts, lifecycle validation and bounded batches/rate | Remote HTTP transport, remote authentication and multi-user isolation |
 | MCP protocol current support | Implemented | 2025-03-26; JSON-RPC validation, initialization lifecycle, notification/batch semantics and tool safety annotations | Evaluate 2026-07-28 compatibility before upgrade |
 | MCP HTTP transport | Planned | No HTTP listener or remote auth | Streamable HTTP, auth, origin/session policy |
 | MCP resources/prompts/subscriptions | Planned | Tools only | Typed resources and prompts with trust labeling |
