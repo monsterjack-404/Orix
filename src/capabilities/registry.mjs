@@ -37,7 +37,7 @@ export function build_capability_report({
     },
     formats: list_format_capabilities().map(item => ({
       format: item.format,
-      signature_recognized: item.signature_recognized === true,
+      signature_recognized: true,
       parser_status: item.parser_status,
     })),
     interfaces: [
