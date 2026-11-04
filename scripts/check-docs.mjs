@@ -43,7 +43,7 @@ check('Product charter discoverability', () => {
     'README must link to docs/CAPABILITY_MATRIX.md');
   assert.ok(charter.includes('Definition of done'));
   assert.ok(matrix.includes('Priority order'));
-  assert.ok(roadmap.includes('P0'), 'roadmap must retain explicit priority gates');
+  assert.ok(roadmap.includes('Quality gates for every milestone'), 'roadmap must retain explicit milestone quality gates');
 });
 check('MCP protocol documentation', () => {
   assert.ok(mcp.includes(MCP_PROTOCOL_VERSION), 'MCP docs must state implemented protocol ' + MCP_PROTOCOL_VERSION);
