@@ -177,6 +177,40 @@ function consume_tool_call_budget(rate_limit) {
   return true;
 }
 
+function resolve_tool_policy(options = {}) {
+  if (options.allowed_tool_names instanceof Set) return options.allowed_tool_names;
+  const environment = options.environment ?? process.env;
+  const env_write = /^(1|true)$/i.test(String(environment.ORIX_MCP_ALLOW_WRITES ?? ''));
+  const allow_write = options.allow_write_tools ?? env_write;
+  if (typeof allow_write !== 'boolean') throw new TypeError('allow_write_tools must be a boolean');
+  let configured = options.allowed_tools;
+  if (configured === undefined && typeof environment.ORIX_MCP_ALLOWED_TOOLS === 'string') {
+    configured = environment.ORIX_MCP_ALLOWED_TOOLS.split(',').map(value => value.trim()).filter(Boolean);
+  }
+  const available = new Set(ORIX_MCP_TOOLS
+    .filter(tool => allow_write || tool.annotations?.readOnlyHint !== false)
+    .map(tool => tool.name));
+  if (configured === undefined || configured === null) return available;
+  if (!Array.isArray(configured) || configured.some(name => typeof name !== 'string' || name.trim() !== name || name.length === 0)) {
+    throw new TypeError('allowed_tools must be an array of exact tool names');
+  }
+  const selected = new Set(configured);
+  for (const name of selected) {
+    if (!ORIX_MCP_TOOLS.some(tool => tool.name === name)) throw new TypeError('Unknown MCP tool in allowed_tools: ' + name);
+    if (!available.has(name)) throw new TypeError('Write tool requires allow_write_tools: ' + name);
+  }
+  return selected;
+}
+
+async function append_mcp_audit_receipt(options, payload) {
+  const configured_path = options.audit_path_resolved ?? options.audit_path;
+  if (!configured_path) return false;
+  const roots = options.roots ?? configured_workspace_roots(options.environment);
+  const target = options.audit_path_resolved ?? await resolve_workspace_output(configured_path, roots);
+  await append_ledger(target, { type: 'mcp.tool.audit', payload });
+  return true;
+}
+
 function jsonrpc_error(id, code, message, data = undefined) {
   return {
     jsonrpc: '2.0',
@@ -233,6 +267,9 @@ function validate_arguments(name, value) {
 
 export async function call_orix_tool(name, args = {}, options = {}) {
   validate_arguments(name, args);
+  if (!resolve_tool_policy(options).has(name)) {
+    throw new TypeError('MCP tool is disabled by the configured authorization policy: ' + name);
+  }
   const roots = options.roots ?? configured_workspace_roots(options.environment);
   switch (name) {
     case 'orix.inspect_file': {
@@ -417,7 +454,7 @@ async function handle_mcp_message_impl(message, options = {}) {
     };
   }
   if (message.method === 'tools/list') {
-    return { jsonrpc: '2.0', id, result: { tools: ORIX_MCP_TOOLS } };
+    return { jsonrpc: '2.0', id, result: { tools: ORIX_MCP_TOOLS.filter(tool => resolve_tool_policy(options).has(tool.name)) } };
   }
   if (message.method === 'tools/call') {
     const params = message.params;
@@ -428,6 +465,26 @@ async function handle_mcp_message_impl(message, options = {}) {
       || (params.arguments !== undefined && !is_json_object(params.arguments))
     ) {
       return jsonrpc_error(id, -32602, 'tools/call requires a tool name and an optional JSON object for arguments');
+    }
+    const name = params.name;
+    const args = params.arguments ?? {};
+    if (!resolve_tool_policy(options).has(name)) {
+      try {
+        await append_mcp_audit_receipt(options, {
+          event: 'denied', tool: name, request_id: id, timestamp: new Date().toISOString(),
+          outcome: 'denied', reason: 'authorization-policy',
+        });
+      } catch (error) {
+        const normalized = normalize_error(error);
+        return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(normalized) }], isError: true } };
+      }
+      return {
+        jsonrpc: '2.0', id,
+        result: { content: [{ type: 'text', text: JSON.stringify({
+          code: 'ORIX_MCP_TOOL_NOT_AUTHORIZED',
+          message: 'This tool is not enabled by the current MCP authorization policy.',
+        }) }], isError: true },
+      };
     }
     if (!consume_tool_call_budget(options.rate_limit)) {
       return {
@@ -445,11 +502,39 @@ async function handle_mcp_message_impl(message, options = {}) {
         },
       };
     }
-    const name = params.name;
-    const args = params.arguments ?? {};
+    const started_at = Date.now();
+    let audit_started = false;
     try {
-      return { jsonrpc: '2.0', id, result: tool_result(await call_orix_tool(name, args, options)) };
+      audit_started = await append_mcp_audit_receipt(options, {
+        event: 'started', tool: name, request_id: id, timestamp: new Date(started_at).toISOString(),
+        outcome: 'started',
+      });
+      const value = await call_orix_tool(name, args, options);
+      if (audit_started) {
+        await append_mcp_audit_receipt(options, {
+          event: 'completed', tool: name, request_id: id, timestamp: new Date().toISOString(),
+          outcome: 'success', duration_ms: Date.now() - started_at,
+        });
+      }
+      return { jsonrpc: '2.0', id, result: tool_result(value) };
     } catch (error) {
+      if (audit_started) {
+        try {
+          const normalized = normalize_error(error);
+          await append_mcp_audit_receipt(options, {
+            event: 'completed', tool: name, request_id: id, timestamp: new Date().toISOString(),
+            outcome: 'error', error_code: normalized.code, duration_ms: Date.now() - started_at,
+          });
+        } catch {
+          return {
+            jsonrpc: '2.0', id,
+            result: { content: [{ type: 'text', text: JSON.stringify({
+              code: 'ORIX_MCP_AUDIT_INCOMPLETE',
+              message: 'Tool execution may have occurred, but its completion receipt could not be committed. Inspect the configured audit ledger before retrying.',
+            }) }], isError: true },
+          };
+        }
+      }
       const normalized = normalize_error(error);
       return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(normalized) }], isError: true } };
     }
@@ -476,13 +561,24 @@ export async function start_mcp_server({
   roots,
   environment,
   max_tool_calls_per_minute = MCP_TOOL_CALLS_PER_MINUTE,
+  allowed_tools,
+  allow_write_tools,
+  audit_path,
 } = {}) {
   if (!Number.isSafeInteger(max_tool_calls_per_minute) || max_tool_calls_per_minute < 1 || max_tool_calls_per_minute > 10000) {
     throw new RangeError('max_tool_calls_per_minute must be an integer between 1 and 10000');
   }
+  const effective_roots = roots ?? configured_workspace_roots(environment);
+  const allowed_tool_names = resolve_tool_policy({ environment, allowed_tools, allow_write_tools });
+  const configured_audit_path = audit_path ?? environment?.ORIX_MCP_AUDIT_PATH;
+  const audit_path_resolved = configured_audit_path
+    ? await resolve_workspace_output(configured_audit_path, effective_roots)
+    : null;
   const options = {
-    roots,
+    roots: effective_roots,
     environment,
+    allowed_tool_names,
+    audit_path_resolved,
     session: { phase: 'new' },
     rate_limit: {
       window_started_at: Date.now(),
