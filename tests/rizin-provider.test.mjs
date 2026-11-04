@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,7 @@ async function with_fixture(callback) {
     const config_path = path.join(directory, 'rizin-stub-config.json');
     await writeFile(input_path, Buffer.from('fixture bytes'));
     await writeFile(config_path, '{}');
-    const executable = process.execPath;
+    const executable = await realpath(process.execPath);
     const executable_args = [RIZIN_STUB, config_path];
     const write_config = async config => writeFile(config_path, JSON.stringify(config));
     await callback({ directory, input_path, executable, executable_args, write_config });
