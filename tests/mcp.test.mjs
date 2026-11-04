@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -86,7 +86,7 @@ test('MCP Rizin function tool runs an explicit provider through a bounded argv p
   try {
     const file = path.join(directory, 'native sample.elf');
     const config_path = path.join(directory, 'rizin-stub-config.json');
-    const executable = process.execPath;
+    const executable = await realpath(process.execPath);
     const executable_args = [
       fileURLToPath(new URL('./fixtures/rizin-stub.mjs', import.meta.url)),
       config_path,
