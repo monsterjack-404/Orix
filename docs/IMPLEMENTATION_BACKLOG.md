@@ -9,6 +9,9 @@ This backlog turns the product charter into reviewable engineering work. It is i
 ## 0. Baseline verification (do before feature expansion)
 
 ### G0.1 — Reconcile docs with code
+- [x] Add a source-backed capability inventory with CLI, public API and MCP exposure.
+- [x] Add CI documentation contracts for release markers, parser registry rows, MCP protocol claims and indicator rule coverage.
+- [ ] Generate additional README/CLI/MCP tables from the inventory rather than maintaining parallel hand-written summaries.
 - Correct the stale CLI version reference in `docs/CLI.md`.
 - Reconcile `docs/FORMATS.md` with actual ELF GNU-hash and WebAssembly type/import/export/function-name support.
 - Reconcile `docs/INDICATORS.md` with every emitted rule, including PDF rules.
@@ -17,6 +20,8 @@ This backlog turns the product charter into reviewable engineering work. It is i
 - Acceptance: no doc claims unsupported behavior; no implemented public behavior is omitted from the support matrix.
 
 ### G0.2 — Reproducible CI and release gates
+- [x] Run Node.js 20/22/24 test matrices, Windows/macOS smoke suites and CodeQL; upgrade checkout/setup-node actions to v7.
+- [ ] Add release artifact provenance, signing and retention checks.
 - Verify `npm ci`, `npm run check`, `npm test`, and coverage on supported Node versions and OS matrix.
 - Publish CI test/coverage artifacts and retain failure diagnostics.
 - Add dependency/license/security checks appropriate to a zero-runtime-dependency Node project.
@@ -31,6 +36,8 @@ This backlog turns the product charter into reviewable engineering work. It is i
 ## 1. Core architecture and contracts
 
 ### G1.1 — Capability registry
+- [x] Add versioned `orix.capabilities.v1` report, JSON Schema, CLI command, public API and read-only MCP tool.
+- [ ] Extend source-derived entries to every CLI command, report schema and workflow before treating the registry as exhaustive.
 - Define versioned machine-readable capabilities for formats, parsers, reports, providers, analyzers and transports.
 - Include status, supported variants, resource ceilings, limitations, platform support and test fixture references.
 - Generate CLI `formats`, README tables and docs from one source.
@@ -57,6 +64,8 @@ This backlog turns the product charter into reviewable engineering work. It is i
 ## 2. Parser and artifact coverage
 
 ### G2.1 — Parser hardening and fuzzing
+- [x] Add deterministic mutation and random-byte smoke coverage for PE, ELF, Mach-O, universal Mach-O, WebAssembly, ZIP, PDF and PNG parsers.
+- [ ] Add coverage-guided campaigns with documented duration/corpus and crash/hang triage.
 - Add coverage-guided fuzz harnesses for all parsers; seed with valid and malformed corpus.
 - Track parser crashes, hangs, memory ceilings and mutation regressions.
 - Add differential tests against trusted tools where output semantics can be compared.
