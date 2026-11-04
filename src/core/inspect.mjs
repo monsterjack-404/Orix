@@ -77,7 +77,7 @@ export async function inspect_file(file_path, options = {}) {
     const sha256 = await hash_file_handle(handle, opened.size);
     const after = await handle.stat();
     const stable_during_read = opened.size === after.size && opened.mtimeMs === after.mtimeMs && opened.ctimeMs === after.ctimeMs;
-    const analyzed = analyze_known_format(bytes, { max_sections: limits.max_sections, max_commands: limits.max_sections, max_wasm_sections: limits.max_wasm_sections });
+    const analyzed = analyze_known_format(bytes, { file_size: opened.size, max_sections: limits.max_sections, max_commands: limits.max_sections, max_wasm_sections: limits.max_wasm_sections });
     const strings = options.extract_strings === false ? [] : extract_strings(bytes, {
       minimum: limits.min_string_length,
       maximum: limits.max_string_length,
