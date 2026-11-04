@@ -59,7 +59,7 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["function_name", "address", "instruction_limit", "instructions", "total_returned", "truncated", "instruction_limit_reached"],
+          "required": ["function_name", "address", "instruction_limit", "instructions", "total_returned", "instruction_limit_reached"],
           "properties": {
             "function_name": { "type": "string", "minLength": 1, "maxLength": 512 },
             "address": { "type": "integer", "minimum": 0 },
@@ -84,7 +84,6 @@
               }
             },
             "total_returned": { "type": "integer", "minimum": 0 },
-            "truncated": { "type": "boolean" },
             "instruction_limit_reached": { "type": "boolean" }
           }
         }
