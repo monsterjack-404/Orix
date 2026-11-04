@@ -84,7 +84,20 @@
           "language",
           "extension",
           "text_analyzed"
-        ]
+        ],
+        "properties": {
+          "javascript_analysis": {
+            "type": "object",
+            "required": ["tokens", "token_limit_reached", "imports_truncated", "symbols_truncated", "limitations"],
+            "properties": {
+              "tokens": { "type": "integer", "minimum": 0 },
+              "token_limit_reached": { "type": "boolean" },
+              "imports_truncated": { "type": "boolean" },
+              "symbols_truncated": { "type": "boolean" },
+              "limitations": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
       }
     },
     "symbols": {
