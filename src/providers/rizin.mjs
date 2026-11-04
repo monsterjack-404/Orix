@@ -606,7 +606,7 @@ export async function analyze_rizin_functions(options = {}) {
           ? 'ORIX_RIZIN_CANCELLED'
           : result.timed_out ? 'ORIX_RIZIN_TIMEOUT'
             : result.output_limited ? 'ORIX_RIZIN_OUTPUT_LIMIT' : 'ORIX_RIZIN_' + label.toUpperCase() + '_FAILED';
-        if (label === 'decompilation') code = 'ORIX_RIZIN_DECOMPILER_UNAVAILABLE_OR_FAILED';
+        if (label === 'decompilation') code = 'ORIX_RIZIN_DECOMPILER_UNAVAILABLE';
         provider_error(code, 'Rizin ' + label + ' operation did not complete successfully', {
           exit_code: result.exit_code,
           timed_out: result.timed_out,
