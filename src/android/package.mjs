@@ -3,6 +3,8 @@
 
 import { parse_zip } from '../formats/zip.mjs';
 import { parse_dex } from '../formats/dex.mjs';
+import { constants as fs_constants, promises as fs } from 'node:fs';
+import path from 'node:path';
 
 const LOCAL_HEADER = 0x04034b50;
 const BINARY_XML = 0x0003;
@@ -126,4 +128,43 @@ export function analyze_android_package(buffer, options = {}) {
     ],
     warnings: dex.filter(item => item.status !== 'header-parsed').map(item => ({ path: item.path, reason: item.status })),
   };
+}
+
+
+/**
+ * Safely read a bounded regular file and analyze its APK/AAB structure.
+ * Symlinks and files that change identity or metadata during acquisition are rejected.
+ */
+export async function analyze_android_package_file(file_path, options = {}) {
+  const max_file_bytes = options.max_file_bytes ?? 536_870_912;
+  if (!Number.isSafeInteger(max_file_bytes) || max_file_bytes < 1 || max_file_bytes > 1_073_741_824) {
+    throw new TypeError('max_file_bytes must be between 1 and 1073741824');
+  }
+  const absolute = path.resolve(file_path);
+  const before = await fs.lstat(absolute);
+  if (!before.isFile() || before.isSymbolicLink()) throw new TypeError('Android package target must be a regular non-symlink file');
+  if (before.size > max_file_bytes) throw new RangeError('Android package exceeds the configured file-size limit');
+  let handle;
+  try {
+    handle = await fs.open(absolute, fs_constants.O_RDONLY | (fs_constants.O_NOFOLLOW ?? 0));
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
+      throw new Error('Android package changed before it could be read');
+    }
+    const buffer = Buffer.alloc(opened.size);
+    let offset = 0;
+    while (offset < buffer.length) {
+      const result = await handle.read(buffer, offset, buffer.length - offset, offset);
+      if (result.bytesRead === 0) break;
+      offset += result.bytesRead;
+    }
+    const after = await handle.stat();
+    if (offset !== opened.size || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs ||
+        after.ctimeMs !== opened.ctimeMs || after.dev !== opened.dev || after.ino !== opened.ino) {
+      throw new Error('Android package changed during acquisition');
+    }
+    return analyze_android_package(buffer, options);
+  } finally {
+    if (handle) await handle.close().catch(() => {});
+  }
 }
