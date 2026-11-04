@@ -22,6 +22,13 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.inspect_file'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_architecture'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.ledger.verify'));
+  for (const tool of response.result.tools) {
+    assert.ok(tool.annotations, tool.name + ' must advertise safety annotations');
+    assert.equal(tool.annotations.openWorldHint, false);
+  }
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.inspect_file').annotations.readOnlyHint, true);
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.readOnlyHint, false);
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
 });
 
 test('MCP inspect tool returns the same versioned artifact report as the library API', async () => {
