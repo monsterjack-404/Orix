@@ -106,7 +106,7 @@ export function build_capability_report({
       { id: 'architecture-graph', status: 'partial', boundary: 'Static local-import graph; not a runtime call graph or dead-code proof.' },
       { id: 'dependency-vulnerability-audit', status: 'partial', boundary: 'Opt-in OSV exact-version queries; no reachability proof or full local ecosystem range evaluation.' },
       { id: 'native-binary-analysis', status: 'partial', boundary: 'Bounded PE, ELF, Mach-O and WebAssembly structural parsers; not a complete loader, debugger or decompiler.' },
-      { id: 'native-decompilation', status: 'planned', boundary: 'No native pseudocode/decompiler adapter is shipped; Rizin imports are the only implemented native provider slice.' },
+      { id: 'native-decompilation', status: 'planned', boundary: 'No native pseudocode/decompiler adapter is shipped; Rizin imports, function inventory and bounded assembly disassembly are partial provider capabilities.' },
       { id: 'javascript-electron-analysis', status: 'partial', boundary: 'Source inventory/import candidates exist; parser-backed AST, Electron main/preload/renderer analysis and runtime IPC observation are absent.' },
       { id: 'dotnet-analysis', status: 'planned', boundary: 'No PE/CLI metadata, managed IL or PDB parser/decompiler is shipped.' },
       { id: 'android-apk-analysis', status: 'planned', boundary: 'ZIP metadata exists; no Android binary manifest, DEX/ART, resources or APK provider integration is shipped.' },
