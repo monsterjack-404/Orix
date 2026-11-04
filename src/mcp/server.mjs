@@ -2,6 +2,7 @@
 
 import { inspect_file } from '../core/inspect.mjs';
 import { analyze_har_file } from '../network/har.mjs';
+import { analyze_android_package_file } from '../android/package.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project } from '../project/intelligence.mjs';
 import { analyze_project_architecture } from '../project/architecture.mjs';
@@ -134,6 +135,21 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         path: { type: 'string', minLength: 1 },
         max_entries: integer('Maximum HAR transactions analyzed.', 100000, 1),
         max_hosts: integer('Maximum distinct hosts returned.', 10000, 1),
+      },
+      required: ['path'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'orix.analyze_android_package',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    description: 'Inventory a workspace-confined APK/AAB offline and inspect fixed headers of stored DEX entries. Does not extract compressed entries, execute apps, install packages or access Android devices.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', minLength: 1 },
+        max_file_mib: integer('Maximum APK/AAB file size in MiB.', 1024, 1),
+        max_entries: integer('Maximum ZIP central-directory entries.', 1000000, 1),
       },
       required: ['path'],
       additionalProperties: false,
