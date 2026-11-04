@@ -50,6 +50,16 @@ node src/cli.mjs scan ./release --concurrency 2 --no-strings
 
 A scan report stores the aggregate summary separately from each artifact result. It includes `files_with_indicators` and `indicator_counts`, while each artifact retains its own rule findings. Per-file errors are isolated. The inventory has a `truncated` flag and skipped-entry list; consumers must inspect these before claiming full coverage.
 
+### Analyze a network capture
+
+```bash
+node src/cli.mjs har ./capture.har
+node src/cli.mjs har ./capture.har --json
+node src/cli.mjs har ./capture.har --max-har-entries 5000 --format markdown
+```
+
+The HAR command accepts HAR 1.2 JSON and performs offline metadata analysis. It reports request/response metadata, hosts, status codes, timings, SHA-256 provenance and evidence-linked security review leads. The default ceiling is 20,000 entries (maximum 100,000) and the input-file ceiling is 32 MiB. Request/response bodies, cookie values, query values and arbitrary header values are never included in the report. URL paths and server IP addresses may still be sensitive. No requests are sent and no target code is executed.
+
 ### Analyze a source project
 
 ```bash
