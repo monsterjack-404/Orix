@@ -86,4 +86,4 @@ Format parsers return structural facts. The separate indicator engine evaluates 
 
 ## Future format selection
 
-New formats should be prioritized by user demand, ecosystem impact, available authoritative specifications, fixture quality, independent validation tools and safe parser boundaries. Candidate areas include Android APK/DEX, additional executable formats, container/image metadata and common database formats. Recognition may be added before parsing only when the CLI and reports clearly label it signature-only.
+New formats should be prioritized by user demand, ecosystem impact, available authoritative specifications, fixture quality, independent validation tools and safe parser boundaries. Remaining Android work includes full binary manifest/resource decoding, compressed DEX analysis and signing verification; other candidates include additional executable formats, container/image metadata and common database formats. Recognition may be added before parsing only when the CLI and reports clearly label it signature-only.
