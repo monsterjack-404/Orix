@@ -79,6 +79,28 @@ test('CLI JSON output is valid machine-readable JSON', async () => {
   });
 });
 
+test('CLI analyzes HAR captures and emits a bounded JSON evidence report', async () => {
+  await with_temp_dir(async directory => {
+    const file = path.join(directory, 'capture.har');
+    await writeFile(file, Buffer.from(JSON.stringify({ log: {
+      version: '1.2', creator: { name: 'CLI fixture', version: '1' },
+      entries: [{
+        startedDateTime: '2026-11-04T10:00:00.000Z', time: 3,
+        request: { method: 'GET', url: 'https://example.test/api?token=hidden', headers: [{ name: 'Cookie', value: 'session=hidden' }] },
+        response: { status: 200, statusText: 'OK', headers: [], content: { size: 10, mimeType: 'application/json', text: 'hidden body' } },
+        timings: { send: 1, wait: 1, receive: 1 },
+      }],
+    } })));
+    const cli = spawnSync(process.execPath, ['src/cli.mjs', 'har', file, '--json'], { encoding: 'utf8', cwd: path.resolve('.') });
+    assert.equal(cli.status, 0, cli.stderr);
+    const report = JSON.parse(cli.stdout);
+    assert.equal(report.schema_version, 'orix.har.v1');
+    assert.equal(report.summary.entries_analyzed, 1);
+    assert.equal(cli.stdout.includes('hidden'), false);
+    assert.equal(parse_arguments(['har', file, '--max-har-entries', '12']).flags.max_har_entries, 12);
+  });
+});
+
 test('capabilities command emits source-backed implemented, partial and planned inventory', () => {
   const cli = spawnSync(process.execPath, ['src/cli.mjs', 'capabilities', '--json'], {
     encoding: 'utf8', cwd: path.resolve('.'),
