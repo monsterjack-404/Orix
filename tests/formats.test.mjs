@@ -1184,3 +1184,70 @@ test('DEX parser rejects inconsistent file and overlapping fixed-table ranges', 
   overlap.writeUInt32LE(1, 64); overlap.writeUInt32LE(116, 68);
   assert.throws(() => parse_dex(overlap), error => error.code === 'ORIX_DEX_TABLE_OVERLAP');
 });
+
+
+function create_dex_class_fixture() {
+  const buffer = Buffer.alloc(264);
+  buffer.write('dex\n035\0', 0, 'ascii');
+  buffer.writeUInt32LE(buffer.length, 32);
+  buffer.writeUInt32LE(112, 36);
+  buffer.writeUInt32LE(0x12345678, 40);
+  buffer.writeUInt32LE(6, 56);
+  buffer.writeUInt32LE(112, 60);
+  buffer.writeUInt32LE(2, 64);
+  buffer.writeUInt32LE(136, 68);
+  buffer.writeUInt32LE(1, 96);
+  buffer.writeUInt32LE(144, 100);
+  buffer.writeUInt32LE(104, 104);
+  buffer.writeUInt32LE(160, 108);
+  buffer.writeUInt32LE(160, 112);
+  buffer.writeUInt32LE(180, 116);
+  buffer.writeUInt32LE(0, 136);
+  buffer.writeUInt32LE(1, 140);
+  buffer.writeUInt32LE(1, 144);
+  buffer.writeUInt32LE(1, 148);
+  buffer.writeUInt32LE(0, 152);
+  buffer.writeUInt32LE(0, 156);
+  const first = Buffer.from('Ljava/lang/Object;', 'ascii');
+  buffer[160] = first.length;
+  first.copy(buffer, 161);
+  buffer[161 + first.length] = 0;
+  buffer[180] = 3;
+  Buffer.from('Lx;', 'ascii').copy(buffer, 181);
+  buffer[184] = 0;
+  buffer.writeUInt32LE(6, 188);
+  const items = [
+    [0x0000, 1, 0],
+    [0x0001, 6, 112],
+    [0x0002, 2, 136],
+    [0x0006, 1, 144],
+    [0x2002, 2, 160],
+    [0x1000, 1, 188],
+  ];
+  items.forEach(([type, size, offset], index) => {
+    const p = 192 + index * 12;
+    buffer.writeUInt16LE(type, p);
+    buffer.writeUInt32LE(size, p + 4);
+    buffer.writeUInt32LE(offset, p + 8);
+  });
+  buffer.writeUInt32LE(188, 52);
+  return buffer;
+}
+
+test('DEX parser resolves bounded strings, type descriptors and class definitions', () => {
+  const parsed = parse_dex(create_dex_class_fixture());
+  assert.equal(parsed.strings.length, 2);
+  assert.equal(parsed.strings[0].value, 'Ljava/lang/Object;');
+  assert.equal(parsed.types[1].descriptor, 'Lx;');
+  assert.equal(parsed.classes[0].descriptor, 'Lx;');
+  assert.equal(parsed.classes[0].superclass, 'Ljava/lang/Object;');
+  assert.equal(parsed.classes[0].source_file, null);
+});
+
+test('DEX class descriptors remain correct when type output is truncated', () => {
+  const parsed = parse_dex(create_dex_class_fixture(), { max_output_items: 1 });
+  assert.equal(parsed.types.length, 1);
+  assert.equal(parsed.classes[0].descriptor, 'Lx;');
+  assert.equal(parsed.classes[0].superclass, 'Ljava/lang/Object;');
+  assert.equal(parsed.output_truncated, true);
+});
