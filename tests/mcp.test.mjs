@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -112,7 +112,7 @@ test('MCP HAR tool analyzes only workspace-confined captures and omits secret va
     assert.equal(result.summary.entries_analyzed, 1);
     assert.equal(JSON.stringify(result).includes('secret-value'), false);
     await assert.rejects(
-      call_orix_tool('orix.analyze_har', { path: file }, { roots: [tmpdir()] }),
+      call_orix_tool('orix.analyze_har', { path: file }, { roots: [allowed_root] }),
       /workspace|outside|root/i,
     );
   } finally {
