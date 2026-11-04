@@ -20,6 +20,8 @@ export const MCP_PROTOCOL_VERSION = '2025-03-26';
 export const MCP_MAX_LINE_BYTES = 4 * 1024 * 1024;
 export const MCP_MAX_RESULT_BYTES = 2 * 1024 * 1024;
 export const MCP_MAX_BATCH_MESSAGES = 100;
+export const MCP_TOOL_CALLS_PER_MINUTE = 60;
+export const MCP_TOOL_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 const integer = (description, maximum, minimum = 0) => ({ type: 'integer', minimum, maximum, description });
 const path_schema = {
@@ -156,6 +158,18 @@ function is_json_object(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function consume_tool_call_budget(rate_limit) {
+  if (!rate_limit) return true;
+  const now = Date.now();
+  if (now - rate_limit.window_started_at >= rate_limit.window_ms) {
+    rate_limit.window_started_at = now;
+    rate_limit.calls = 0;
+  }
+  if (rate_limit.calls >= rate_limit.max_calls) return false;
+  rate_limit.calls += 1;
+  return true;
+}
+
 function jsonrpc_error(id, code, message, data = undefined) {
   return {
     jsonrpc: '2.0',
@@ -287,7 +301,10 @@ export async function handle_mcp_message(message, options = {}) {
     const responses = [];
     for (const item of message) {
       if (is_json_object(item) && item.method === 'initialize') {
-        const item_id = Object.hasOwn(item, 'id') && is_request_id(item.id) ? item.id : null;
+        // Preserve JSON-RPC's no-response rule for notifications, even though
+        // initialize requests themselves are forbidden inside a batch.
+        if (!Object.hasOwn(item, 'id')) continue;
+        const item_id = is_request_id(item.id) ? item.id : null;
         responses.push(jsonrpc_error(item_id, -32600, 'initialize requests must not be sent in a JSON-RPC batch'));
         continue;
       }
@@ -296,8 +313,14 @@ export async function handle_mcp_message(message, options = {}) {
     }
     return responses.length > 0 ? responses : null;
   }
-  if (!message || typeof message !== 'object' || message.jsonrpc !== '2.0') {
-    return jsonrpc_error(message?.id ?? null, -32600, 'Invalid JSON-RPC request');
+  if (!message || typeof message !== 'object' || Array.isArray(message)) {
+    return jsonrpc_error(null, -32600, 'Invalid JSON-RPC request');
+  }
+  if (message.jsonrpc !== '2.0') {
+    const invalid_version_id = Object.hasOwn(message, 'id') && is_request_id(message.id)
+      ? message.id
+      : null;
+    return jsonrpc_error(invalid_version_id, -32600, 'Invalid JSON-RPC request');
   }
   const has_id = Object.hasOwn(message, 'id');
   if (has_id && !is_request_id(message.id)) {
@@ -355,6 +378,22 @@ export async function handle_mcp_message(message, options = {}) {
     ) {
       return jsonrpc_error(id, -32602, 'tools/call requires a tool name and an optional JSON object for arguments');
     }
+    if (!consume_tool_call_budget(options.rate_limit)) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              code: 'ORIX_MCP_RATE_LIMITED',
+              message: 'Tool-call rate limit exceeded. Retry after the current 60-second window resets.',
+            }),
+          }],
+          isError: true,
+        },
+      };
+    }
     const name = params.name;
     const args = params.arguments ?? {};
     try {
@@ -385,8 +424,21 @@ export async function start_mcp_server({
   error_output = process.stderr,
   roots,
   environment,
+  max_tool_calls_per_minute = MCP_TOOL_CALLS_PER_MINUTE,
 } = {}) {
-  const options = { roots, environment };
+  if (!Number.isSafeInteger(max_tool_calls_per_minute) || max_tool_calls_per_minute < 1 || max_tool_calls_per_minute > 10000) {
+    throw new RangeError('max_tool_calls_per_minute must be an integer between 1 and 10000');
+  }
+  const options = {
+    roots,
+    environment,
+    rate_limit: {
+      window_started_at: Date.now(),
+      window_ms: MCP_TOOL_RATE_LIMIT_WINDOW_MS,
+      max_calls: max_tool_calls_per_minute,
+      calls: 0,
+    },
+  };
   let pending = Buffer.alloc(0);
   let discarding = false;
   for await (const chunk of input) {

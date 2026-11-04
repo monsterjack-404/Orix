@@ -112,6 +112,17 @@ test('MCP validates JSON-RPC request IDs and echoes valid string and numeric IDs
     assert.equal(response.error.code, -32600);
     assert.equal(response.id, null);
   }
+  const invalid_version_with_invalid_id = await handle_mcp_message({
+    jsonrpc: '1.0', id: { unexpected: true }, method: 'ping',
+  });
+  assert.equal(invalid_version_with_invalid_id.error.code, -32600);
+  assert.equal(invalid_version_with_invalid_id.id, null);
+
+  const invalid_version_with_valid_id = await handle_mcp_message({
+    jsonrpc: '1.0', id: 'legacy-request', method: 'ping',
+  });
+  assert.equal(invalid_version_with_valid_id.error.code, -32600);
+  assert.equal(invalid_version_with_valid_id.id, 'legacy-request');
 });
 
 test('MCP rejects malformed request params before invoking a tool', async () => {
@@ -156,6 +167,7 @@ test('MCP processes bounded JSON-RPC batches and omits notification responses', 
 
   const notifications_only = await handle_mcp_message([
     { jsonrpc: '2.0', method: 'notifications/initialized' },
+    { jsonrpc: '2.0', method: 'initialize' },
   ]);
   assert.equal(notifications_only, null);
 
@@ -179,6 +191,46 @@ test('MCP rejects batches beyond the configured message ceiling', async () => {
   }));
   const response = await handle_mcp_message(oversized);
   assert.equal(response.error.code, -32600);
+});
+
+test('MCP stdio transport rate-limits tool calls per connection while leaving protocol requests available', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const errors = new PassThrough();
+  let captured = '';
+  output.setEncoding('utf8');
+  output.on('data', chunk => { captured += chunk; });
+  const running = start_mcp_server({
+    input, output, error_output: errors, max_tool_calls_per_minute: 1,
+  });
+  const request = id => JSON.stringify({
+    jsonrpc: '2.0', id, method: 'tools/call',
+    params: { name: 'orix.formats', arguments: {} },
+  }) + '\n';
+  input.write(request(81));
+  input.write(request(82));
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 83, method: 'ping' }) + '\n');
+  input.end();
+  await running;
+
+  const messages = captured.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(messages.length, 3);
+  assert.equal(messages[0].result.isError, false);
+  assert.equal(messages[1].result.isError, true);
+  assert.equal(JSON.parse(messages[1].result.content[0].text).code, 'ORIX_MCP_RATE_LIMITED');
+  assert.deepEqual(messages[2].result, {});
+});
+
+test('MCP stdio transport rejects invalid per-connection rate limits', async () => {
+  await assert.rejects(
+    start_mcp_server({
+      input: new PassThrough(),
+      output: new PassThrough(),
+      error_output: new PassThrough(),
+      max_tool_calls_per_minute: 0,
+    }),
+    /between 1 and 10000/,
+  );
 });
 
 test('MCP stdio transport reads and writes newline-delimited JSON-RPC messages', async () => {
