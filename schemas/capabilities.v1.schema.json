@@ -1,0 +1,309 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orix.dev/schemas/capabilities.v1.schema.json",
+  "title": "ORIX Capability Inventory",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "product",
+    "formats",
+    "interfaces",
+    "providers",
+    "report_formats",
+    "intelligence",
+    "global_boundaries"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "orix.capabilities.v1"
+    },
+    "product": {
+      "type": "object",
+      "required": [
+        "name",
+        "promise",
+        "operating_model"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "promise": {
+          "type": "string"
+        },
+        "operating_model": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "formats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "format",
+          "signature_recognized",
+          "parser_status"
+        ],
+        "properties": {
+          "format": {
+            "type": "string"
+          },
+          "signature_recognized": {
+            "type": "boolean"
+          },
+          "parser_status": {
+            "enum": [
+              "available",
+              "signature-only"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "interfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "entrypoint",
+          "boundaries"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "implemented",
+              "partial",
+              "planned"
+            ]
+          },
+          "entrypoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "protocol_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "description",
+                "annotations"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "annotations": {
+                  "type": "object",
+                  "required": [
+                    "read_only",
+                    "destructive",
+                    "idempotent",
+                    "open_world"
+                  ],
+                  "properties": {
+                    "read_only": {
+                      "type": "boolean"
+                    },
+                    "destructive": {
+                      "type": "boolean"
+                    },
+                    "idempotent": {
+                      "type": "boolean"
+                    },
+                    "open_world": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "boundaries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "capabilities",
+          "input_formats",
+          "supported_platforms",
+          "availability",
+          "execution",
+          "boundaries"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "implemented",
+              "partial",
+              "planned"
+            ]
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "input_formats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "supported_platforms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "availability": {
+            "type": "string"
+          },
+          "execution": {
+            "type": "object",
+            "required": [
+              "mode",
+              "requires_authorization",
+              "executes_target",
+              "writes_target",
+              "uses_network"
+            ],
+            "properties": {
+              "mode": {
+                "type": "string"
+              },
+              "requires_authorization": {
+                "type": "boolean"
+              },
+              "executes_target": {
+                "type": "boolean"
+              },
+              "writes_target": {
+                "type": "boolean"
+              },
+              "uses_network": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "boundaries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "report_formats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "standard"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "implemented",
+              "partial",
+              "planned"
+            ]
+          },
+          "standard": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "intelligence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "boundary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "implemented",
+              "partial",
+              "planned"
+            ]
+          },
+          "boundary": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "global_boundaries": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}
