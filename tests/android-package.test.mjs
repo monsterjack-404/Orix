@@ -5,7 +5,7 @@ import { analyze_android_package } from '../src/android/package.mjs';
 
 function dex_header() {
   const dex = Buffer.alloc(112);
-  dex.write('dex\\n035\\0', 0, 'ascii');
+  dex.set([0x64, 0x65, 0x78, 0x0a, 0x30, 0x33, 0x35, 0], 0);
   dex.writeUInt32LE(112, 32);
   dex.writeUInt32LE(112, 36);
   dex.writeUInt32LE(0x12345678, 40);
