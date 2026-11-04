@@ -26,6 +26,7 @@ async function with_fixture(callback) {
       'if [ "$1" = "-N" ] && [ "$3" = "-c" ]; then',
       '  case "$4" in',
       '    pdj*) printf "%s" \'[{"offset":4198400,"size":5,"bytes":"554889e5","opcode":"push rbp","disasm":"push rbp","type":"push"},{"offset":4198401,"size":3,"bytes":"4889e5","opcode":"mov rbp, rsp","disasm":"mov rbp, rsp","type":"mov"},{"offset":4198404,"size":1,"bytes":"c3","opcode":"ret","disasm":"ret","type":"ret"}]\'; exit 0 ;;',
+      '    pdg*) printf "%s\\n" \'int main(void) { return 0; }\'; exit 0 ;;',
       '  esac',
       'fi',
       'if [ "$1" = "-N" ] && [ "$4" = "iij" ]; then',
@@ -77,7 +78,7 @@ test('Rizin function adapter returns a bounded function inventory and address-sc
   }
   await with_fixture(async ({ input_path, executable }) => {
     const report = await analyze_rizin_functions({
-      input_path, executable, address: '0x401000', max_instructions: 3,
+      input_path, executable, address: '0x401000', max_instructions: 3, decompile: true,
     });
     assert.equal(report.schema_version, 'orix.rizin-functions.v1');
     assert.equal(report.provider.engine_version, '0.8.2');
@@ -102,6 +103,9 @@ test('Rizin function adapter returns a bounded function inventory and address-sc
     assert.equal(report.disassembly.instructions[0].disassembly, 'push rbp');
     assert.equal(report.disassembly.instruction_limit_reached, true);
     assert.equal(report.summary.disassembly_included, true);
+    assert.equal(report.summary.decompilation_included, true);
+    assert.equal(report.decompilation.backend, 'rizin-pdg');
+    assert.match(report.decompilation.source, /int main/);
     assert.match(report.artifact.sha256, /^[a-f0-9]{64}$/);
     assert.ok(report.notes.some(note => /not decompiled source/.test(note)));
   });
@@ -118,6 +122,13 @@ test('Rizin function adapter refuses disassembly addresses that are not returned
       error => error.code === 'ORIX_RIZIN_FUNCTION_NOT_FOUND',
     );
   });
+});
+
+test('Rizin decompilation requires an exact function-entry address', async () => {
+  await assert.rejects(
+    analyze_rizin_functions({ input_path: '/not/opened/file', executable: '/not/launched/rizin', decompile: true }),
+    /decompile requires an exact function-entry address/,
+  );
 });
 
 test('Rizin function adapter validates result budgets and hexadecimal addresses before launching a provider', async () => {
