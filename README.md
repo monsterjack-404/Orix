@@ -109,6 +109,8 @@ node src/cli.mjs capabilities --json
 # List optional providers and invoke Rizin static import extraction
 node src/cli.mjs providers list --json
 node src/cli.mjs providers rizin doctor --executable /usr/bin/rizin --json
+# Wrapper executables may receive literal prefix arguments without a shell:
+node src/cli.mjs providers rizin doctor --executable /usr/bin/node --executable-arg ./rizin-wrapper.mjs --json
 node src/cli.mjs providers rizin imports ./sample.elf --executable /usr/bin/rizin --json --timeout-ms 30000 --max-output-kib 4096 --max-imports 100000
 node src/cli.mjs providers rizin functions ./sample.elf --executable /usr/bin/rizin --max-functions 10000 --json
 node src/cli.mjs providers rizin functions ./sample.elf --executable /usr/bin/rizin --address 0x401000 --max-instructions 100 --json
