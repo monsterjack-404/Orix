@@ -70,7 +70,7 @@ export const HELP_TEXT = [
   '  --max-imports <n>    Maximum imported symbols retained in a Rizin report.',
   '  --max-functions <n>  Maximum Rizin functions retained (1–100,000).',
   '  --address <hex>      Function entry address to disassemble (must match Rizin function inventory).',
-  '  --max-instructions <n> Maximum instructions disassembled (1–1,000).'
+  '  --max-instructions <n> Maximum instructions disassembled (1–1,000).',
   '  -h, --help           Print help.',
   '',
   'EXAMPLES',
