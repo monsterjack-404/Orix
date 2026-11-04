@@ -280,6 +280,37 @@ test('OSV Markdown renderer escapes untrusted advisory text and table delimiters
   assert.ok(markdown.includes('\\[click\\]'));
 });
 
+test('OSV advisory ceiling is explicit and does not claim complete coverage', async () => {
+  const report = await audit_project_dependencies(project([dep('alpha', '1.0.0')]), {
+    max_advisories: 1,
+    fetch_impl: async url => {
+      if (String(url).endsWith('/querybatch')) {
+        return json_response({
+          results: [{ vulns: [{ id: 'OSV-LIMIT-1' }, { id: 'OSV-LIMIT-2' }] }],
+        });
+      }
+      return json_response(advisory('OSV-LIMIT-1'));
+    },
+  });
+  assert.equal(report.summary.complete, false);
+  assert.equal(report.summary.status, 'partial');
+  assert.equal(report.summary.vulnerabilities, 1);
+  assert.ok(report.warnings.some(item => item.code === 'ORIX_OSV_ADVISORY_LIMIT'));
+});
+
+test('OSV omits malformed advisory records but marks coverage partial', async () => {
+  const report = await audit_project_dependencies(project([dep('alpha', '1.0.0')]), {
+    fetch_impl: async url => {
+      if (String(url).endsWith('/querybatch')) {
+        return json_response({ results: [{ vulns: [{}] }] });
+      }
+      throw new Error('no detail should be requested');
+    },
+  });
+  assert.equal(report.summary.complete, false);
+  assert.ok(report.warnings.some(item => item.code === 'ORIX_OSV_ADVISORY_ID_INVALID'));
+});
+
 test('OSV handles empty and unsupported-only dependency inventories without querying', async () => {
   let calls = 0;
   const fetch_impl = async () => { calls += 1; throw new Error('should not be called'); };
