@@ -1,0 +1,558 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orix.dev/schemas/har.v1.schema.json",
+  "title": "ORIX HAR 1.2 Investigation Report v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source",
+    "integrity",
+    "summary",
+    "coverage",
+    "hosts",
+    "entries",
+    "findings",
+    "evidence",
+    "privacy",
+    "warnings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "orix.har.v1"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "format",
+        "version",
+        "creator",
+        "browser",
+        "page_count"
+      ],
+      "properties": {
+        "format": {
+          "const": "HAR"
+        },
+        "version": {
+          "const": "1.2"
+        },
+        "creator": {
+          "type": "object",
+          "required": [
+            "name",
+            "version"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "browser": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "page_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "path": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "modified_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": true
+    },
+    "integrity": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "digest",
+        "bytes"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "sha256"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stable_during_read": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "entries_total",
+        "entries_analyzed",
+        "unique_hosts",
+        "methods",
+        "statuses",
+        "request_bytes",
+        "response_bytes",
+        "encrypted_requests",
+        "cleartext_requests",
+        "redirect_count",
+        "error_count",
+        "timing_totals_ms",
+        "summed_phase_time_ms"
+      ],
+      "properties": {
+        "entries_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entries_analyzed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unique_hosts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "methods": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "request_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "response_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "encrypted_requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cleartext_requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "redirect_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timing_totals_ms": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "summed_phase_time_ms": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "complete",
+        "truncated",
+        "omitted_entries",
+        "max_entries"
+      ],
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "omitted_entries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_entries": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        }
+      },
+      "additionalProperties": false
+    },
+    "hosts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "host",
+          "requests",
+          "bytes_received",
+          "error_responses",
+          "schemes"
+        ],
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "requests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bytes_received": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "error_responses": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "schemes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "index",
+          "started_at",
+          "method",
+          "url",
+          "status",
+          "total_time_ms",
+          "request_header_names",
+          "response_header_names",
+          "sensitive_request_header_types",
+          "response_cookie_count",
+          "response_cookie_flags",
+          "redirect",
+          "timings",
+          "url_has_credentials"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "method": {
+            "type": "string"
+          },
+          "url": {
+            "type": "object",
+            "required": [
+              "url",
+              "scheme",
+              "host",
+              "port",
+              "path",
+              "query_keys",
+              "has_credentials"
+            ],
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "scheme": {
+                "type": "string"
+              },
+              "host": {
+                "type": "string"
+              },
+              "port": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "query_keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "has_credentials": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999
+          },
+          "total_time_ms": {
+            "type": "number",
+            "minimum": 0
+          },
+          "request_size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "response_size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "mime_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "request_header_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "response_header_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sensitive_request_header_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "response_cookie_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "response_cookie_flags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "secure",
+                "http_only",
+                "same_site"
+              ],
+              "properties": {
+                "secure": {
+                  "type": "boolean"
+                },
+                "http_only": {
+                  "type": "boolean"
+                },
+                "same_site": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "redirect": {
+            "type": "boolean"
+          },
+          "timings": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "server_ip_address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url_has_credentials": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rule_id",
+          "severity",
+          "confidence",
+          "summary",
+          "location",
+          "evidence_ids",
+          "details"
+        ],
+        "properties": {
+          "rule_id": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "info"
+            ]
+          },
+          "confidence": {
+            "enum": [
+              "observed",
+              "heuristic"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "location": {
+            "type": "object",
+            "required": [
+              "entry_index",
+              "url",
+              "method",
+              "status"
+            ],
+            "additionalProperties": true
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "source_index",
+          "summary",
+          "confidence",
+          "fields"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "const": "http-transaction"
+          },
+          "source_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "summary": {
+            "type": "string"
+          },
+          "confidence": {
+            "const": "observed"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "required": [
+        "request_bodies_included",
+        "response_bodies_included",
+        "header_values_included",
+        "cookie_values_included",
+        "query_values_included",
+        "note"
+      ],
+      "properties": {
+        "request_bodies_included": {
+          "const": false
+        },
+        "response_bodies_included": {
+          "const": false
+        },
+        "header_values_included": {
+          "const": false
+        },
+        "cookie_values_included": {
+          "const": false
+        },
+        "query_values_included": {
+          "const": false
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}
