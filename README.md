@@ -131,7 +131,7 @@ Analyze a browser or proxy-exported HAR 1.2 capture without contacting its hosts
 
 ```bash
 node src/cli.mjs har ./capture.har
-node src/cli.mjs har ./capture.har --json --max-har-entries 20000
+node src/cli.mjs har ./capture.har --json --max-har-entries 20000 --max-har-hosts 5000
 ```
 
 The analyzer records a SHA-256 digest, bounded request metadata, host/method/status summaries, timing totals and evidence-linked review findings. It does not export request or response bodies, header values, cookie values or query parameter values. URL paths and server IP addresses can still be sensitive; review reports before sharing. HAR observations describe the supplied capture, not independently verified live traffic. The same analyzer is available as the public API and the workspace-confined `orix.analyze_har` MCP tool.
