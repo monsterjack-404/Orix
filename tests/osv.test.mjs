@@ -122,9 +122,14 @@ test('OSV maps every currently supported lockfile ecosystem to OSV identifiers',
       throw new Error('No advisory detail requests expected');
     },
   });
-  assert.deepEqual(submitted, inputs.map(([, name, version, ecosystem]) => ({
+  const expected = inputs.map(([, name, version, ecosystem]) => ({
     package: { ecosystem, name }, version,
-  })));
+  })).sort((a, b) =>
+    a.package.ecosystem.localeCompare(b.package.ecosystem) ||
+    a.package.name.localeCompare(b.package.name) ||
+    a.version.localeCompare(b.version)
+  );
+  assert.deepEqual(submitted, expected);
   assert.equal(report.summary.queried_packages, inputs.length);
   assert.equal(report.summary.status, 'complete');
 });
