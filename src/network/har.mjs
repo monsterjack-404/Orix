@@ -163,7 +163,7 @@ export function parse_har(input, options = {}) {
     if (!Number.isSafeInteger(response.status) || response.status < 0 || response.status > 999) {
       fail('ORIX_HAR_INVALID_STATUS', 'HAR response status must be an integer from 0 to 999', { entry_index: index, status: response.status });
     }
-    if (typeof raw.startedDateTime !== 'string' || !Number.isFinite(Date.parse(raw.startedDateTime))) {
+    if (typeof raw.startedDateTime !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$/.test(raw.startedDateTime) || !Number.isFinite(Date.parse(raw.startedDateTime))) {
       fail('ORIX_HAR_INVALID_TIMESTAMP', 'HAR entry startedDateTime must be a parseable date-time', { entry_index: index });
     }
     const total_time = valid_time(raw.time, 'entry.time', index);
@@ -344,7 +344,16 @@ export async function analyze_har_file(file_path, options = {}) {
     if (!opened.isFile() || opened.size !== before.size || String(opened.ino) !== String(before.ino) || String(opened.dev) !== String(before.dev)) {
       fail('ORIX_HAR_FILE_REPLACED', 'HAR file identity changed between metadata lookup and open');
     }
-    const input = await handle.readFile();
+    if (!Number.isSafeInteger(opened.size) || opened.size < 1 || opened.size > max_bytes) {
+      fail('ORIX_HAR_FILE_TOO_LARGE', 'Opened HAR file exceeds the configured byte ceiling', { size_bytes: opened.size, max_bytes });
+    }
+    const input = Buffer.alloc(opened.size);
+    let offset = 0;
+    while (offset < input.length) {
+      const { bytesRead } = await handle.read(input, offset, input.length - offset, offset);
+      if (bytesRead === 0) fail('ORIX_HAR_FILE_CHANGED', 'HAR file ended during the bounded read', { bytes_read: offset, expected_bytes: opened.size });
+      offset += bytesRead;
+    }
     const after = await handle.stat();
     const stable = opened.size === after.size && opened.mtimeMs === after.mtimeMs && opened.ctimeMs === after.ctimeMs;
     const report = parse_har(input, options);
