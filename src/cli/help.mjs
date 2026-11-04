@@ -65,6 +65,7 @@ export const HELP_TEXT = [
   '  --max-file-mib <n>   Maximum full file hashed in MiB.',
   '  --concurrency <n>    Concurrent artifact inspections.',
   '  --executable <path>  Absolute path to an optional external provider executable.',
+  '  --executable-arg <arg>  Repeatable literal argument prepended to the executable argv (maximum 16).',
   '  --timeout-ms <n>     Maximum external provider runtime in milliseconds.',
   '  --max-output-kib <n> Maximum provider stdout/stderr bytes captured per process, in KiB.',
   '  --max-imports <n>    Maximum imported symbols retained in a Rizin report.',
