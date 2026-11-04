@@ -2,7 +2,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile, symlink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parse_har, analyze_har_file, render_har_markdown } from '../src/network/har.mjs';
 
@@ -148,7 +147,7 @@ test('HAR Markdown renderer escapes hostile creator metadata', () => {
 });
 
 test('HAR file analyzer rejects symlinks and returns a hashed source receipt', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'orix-har-'));
+  const directory = await mkdtemp(path.join(process.cwd(), '.orix-har-'));
   const file = path.join(directory, 'capture.har');
   const link = path.join(directory, 'capture-link.har');
   try {
