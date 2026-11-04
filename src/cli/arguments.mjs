@@ -3,7 +3,7 @@
 import { OrixError } from '../core/errors.mjs';
 import { DEFAULT_LIMITS } from '../core/limits.mjs';
 
-const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-nodes','--max-edges','--max-hotspots','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports','--max-packages','--max-advisories','--max-network-mib']);
+const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-nodes','--max-edges','--max-hotspots','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports','--max-functions','--address','--max-instructions','--max-packages','--max-advisories','--max-network-mib']);
 const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--osv','--help','-h']);
 
 function positive_integer(value, option, minimum, maximum) {
@@ -52,6 +52,9 @@ export function parse_arguments(argv) {
       else if (token === '--timeout-ms') result.flags.timeout_ms = positive_integer(raw, token, 1, 60_000);
       else if (token === '--max-output-kib') result.flags.max_output_bytes = positive_integer(raw, token, 1, 8_192) * 1024;
       else if (token === '--max-imports') result.flags.max_imports = positive_integer(raw, token, 0, 1_000_000);
+      else if (token === '--max-functions') result.flags.max_functions = positive_integer(raw, token, 1, 100_000);
+      else if (token === '--address') result.flags.rizin_address = raw;
+      else if (token === '--max-instructions') result.flags.max_instructions = positive_integer(raw, token, 1, 1000);
       else if (token === '--max-packages') result.flags.max_osv_packages = positive_integer(raw, token, 1, 10_000);
       else if (token === '--max-advisories') result.flags.max_osv_advisories = positive_integer(raw, token, 1, 2_000);
       else if (token === '--max-network-mib') result.flags.max_osv_response_bytes = positive_integer(raw, token, 1, 128) * 1024 * 1024;
@@ -83,13 +86,18 @@ export function parse_arguments(argv) {
         if (!result.target) {
           throw new OrixError('ORIX_CLI_PROVIDER_INPUT', 'providers rizin imports requires an input file path', { recoverable: true });
         }
+      } else if (result.provider_action === 'functions') {
+        result.target = result.positionals.shift() ?? null;
+        if (!result.target) {
+          throw new OrixError('ORIX_CLI_PROVIDER_INPUT', 'providers rizin functions requires an input file path', { recoverable: true });
+        }
       } else if (result.provider_action === 'doctor') {
         result.target = null;
         if (result.positionals.length > 0) {
           throw new OrixError('ORIX_CLI_PROVIDER_ARGUMENTS', 'providers rizin doctor accepts no positional arguments', { recoverable: true });
         }
       } else {
-        throw new OrixError('ORIX_CLI_PROVIDER_ACTION', 'providers rizin requires the doctor or imports action', { recoverable: true });
+        throw new OrixError('ORIX_CLI_PROVIDER_ACTION', 'providers rizin requires the doctor, imports or functions action', { recoverable: true });
       }
     } else {
       throw new OrixError('ORIX_CLI_PROVIDER_UNKNOWN', 'Unknown provider: ' + result.provider_id, { recoverable: true });
