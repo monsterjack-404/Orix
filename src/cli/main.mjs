@@ -21,6 +21,7 @@ import { hash_buffer } from '../core/hash.mjs';
 import { render_cyclonedx } from '../reports/cyclonedx.mjs';
 import { RIZIN_PROVIDER_MANIFEST, analyze_rizin_imports, probe_rizin } from '../providers/rizin.mjs';
 import { render_rizin_imports_markdown } from '../reports/rizin.mjs';
+import { audit_project_dependencies, render_vulnerability_audit_markdown } from '../vulnerability/osv.mjs';
 async function write_or_print(content,output_path) {
   if(!output_path){process.stdout.write(content.endsWith('\n')?content:content+'\n');return;}
   const destination=path.resolve(output_path);
@@ -40,12 +41,13 @@ function validate_command_flags(command, flags) {
     formats: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
     providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes', 'max_imports'],
+    audit: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'osv_lookup', 'max_osv_packages', 'max_osv_advisories', 'timeout_ms'],
   }[command];
   if (!allowed) return;
   const unsupported = Object.keys(flags).filter(key => !allowed.includes(key));
   if (unsupported.length) throw new Error(command + ' does not support option(s): ' + unsupported.join(', '));
 }
-export async function main(argv=process.argv.slice(2)) {
+export async function main(argv=process.argv.slice(2), dependencies = {}) {
   const parsed=parse_arguments(argv);
   if(parsed.flags.help||parsed.command==='help'||!parsed.command){process.stdout.write(HELP_TEXT);return 0;}
   validate_command_flags(parsed.command, parsed.flags);
@@ -121,6 +123,27 @@ export async function main(argv=process.argv.slice(2)) {
     return 0;
   }
   if(parsed.command==='formats'){if(parsed.target)throw new Error('The formats command does not accept a target');await write_or_print(render_json({schema_version:'orix.formats.v1',formats:list_format_capabilities()}),parsed.flags.out);return 0;}
+  if(parsed.command==='audit'){
+    if(!parsed.target)throw new Error('audit requires a project directory');
+    if(!parsed.flags.osv_lookup)throw new Error('Dependency audit is network-enabled and opt-in; pass --osv to query OSV.dev. No network request was made.');
+    if(parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('audit output supports JSON or Markdown only');
+    const project=await scan_project(parsed.target,{
+      max_files:parsed.flags.max_scan_files,
+      max_entries:parsed.flags.max_scan_entries,
+      max_depth:parsed.flags.max_scan_depth,
+    });
+    const report=await audit_project_dependencies(project,{
+      fetch_impl:dependencies.fetch_impl,
+      timeout_ms:parsed.flags.timeout_ms,
+      max_packages:parsed.flags.max_osv_packages,
+      max_advisories:parsed.flags.max_osv_advisories,
+    });
+    const output=parsed.flags.format==='json'
+      ? render_json(report)
+      : render_vulnerability_audit_markdown(report);
+    await write_or_print(output,parsed.flags.out);
+    return 0;
+  }
   if(parsed.command==='architecture'){
     if(!parsed.target)throw new Error('architecture requires a target directory');
     if(parsed.flags.format&&!['json','markdown','mermaid'].includes(parsed.flags.format))throw new Error('architecture output supports JSON, Markdown or Mermaid');
