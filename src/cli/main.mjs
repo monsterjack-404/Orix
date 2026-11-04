@@ -41,7 +41,7 @@ function validate_command_flags(command, flags) {
     formats: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
     providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes', 'max_imports'],
-    audit: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'osv_lookup', 'max_osv_packages', 'max_osv_advisories', 'timeout_ms'],
+    audit: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'osv_lookup', 'max_osv_packages', 'max_osv_advisories', 'max_osv_response_bytes', 'timeout_ms'],
   }[command];
   if (!allowed) return;
   const unsupported = Object.keys(flags).filter(key => !allowed.includes(key));
@@ -137,6 +137,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
       timeout_ms:parsed.flags.timeout_ms,
       max_packages:parsed.flags.max_osv_packages,
       max_advisories:parsed.flags.max_osv_advisories,
+      max_total_response_bytes:parsed.flags.max_osv_response_bytes,
     });
     const output=parsed.flags.format==='json'
       ? render_json(report)
