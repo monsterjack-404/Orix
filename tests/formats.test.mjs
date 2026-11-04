@@ -6,6 +6,7 @@ import { parse_pe } from '../src/formats/pe.mjs';
 import { parse_elf } from '../src/formats/elf.mjs';
 import { parse_macho, parse_macho_fat } from '../src/formats/macho.mjs';
 import { parse_wasm } from '../src/formats/wasm.mjs';
+import { parse_dex } from '../src/formats/dex.mjs';
 import { analyze_known_format } from '../src/formats/index.mjs';
 import { create_elf_fixture, create_pe_fixture, create_wasm_fixture } from './helpers.mjs';
 
@@ -1136,4 +1137,40 @@ test('ZIP parser rejects invalid direct entry limits', async () => {
   for (const max_entries of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1_000_001]) {
     assert.throws(() => parse_zip(fixture, { max_entries }), /max_entries must be an integer/);
   }
+});
+
+
+function create_dex_fixture() {
+  const buffer = Buffer.alloc(140);
+  buffer.write('dex\\n035\\0', 0, 'ascii');
+  buffer.writeUInt32LE(buffer.length, 32); buffer.writeUInt32LE(112, 36); buffer.writeUInt32LE(0x12345678, 40);
+  buffer.writeUInt32LE(112, 52); buffer.writeUInt32LE(28, 104); buffer.writeUInt32LE(112, 108);
+  buffer.writeUInt32LE(2, 112); buffer.writeUInt16LE(0, 116); buffer.writeUInt32LE(1, 120); buffer.writeUInt32LE(0, 124);
+  buffer.writeUInt16LE(0x1000, 128); buffer.writeUInt32LE(1, 132); buffer.writeUInt32LE(112, 136);
+  return buffer;
+}
+
+test('DEX parser validates header and bounded map metadata', () => {
+  const parsed = parse_dex(create_dex_fixture());
+  assert.equal(parsed.format, 'DEX'); assert.equal(parsed.version, '035'); assert.equal(parsed.file_size, 140);
+  assert.equal(parsed.map_items.length, 2); assert.equal(parsed.map_items[1].name, 'map_list');
+  assert.equal(parsed.integrity.adler32_verified, false);
+});
+
+test('DEX parser is available through package exports and format dispatch', async () => {
+  const fixture = create_dex_fixture();
+  assert.equal(analyze_known_format(fixture).detection.format, 'DEX');
+  assert.equal(analyze_known_format(fixture).parser_status, 'parsed');
+  const exported = await import('@orix/cli/formats/dex'); assert.equal(exported.parse_dex, parse_dex);
+});
+
+test('DEX parser rejects malformed magic, endian, map and resource limits', () => {
+  const badMagic = create_dex_fixture(); badMagic[0] = 0;
+  assert.throws(() => parse_dex(badMagic), error => error.code === 'ORIX_DEX_BAD_MAGIC');
+  const badEndian = create_dex_fixture(); badEndian.writeUInt32LE(0x78563412, 40);
+  assert.throws(() => parse_dex(badEndian), error => error.code === 'ORIX_DEX_ENDIAN');
+  const badMap = create_dex_fixture(); badMap.writeUInt16LE(7, 128);
+  assert.throws(() => parse_dex(badMap), error => error.code.startsWith('ORIX_DEX_MAP_'));
+  assert.throws(() => parse_dex(create_dex_fixture(), { max_map_items: 1 }), error => error.code === 'ORIX_DEX_MAP_LIMIT');
+  assert.throws(() => parse_dex(create_dex_fixture(), { max_file_bytes: 112 }), error => error.code === 'ORIX_DEX_FILE_LIMIT');
 });
