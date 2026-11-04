@@ -44,7 +44,7 @@ function validate_command_flags(command, flags) {
     formats: ['format', 'out'],
     capabilities: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
-    providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes', 'max_imports', 'max_functions', 'rizin_address', 'max_instructions', 'rizin_decompile'],
+    providers: ['format', 'out', 'provider_executable', 'provider_executable_args', 'timeout_ms', 'max_output_bytes', 'max_imports', 'max_functions', 'rizin_address', 'max_instructions', 'rizin_decompile'],
     audit: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'osv_lookup', 'max_osv_packages', 'max_osv_advisories', 'max_osv_response_bytes', 'timeout_ms'],
     har: ['format', 'out', 'max_har_entries', 'max_har_hosts'],
   }[command];
@@ -90,6 +90,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
       }
       const report=await probe_rizin({
         executable:parsed.flags.provider_executable,
+        executable_args:parsed.flags.provider_executable_args,
         timeout_ms:parsed.flags.timeout_ms,
         max_output_bytes:parsed.flags.max_output_bytes,
       });
@@ -102,6 +103,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
       }
       const report=await analyze_rizin_functions({
         executable:parsed.flags.provider_executable,
+        executable_args:parsed.flags.provider_executable_args,
         input_path:parsed.target,
         timeout_ms:parsed.flags.timeout_ms,
         max_output_bytes:parsed.flags.max_output_bytes,
