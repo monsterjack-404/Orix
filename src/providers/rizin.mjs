@@ -18,7 +18,7 @@ export const RIZIN_PROVIDER_MANIFEST = Object.freeze({
   id: 'rizin.static',
   name: 'Rizin static binary analysis',
   version: RIZIN_ADAPTER_VERSION,
-  description: 'Read-only extraction of native binary imports, function metadata and bounded instruction disassembly through the Rizin CLI.',
+  description: 'Read-only extraction of native imports, function metadata, bounded disassembly and opt-in plugin-backed pseudocode through the Rizin CLI.',
   capabilities: Object.freeze(['binary.imports', 'binary.functions', 'binary.disassembly', 'binary.decompilation']),
   supported_platforms: Object.freeze(['linux', 'windows', 'macos']),
   input_formats: Object.freeze(['pe', 'elf', 'macho']),
