@@ -68,7 +68,17 @@ function png_chunk(type, data = Buffer.alloc(0)) {
   return output;
 }
 
-function make_dex_fixture() {\n  const buffer = Buffer.alloc(140);\n  buffer.write('dex\\n035\\0', 0, 'ascii');\n  buffer.writeUInt32LE(buffer.length, 32); buffer.writeUInt32LE(112, 36); buffer.writeUInt32LE(0x12345678, 40);\n  buffer.writeUInt32LE(112, 52); buffer.writeUInt32LE(28, 104); buffer.writeUInt32LE(112, 108);\n  buffer.writeUInt32LE(2, 112); buffer.writeUInt16LE(0, 116); buffer.writeUInt32LE(1, 120); buffer.writeUInt32LE(0, 124);\n  buffer.writeUInt16LE(0x1000, 128); buffer.writeUInt32LE(1, 132); buffer.writeUInt32LE(112, 136);\n  return buffer;\n}\n\nfunction make_png_fixture() {
+function make_dex_fixture() {
+  const buffer = Buffer.alloc(140);
+  buffer.write('dex\\n035\\0', 0, 'ascii');
+  buffer.writeUInt32LE(buffer.length, 32); buffer.writeUInt32LE(112, 36); buffer.writeUInt32LE(0x12345678, 40);
+  buffer.writeUInt32LE(112, 52); buffer.writeUInt32LE(28, 104); buffer.writeUInt32LE(112, 108);
+  buffer.writeUInt32LE(2, 112); buffer.writeUInt16LE(0, 116); buffer.writeUInt32LE(1, 120); buffer.writeUInt32LE(0, 124);
+  buffer.writeUInt16LE(0x1000, 128); buffer.writeUInt32LE(1, 132); buffer.writeUInt32LE(112, 136);
+  return buffer;
+}
+
+function make_png_fixture() {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(1, 0);
   ihdr.writeUInt32BE(1, 4);
@@ -100,7 +110,8 @@ test('binary parsers reject malformed and mutated inputs through typed errors', 
     ['WebAssembly', parse_wasm, create_wasm_fixture()],
     ['ZIP', parse_zip, create_zip_fixture('fuzz.txt', 'bounded fixture')],
     ['PDF', parse_pdf, create_pdf_fixture()],
-    ['PNG', parse_png, make_png_fixture()],\n    ['DEX', parse_dex, make_dex_fixture()],
+    ['PNG', parse_png, make_png_fixture()],
+    ['DEX', parse_dex, make_dex_fixture()],
   ];
   const random = create_random(0x4f524958);
   for (const [name, parser, fixture] of parsers) {
