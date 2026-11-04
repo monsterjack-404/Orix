@@ -203,22 +203,33 @@ test('MCP stdio transport rate-limits tool calls per connection while leaving pr
   const running = start_mcp_server({
     input, output, error_output: errors, max_tool_calls_per_minute: 1,
   });
-  const request = id => JSON.stringify({
+  const send = value => input.write(JSON.stringify(value) + '\n');
+  send({
+    jsonrpc: '2.0', id: 80, method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'rate-limit-client', version: '1.0.0' },
+    },
+  });
+  send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  const request = id => ({
     jsonrpc: '2.0', id, method: 'tools/call',
     params: { name: 'orix.formats', arguments: {} },
-  }) + '\n';
-  input.write(request(81));
-  input.write(request(82));
-  input.write(JSON.stringify({ jsonrpc: '2.0', id: 83, method: 'ping' }) + '\n');
+  });
+  send(request(81));
+  send(request(82));
+  send({ jsonrpc: '2.0', id: 83, method: 'ping' });
   input.end();
   await running;
 
   const messages = captured.trim().split('\n').map(line => JSON.parse(line));
-  assert.equal(messages.length, 3);
-  assert.equal(messages[0].result.isError, false);
-  assert.equal(messages[1].result.isError, true);
-  assert.equal(JSON.parse(messages[1].result.content[0].text).code, 'ORIX_MCP_RATE_LIMITED');
-  assert.deepEqual(messages[2].result, {});
+  assert.equal(messages.length, 4);
+  assert.equal(messages[0].result.protocolVersion, '2025-03-26');
+  assert.equal(messages[1].result.isError, false);
+  assert.equal(messages[2].result.isError, true);
+  assert.equal(JSON.parse(messages[2].result.content[0].text).code, 'ORIX_MCP_RATE_LIMITED');
+  assert.deepEqual(messages[3].result, {});
 });
 
 test('MCP stdio transport rejects invalid per-connection rate limits', async () => {
@@ -233,6 +244,68 @@ test('MCP stdio transport rejects invalid per-connection rate limits', async () 
   );
 });
 
+test('MCP stdio enforces initialize, initialized notification, and active-session lifecycle', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const errors = new PassThrough();
+  let captured = '';
+  output.setEncoding('utf8');
+  output.on('data', chunk => { captured += chunk; });
+  const running = start_mcp_server({ input, output, error_output: errors });
+  const send = value => input.write(JSON.stringify(value) + '\n');
+
+  send({ jsonrpc: '2.0', id: 90, method: 'tools/list' });
+  send({ jsonrpc: '2.0', id: 91, method: 'ping' });
+  send({
+    jsonrpc: '2.0', id: 92, method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'lifecycle-client', version: '1.0.0' },
+    },
+  });
+  send({ jsonrpc: '2.0', id: 93, method: 'tools/list' });
+  send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  send({ jsonrpc: '2.0', id: 94, method: 'tools/list' });
+  send({
+    jsonrpc: '2.0', id: 95, method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'duplicate-client', version: '1.0.0' },
+    },
+  });
+  input.end();
+  await running;
+
+  const messages = captured.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(messages.length, 6);
+  assert.equal(messages[0].error.code, -32002);
+  assert.deepEqual(messages[1].result, {});
+  assert.equal(messages[2].result.protocolVersion, '2025-03-26');
+  assert.equal(messages[3].error.code, -32002);
+  assert.equal(messages[4].result.tools.length, ORIX_MCP_TOOLS.length);
+  assert.equal(messages[5].error.code, -32600);
+});
+
+test('MCP stdio keeps the session uninitialized when initialize validation fails', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const errors = new PassThrough();
+  let captured = '';
+  output.setEncoding('utf8');
+  output.on('data', chunk => { captured += chunk; });
+  const running = start_mcp_server({ input, output, error_output: errors });
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 96, method: 'initialize', params: {} }) + '\n');
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 97, method: 'tools/list' }) + '\n');
+  input.end();
+  await running;
+
+  const messages = captured.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(messages[0].error.code, -32602);
+  assert.equal(messages[1].error.code, -32002);
+});
+
 test('MCP stdio transport reads and writes newline-delimited JSON-RPC messages', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -242,13 +315,23 @@ test('MCP stdio transport reads and writes newline-delimited JSON-RPC messages',
   output.on('data', chunk => { captured += chunk; });
   const running = start_mcp_server({ input, output, error_output: errors });
   input.write(JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'ping' }) + '\n');
-  input.write(JSON.stringify({ jsonrpc: '2.0', id: 11, method: 'tools/list' }) + '\n');
+  input.write(JSON.stringify({
+    jsonrpc: '2.0', id: 11, method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'transport-test-client', version: '1.0.0' },
+    },
+  }) + '\n');
+  input.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 12, method: 'tools/list' }) + '\n');
   input.end();
   await running;
   const messages = captured.trim().split('\n').map(line => JSON.parse(line));
-  assert.equal(messages.length, 2);
+  assert.equal(messages.length, 3);
   assert.deepEqual(messages[0].result, {});
-  assert.equal(messages[1].result.tools.length, ORIX_MCP_TOOLS.length);
+  assert.equal(messages[1].result.protocolVersion, '2025-03-26');
+  assert.equal(messages[2].result.tools.length, ORIX_MCP_TOOLS.length);
 });
 
 

@@ -238,9 +238,13 @@ This backlog turns the product charter into reviewable engineering work. It is i
 - Acceptance: signed builds, update integrity and platform security review.
 
 ### G7.3 — MCP hardening
-- Expand schemas and tool capabilities only as stable core APIs exist.
-- Add per-tool policy, request size/rate limits, structured errors and audit receipts.
-- Remote transport requires authentication, TLS, origin protection and multi-user isolation.
+- [x] Bound request frames, tool responses, JSON-RPC batches and per-connection tool-call rate.
+- [x] Validate request IDs, initialize parameters and tools/call argument envelopes.
+- [x] Negotiate the supported protocol version and align advertised capability families with implemented routes.
+- [x] Enforce initialize → initialized → operation lifecycle on each stdio connection.
+- [x] Add protocol, notification, batch, rate-limit and workspace-confinement regression tests.
+- [ ] Add per-tool authorization policy and append-only tool audit receipts.
+- [ ] Remote transport requires authentication, TLS, origin protection and multi-user isolation; no remote listener is currently exposed.
 - Acceptance: protocol conformance and confused-deputy tests.
 
 ### G7.4 — CI and automation
