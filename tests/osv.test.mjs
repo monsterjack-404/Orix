@@ -174,6 +174,29 @@ test('OSV reports pagination limits and keeps incomplete status explicit', async
   assert.ok(report.warnings.some(item => item.code === 'ORIX_OSV_PAGINATION_LIMIT'));
 });
 
+test('OSV aggregate response byte budget is enforced across query and advisory detail requests', async () => {
+  let detail_requested = false;
+  const report = await audit_project_dependencies(project([dep('alpha', '1.0.0')]), {
+    max_total_response_bytes: 1_024,
+    fetch_impl: async url => {
+      if (String(url).endsWith('/querybatch')) {
+        return json_response({ results: [{ vulns: [{ id: 'OSV-LARGE-DETAIL' }] }] });
+      }
+      detail_requested = true;
+      return json_response({
+        id: 'OSV-LARGE-DETAIL',
+        summary: 'large'.repeat(500),
+        references: [],
+      });
+    },
+  });
+  assert.equal(detail_requested, true);
+  assert.equal(report.source.response_bytes_budget, 1_024);
+  assert.ok(report.source.response_bytes_retrieved <= report.source.response_bytes_budget);
+  assert.equal(report.summary.complete, false);
+  assert.ok(report.warnings.some(item => item.code === 'ORIX_OSV_ADVISORY_DETAIL_FAILED'));
+});
+
 test('OSV handles empty and unsupported-only dependency inventories without querying', async () => {
   let calls = 0;
   const fetch_impl = async () => { calls += 1; throw new Error('should not be called'); };
