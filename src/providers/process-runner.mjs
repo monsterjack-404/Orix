@@ -34,7 +34,7 @@ function plain_options(value) {
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const allowed = new Set([
     'manifest', 'executable', 'args', 'cwd', 'env',
-    'allowed_executables', 'allowed_working_directories',
+    'allowed_executables', 'allowed_working_directories', 'executable_args',
     'timeout_ms', 'max_output_bytes', 'kill_grace_ms', 'signal',
   ]);
   for (const key of Reflect.ownKeys(value)) {
@@ -317,7 +317,13 @@ export async function run_static_provider(options) {
     executable_value,
     descriptors.allowed_executables?.value ?? [executable_value],
   );
+  const executable_args = validate_arguments(descriptors.executable_args?.value ?? []);
   const args = validate_arguments(descriptors.args?.value ?? []);
+  if (executable_args.length + args.length > MAX_ARGUMENTS ||
+      executable_args.reduce((sum, item) => sum + Buffer.byteLength(item, 'utf8'), 0) +
+      args.reduce((sum, item) => sum + Buffer.byteLength(item, 'utf8'), 0) > MAX_TOTAL_ARGUMENT_BYTES) {
+    throw new TypeError('executable_args and args exceed the combined argument limits');
+  }
   const cwd = await validate_working_directory(
     cwd_value,
     descriptors.allowed_working_directories?.value ?? [cwd_value],
@@ -412,7 +418,7 @@ export async function run_static_provider(options) {
     }
 
     try {
-      child = spawn(executable, args, {
+      child = spawn(executable, [...executable_args, ...args], {
         cwd,
         env: launch_env,
         shell: false,
@@ -441,7 +447,7 @@ export async function run_static_provider(options) {
         schema_version: 'orix.provider-execution.v1',
         provider: { id: manifest.id, version: manifest.version },
         executable,
-        args_count: args.length,
+        args_count: executable_args.length + args.length,
         started_at,
         completed_at,
         duration_ms: Math.max(0, Date.now() - started_clock),
