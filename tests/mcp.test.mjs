@@ -10,10 +10,39 @@ import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool, start_mcp_server } 
 import { append_ledger } from '../src/evidence/ledger.mjs';
 
 test('MCP initialize negotiates protocol and advertises tool capability', async () => {
-  const response = await handle_mcp_message({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26' } });
+  const response = await handle_mcp_message({
+    jsonrpc: '2.0', id: 1, method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'orix-test-client', version: '1.0.0' },
+    },
+  });
   assert.equal(response.result.protocolVersion, '2025-03-26');
   assert.ok(response.result.capabilities.tools);
   assert.equal(response.result.serverInfo.name, 'orix');
+});
+
+test('MCP initialization negotiates the server-supported version when the client requests an unknown version', async () => {
+  const response = await handle_mcp_message({
+    jsonrpc: '2.0',
+    id: 'init-2',
+    method: 'initialize',
+    params: {
+      protocolVersion: '2099-01-01',
+      capabilities: {},
+      clientInfo: { name: 'future-client', version: '9.9.9' },
+    },
+  });
+  assert.equal(response.result.protocolVersion, '2025-03-26');
+});
+
+test('MCP rejects incomplete initialize parameters with JSON-RPC invalid-params', async () => {
+  const response = await handle_mcp_message({
+    jsonrpc: '2.0', id: 3, method: 'initialize',
+    params: { protocolVersion: '2025-03-26' },
+  });
+  assert.equal(response.error.code, -32602);
 });
 
 test('MCP tools/list exposes the complete local ORIX tool surface', async () => {
@@ -54,6 +83,37 @@ test('MCP maps tool errors to isError and unknown methods to JSON-RPC errors', a
   const unknown = await handle_mcp_message({ jsonrpc: '2.0', id: 5, method: 'unknown/method' });
   assert.equal(unknown.error.code, -32601);
   assert.equal(await handle_mcp_message({ jsonrpc: '2.0', method: 'notifications/initialized' }), null);
+});
+
+test('MCP validates JSON-RPC request IDs and echoes valid string and numeric IDs', async () => {
+  for (const id of ['request-abc', 42]) {
+    const response = await handle_mcp_message({ jsonrpc: '2.0', id, method: 'ping' });
+    assert.equal(response.id, id);
+    assert.deepEqual(response.result, {});
+  }
+  for (const id of [null, {}, [], true]) {
+    const response = await handle_mcp_message({ jsonrpc: '2.0', id, method: 'ping' });
+    assert.equal(response.error.code, -32600);
+    assert.equal(response.id, null);
+  }
+});
+
+test('MCP rejects malformed request params before invoking a tool', async () => {
+  const invalid_container = await handle_mcp_message({
+    jsonrpc: '2.0', id: 61, method: 'tools/call', params: [],
+  });
+  assert.equal(invalid_container.error.code, -32602);
+
+  const missing_name = await handle_mcp_message({
+    jsonrpc: '2.0', id: 62, method: 'tools/call', params: { arguments: {} },
+  });
+  assert.equal(missing_name.error.code, -32602);
+
+  const invalid_arguments = await handle_mcp_message({
+    jsonrpc: '2.0', id: 63, method: 'tools/call',
+    params: { name: 'orix.formats', arguments: [] },
+  });
+  assert.equal(invalid_arguments.error.code, -32602);
 });
 
 test('MCP direct tool invocation validates argument objects', async () => {
