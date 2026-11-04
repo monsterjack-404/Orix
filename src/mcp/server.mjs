@@ -293,6 +293,45 @@ export async function call_orix_tool(name, args = {}, options = {}) {
 }
 
 export async function handle_mcp_message(message, options = {}) {
+  const session = options.session;
+  if (!session) return handle_mcp_message_impl(message, options);
+
+  // Pings are available during setup. Other requests require the full
+  // initialize -> notifications/initialized handshake on this connection.
+  if (Array.isArray(message)) return handle_mcp_message_impl(message, options);
+  if (!is_json_object(message) || message.jsonrpc !== '2.0') {
+    return handle_mcp_message_impl(message, options);
+  }
+  const has_id = Object.hasOwn(message, 'id');
+  if (has_id && !is_request_id(message.id)) return handle_mcp_message_impl(message, options);
+  if (typeof message.method !== 'string' || message.method.length === 0) {
+    return handle_mcp_message_impl(message, options);
+  }
+  if (message.method === 'ping') return handle_mcp_message_impl(message, options);
+
+  if (message.method === 'initialize') {
+    if (!has_id) return null;
+    if (session.phase !== 'new') {
+      return jsonrpc_error(message.id, -32600, 'initialize may be called only once per MCP connection');
+    }
+    const response = await handle_mcp_message_impl(message, options);
+    if (response && !response.error) session.phase = 'awaiting_initialized';
+    return response;
+  }
+
+  if (message.method === 'notifications/initialized' && !has_id) {
+    if (session.phase === 'awaiting_initialized') session.phase = 'initialized';
+    return null;
+  }
+
+  if (!has_id) return null;
+  if (session.phase !== 'initialized') {
+    return jsonrpc_error(message.id, -32002, 'Server not initialized; complete initialize and notifications/initialized first');
+  }
+  return handle_mcp_message_impl(message, options);
+}
+
+async function handle_mcp_message_impl(message, options = {}) {
   if (Array.isArray(message)) {
     if (message.length === 0) return jsonrpc_error(null, -32600, 'Empty JSON-RPC batch');
     if (message.length > MCP_MAX_BATCH_MESSAGES) {
@@ -432,6 +471,7 @@ export async function start_mcp_server({
   const options = {
     roots,
     environment,
+    session: { phase: 'new' },
     rate_limit: {
       window_started_at: Date.now(),
       window_ms: MCP_TOOL_RATE_LIMIT_WINDOW_MS,
