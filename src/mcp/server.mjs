@@ -55,7 +55,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   {
     name: 'orix.rizin_functions',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    description: 'Use an explicitly selected Rizin executable to statically enumerate functions and optionally disassemble a bounded instruction window. The target is never executed; Rizin must be installed separately.',
+    description: 'Use an explicitly selected Rizin executable to enumerate functions, disassemble a bounded instruction window and optionally request rz-ghidra pseudocode. The target is never executed; Rizin and its optional decompiler plugin must be installed separately.',
     inputSchema: {
       type: 'object',
       properties: {
