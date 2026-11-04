@@ -60,7 +60,7 @@ Run the project inventory first, then explicitly opt in to a public OSV.dev look
 ```bash
 node src/cli.mjs audit ./repository --osv
 node src/cli.mjs audit ./repository --osv --json --out ./vulnerabilities.json
-node src/cli.mjs audit ./repository --osv --max-packages 1000 --max-advisories 250 --timeout-ms 20000
+node src/cli.mjs audit ./repository --osv --max-packages 1000 --max-advisories 250 --max-network-mib 32 --timeout-ms 20000
 ```
 
 The audit queries only exact package versions already present in supported lockfiles. It does not guess versions from manifest ranges. Unsupported ecosystems, unresolved versions, package ceilings, pagination ceilings, API errors and unavailable advisory details are recorded in the versioned `orix.vulnerability-audit.v1` report. Inspect `summary.complete`, per-package status and warnings; an incomplete audit is not a clean bill of health.
