@@ -68,7 +68,7 @@ test('audit command scans lockfile versions, calls OSV only with opt-in, and wri
 
     await main([
       'audit', directory, '--osv', '--json', '--out', output,
-      '--max-packages', '50', '--max-advisories', '20',
+      '--max-packages', '50', '--max-advisories', '20', '--max-network-mib', '1',
     ], { fetch_impl });
 
     const report = JSON.parse(await readFile(output, 'utf8'));
@@ -76,6 +76,8 @@ test('audit command scans lockfile versions, calls OSV only with opt-in, and wri
     assert.equal(report.summary.status, 'complete');
     assert.equal(report.summary.queried_packages, 1);
     assert.equal(report.summary.vulnerabilities, 1);
+    assert.equal(report.source.response_bytes_budget, 1024 * 1024);
+    assert.ok(report.source.response_bytes_retrieved <= report.source.response_bytes_budget);
     assert.equal(report.vulnerabilities[0].id, 'OSV-CLI-1');
     assert.equal(calls.length, 2);
   } finally {
