@@ -31,7 +31,11 @@ The import directory is decoded into DLL names and name/ordinal thunks. Delay im
 
 Certificate framing is not Authenticode verification. The parser does not calculate the Authenticode digest, validate CMS signatures, construct certificate chains or apply a trust policy.
 
-### DEX\n\nThe DEX parser validates the fixed 112-byte header, supported version, byte order, declared file size, link and map offsets, and bounded ranges for the six fixed identifier/definition tables. It reports checksum and SHA-1 fields without verifying them. It does not decode strings, types, methods, class definitions, code items or instructions; no bytecode is executed. DEX 041 container layout and optimized/OAT formats are not supported.\n\n### ELF
+### DEX
+
+The DEX parser validates the fixed 112-byte header, supported version, byte order, declared file size, link and map offsets, and bounded ranges for the six fixed identifier/definition tables. It reports checksum and SHA-1 fields without verifying them. It does not decode strings, types, methods, class definitions, code items or instructions; no bytecode is executed. DEX 041 container layout and optimized/OAT formats are not supported.
+
+### ELF
 
 The parser validates class and byte order before selecting ELF32 or ELF64 layouts. It decodes bounded program-header tables, segment permissions and ranges, PT_INTERP, PT_DYNAMIC tags, DT_NEEDED, DT_SONAME, DT_RPATH and DT_RUNPATH through valid file-backed PT_LOAD mappings. GNU build IDs are extracted from bounded PT_NOTE records.
 
