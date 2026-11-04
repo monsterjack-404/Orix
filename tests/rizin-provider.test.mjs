@@ -2,55 +2,32 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { analyze_rizin_imports, analyze_rizin_functions, probe_rizin, RIZIN_PROVIDER_MANIFEST } from '../src/providers/rizin.mjs';
+
+const RIZIN_STUB = new URL('./fixtures/rizin-stub.mjs', import.meta.url).pathname;
 
 async function with_fixture(callback) {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-test-'));
   try {
     const input_path = path.join(directory, 'native input with spaces.bin');
-    const executable = path.join(directory, 'rizin-stub');
+    const config_path = path.join(directory, 'rizin-stub-config.json');
     await writeFile(input_path, Buffer.from('fixture bytes'));
-    const script = [
-      '#!/bin/sh',
-      'if [ "$1" = "-v" ]; then',
-      '  printf "%s\\n" "rizin 0.8.2 0 @ test-build"',
-      '  exit 0',
-      'fi',
-      'if [ "$1" = "-N" ] && [ "$3" = "-A" ] && [ "$5" = "aflj" ]; then',
-      '  printf "%s" \'[{"offset":4198400,"name":"sym.main","size":40,"realsz":40,"bits":64,"type":"fcn","calltype":"amd64","nbbs":3,"edges":2,"nargs":1,"nlocals":2,"noreturn":false}]\'',
-      '  exit 0',
-      'fi',
-      'if [ "$1" = "-N" ] && [ "$3" = "-c" ]; then',
-      '  case "$4" in',
-      '    pdj*) printf "%s" \'[{"offset":4198400,"size":5,"bytes":"554889e5","opcode":"push rbp","disasm":"push rbp","type":"push"},{"offset":4198401,"size":3,"bytes":"4889e5","opcode":"mov rbp, rsp","disasm":"mov rbp, rsp","type":"mov"},{"offset":4198404,"size":1,"bytes":"c3","opcode":"ret","disasm":"ret","type":"ret"}]\'; exit 0 ;;',
-      '    pdg*) printf "%s\\n" \'int main(void) { return 0; }\'; exit 0 ;;',
-      '  esac',
-      'fi',
-      'if [ "$1" = "-N" ] && [ "$4" = "iij" ]; then',
-      '  printf "%s" \'[{"name":"puts","libname":"libc.so.6","ordinal":1,"bind":"GLOBAL","type":"FUNC","plt":4096},{"name":"custom","library":"libdemo.so","ordinal":2,"bind":"WEAK","type":"FUNC","plt":"0x2000"}]\'',
-      '  exit 0',
-      'fi',
-      'exit 64',
-      '',
-    ].join('\n');
-    await writeFile(executable, script, { mode: 0o700 });
-    await chmod(executable, 0o700);
-    await callback({ directory, input_path, executable });
+    await writeFile(config_path, '{}');
+    const executable = process.execPath;
+    const executable_args = [RIZIN_STUB, config_path];
+    const write_config = async config => writeFile(config_path, JSON.stringify(config));
+    await callback({ directory, input_path, executable, executable_args, write_config });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 }
 
-test('Rizin adapter probes version and normalizes static import metadata through argv', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the process adapter contract test');
-    return;
-  }
-  await with_fixture(async ({ input_path, executable }) => {
-    const report = await analyze_rizin_imports({ input_path, executable });
+test('Rizin adapter probes version and normalizes static import metadata through argv', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    const report = await analyze_rizin_imports({ input_path, executable, executable_args });
     assert.equal(report.schema_version, 'orix.rizin-imports.v1');
     assert.equal(report.provider.id, 'rizin.static');
     assert.equal(report.provider.engine_version, '0.8.2');
@@ -72,13 +49,9 @@ test('Rizin adapter probes version and normalizes static import metadata through
 });
 
 test('Rizin function adapter returns a bounded function inventory and address-scoped disassembly', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the process adapter contract test');
-    return;
-  }
   await with_fixture(async ({ input_path, executable }) => {
     const report = await analyze_rizin_functions({
-      input_path, executable, address: '0x401000', max_instructions: 3, decompile: true,
+      input_path, executable, executable_args, address: '0x401000', max_instructions: 3, decompile: true,
     });
     assert.equal(report.schema_version, 'orix.rizin-functions.v1');
     assert.equal(report.provider.engine_version, '0.8.2');
@@ -112,10 +85,6 @@ test('Rizin function adapter returns a bounded function inventory and address-sc
 });
 
 test('Rizin function adapter refuses disassembly addresses that are not returned function entries', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the process adapter contract test');
-    return;
-  }
   await with_fixture(async ({ input_path, executable }) => {
     await assert.rejects(
       analyze_rizin_functions({ input_path, executable, address: '0x401001' }),
@@ -150,10 +119,6 @@ test('Rizin adapter rejects a missing or non-absolute input before launching a p
 });
 
 test('Rizin adapter validates import limits before launching the external process', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the process adapter contract test');
-    return;
-  }
   await with_fixture(async ({ input_path, executable }) => {
     await assert.rejects(
       analyze_rizin_imports({ input_path, executable, max_imports: -1 }),
@@ -163,32 +128,16 @@ test('Rizin adapter validates import limits before launching the external proces
 });
 
 test('Rizin adapter reports malformed import JSON without accepting a partial result', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the process adapter contract test');
-    return;
-  }
   await with_fixture(async ({ input_path, executable }) => {
-    const { writeFile: write } = await import('node:fs/promises');
-    const script = [
-      '#!/bin/sh',
-      'if [ "$1" = "-v" ]; then printf "%s\\n" "rizin 0.8.2"; exit 0; fi',
-      'printf "%s" "not-json"',
-      '',
-    ].join('\n');
-    await write(executable, script, { mode: 0o700 });
-    await chmod(executable, 0o700);
+    await write_config({ import_output: 'not-json' });
     await assert.rejects(
-      analyze_rizin_imports({ input_path, executable }),
+      analyze_rizin_imports({ input_path, executable, executable_args }),
       error => error.code === 'ORIX_RIZIN_IMPORT_JSON_INVALID',
     );
   });
 });
 
 test('Rizin adapter rejects input files exceeding provider byte ceiling', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the process adapter contract test');
-    return;
-  }
   await with_fixture(async ({ input_path, executable }) => {
     const manifest = {
       contract_version: 'orix.provider.v1',
@@ -210,7 +159,7 @@ test('Rizin adapter rejects input files exceeding provider byte ceiling', async 
       license: { spdx_id: 'LGPL-3.0-only', redistribution: 'external-install' },
     };
     await assert.rejects(
-      analyze_rizin_imports({ input_path, executable, manifest }),
+      analyze_rizin_imports({ input_path, executable, executable_args, manifest }),
       error => error.code === 'ORIX_RIZIN_INPUT_TOO_LARGE',
     );
   });
@@ -218,10 +167,6 @@ test('Rizin adapter rejects input files exceeding provider byte ceiling', async 
 
 
 test('Rizin adapter enforces the import result ceiling without returning partial imports', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the process adapter contract test');
-    return;
-  }
   await with_fixture(async ({ input_path, executable }) => {
     await assert.rejects(
       analyze_rizin_imports({ input_path, executable, max_imports: 1 }),
@@ -231,48 +176,19 @@ test('Rizin adapter enforces the import result ceiling without returning partial
 });
 
 test('Rizin adapter applies one total timeout across version and import probes', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX process-group termination is tested on Unix runners');
-    return;
-  }
   await with_fixture(async ({ input_path, executable }) => {
-    const script = [
-      '#!/bin/sh',
-      'if [ "$1" = "-v" ]; then printf "%s\\n" "rizin 0.8.2"; exit 0; fi',
-      'if [ "$1" = "-N" ] && [ "$4" = "iij" ]; then /bin/sleep 5; exit 0; fi',
-      'exit 64',
-      '',
-    ].join('\n');
-    await writeFile(executable, script, { mode: 0o700 });
-    await chmod(executable, 0o700);
+    await write_config({ delay_import_ms: 5000 });
     await assert.rejects(
-      analyze_rizin_imports({ input_path, executable, timeout_ms: 500 }),
+      analyze_rizin_imports({ input_path, executable, executable_args, timeout_ms: 500 }),
       error => error.code === 'ORIX_RIZIN_TIMEOUT',
     );
   });
 });
 
 test('Rizin adapter isolates the original artifact and discards results if a provider mutates its snapshot', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the process adapter contract test');
-    return;
-  }
   await with_fixture(async ({ input_path, executable }) => {
     const original = await import('node:fs/promises').then(fs => fs.readFile(input_path));
-    const script = [
-      '#!/bin/sh',
-      'if [ "$1" = "-v" ]; then printf "%s\\n" "rizin 0.8.2"; exit 0; fi',
-      'if [ "$1" = "-N" ] && [ "$4" = "iij" ]; then',
-      '  /bin/chmod u+w "$5"',
-      '  printf "%s" "provider-mutated-snapshot" > "$5"',
-      '  printf "%s" "[]"',
-      '  exit 0',
-      'fi',
-      'exit 64',
-      '',
-    ].join('\n');
-    await writeFile(executable, script, { mode: 0o700 });
-    await chmod(executable, 0o700);
+    await write_config({ mutate_snapshot: true });
     await assert.rejects(
       analyze_rizin_imports({ input_path, executable }),
       error => error.code === 'ORIX_RIZIN_SNAPSHOT_CHANGED',
