@@ -60,7 +60,7 @@ test('reports result truncation only when additional imports or symbols exceed t
   const exact = analyze_javascript_source([
     "import first from './first.js';",
     "export function run() {}",
-  ].join('\\n'), { max_imports: 1, max_symbols: 1 });
+  ].join('\n'), { max_imports: 1, max_symbols: 1 });
   assert.equal(exact.coverage.imports_truncated, false);
   assert.equal(exact.coverage.symbols_truncated, false);
 
@@ -69,7 +69,7 @@ test('reports result truncation only when additional imports or symbols exceed t
     "import second from './second.js';",
     "export function run() {}",
     "export class Worker {}",
-  ].join('\\n'), { max_imports: 1, max_symbols: 1 });
+  ].join('\n'), { max_imports: 1, max_symbols: 1 });
   assert.equal(over.coverage.imports_truncated, true);
   assert.equal(over.coverage.symbols_truncated, true);
 });
