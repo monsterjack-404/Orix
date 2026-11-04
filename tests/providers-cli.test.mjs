@@ -19,7 +19,11 @@ async function with_fixture(callback) {
     const config_path = path.join(directory, 'rizin-stub-config.json');
     const input = path.join(directory, 'sample with spaces.elf');
     await writeFile(input, Buffer.from('ELF fixture'));
-    await writeFile(config_path, '{}');
+    await writeFile(config_path, JSON.stringify({
+      import_output: JSON.stringify([
+        { name: 'open', libname: 'libc.so.6', ordinal: 4, bind: 'GLOBAL', type: 'FUNC', plt: 4096 },
+      ]),
+    }));
     const executable = process.execPath;
     const executable_args = [RIZIN_STUB, config_path];
     await callback({ directory, executable, executable_args, input });
@@ -42,6 +46,8 @@ test('provider CLI parser accepts list and Rizin import operations', () => {
   const invocation = parse_arguments([
     'providers', 'rizin', 'imports', './sample.elf',
     '--executable', '/opt/rizin/bin/rizin',
+    '--executable-arg', '/tmp/provider-wrapper.mjs',
+    '--executable-arg', '--fixture-mode',
     '--timeout-ms', '12000',
     '--max-output-kib', '2048',
     '--max-imports', '25000',
@@ -50,6 +56,7 @@ test('provider CLI parser accepts list and Rizin import operations', () => {
   assert.equal(invocation.provider_action, 'imports');
   assert.equal(invocation.target, './sample.elf');
   assert.equal(invocation.flags.provider_executable, '/opt/rizin/bin/rizin');
+  assert.deepEqual(invocation.flags.provider_executable_args, ['/tmp/provider-wrapper.mjs', '--fixture-mode']);
   assert.equal(invocation.flags.timeout_ms, 12000);
   assert.equal(invocation.flags.max_output_bytes, 2 * 1024 * 1024);
   assert.equal(invocation.flags.max_imports, 25000);
@@ -220,7 +227,7 @@ test('provider help documents the opt-in provider commands and limits', () => {
 });
 
 test('providers rizin doctor performs a real explicit executable version probe', async () => {
-  await with_fixture(async ({ directory, executable }) => {
+  await with_fixture(async ({ directory, executable, executable_args }) => {
     const output = path.join(directory, 'rizin-doctor.json');
     const exit_code = await main([
       'providers', 'rizin', 'doctor',
