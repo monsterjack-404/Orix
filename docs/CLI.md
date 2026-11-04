@@ -55,10 +55,10 @@ A scan report stores the aggregate summary separately from each artifact result.
 ```bash
 node src/cli.mjs har ./capture.har
 node src/cli.mjs har ./capture.har --json
-node src/cli.mjs har ./capture.har --max-har-entries 5000 --format markdown
+node src/cli.mjs har ./capture.har --max-har-entries 5000 --max-har-hosts 1000 --format markdown
 ```
 
-The HAR command accepts HAR 1.2 JSON and performs offline metadata analysis. It reports request/response metadata, hosts, status codes, timings, SHA-256 provenance and evidence-linked security review leads. The default ceiling is 20,000 entries (maximum 100,000) and the input-file ceiling is 32 MiB. Request/response bodies, cookie values, query values and arbitrary header values are never included in the report. URL paths and server IP addresses may still be sensitive. No requests are sent and no target code is executed.
+The HAR command accepts HAR 1.2 JSON and performs offline metadata analysis. It reports request/response metadata, hosts, status codes, timings, SHA-256 provenance and evidence-linked security review leads. The default ceiling is 20,000 entries (maximum 100,000), the default host inventory ceiling is 5,000 distinct hosts (maximum 10,000), and the input-file ceiling is 32 MiB. The report marks entry and host truncation independently; `coverage.complete` is false whenever either inventory is incomplete. Request/response bodies, cookie values, query values and arbitrary header values are never included in the report. URL paths and server IP addresses may still be sensitive. No requests are sent and no target code is executed.
 
 ### Analyze a source project
 
