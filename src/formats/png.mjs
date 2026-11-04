@@ -113,12 +113,28 @@ function validate_palette(length, header) {
   return entries;
 }
 
-function validate_transparency(length, header, palette_entries) {
+function validate_transparency(reader, offset, length, header, palette_entries) {
   if (header.color_type === 0 && length !== 2) {
     fail('ORIX_PNG_INVALID_TRNS', 'Grayscale PNG tRNS chunks must contain exactly two bytes', { length });
   }
   if (header.color_type === 2 && length !== 6) {
     fail('ORIX_PNG_INVALID_TRNS', 'Truecolor PNG tRNS chunks must contain exactly six bytes', { length });
+  }
+  if (header.color_type === 0 || header.color_type === 2) {
+    const sample_count = header.color_type === 0 ? 1 : 3;
+    const maximum_sample = 2 ** header.bit_depth - 1;
+    for (let index = 0; index < sample_count; index += 1) {
+      const sample = reader.u16(offset + index * 2, false, 'PNG tRNS sample');
+      if (sample > maximum_sample) {
+        fail('ORIX_PNG_TRNS_SAMPLE_OUT_OF_RANGE', 'PNG tRNS sample exceeds the image bit-depth range', {
+          color_type: header.color_type,
+          bit_depth: header.bit_depth,
+          sample_index: index,
+          sample,
+          maximum_sample,
+        });
+      }
+    }
   }
   if (header.color_type === 3 && (length < 1 || length > palette_entries)) {
     fail('ORIX_PNG_INVALID_TRNS', 'Indexed-color PNG tRNS length must be within the palette entry count', {
@@ -262,7 +278,7 @@ export function parse_png(buffer, options = {}) {
       if (header.color_type === 3 && !palette_seen) {
         fail('ORIX_PNG_TRNS_BEFORE_PLTE', 'Indexed-color PNG tRNS must follow PLTE');
       }
-      validate_transparency(length, header, palette_entries);
+      validate_transparency(reader, data_offset, length, header, palette_entries);
       transparency_seen = true;
     } else if (type === 'IDAT') {
       if (!header) fail('ORIX_PNG_MISSING_IHDR', 'PNG IDAT cannot appear before IHDR');
