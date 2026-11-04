@@ -122,5 +122,5 @@ export function render_rizin_functions_markdown(report, options = {}) {
     '- The target is not executed. The external Rizin process is time/output bounded, not OS-sandboxed.',
     '',
   );
-  return lines.join('\\n');
+  return lines.join('\n');
 }
