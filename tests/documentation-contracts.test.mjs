@@ -15,12 +15,18 @@ test('format support documentation names every registered signature and parser s
 
   assert.ok(capabilities.length > 0, 'at least one format capability must be registered');
   for (const capability of capabilities) {
+    const labels = {
+      PE: 'PE / COFF (PE)',
+      'Mach-O': 'Thin Mach-O',
+      'Mach-O Universal': 'Universal Mach-O',
+    };
+    const label = labels[capability.format] ?? capability.format;
     assert.ok(
-      documentation.includes(capability.format),
+      documentation.includes(label),
       `docs/FORMATS.md must document registered format: ${capability.format}`,
     );
     const row = documentation.split('\n').find(line =>
-      line.startsWith('|') && line.includes(capability.format)
+      line.startsWith('| ' + label + ' |')
     );
     assert.ok(row, `docs/FORMATS.md must include a matrix row for ${capability.format}`);
     const columns = row.split('|').map(column => column.trim());
