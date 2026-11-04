@@ -191,6 +191,8 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
   if(parsed.command==='android'){
     if(!parsed.target)throw new Error('android requires an APK or AAB file path');
     if(parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('android output supports JSON or Markdown only');
+    if(parsed.flags.max_file_bytes!==undefined&&parsed.flags.max_file_bytes>1_073_741_824)throw new Error('android --max-file-mib cannot exceed 1024 MiB');
+    if(parsed.flags.max_scan_entries!==undefined&&parsed.flags.max_scan_entries>1_000_000)throw new Error('android --max-entries cannot exceed 1000000');
     const report=await analyze_android_package_file(parsed.target,{
       max_file_bytes:parsed.flags.max_file_bytes,
       zip:{max_entries:parsed.flags.max_scan_entries},
