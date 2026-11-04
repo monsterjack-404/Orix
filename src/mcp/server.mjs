@@ -568,9 +568,10 @@ export async function start_mcp_server({
   if (!Number.isSafeInteger(max_tool_calls_per_minute) || max_tool_calls_per_minute < 1 || max_tool_calls_per_minute > 10000) {
     throw new RangeError('max_tool_calls_per_minute must be an integer between 1 and 10000');
   }
-  const effective_roots = roots ?? configured_workspace_roots(environment);
-  const allowed_tool_names = resolve_tool_policy({ environment, allowed_tools, allow_write_tools });
-  const configured_audit_path = audit_path ?? environment?.ORIX_MCP_AUDIT_PATH;
+  const effective_environment = environment ?? process.env;
+  const effective_roots = roots ?? configured_workspace_roots(effective_environment);
+  const allowed_tool_names = resolve_tool_policy({ environment: effective_environment, allowed_tools, allow_write_tools });
+  const configured_audit_path = audit_path ?? effective_environment.ORIX_MCP_AUDIT_PATH;
   const audit_path_resolved = configured_audit_path
     ? await resolve_workspace_output(configured_audit_path, effective_roots)
     : null;
