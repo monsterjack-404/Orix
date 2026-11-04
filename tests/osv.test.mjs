@@ -91,6 +91,20 @@ test('OSV audit sends only exact package identifiers and maps advisory matches t
   assert.match(render_vulnerability_audit_markdown(report), /unsupported/i);
 });
 
+test('OSV treats inherited object property names as unsupported ecosystems', async () => {
+  let calls = 0;
+  const report = await audit_project_dependencies(project([
+    dep('constructor-lib', '1.0.0', 'constructor'),
+    dep('prototype-lib', '1.0.0', '__proto__'),
+  ]), {
+    fetch_impl: async () => { calls += 1; throw new Error('unsupported ecosystems must not be queried'); },
+  });
+  assert.equal(calls, 0);
+  assert.equal(report.summary.status, 'partial');
+  assert.equal(report.summary.unsupported_packages, 2);
+  assert.equal(report.packages.length, 0);
+});
+
 test('OSV pagination continues only package queries that include a next_page_token', async () => {
   const bodies = [];
   const fetch_impl = async (url, init) => {
@@ -247,6 +261,27 @@ test('OSV aggregate response byte budget is enforced across query and advisory d
   assert.ok(report.source.response_bytes_retrieved <= report.source.response_bytes_budget);
   assert.equal(report.summary.complete, false);
   assert.ok(report.warnings.some(item => item.code === 'ORIX_OSV_ADVISORY_DETAIL_FAILED'));
+});
+
+test('OSV detail lookups share small response budgets without skipping available capacity', async () => {
+  const detail_ids = [];
+  const report = await audit_project_dependencies(project([dep('alpha', '1.0.0')]), {
+    max_total_response_bytes: 2_048,
+    fetch_impl: async url => {
+      if (String(url).endsWith('/querybatch')) {
+        return json_response({
+          results: [{ vulns: [{ id: 'OSV-BUDGET-A' }, { id: 'OSV-BUDGET-B' }] }],
+        });
+      }
+      const id = String(url).split('/').at(-1);
+      detail_ids.push(id);
+      return json_response(advisory(id));
+    },
+  });
+  assert.deepEqual(detail_ids, ['OSV-BUDGET-A', 'OSV-BUDGET-B']);
+  assert.equal(report.summary.status, 'complete');
+  assert.equal(report.summary.vulnerabilities, 2);
+  assert.equal(report.source.response_bytes_retrieved <= report.source.response_bytes_budget, true);
 });
 
 test('OSV malformed continuation tokens make the report partial', async () => {
