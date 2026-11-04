@@ -354,25 +354,28 @@ export async function analyze_har_file(file_path, options = {}) {
   if (typeof file_path !== 'string' || file_path.length === 0) throw new TypeError('file_path must be a non-empty string');
   const max_bytes = safe_limit(options.max_bytes, DEFAULT_MAX_BYTES, 'max_bytes', DEFAULT_MAX_BYTES);
   const absolute = path.resolve(file_path);
-  let before;
-  try { before = await fs.lstat(absolute); }
-  catch (error) { throw new OrixError('ORIX_HAR_FILE_UNAVAILABLE', 'Cannot access HAR file', { cause: error, details: { system_code: error.code ?? null }, recoverable: true }); }
-  if (before.isSymbolicLink()) fail('ORIX_HAR_SYMLINK_REJECTED', 'HAR analyzer does not follow symbolic links', { path: absolute });
-  if (!before.isFile()) fail('ORIX_HAR_NOT_REGULAR_FILE', 'HAR analyzer accepts regular files only', { path: absolute });
-  if (!Number.isSafeInteger(before.size) || before.size < 1 || before.size > max_bytes) {
-    fail('ORIX_HAR_FILE_TOO_LARGE', 'HAR file size is empty, unsafe or above the configured byte ceiling', { size_bytes: before.size, max_bytes });
-  }
   let handle;
   try {
+    // Open first, then inspect the descriptor. Never make a security decision from
+    // path metadata obtained before opening the file that will actually be read.
     const no_follow = FS_CONSTANTS.O_NOFOLLOW ?? 0;
-    handle = await fs.open(absolute, FS_CONSTANTS.O_RDONLY | no_follow);
+    const non_blocking = FS_CONSTANTS.O_NONBLOCK ?? 0;
+    handle = await fs.open(absolute, FS_CONSTANTS.O_RDONLY | no_follow | non_blocking);
     const opened = await handle.stat();
-    if (!opened.isFile() || opened.size !== before.size || String(opened.ino) !== String(before.ino) || String(opened.dev) !== String(before.dev)) {
-      fail('ORIX_HAR_FILE_REPLACED', 'HAR file identity changed between metadata lookup and open');
-    }
+    if (!opened.isFile()) fail('ORIX_HAR_NOT_REGULAR_FILE', 'HAR analyzer accepts regular files only', { path: absolute });
     if (!Number.isSafeInteger(opened.size) || opened.size < 1 || opened.size > max_bytes) {
-      fail('ORIX_HAR_FILE_TOO_LARGE', 'Opened HAR file exceeds the configured byte ceiling', { size_bytes: opened.size, max_bytes });
+      fail('ORIX_HAR_FILE_TOO_LARGE', 'Opened HAR file size is empty, unsafe or above the configured byte ceiling', { size_bytes: opened.size, max_bytes });
     }
+
+    // O_NOFOLLOW is not available on every supported platform. This post-open
+    // path check is supplemental; the descriptor remains the object we read.
+    const path_stat = await fs.lstat(absolute);
+    if (path_stat.isSymbolicLink()) fail('ORIX_HAR_SYMLINK_REJECTED', 'HAR analyzer does not follow symbolic links', { path: absolute });
+    if (!path_stat.isFile() || path_stat.size !== opened.size ||
+        String(path_stat.ino) !== String(opened.ino) || String(path_stat.dev) !== String(opened.dev)) {
+      fail('ORIX_HAR_FILE_REPLACED', 'HAR path no longer identifies the opened regular file');
+    }
+
     const input = Buffer.alloc(opened.size);
     let offset = 0;
     while (offset < input.length) {
@@ -391,7 +394,10 @@ export async function analyze_har_file(file_path, options = {}) {
     return report;
   } catch (error) {
     if (error instanceof OrixError || error instanceof TypeError) throw error;
-    throw new OrixError('ORIX_HAR_READ_FAILED', 'Unable to read HAR file safely', { cause: error, recoverable: true });
+    if (error?.code === 'ELOOP') {
+      throw new OrixError('ORIX_HAR_SYMLINK_REJECTED', 'HAR analyzer does not follow symbolic links', { cause: error, recoverable: true });
+    }
+    throw new OrixError('ORIX_HAR_FILE_UNAVAILABLE', 'Unable to open or read HAR file safely', { cause: error, details: { system_code: error.code ?? null }, recoverable: true });
   } finally {
     await handle?.close();
   }
