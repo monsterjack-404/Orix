@@ -193,6 +193,46 @@ test('MCP rejects batches beyond the configured message ceiling', async () => {
   assert.equal(response.error.code, -32600);
 });
 
+test('MCP stdio transport rate-limits tool calls per connection while leaving protocol requests available', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const errors = new PassThrough();
+  let captured = '';
+  output.setEncoding('utf8');
+  output.on('data', chunk => { captured += chunk; });
+  const running = start_mcp_server({
+    input, output, error_output: errors, max_tool_calls_per_minute: 1,
+  });
+  const request = id => JSON.stringify({
+    jsonrpc: '2.0', id, method: 'tools/call',
+    params: { name: 'orix.formats', arguments: {} },
+  }) + '\n';
+  input.write(request(81));
+  input.write(request(82));
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 83, method: 'ping' }) + '\n');
+  input.end();
+  await running;
+
+  const messages = captured.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(messages.length, 3);
+  assert.equal(messages[0].result.isError, false);
+  assert.equal(messages[1].result.isError, true);
+  assert.equal(JSON.parse(messages[1].result.content[0].text).code, 'ORIX_MCP_RATE_LIMITED');
+  assert.deepEqual(messages[2].result, {});
+});
+
+test('MCP stdio transport rejects invalid per-connection rate limits', async () => {
+  await assert.rejects(
+    start_mcp_server({
+      input: new PassThrough(),
+      output: new PassThrough(),
+      error_output: new PassThrough(),
+      max_tool_calls_per_minute: 0,
+    }),
+    /between 1 and 10000/,
+  );
+});
+
 test('MCP stdio transport reads and writes newline-delimited JSON-RPC messages', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
