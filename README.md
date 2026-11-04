@@ -134,7 +134,7 @@ node src/cli.mjs har ./capture.har
 node src/cli.mjs har ./capture.har --json --max-har-entries 20000 --max-har-hosts 5000
 ```
 
-The analyzer records a SHA-256 digest, bounded request metadata, host/method/status summaries, timing totals and evidence-linked review findings. It does not export request or response bodies, header values, cookie values or query parameter values. URL paths and server IP addresses can still be sensitive; review reports before sharing. HAR observations describe the supplied capture, not independently verified live traffic. The same analyzer is available as the public API and the workspace-confined `orix.analyze_har` MCP tool.
+The analyzer records a SHA-256 digest, bounded request metadata, host/method/status summaries, timing totals and evidence-linked review findings. It does not export request or response bodies, header values, cookie values or query parameter values. Shared operating-system temporary-directory paths are rejected; copy captures into a private workspace before analysis. URL paths and server IP addresses can still be sensitive; review reports before sharing. HAR observations describe the supplied capture, not independently verified live traffic. The same analyzer is available as the public API and the workspace-confined `orix.analyze_har` MCP tool.
 
 See [Platform Expansion](docs/PLATFORM_EXPANSION.md) for the engineering plan covering Android, Electron/JavaScript, .NET, decompilation, firmware, browser observations and replayable AI/RL environments.
 
