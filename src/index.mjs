@@ -47,4 +47,4 @@ export { audit_project_dependencies, render_vulnerability_audit_markdown } from 
 export { build_capability_report } from './capabilities/registry.mjs';
 export { parse_har, analyze_har_file, render_har_markdown } from './network/har.mjs';
 export { parse_dex } from './formats/dex.mjs';
-export { analyze_android_package } from './android/package.mjs';
+export { analyze_android_package, analyze_android_package_file, render_android_package_markdown } from './android/package.mjs';
