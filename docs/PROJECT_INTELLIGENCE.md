@@ -18,7 +18,7 @@ node src/cli.mjs project ./my-repository --format cyclonedx --out ./sbom.cdx.jso
 - File size, SHA-256, extension/language classification and bounded text reads.
 - Manifest metadata for npm, Python, Cargo, Go modules, Composer, Maven, NuGet and Ruby.
 - Dependency declarations with manifest and dependency-group provenance.
-- Conservative import extraction for JavaScript/TypeScript, Python, Go, Rust, C/C++, Java, Kotlin, C# and Ruby.
+- Bounded JavaScript/TypeScript tokenizer that ignores comments and string contents while extracting static imports, re-exports, literal `require()` / `import()` specifiers and declaration candidates. Other languages retain conservative import patterns for Python, Go, Rust, C/C++, Java, Kotlin, C# and Ruby.
 - Best-effort local import resolution, file graph edges and syntax-pattern symbol candidates.
 - README, license, CI, tests, package-manager and container signals.
 - Redacted findings for selected credential-shaped patterns.
