@@ -54,7 +54,7 @@ Package URLs are emitted only for recognized ecosystems. Development dependencie
 
 Traversal, entries, depth, individual file size, aggregate bytes, symbols, imports, lockfile packages/edges, Git refs and Git metadata reads are bounded. Oversized files are skipped and recorded. Coverage is marked incomplete when traversal limits are reached. Lockfile parsers enforce independent package and edge ceilings.
 
-Manifest and import parsing are conservative heuristics, not compiler front-ends. Dependency declarations are not vulnerability findings. Credential matches never include matched values; they identify a file and line for manual review, and false positives are possible.
+Manifest and import parsing are conservative heuristics, not compiler front-ends. Dependency declarations are not vulnerability findings. For exact resolved package versions, the optional `audit --osv` command queries OSV.dev; it never sends source or manifest contents. See [Dependency Vulnerability Intelligence](VULNERABILITY-INTELLIGENCE.md). Credential matches never include matched values; they identify a file and line for manual review, and false positives are possible.
 
 ## Security boundary
 
