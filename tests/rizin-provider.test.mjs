@@ -49,7 +49,7 @@ test('Rizin adapter probes version and normalizes static import metadata through
   });
 });
 
-test('Rizin function adapter returns a bounded function inventory and address-scoped disassembly', async context => {
+test('Rizin function adapter returns a bounded function inventory and address-scoped disassembly', async () => {
   await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     const report = await analyze_rizin_functions({
       input_path, executable, executable_args, address: '0x401000', max_instructions: 3, decompile: true,
@@ -85,8 +85,8 @@ test('Rizin function adapter returns a bounded function inventory and address-sc
   });
 });
 
-test('Rizin function adapter refuses disassembly addresses that are not returned function entries', async context => {
-  await with_fixture(async ({ input_path, executable }) => {
+test('Rizin function adapter refuses disassembly addresses that are not returned function entries', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     await assert.rejects(
       analyze_rizin_functions({ input_path, executable, executable_args, address: '0x401001' }),
       error => error.code === 'ORIX_RIZIN_FUNCTION_NOT_FOUND',
@@ -119,8 +119,8 @@ test('Rizin adapter rejects a missing or non-absolute input before launching a p
   );
 });
 
-test('Rizin adapter validates import limits before launching the external process', async context => {
-  await with_fixture(async ({ input_path, executable }) => {
+test('Rizin adapter validates import limits before launching the external process', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     await assert.rejects(
       analyze_rizin_imports({ input_path, executable, executable_args, max_imports: -1 }),
       /max_imports must be an integer/,
@@ -128,8 +128,8 @@ test('Rizin adapter validates import limits before launching the external proces
   });
 });
 
-test('Rizin adapter reports malformed import JSON without accepting a partial result', async context => {
-  await with_fixture(async ({ input_path, executable }) => {
+test('Rizin adapter reports malformed import JSON without accepting a partial result', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     await write_config({ import_output: 'not-json' });
     await assert.rejects(
       analyze_rizin_imports({ input_path, executable, executable_args }),
@@ -138,8 +138,8 @@ test('Rizin adapter reports malformed import JSON without accepting a partial re
   });
 });
 
-test('Rizin adapter rejects input files exceeding provider byte ceiling', async context => {
-  await with_fixture(async ({ input_path, executable }) => {
+test('Rizin adapter rejects input files exceeding provider byte ceiling', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     const manifest = {
       contract_version: 'orix.provider.v1',
       id: 'rizin.static',
@@ -167,8 +167,8 @@ test('Rizin adapter rejects input files exceeding provider byte ceiling', async 
 });
 
 
-test('Rizin adapter enforces the import result ceiling without returning partial imports', async context => {
-  await with_fixture(async ({ input_path, executable }) => {
+test('Rizin adapter enforces the import result ceiling without returning partial imports', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     await assert.rejects(
       analyze_rizin_imports({ input_path, executable, executable_args, max_imports: 1 }),
       error => error.code === 'ORIX_RIZIN_IMPORT_LIMIT',
@@ -176,8 +176,8 @@ test('Rizin adapter enforces the import result ceiling without returning partial
   });
 });
 
-test('Rizin adapter applies one total timeout across version and import probes', async context => {
-  await with_fixture(async ({ input_path, executable }) => {
+test('Rizin adapter applies one total timeout across version and import probes', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     await write_config({ delay_import_ms: 5000 });
     await assert.rejects(
       analyze_rizin_imports({ input_path, executable, executable_args, timeout_ms: 500 }),
@@ -186,8 +186,8 @@ test('Rizin adapter applies one total timeout across version and import probes',
   });
 });
 
-test('Rizin adapter isolates the original artifact and discards results if a provider mutates its snapshot', async context => {
-  await with_fixture(async ({ input_path, executable }) => {
+test('Rizin adapter isolates the original artifact and discards results if a provider mutates its snapshot', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     const original = await import('node:fs/promises').then(fs => fs.readFile(input_path));
     await write_config({ mutate_snapshot: true });
     await assert.rejects(
