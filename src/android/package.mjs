@@ -75,7 +75,7 @@ function is_v1_signature(name) {
  */
 export function analyze_android_package(buffer, options = {}) {
   const archive = parse_zip(buffer, options.zip ?? {});
-  const entries = archive.entries;
+  const entries = archive.entries.filter(entry => !entry.unsafe_path && !entry.is_symlink);
   const names = new Set(entries.map(entry => entry.name));
   const apk_manifest = names.has('AndroidManifest.xml');
   const bundle_manifest = entries.some(entry => entry.name.endsWith('/manifest/AndroidManifest.xml'));
@@ -205,5 +205,5 @@ export function render_android_package_markdown(report) {
     lines.push('', '## Warnings', '');
     for (const warning of report.warnings) lines.push('- ' + markdown_cell(warning.path) + ': ' + markdown_cell(warning.reason));
   }
-  return lines.join('\\n') + '\\n';
+  return lines.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
