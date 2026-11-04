@@ -118,7 +118,7 @@ export function build_capability_report({
       { id: 'firmware-analysis', status: 'planned', boundary: 'No firmware container/filesystem parser or recursive extraction workflow is shipped.' },
       { id: 'evidence-investigation-workflows', status: 'partial', boundary: 'Artifact evidence, hash-chained ledger and report comparison exist; no persistent case database or cross-case evidence graph.' },
       { id: 'recorded-behavior-replay', status: 'planned', boundary: 'No normalized behavior trace or deterministic replay engine is shipped.' },
-      { id: 'ai-rl-environments', status: 'planned', boundary: 'No Gymnasium-compatible environment adapter or RL training runtime is shipped.' }
+      { id: 'ai-rl-environments', status: 'planned', boundary: 'No Gymnasium-compatible environment adapter or RL training runtime is shipped.' },
       { id: 'evidence-ledger', status: 'implemented', boundary: 'Tamper-evident hash chain, not a digital signature or trusted timestamp.' },
       { id: 'dynamic-analysis', status: 'planned', boundary: 'No target execution or process instrumentation is shipped.' },
       { id: 'ai-agent-workflows', status: 'planned', boundary: 'No autonomous model router or code-editing agent is shipped.' },
