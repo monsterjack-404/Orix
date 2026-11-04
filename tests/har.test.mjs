@@ -134,12 +134,13 @@ test('HAR parser enforces byte and entry budgets', () => {
 
 test('HAR Markdown renderer escapes hostile creator metadata', () => {
   const document = JSON.parse(make_har([entry()]).toString('utf8'));
-  document.log.creator.name = '<img src=x>|[capture]*_';
+  document.log.creator.name = '<img src=x>|[capture]*_' + String.fromCharCode(10) + '## injected';
   document.log.creator.version = '`javascript:alert(1)`';
   const report = parse_har(Buffer.from(JSON.stringify(document)));
   const markdown = render_har_markdown(report);
   assert.equal(markdown.includes('<img src=x>'), false);
   assert.ok(markdown.includes('&lt;img src=x&gt;'));
+  assert.equal(markdown.includes(String.fromCharCode(10) + '## injected'), false);
   assert.ok(markdown.includes('\\|'));
   assert.ok(markdown.includes('\\['));
   assert.ok(markdown.includes('\\*'));
