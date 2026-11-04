@@ -31,17 +31,18 @@ function bounded_text(value, maximum = 256) {
 }
 
 function markdown_escape(value) {
+  const slash = String.fromCharCode(92);
   return String(value ?? '')
-    .replaceAll('\\\\', '\\\\\\\\')
+    .replaceAll(slash, slash + slash)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
-    .replaceAll('|', '\\\\|')
-    .replaceAll('`', '\\\\`')
-    .replaceAll('[', '\\\\[')
-    .replaceAll(']', '\\\\]')
-    .replaceAll('*', '\\\\*')
-    .replaceAll('_', '\\\\_');
+    .replaceAll('|', slash + '|')
+    .replaceAll('`', slash + '`')
+    .replaceAll('[', slash + '[')
+    .replaceAll(']', slash + ']')
+    .replaceAll('*', slash + '*')
+    .replaceAll('_', slash + '_');
 }
 
 function header_index(headers, label) {
