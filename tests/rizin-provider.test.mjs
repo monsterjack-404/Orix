@@ -50,7 +50,7 @@ test('Rizin adapter probes version and normalizes static import metadata through
 });
 
 test('Rizin function adapter returns a bounded function inventory and address-scoped disassembly', async context => {
-  await with_fixture(async ({ input_path, executable }) => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     const report = await analyze_rizin_functions({
       input_path, executable, executable_args, address: '0x401000', max_instructions: 3, decompile: true,
     });
@@ -88,7 +88,7 @@ test('Rizin function adapter returns a bounded function inventory and address-sc
 test('Rizin function adapter refuses disassembly addresses that are not returned function entries', async context => {
   await with_fixture(async ({ input_path, executable }) => {
     await assert.rejects(
-      analyze_rizin_functions({ input_path, executable, address: '0x401001' }),
+      analyze_rizin_functions({ input_path, executable, executable_args, address: '0x401001' }),
       error => error.code === 'ORIX_RIZIN_FUNCTION_NOT_FOUND',
     );
   });
@@ -122,7 +122,7 @@ test('Rizin adapter rejects a missing or non-absolute input before launching a p
 test('Rizin adapter validates import limits before launching the external process', async context => {
   await with_fixture(async ({ input_path, executable }) => {
     await assert.rejects(
-      analyze_rizin_imports({ input_path, executable, max_imports: -1 }),
+      analyze_rizin_imports({ input_path, executable, executable_args, max_imports: -1 }),
       /max_imports must be an integer/,
     );
   });
@@ -170,7 +170,7 @@ test('Rizin adapter rejects input files exceeding provider byte ceiling', async 
 test('Rizin adapter enforces the import result ceiling without returning partial imports', async context => {
   await with_fixture(async ({ input_path, executable }) => {
     await assert.rejects(
-      analyze_rizin_imports({ input_path, executable, max_imports: 1 }),
+      analyze_rizin_imports({ input_path, executable, executable_args, max_imports: 1 }),
       error => error.code === 'ORIX_RIZIN_IMPORT_LIMIT',
     );
   });
@@ -191,7 +191,7 @@ test('Rizin adapter isolates the original artifact and discards results if a pro
     const original = await import('node:fs/promises').then(fs => fs.readFile(input_path));
     await write_config({ mutate_snapshot: true });
     await assert.rejects(
-      analyze_rizin_imports({ input_path, executable }),
+      analyze_rizin_imports({ input_path, executable, executable_args }),
       error => error.code === 'ORIX_RIZIN_SNAPSHOT_CHANGED',
     );
     const after = await import('node:fs/promises').then(fs => fs.readFile(input_path));
