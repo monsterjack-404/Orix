@@ -62,5 +62,7 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.ok(schemas[10].properties.source.required.includes('response_bytes_retrieved'));
   assert.equal(schemas[10].properties.summary.properties.status.enum.includes('partial'), true);
   assert.ok(schemas[10].properties.packages.items.properties.vulnerability_ids);
+  assert.ok(schemas[10].properties.vulnerabilities.items.properties.affected);
+  assert.ok(schemas[10].properties.vulnerabilities.items.required.includes('affected'));
   assert.ok(schemas[10].required.includes('unsupported_packages'));
 });
