@@ -34,10 +34,13 @@ function bounded_text(value, maximum = 256) {
 
 function markdown_escape(value) {
   const slash = String.fromCharCode(92);
+  const carriage_return = String.fromCharCode(13);
+  const line_feed = String.fromCharCode(10);
+  const tab = String.fromCharCode(9);
   return String(value ?? '')
-    .replaceAll('\\r', ' ')
-    .replaceAll('\\n', ' ')
-    .replaceAll('\\t', ' ')
+    .replaceAll(carriage_return, ' ')
+    .replaceAll(line_feed, ' ')
+    .replaceAll(tab, ' ')
     .replaceAll(slash, slash + slash)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
