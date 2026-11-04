@@ -183,12 +183,18 @@ test('Rizin function Markdown renderer bounds rows and displays instruction outp
       instructions: [{ offset: 4198400, bytes: 'c3', disassembly: 'ret|safe' }],
       instruction_limit_reached: true,
     },
+    decompilation: {
+      function_name: 'sym.main', address: 4198400, backend: 'rizin-pdg',
+      source: 'int main(void) { return 0; }', characters_returned: 28, truncated: false,
+    },
     summary: { functions_total: 2, functions_returned: 2, functions_truncated: false },
   };
   const markdown = render_rizin_functions_markdown(report, { max_rows: 1 });
   assert.match(markdown, /sym\\.main/);
   assert.match(markdown, /1 additional functions omitted/);
   assert.match(markdown, /Bounded disassembly/);
+  assert.match(markdown, /Optional pseudocode decompilation/);
+  assert.match(markdown, /int main/);
   assert.match(markdown, /ret\\\\\\|safe/);
 });
 
