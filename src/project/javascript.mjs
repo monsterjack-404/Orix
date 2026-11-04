@@ -138,6 +138,8 @@ function collect_imports(tokens, maximum) {
   for (let index = 0; index < tokens.length && imports.length < maximum; index += 1) {
     const token = tokens[index];
     if (token.type !== 'identifier') continue;
+    const previous = tokens[index - 1]?.value;
+    if (previous === '.' || (previous === '.' && tokens[index - 2]?.value === '?')) continue;
     if (token.value === 'require' && tokens[index + 1]?.value === '(') {
       const argument = tokens[index + 2];
       if (tokens[index + 3]?.value === ')') add_import(imports, seen, argument, 'require', token);
@@ -145,7 +147,7 @@ function collect_imports(tokens, maximum) {
     }
     if (token.value !== 'import' && token.value !== 'export') continue;
     if (token.value === 'import' && tokens[index + 1]?.value === '(') {
-      if (tokens[index + 3]?.value === ')') add_import(imports, seen, tokens[index + 2], 'dynamic-import', token);
+      if (tokens[index + 3]?.value === ')' || tokens[index + 3]?.value === ',') add_import(imports, seen, tokens[index + 2], 'dynamic-import', token);
       continue;
     }
     if (token.value === 'import' && tokens[index + 1]?.type === 'string') {
@@ -175,7 +177,7 @@ function collect_symbols(tokens, maximum) {
     const token = tokens[index];
     if (token.type !== 'identifier') continue;
     let kind = declarations.has(token.value) ? token.value : null;
-    if (!kind && token.value === 'const' || token.value === 'let' || token.value === 'var') {
+    if (!kind && (token.value === 'const' || token.value === 'let' || token.value === 'var')) {
       if (tokens[index - 1]?.value === 'export' || tokens[index - 2]?.value === 'export') kind = 'variable';
     }
     if (!kind) continue;
@@ -214,7 +216,7 @@ export function analyze_javascript_source(source, options = {}) {
     },
     limitations: [
       'This is bounded lexical and shallow declaration analysis, not a complete ECMAScript or TypeScript AST.',
-      'Type resolution, scopes, control flow, data flow, JSX semantics and compiler transforms are not analyzed.',
+      'Type resolution, scopes, control flow, data flow, JSX semantics, regular-expression literal bodies and compiler transforms are not analyzed.',
       'Computed module specifiers, non-literal imports, macro-generated code and runtime loading may be missed.',
     ],
   };
