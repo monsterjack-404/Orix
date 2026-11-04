@@ -42,7 +42,8 @@ export const HELP_TEXT = [
   '  --ledger <path>      Append a compact report record to an evidence ledger.',
   '  --osv                Explicitly enable public OSV.dev vulnerability lookup for an audit.',
   '  --max-packages <n>   Maximum exact resolved package versions queried (1–10,000).',
-  '  --max-advisories <n> Maximum advisory records retained (1–2,000).
+  '  --max-advisories <n> Maximum advisory records retained (1–2,000).',
+  '  --max-network-mib <n> Maximum aggregate OSV response bytes in MiB (1–128).',
   '  --no-strings         Disable printable ASCII and UTF-16LE string extraction.',
   '  --strings-limit <n>  Maximum strings retained per file.',
   '  --max-files <n>      Maximum directory files.',
