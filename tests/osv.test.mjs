@@ -197,6 +197,37 @@ test('OSV aggregate response byte budget is enforced across query and advisory d
   assert.ok(report.warnings.some(item => item.code === 'ORIX_OSV_ADVISORY_DETAIL_FAILED'));
 });
 
+test('OSV malformed continuation tokens make the report partial', async () => {
+  const report = await audit_project_dependencies(project([dep('alpha', '1.0.0')]), {
+    fetch_impl: async url => {
+      if (String(url).endsWith('/querybatch')) {
+        return json_response({ results: [{ vulns: [{ id: 'OSV-BAD-TOKEN' }], next_page_token: 42 }] });
+      }
+      return json_response(advisory('OSV-BAD-TOKEN'));
+    },
+  });
+  assert.equal(report.summary.complete, false);
+  assert.ok(report.warnings.some(item => item.code === 'ORIX_OSV_PAGE_TOKEN_INVALID'));
+});
+
+test('OSV Markdown renderer escapes untrusted advisory text and table delimiters', async () => {
+  const report = await audit_project_dependencies(project([dep('alpha', '1.0.0')]), {
+    fetch_impl: async url => {
+      if (String(url).endsWith('/querybatch')) {
+        return json_response({ results: [{ vulns: [{ id: 'OSV-MARKDOWN' }] }] });
+      }
+      return json_response(advisory('OSV-MARKDOWN', {
+        summary: '<img src=x onerror=alert(1)> | [click](javascript:alert(1))',
+      }));
+    },
+  });
+  const markdown = render_vulnerability_audit_markdown(report);
+  assert.ok(!markdown.includes('<img'));
+  assert.ok(markdown.includes('&lt;img'));
+  assert.ok(markdown.includes('\\|'));
+  assert.ok(markdown.includes('\\[click\\]'));
+});
+
 test('OSV handles empty and unsupported-only dependency inventories without querying', async () => {
   let calls = 0;
   const fetch_impl = async () => { calls += 1; throw new Error('should not be called'); };
