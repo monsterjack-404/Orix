@@ -88,4 +88,6 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.equal(rizinFunctions.additionalProperties, false);
   assert.ok(rizinFunctions.properties.functions.items.required.includes('offset'));
   assert.equal(rizinFunctions.properties.disassembly.oneOf.length, 2);
+  assert.equal(rizinFunctions.properties.decompilation.oneOf.length, 2);
+  assert.ok(rizinFunctions.properties.summary.required.includes('decompilation_included'));
 });
