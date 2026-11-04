@@ -233,6 +233,68 @@ test('MCP stdio transport rejects invalid per-connection rate limits', async () 
   );
 });
 
+test('MCP stdio enforces initialize, initialized notification, and active-session lifecycle', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const errors = new PassThrough();
+  let captured = '';
+  output.setEncoding('utf8');
+  output.on('data', chunk => { captured += chunk; });
+  const running = start_mcp_server({ input, output, error_output: errors });
+  const send = value => input.write(JSON.stringify(value) + '\n');
+
+  send({ jsonrpc: '2.0', id: 90, method: 'tools/list' });
+  send({ jsonrpc: '2.0', id: 91, method: 'ping' });
+  send({
+    jsonrpc: '2.0', id: 92, method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'lifecycle-client', version: '1.0.0' },
+    },
+  });
+  send({ jsonrpc: '2.0', id: 93, method: 'tools/list' });
+  send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  send({ jsonrpc: '2.0', id: 94, method: 'tools/list' });
+  send({
+    jsonrpc: '2.0', id: 95, method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'duplicate-client', version: '1.0.0' },
+    },
+  });
+  input.end();
+  await running;
+
+  const messages = captured.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(messages.length, 6);
+  assert.equal(messages[0].error.code, -32002);
+  assert.deepEqual(messages[1].result, {});
+  assert.equal(messages[2].result.protocolVersion, '2025-03-26');
+  assert.equal(messages[3].error.code, -32002);
+  assert.equal(messages[4].result.tools.length, ORIX_MCP_TOOLS.length);
+  assert.equal(messages[5].error.code, -32600);
+});
+
+test('MCP stdio keeps the session uninitialized when initialize validation fails', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const errors = new PassThrough();
+  let captured = '';
+  output.setEncoding('utf8');
+  output.on('data', chunk => { captured += chunk; });
+  const running = start_mcp_server({ input, output, error_output: errors });
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 96, method: 'initialize', params: {} }) + '\n');
+  input.write(JSON.stringify({ jsonrpc: '2.0', id: 97, method: 'tools/list' }) + '\n');
+  input.end();
+  await running;
+
+  const messages = captured.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(messages[0].error.code, -32602);
+  assert.equal(messages[1].error.code, -32002);
+});
+
 test('MCP stdio transport reads and writes newline-delimited JSON-RPC messages', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
