@@ -116,9 +116,20 @@ test('HAR parser rejects malformed roots, unsupported versions, invalid UTF-8 an
   assert.throws(() => parse_har(make_har([{ request: {}, response: {}, timings: {} }])), error => error.code === 'ORIX_HAR_INVALID_METHOD');
 });
 
+test('HAR parser rejects non-ISO timestamps and unsafe aggregate byte totals', () => {
+  const invalid_time = entry();
+  invalid_time.startedDateTime = 'November 4, 2026 10:00:00';
+  assert.throws(() => parse_har(make_har([invalid_time])), error => error.code === 'ORIX_HAR_INVALID_TIMESTAMP');
+
+  const first = entry({ request: { method: 'POST', url: 'https://example.test/', bodySize: Number.MAX_SAFE_INTEGER } });
+  const second = entry({ request: { method: 'POST', url: 'https://example.test/', bodySize: 1 } });
+  assert.throws(() => parse_har(make_har([first, second])), error => error.code === 'ORIX_HAR_TOTAL_OVERFLOW');
+});
+
 test('HAR parser enforces byte and entry budgets', () => {
   assert.throws(() => parse_har(make_har([]), { max_bytes: 10 }), error => error.code === 'ORIX_HAR_FILE_TOO_LARGE');
   assert.throws(() => parse_har(make_har([]), { max_entries: 0 }), /max_entries must be/);
+  assert.throws(() => parse_har(make_har([]), { max_hosts: 0 }), /max_hosts must be/);
 });
 
 test('HAR Markdown renderer escapes hostile creator metadata', () => {
