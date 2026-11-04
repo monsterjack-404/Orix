@@ -24,6 +24,7 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | `orix.scan_project` | `path`, optional file/entry/depth limits | Project inventory, manifests, imports and symbol candidates |
 | `orix.analyze_architecture` | `path`, optional inventory and graph limits | Static source-import graph with entry-point candidates, cycles, reachability, hotspots and explicit limitations |
 | `orix.analyze_har` | `path`, optional `max_entries` and `max_hosts` | Offline HAR 1.2 request metadata, bounded host/status/timing summaries and evidence-linked review findings |
+| `orix.analyze_android_package` | `path`, optional `max_file_mib` and `max_entries` | Workspace-confined offline APK/AAB inventory and stored DEX header metadata; no decompression, app execution or device access |
 | `orix.formats` | No arguments | Recognized signatures and parser capability metadata |
 | `orix.capabilities` | No arguments | Source-backed implemented/partial/planned inventory, format registry, provider declarations and explicit boundaries |
 | `orix.compare_reports` | `baseline_path`, `current_path` | Deterministic artifact/scan comparison, SHA-256 deltas and indicator changes |
