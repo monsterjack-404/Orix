@@ -173,6 +173,15 @@ orix inspect <file> [--json|--markdown|--format sarif] [--out <path>]
 
 The inspector rejects directories, symlinks, non-regular files, files larger than the configured cap, and files whose identity changes during acquisition. It hashes the complete file incrementally, then parses at most the configured prefix. If the file is larger than the parse window, `analysis_complete_for_file` is `false` and the report says so.
 
+### `android`
+
+```text
+orix android <app.apk|app.aab> [--json|--markdown] [--out <path>]
+                   [--max-file-mib <n>] [--max-entries <n>]
+```
+
+This offline command inventories APK/AAB ZIP entries, identifies manifest and native-library paths, and inspects fixed headers only for stored, unencrypted DEX entries whose local ZIP metadata matches the central directory. It does not extract/decompress entries, decode permissions/resources/bytecode, verify signatures or connect to Android devices.
+
 ### `scan`
 
 ```text
