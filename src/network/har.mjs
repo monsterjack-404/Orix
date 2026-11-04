@@ -83,6 +83,13 @@ function safe_url(raw, entry_index) {
   };
 }
 
+function add_safe_total(current, value, label, entry_index) {
+  if (value > Number.MAX_SAFE_INTEGER - current) {
+    fail('ORIX_HAR_TOTAL_OVERFLOW', label + ' exceeds safe integer precision', { entry_index, current, value });
+  }
+  return current + value;
+}
+
 function valid_time(value, label, entry_index, allow_unknown = false) {
   if (allow_unknown && value === -1) return -1;
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 86_400_000) {
@@ -175,7 +182,7 @@ export function parse_har(input, options = {}) {
       const value = raw.timings[phase];
       if (value === undefined) { phases[phase] = null; continue; }
       phases[phase] = valid_time(value, 'timings.' + phase, index, true);
-      if (phases[phase] > 0) timings[phase] += phases[phase];
+      if (phases[phase] > 0) timings[phase] = add_safe_total(timings[phase], phases[phase], 'timings.' + phase, index);
     }
     for (const required of ['send', 'wait', 'receive']) {
       if (phases[required] === null) fail('ORIX_HAR_REQUIRED_TIMING', 'HAR timings.' + required + ' is required', { entry_index: index });
@@ -223,15 +230,15 @@ export function parse_har(input, options = {}) {
 
     methods[method] = (methods[method] ?? 0) + 1;
     statuses[String(status)] = (statuses[String(status)] ?? 0) + 1;
-    if (request_size !== null) request_bytes += request_size;
-    if (response_size !== null) response_bytes += response_size;
+    if (request_size !== null) request_bytes = add_safe_total(request_bytes, request_size, 'request bytes', index);
+    if (response_size !== null) response_bytes = add_safe_total(response_bytes, response_size, 'response bytes', index);
     if (status >= 300 && status < 400) redirect_count += 1;
     if (status >= 400 || status === 0) error_count += 1;
     if (url.scheme === 'https') encrypted_requests += 1;
     else if (url.scheme === 'http') cleartext_requests += 1;
     const host_record = hosts.get(url.host) ?? { host: url.host, requests: 0, bytes_received: 0, error_responses: 0, schemes: new Set() };
     host_record.requests += 1;
-    host_record.bytes_received += response_size ?? 0;
+    host_record.bytes_received = add_safe_total(host_record.bytes_received, response_size ?? 0, 'host response bytes', index);
     if (status >= 400 || status === 0) host_record.error_responses += 1;
     host_record.schemes.add(url.scheme);
     hosts.set(url.host, host_record);
@@ -276,6 +283,7 @@ export function parse_har(input, options = {}) {
     ...item,
     schemes: [...item.schemes].sort(),
   })).sort((a, b) => b.requests - a.requests || a.host.localeCompare(b.host)).slice(0, 5_000);
+  const hosts_truncated = hosts.size > host_list.length;
   const totals = Object.values(timings).reduce((sum, value) => sum + value, 0);
   const truncated = analyzed_entries < log.entries.length;
   return {
@@ -318,6 +326,7 @@ export function parse_har(input, options = {}) {
     },
     warnings: [
       ...(truncated ? ['Entry analysis was truncated by max_entries; findings cover only analyzed entries.'] : []),
+      ...(hosts_truncated ? ['Host inventory was truncated at 5,000 hosts; the unique-host summary still counts all analyzed entries.'] : []),
       'HAR data is a browser/proxy capture supplied by the user, not independently verified live network traffic.',
       'Missing-header and cookie findings are review leads, not proof of exploitability or a complete web security assessment.',
     ],
