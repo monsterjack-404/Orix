@@ -78,7 +78,7 @@ test('does not treat object methods as module loaders and accepts import attribu
     "const ignored = obj.require('./not-a-module');",
     "const alsoIgnored = obj.import('./not-a-module');",
     "const actual = import('./real-module.js', { with: { type: 'json' } });",
-  ].join('\\n'));
+  ].join('\n'));
   assert.deepEqual(report.imports.map(item => item.specifier), ['./real-module.js']);
 });
 
@@ -87,7 +87,7 @@ test('does not discover imports embedded in regular-expression literals', () => 
     "const matcher = /import\\\\('fake-module'\\\\)/g;",
     "const classMatcher = /[\\\\/]require\\\\('also-fake'\\\\)/;",
     "const real = require('./actual.cjs');",
-  ].join('\\n'));
+  ].join('\n'));
   assert.deepEqual(report.imports.map(item => item.specifier), ['./actual.cjs']);
 });
 
@@ -95,6 +95,6 @@ test('recognizes module.require while ignoring unrelated object methods', () => 
   const report = analyze_javascript_source([
     "const fake = service.require('./fake.js');",
     "const actual = module.require('./module.cjs');",
-  ].join('\\n'));
+  ].join('\n'));
   assert.deepEqual(report.imports.map(item => item.specifier), ['./module.cjs']);
 });
