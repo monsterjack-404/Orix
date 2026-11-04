@@ -21,14 +21,14 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 |---|---|---|
 | Artifact intake | Regular-file validation, symlink rejection, size ceilings, bounded prefix reads | Does not acquire files from remote locations |
 | Integrity | Streaming SHA-256 over the complete file using a bounded buffer | Does not authenticate the publisher or establish trust |
-| Format registry | Signature recognition for ELF, PE/MZ, Mach-O, universal Mach-O, WebAssembly, PDF, PNG, JPEG, SQLite and GZIP | Signature recognition is not a complete format parser |
+| Format registry | Signature recognition for ELF, PE/MZ, Mach-O, universal Mach-O, WebAssembly, DEX, PDF, PNG, JPEG, SQLite and GZIP | Signature recognition is not a complete format parser |
 | PE parser | PE32/PE32+ headers, data directories, section records, file-backed RVA mapping, normal and delay-import DLLs with name/ordinal thunks, named/ordinal exports, resource trees, WIN_CERTIFICATE framing, delay imports and base-relocation records | Relocation application, CLR metadata and Authenticode trust verification are not implemented |
 | ELF parser | ELF32/ELF64 headers, bounded program segments, PT_INTERP, PT_DYNAMIC tags, GNU build IDs, symbol tables, REL/RELA relocation records and GNU symbol-version requirements/definitions, VERSYM mappings and bounded GNU hash bloom/bucket/chain tables | Does not apply relocations or decode DWARF |
 | Mach-O parser | Thin and FAT/FAT64 universal images, per-slice parsing, segment/section commands, LC_SYMTAB symbols, LC_DYSYMTAB groups/indirect symbols and CodeDirectory metadata | Does not cryptographically verify signatures or decode chained fixups and Objective-C metadata |
 | ZIP parser | ZIP32/ZIP64 central-directory indexing, extended entry sizes and offsets, unsafe path and symlink metadata | Multi-disk archives, extraction, decompression and CRC verification are not implemented |
 | PDF parser | Classic xref tables, trailer metadata, incremental /Prev chain, indirect-object framing, encryption and active-content marker triage | Xref-stream entries, object streams, filters, attachment extraction, page-tree semantics and signature verification are not implemented |
 | PNG parser | Bounded chunk index, IHDR, palette/transparency constraints, IDAT ordering, IEND and configurable CRC validation | Does not inflate IDAT, decode scanlines/pixels or validate color management |
-| WebAssembly parser | Versioned module header, bounded specification-ordered section framing, strict UTF-8 names, module/function name maps, function types, imports, exports, function/type indices, start function and code-body ranges | Does not decode instructions or initializers, validate all section semantics, or decompile code |
+| DEX parser | DEX 035/037/038/039 header, bounded map list, string/type index tables and class-definition metadata | Does not decode instructions, class data, annotations or debug information; does not verify checksum/signature or integrate APK manifests/resources |\n| WebAssembly parser | Versioned module header, bounded specification-ordered section framing, strict UTF-8 names, module/function name maps, function types, imports, exports, function/type indices, start function and code-body ranges | Does not decode instructions or initializers, validate all section semantics, or decompile code |
 | Static metrics | Shannon entropy, ASCII/UTF-16LE string extraction and bounded hex preview | Metrics are descriptive, not malware verdicts |
 | Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, PDF active-content/embedded-content/encryption markers, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
 | Evidence model | Stable report evidence plus append-only SHA-256 chained JSONL ledger, verify/list commands and append receipts | Not a signature, trusted timestamp or external transparency log |
@@ -215,7 +215,7 @@ import {
   inspect_file,
   scan_directory,
   parse_pe,
-  parse_elf,
+  parse_elf,\n  parse_dex,
   calculate_entropy,
   extract_strings,
   render_inspection_markdown,
@@ -281,7 +281,7 @@ CLI / Programmatic API
         │
         ├── Format registry and parsers
         │     ├── PE / COFF
-        │     ├── ELF
+        │     ├── ELF\n        │     ├── DEX
         │     ├── thin Mach-O
         │     ├── WebAssembly
         │     └── PDF (classic xref + object index)
@@ -322,7 +322,7 @@ npm run test:coverage
 
 GitHub Actions validates Node.js 20, 22 and 24 on Linux, runs Windows and macOS smoke suites on Node.js 22, checks syntax, runs the full test suite, and generates Linux coverage on Node.js 22. A separate scheduled CodeQL `security-extended` workflow analyzes JavaScript/TypeScript; Dependabot checks npm and GitHub Actions dependencies.
 
-The test suite includes handcrafted PE32/PE32+ fixtures with bounded import/export tables, ELF64, thin Mach-O and WebAssembly fixtures; malformed-header and RVA boundaries; string extraction; evidence semantics; symlink handling; directory traversal; project-intelligence regression cases; and real CLI JSON output. The fixtures are generated as small byte buffers at test time and are not executable samples.
+The test suite includes handcrafted PE32/PE32+ fixtures with bounded import/export tables, ELF64, thin Mach-O, DEX and WebAssembly fixtures; malformed-header and RVA boundaries; string extraction; evidence semantics; symlink handling; directory traversal; project-intelligence regression cases; and real CLI JSON output. The fixtures are generated as small byte buffers at test time and are not executable samples.
 
 Before adding a parser:
 
