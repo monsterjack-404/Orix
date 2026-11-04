@@ -45,3 +45,11 @@ test('rejects malformed magic, unsupported version and out-of-file table ranges'
   assert.throws(() => parse_dex(dex_fixture({ version: '041' })), error => error.code === 'ORIX_DEX_UNSUPPORTED_VERSION');
   assert.throws(() => parse_dex(dex_fixture({ file_size: 112, string_count: 1, string_offset: 112 })), error => error.code === 'ORIX_DEX_TABLE_RANGE');
 });
+
+test('registers DEX for standard format detection and parser dispatch', async () => {
+  const { analyze_known_format } = await import('../src/formats/index.mjs');
+  const result = analyze_known_format(dex_fixture());
+  assert.equal(result.detection.format, 'DEX');
+  assert.equal(result.parser_status, 'parsed');
+  assert.equal(result.parsed.format, 'DEX');
+});
