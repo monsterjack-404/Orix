@@ -1,4 +1,4 @@
-// JavaScript, src/mcp/server.mjs, Node.js 20+, bounded read-only Model Context Protocol stdio server.
+// JavaScript, src/mcp/server.mjs, Node.js 20+, bounded static-analysis Model Context Protocol stdio server.
 
 import { inspect_file } from '../core/inspect.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
