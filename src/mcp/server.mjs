@@ -1,6 +1,7 @@
 // JavaScript, src/mcp/server.mjs, Node.js 20+, bounded static-analysis Model Context Protocol stdio server.
 
 import { inspect_file } from '../core/inspect.mjs';
+import { analyze_har_file } from '../network/har.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project } from '../project/intelligence.mjs';
 import { analyze_project_architecture } from '../project/architecture.mjs';
@@ -97,6 +98,20 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         max_nodes: integer('Maximum graph nodes analyzed.', 50000, 1),
         max_edges: integer('Maximum graph edges analyzed.', 250000, 1),
         max_hotspots: integer('Maximum connectivity hotspots returned.', 100, 1),
+      },
+      required: ['path'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'orix.analyze_har',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    description: 'Analyze a workspace-confined HAR 1.2 capture offline. Returns bounded request metadata, host/status/timing summaries and review findings; does not export request/response bodies or secret header/query values.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', minLength: 1 },
+        max_entries: integer('Maximum HAR transactions analyzed.', 100000, 1),
       },
       required: ['path'],
       additionalProperties: false,
