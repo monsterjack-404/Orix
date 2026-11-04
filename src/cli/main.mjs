@@ -44,7 +44,7 @@ function validate_command_flags(command, flags) {
     formats: ['format', 'out'],
     capabilities: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
-    providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes', 'max_imports', 'max_functions', 'rizin_address', 'max_instructions'],
+    providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes', 'max_imports', 'max_functions', 'rizin_address', 'max_instructions', 'rizin_decompile'],
     audit: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'osv_lookup', 'max_osv_packages', 'max_osv_advisories', 'max_osv_response_bytes', 'timeout_ms'],
     har: ['format', 'out', 'max_har_entries', 'max_har_hosts'],
   }[command];
@@ -108,6 +108,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
         max_functions:parsed.flags.max_functions,
         address:parsed.flags.rizin_address,
         max_instructions:parsed.flags.max_instructions,
+        decompile:parsed.flags.rizin_decompile,
       });
       const output=parsed.flags.format==='json'
         ? render_json(report)
