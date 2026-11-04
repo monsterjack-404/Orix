@@ -40,6 +40,12 @@ function advisory(id, extra = {}) {
   };
 }
 
+test('OSV vulnerability audit is available through the documented package subpath', async () => {
+  const public_api = await import('@orix/cli/vulnerability/osv');
+  assert.equal(typeof public_api.audit_project_dependencies, 'function');
+  assert.equal(typeof public_api.render_vulnerability_audit_markdown, 'function');
+});
+
 test('OSV audit sends only exact package identifiers and maps advisory matches to lockfile records', async () => {
   const calls = [];
   const fetch_impl = async (url, init) => {
