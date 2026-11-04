@@ -1160,7 +1160,7 @@ test('DEX parser validates header and bounded map metadata', () => {
 test('DEX parser accepts each explicitly supported header version', () => {
   for (const version of ['035', '037', '038', '039']) {
     const fixture = create_dex_fixture();
-    fixture.write('dex\\n' + version + '\\0', 0, 'ascii');
+    fixture.write('dex\n' + version + '\0', 0, 'ascii');
     const parsed = parse_dex(fixture);
     assert.equal(parsed.version, version);
     assert.equal(parsed.file_size, fixture.length);
