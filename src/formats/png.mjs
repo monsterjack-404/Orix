@@ -268,6 +268,7 @@ export function parse_png(buffer, options = {}) {
     } else if (type === 'PLTE') {
       if (!header) fail('ORIX_PNG_MISSING_IHDR', 'PNG PLTE cannot appear before IHDR');
       if (palette_seen) fail('ORIX_PNG_DUPLICATE_PLTE', 'PNG may contain at most one PLTE chunk');
+      if (transparency_seen) fail('ORIX_PNG_PLTE_AFTER_TRNS', 'PNG PLTE must precede tRNS when both chunks are present');
       if (idat_seen) fail('ORIX_PNG_PLTE_AFTER_IDAT', 'PNG PLTE must appear before the IDAT sequence');
       palette_entries = validate_palette(length, header);
       palette_seen = true;
