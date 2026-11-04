@@ -4,6 +4,8 @@
 const DEFAULT_MAX_TOKENS = 200000;
 const DEFAULT_MAX_IMPORTS = 2000;
 const DEFAULT_MAX_SYMBOLS = 2000;
+const REGEX_PREFIX_KEYWORDS = new Set(['return', 'throw', 'case', 'delete', 'void', 'typeof', 'instanceof', 'in', 'of', 'yield', 'await', 'else', 'do']);
+const REGEX_PREFIX_PUNCTUATION = new Set(['(', '{', '[', ',', ':', ';', '=', '!', '?', '&', '|', '+', '-', '*', '%', '~', '^', '<', '>']);
 
 function is_space(code) {
   return code === 32 || (code >= 9 && code <= 13) || code === 0x00a0;
@@ -21,10 +23,10 @@ function is_identifier_part(code) {
 function can_start_regex(previous) {
   if (!previous) return true;
   if (previous.type === 'identifier') {
-    return new Set(['return', 'throw', 'case', 'delete', 'void', 'typeof', 'instanceof', 'in', 'of', 'yield', 'await', 'else', 'do']).has(previous.value);
+    return REGEX_PREFIX_KEYWORDS.has(previous.value);
   }
   if (previous.type === 'string' || previous.type === 'number' || previous.type === 'template' || previous.type === 'regex') return false;
-  return new Set(['(', '{', '[', ',', ':', ';', '=', '!', '?', '&', '|', '+', '-', '*', '%', '~', '^', '<', '>']).has(previous.value);
+  return REGEX_PREFIX_PUNCTUATION.has(previous.value);
 }
 
 function read_regex(source, start) {
