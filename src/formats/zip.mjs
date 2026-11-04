@@ -185,7 +185,7 @@ export function parse_zip(buffer, options = {}) {
     entries.push({
       index, name, unsafe_path: is_unsafe_archive_path(name), is_directory: name.endsWith('/'), is_symlink,
       compression_method: COMPRESSION.get(method) ?? `unknown-${method}`,
-      encrypted: Boolean(flags & 0x0001), data_descriptor: Boolean(flags & 0x0008), utf8_name: Boolean(flags & 0x0800),
+      encrypted: Boolean(flags & 0x0001), strongly_encrypted: Boolean(flags & 0x0040), data_descriptor: Boolean(flags & 0x0008), utf8_name: Boolean(flags & 0x0800),
       crc32: `0x${crc32.toString(16).padStart(8, '0')}`,
       compressed_size, uncompressed_size, compression_ratio: compressed_size === 0 ? null : Number((uncompressed_size / compressed_size).toFixed(4)),
       local_header_offset, local_header_valid, local_data_range_valid, disk_start,
