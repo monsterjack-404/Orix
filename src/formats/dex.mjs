@@ -56,6 +56,9 @@ export function parse_dex(buffer, options = {}) {
   const endian_tag = read_u32(buffer, 40, little, 'endian tag');
   if (header_size !== 112) invalid('ORIX_DEX_BAD_HEADER_SIZE', 'Only the 112-byte DEX header layout is supported', { header_size, version });
   if (file_size < header_size) invalid('ORIX_DEX_BAD_FILE_SIZE', 'DEX declared file size is smaller than its header', { file_size, header_size });
+  if (options.header_only === true && (!Number.isSafeInteger(options.declared_size) || options.declared_size < header_size)) {
+    throw new TypeError('header_only requires a trusted declared_size of at least 112 bytes');
+  }
   if (options.header_only !== true && file_size > buffer.length) invalid('ORIX_DEX_TRUNCATED_FILE', 'DEX declared file size exceeds available input bytes', { file_size, available: buffer.length });
   if (options.declared_size !== undefined && options.declared_size !== file_size) {
     invalid('ORIX_DEX_SIZE_MISMATCH', 'DEX header file size does not match its containing entry size', { header_file_size: file_size, declared_size: options.declared_size });
