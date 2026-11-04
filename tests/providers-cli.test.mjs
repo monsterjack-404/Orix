@@ -26,6 +26,7 @@ async function with_fixture(callback) {
       'if [ "$1" = "-N" ] && [ "$3" = "-c" ]; then',
       '  case "$4" in',
       '    pdj*) printf "%s" \'[{"offset":4198400,"size":5,"bytes":"554889e5","opcode":"push rbp","disasm":"push rbp","type":"push"}]\'; exit 0 ;;',
+      '    pdg*) printf "%s\\n" \'int main(void) { return 0; }\'; exit 0 ;;',
       '  esac',
       'fi',
       'if [ "$1" = "-N" ] && [ "$4" = "iij" ]; then',
@@ -78,6 +79,7 @@ test('provider CLI parser accepts bounded Rizin function and disassembly options
     '--max-functions', '4000',
     '--address', '0x401000',
     '--max-instructions', '75',
+    '--decompile',
     '--json',
   ]);
   assert.equal(parsed.provider_action, 'functions');
@@ -85,6 +87,7 @@ test('provider CLI parser accepts bounded Rizin function and disassembly options
   assert.equal(parsed.flags.max_functions, 4000);
   assert.equal(parsed.flags.rizin_address, '0x401000');
   assert.equal(parsed.flags.max_instructions, 75);
+  assert.equal(parsed.flags.rizin_decompile, true);
 });
 
 test('provider CLI parser rejects unknown actions and missing Rizin input', () => {
@@ -153,6 +156,7 @@ test('providers rizin functions writes the actual bounded function/disassembly r
       '--executable', executable,
       '--address', '0x401000',
       '--max-instructions', '1',
+      '--decompile',
       '--format', 'json',
       '--out', output,
     ]);
@@ -161,6 +165,7 @@ test('providers rizin functions writes the actual bounded function/disassembly r
     assert.equal(report.schema_version, 'orix.rizin-functions.v1');
     assert.equal(report.functions[0].name, 'sym.main');
     assert.equal(report.disassembly.instructions[0].disassembly, 'push rbp');
+    assert.match(report.decompilation.source, /int main/);
   });
 });
 
