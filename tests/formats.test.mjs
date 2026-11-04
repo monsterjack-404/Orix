@@ -1192,20 +1192,24 @@ function create_dex_class_fixture() {
   buffer.writeUInt32LE(buffer.length, 32);
   buffer.writeUInt32LE(112, 36);
   buffer.writeUInt32LE(0x12345678, 40);
-  buffer.writeUInt32LE(6, 56);
+  buffer.writeUInt32LE(2, 56);
   buffer.writeUInt32LE(112, 60);
   buffer.writeUInt32LE(2, 64);
-  buffer.writeUInt32LE(136, 68);
+  buffer.writeUInt32LE(120, 68);
   buffer.writeUInt32LE(1, 96);
-  buffer.writeUInt32LE(144, 100);
+  buffer.writeUInt32LE(128, 100);
   buffer.writeUInt32LE(104, 104);
   buffer.writeUInt32LE(160, 108);
   buffer.writeUInt32LE(160, 112);
   buffer.writeUInt32LE(180, 116);
+  buffer.writeUInt32LE(0, 120);
+  buffer.writeUInt32LE(1, 124);
+  buffer.writeUInt32LE(1, 128);
+  buffer.writeUInt32LE(1, 132);
   buffer.writeUInt32LE(0, 136);
-  buffer.writeUInt32LE(1, 140);
-  buffer.writeUInt32LE(1, 144);
-  buffer.writeUInt32LE(1, 148);
+  buffer.writeUInt32LE(0, 140);
+  buffer.writeUInt32LE(0xffffffff, 144);
+  buffer.writeUInt32LE(0, 148);
   buffer.writeUInt32LE(0, 152);
   buffer.writeUInt32LE(0, 156);
   const first = Buffer.from('Ljava/lang/Object;', 'ascii');
@@ -1218,9 +1222,9 @@ function create_dex_class_fixture() {
   buffer.writeUInt32LE(6, 188);
   const items = [
     [0x0000, 1, 0],
-    [0x0001, 6, 112],
-    [0x0002, 2, 136],
-    [0x0006, 1, 144],
+    [0x0001, 2, 112],
+    [0x0002, 2, 120],
+    [0x0006, 1, 128],
     [0x2002, 2, 160],
     [0x1000, 1, 188],
   ];
