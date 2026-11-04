@@ -23,12 +23,15 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | `orix.scan_project` | `path`, optional file/entry/depth limits | Project inventory, manifests, imports and symbol candidates |
 | `orix.analyze_architecture` | `path`, optional inventory and graph limits | Static source-import graph with entry-point candidates, cycles, reachability, hotspots and explicit limitations |
 | `orix.formats` | No arguments | Recognized signatures and parser capability metadata |
+| `orix.capabilities` | No arguments | Source-backed implemented/partial/planned inventory, format registry, provider declarations and explicit boundaries |
 | `orix.compare_reports` | `baseline_path`, `current_path` | Deterministic artifact/scan comparison, SHA-256 deltas and indicator changes |
 | `orix.ledger.verify` | `path` | Evidence-ledger chain verification |
 | `orix.ledger.list` | `path` | Verified evidence-ledger records |
 | `orix.ledger.append` | `path`, event `type`, JSON object `payload` | Workspace-confined append receipt for the hash-chained ledger |
 
 The server advertises only its implemented `tools` capability; resource and prompt catalogs are not exposed. Each stdio connection enforces the MCP lifecycle: only `ping` is accepted before initialization, tool requests remain blocked until the client sends `notifications/initialized`, and duplicate initialization is rejected. It negotiates the requested protocol version when it supports it and otherwise reports its supported version (`2025-03-26`). Initialize requests require `protocolVersion`, `capabilities` and `clientInfo.name/version`. JSON-RPC request IDs are restricted to strings or finite numbers; malformed request envelopes and malformed `tools/call` parameters receive protocol-level errors. Valid notifications never receive responses. Batches are processed sequentially with a 100-message ceiling; notification replies are omitted, empty batches are rejected, and `initialize` is rejected inside a batch. Each stdio server instance also limits tool execution to 60 calls per 60-second window by default; `start_mcp_server({ max_tool_calls_per_minute })` can set a value from 1 to 10,000. Protocol pings and tool discovery are not counted against this limit.
+
+The `orix.capabilities` tool derives its format list from the live parser registry and its MCP tool list from the same definitions returned by `tools/list`; it does not probe provider executables or perform network access.
 
 Every tool validates its input server-side against the same schema advertised by `tools/list`. Output is capped at 2 MiB per tool response; reduce scan limits if a result exceeds the cap.
 
