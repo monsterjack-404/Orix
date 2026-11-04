@@ -39,7 +39,7 @@ Tool definitions also publish MCP safety annotations: inspection, inventory, com
 
 ## Security boundary
 
-- Static and read-only. No target file or project code is executed.
+- Analysis tools are static and read-only; the explicit `orix.ledger.append` tool is the only state-changing operation and is confined to workspace ledger files. No target file or project code is executed.
 - No shell, arbitrary command, plugin, network or remote URL tools are exposed.
 - Symlinks are not followed by the underlying scanners.
 - Existing parser, traversal and file-size limits remain active.
