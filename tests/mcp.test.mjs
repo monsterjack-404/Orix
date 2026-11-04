@@ -144,10 +144,10 @@ test('MCP audit receipts are append-only, workspace-confined and omit tool argum
     input.write(JSON.stringify({
       jsonrpc: '2.0', id: 'audit-1', method: 'tools/call',
       params: { name: 'orix.formats', arguments: {} },
-    }) + '\\n');
+    }) + '\n');
     input.end();
     await running;
-    const messages = captured.trim().split('\\n').map(line => JSON.parse(line));
+    const messages = captured.trim().split('\n').map(line => JSON.parse(line));
     assert.equal(messages.length, 1);
     assert.equal(messages[0].result.isError, false);
     const ledger = await list_ledger(path.join(directory, '.orix', 'mcp-audit.jsonl'));
