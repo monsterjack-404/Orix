@@ -258,7 +258,7 @@ This backlog turns the product charter into reviewable engineering work. It is i
 - [x] Negotiate the supported protocol version and align advertised capability families with implemented routes.
 - [x] Enforce initialize → initialized → operation lifecycle on each stdio connection.
 - [x] Add protocol, notification, batch, rate-limit and workspace-confinement regression tests.
-- [ ] Add per-tool authorization policy and append-only tool audit receipts.
+- [x] Add default-deny write-tool policy, per-tool allowlists and optional append-only hash-chained audit receipts.
 - [ ] Remote transport requires authentication, TLS, origin protection and multi-user isolation; no remote listener is currently exposed.
 - Acceptance: protocol conformance and confused-deputy tests.
 
