@@ -28,6 +28,8 @@ Configure an MCP client with command `node`, one argument containing the absolut
 
 Every tool validates its input server-side against the same schema advertised by `tools/list`. Output is capped at 2 MiB per tool response; reduce scan limits if a result exceeds the cap.
 
+Tool definitions also publish MCP safety annotations: inspection, inventory, comparison and ledger-read tools are marked read-only and idempotent; `orix.ledger.append` is marked as a state-changing, non-idempotent operation. These annotations are client-facing hints, not an authorization boundary. Workspace confinement and server-side validation remain authoritative.
+
 ## Security boundary
 
 - Static and read-only. No target file or project code is executed.
