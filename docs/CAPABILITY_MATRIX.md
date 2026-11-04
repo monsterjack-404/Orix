@@ -94,7 +94,9 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Static subprocess runner | Partial | argv-only, shell-free, time/output limits, minimal environment | OS-level containment and process-tree guarantees |
 | Rizin version probe | Implemented | Explicit executable, version report | Real-version compatibility matrix |
 | Rizin imports adapter | Partial | Static import metadata using private snapshot | More commands, disassembly and symbol/function analysis |
-| Ghidra adapter | Planned | No adapter | Headless analysis, script contract and isolated process lifecycle |
+| Rizin function inventory and disassembly | Partial | `-A` + `aflj`, address-validated `pdj` windows, bounded output, hashed private snapshot | Real-version golden tests, xrefs, symbols/sections/strings, call graphs and decompiler backend |
+| Optional Rizin pseudocode decompilation | Partial | `pdg` request routed to externally installed `rz-ghidra`; explicit opt-in and bounded output | Real plugin/version/architecture compatibility matrix; plugin is not bundled or installed |
+| Ghidra/decompiler adapter | Planned | No dedicated Ghidra headless adapter; optional Rizin `pdg` is heuristic plugin-backed pseudocode, not source reconstruction | Verified source-like decompilation, headless analysis, script contract and isolated process lifecycle |
 | JADX adapter | Planned | No adapter | APK/DEX analysis and resource mapping |
 | Semgrep adapter | Planned | No adapter | SARIF ingestion and language/rule provenance |
 | Syft adapter | Planned | No adapter | SBOM provider and inventory reconciliation |

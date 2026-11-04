@@ -147,6 +147,22 @@ The command writes an `orix.rizin-imports.v1` report containing the normalized i
 
 The timeout is a total deadline across input hashing, the version probe and import extraction. Output capture is bounded per provider process. The process runner uses argv without a shell and does not inherit the entire parent environment. It is **not an OS sandbox**: the provider executable can still access resources available to its account. POSIX process groups are signalled during termination; Windows process-tree teardown is not guaranteed. The inspected target is not executed by this adapter. See [Provider Integrations](PROVIDERS.md) for the full contract and threat boundary.
 
+### Rizin function inventory and disassembly
+
+List functions identified by Rizin automatic analysis:
+
+~~~sh
+node src/cli.mjs providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --max-functions 10000 --json
+~~~
+
+Request an instruction window from one exact function entry:
+
+~~~sh
+node src/cli.mjs providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --address 0x401000 --max-instructions 100 --json
+node src/cli.mjs providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --address 0x401000 --decompile --json
+~~~
+
+The function report uses `-A` and `aflj`; the optional instruction window uses `pdj`. Addresses must match an entry returned in the function inventory. Function listing is capped at 100,000 entries (default 10,000), and disassembly is capped at 1,000 instructions (default 100). The total workflow shares one timeout and output budget across all Rizin processes. Add `--decompile` with `--address` to ask the optional `pdg` command for pseudocode; this requires the separately installed `rz-ghidra` plugin and is heuristic, not a compilable source reconstruction.
 ## Output contracts
 
 `--json` is intended for scripts and downstream tools. Do not parse the human Markdown table output as an API. The top-level `schema_version` field identifies the current report contract. Unknown fields should be ignored by consumers so the contract can grow without breaking compatible readers.
@@ -172,6 +188,8 @@ A scan that contains some per-file failures still returns a report and exits suc
 | `--max-file-mib` | 128 MiB | 1–2,048 MiB |
 | `--concurrency` | 4 | 1–32 |
 | `--strings-limit` | 2,000 | 0–100,000 |
+| `--max-functions` | 10,000 | 1–100,000 |
+| `--max-instructions` | 100 | 1–1,000 |
 
 `max-read-mib` cannot exceed `max-file-mib`. Programmatic callers can supply the same limits in the `limits` object, where byte values are expressed in bytes rather than MiB.
 

@@ -9,6 +9,7 @@ import { list_format_capabilities } from '../formats/index.mjs';
 import { build_capability_report } from '../capabilities/registry.mjs';
 import { verify_ledger, list_ledger, append_ledger } from '../evidence/ledger.mjs';
 import { compare_reports } from '../analyzer/compare.mjs';
+import { analyze_rizin_functions } from '../providers/rizin.mjs';
 import { normalize_error } from '../core/errors.mjs';
 import { TextDecoder } from 'node:util';
 import {
@@ -48,6 +49,26 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         extract_strings: { type: 'boolean' },
       },
       required: ['path'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'orix.rizin_functions',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    description: 'Use an explicitly selected Rizin executable to enumerate functions, disassemble a bounded instruction window and optionally request rz-ghidra pseudocode. The target is never executed; Rizin and its optional decompiler plugin must be installed separately.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', minLength: 1 },
+        executable: { type: 'string', minLength: 1, maxLength: 4096 },
+        max_functions: integer('Maximum Rizin functions retained.', 100000, 1),
+        address: { type: 'string', minLength: 1, maxLength: 18, pattern: '^(?:0x[0-9a-fA-F]{1,14}|[0-9]{1,16})$' },
+        max_instructions: integer('Maximum instructions in the optional disassembly window.', 1000, 1),
+        decompile: { type: 'boolean', description: 'Request optional rz-ghidra pseudocode decompilation at the supplied function entry address.' },
+        timeout_ms: integer('Total provider workflow deadline in milliseconds.', 60000, 1),
+        max_output_kib: integer('Aggregate stdout/stderr capture budget in KiB.', 8192, 1),
+      },
+      required: ['path', 'executable'],
       additionalProperties: false,
     },
   },
@@ -258,6 +279,19 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       if (args.max_strings !== undefined) limits.max_strings = args.max_strings;
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       return inspect_file(target.path, { limits, extract_strings: args.extract_strings });
+    }
+    case 'orix.rizin_functions': {
+      const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
+      return analyze_rizin_functions({
+        input_path: target.path,
+        executable: args.executable,
+        max_functions: args.max_functions ?? 1000,
+        address: args.address,
+        max_instructions: args.max_instructions ?? 100,
+        decompile: args.decompile ?? false,
+        timeout_ms: args.timeout_ms ?? 30_000,
+        max_output_bytes: (args.max_output_kib ?? 2_048) * 1024,
+      });
     }
     case 'orix.scan_directory': {
       const limits = {};
