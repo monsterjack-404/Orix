@@ -18,8 +18,8 @@
 
 | Domain | Current state in 0.5.x | Verified boundary |
 |---|---|---|
-| Native formats | Partial | PE, ELF, Mach-O, universal Mach-O and WebAssembly have bounded structural parsers; no general-purpose decompiler or runtime execution engine |
-| Optional reverse-engineering tools | Partial | Rizin version probe and static import extraction; no Ghidra/JADX/Apktool adapter yet |
+| Native formats | Partial | PE, ELF, Mach-O, universal Mach-O and WebAssembly have bounded structural parsers; no bundled general-purpose decompiler or runtime execution engine |
+| Optional reverse-engineering tools | Partial | Rizin version probe, imports, bounded function inventory, address-scoped disassembly and opt-in `rz-ghidra` pseudocode; no dedicated Ghidra/JADX/Apktool adapter yet |
 | JavaScript and source projects | Partial | Extension inventory, bounded manifests, regex-based import/symbol candidates and architecture graph; not a JavaScript AST or Electron-specific analyzer |
 | .NET | Planned | C# project files and NuGet metadata can be inventoried; PE/CLI metadata, CLR tables, IL, assemblies and PDB analysis are absent |
 | Android | Planned | ZIP metadata exists; APK manifests, DEX/ART, resources and device state are not decoded |
