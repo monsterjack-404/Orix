@@ -133,7 +133,10 @@ test('static provider runner terminates providers at the configured deadline', a
 
 test('static provider runner supports AbortSignal cancellation', async () => {
   const controller = new AbortController();
-  const abort_timer = setTimeout(() => controller.abort(), 40);
+  // Executable/cwd validation can be substantially slower on Windows CI;
+  // wait long enough that this exercises cancellation after child launch rather
+  // than the documented pre-launch cancellation path.
+  const abort_timer = setTimeout(() => controller.abort(), 1_500);
   try {
     const result = await run_static_provider({
       manifest: manifest(),
