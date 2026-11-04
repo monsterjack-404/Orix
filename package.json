@@ -34,7 +34,8 @@
     "./reports/view-model": "./src/reports/view-model.mjs",
     "./reports/rizin": "./src/reports/rizin.mjs",
     "./project/architecture": "./src/project/architecture.mjs",
-    "./reports/architecture": "./src/reports/architecture.mjs"
+    "./reports/architecture": "./src/reports/architecture.mjs",
+    "./vulnerability/osv": "./src/vulnerability/osv.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",

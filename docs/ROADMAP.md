@@ -35,7 +35,9 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - Project structure signals for README, license, CI, tests and container files.
 - Redacted credential-shaped indicators and versioned project report schema.
 
-**Remaining:** additional Python/Go lockfile graph formats, packed Git object and commit-history indexing, compiler-backed symbol resolution, incremental cache, workspace persistence and deeper language parsers.
+**Implemented extension:** an opt-in OSV dependency audit queries exact versions from the supported lockfile inventory, follows per-package pagination, retrieves advisory details and reports partial coverage without uploading project files.
+
+**Remaining:** offline advisory snapshots, local affected-range semantics, dependency reachability, additional Python/Go lockfile graph formats, packed Git object and commit-history indexing, compiler-backed symbol resolution, incremental cache, workspace persistence and deeper language parsers.
 
 **Exit criteria:** deterministic results, explicit coverage, cache invalidation tests and no implicit build or package scripts.
 
@@ -107,6 +109,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [x] JSON-RPC stdio server with MCP 2025-03-26 initialize, ping, tools/list and tools/call.
 - [x] Workspace-confined artifact, directory, project, format, comparison and evidence-ledger tools.
 - [x] Tool argument contracts, path checks, no-follow report reads and input/output byte budgets.
+- [x] Protocol-version negotiation, JSON-RPC batch handling, request/parameter validation, per-connection call limits and initialize/initialized lifecycle enforcement.
 - [ ] Tool catalog generated from typed operation contracts.
 - [x] MCP server exposing artifact, project, comparison and evidence workflows.
 - [ ] HTTP transport, resource/prompt subscriptions and remote authentication.

@@ -53,6 +53,22 @@ Project SARIF export maps source findings to SARIF 2.1.0 file and line locations
 
 A project scan is still static and heuristic. SARIF output does not upgrade a pattern match into a confirmed secret, vulnerability or runtime behavior finding. Review the reported line in the source repository before taking action.
 
+### Audit resolved dependencies against OSV
+
+Run the project inventory first, then explicitly opt in to a public OSV.dev lookup:
+
+```bash
+node src/cli.mjs audit ./repository --osv
+node src/cli.mjs audit ./repository --osv --json --out ./vulnerabilities.json
+node src/cli.mjs audit ./repository --osv --max-packages 1000 --max-advisories 250 --max-network-mib 32 --timeout-ms 20000
+```
+
+The audit queries only exact package versions already present in supported lockfiles. It does not guess versions from manifest ranges. Unsupported ecosystems, unresolved versions, package ceilings, pagination ceilings, API errors and unavailable advisory details are recorded in the versioned `orix.vulnerability-audit.v1` report. Inspect `summary.complete`, per-package status and warnings; an incomplete audit is not a clean bill of health.
+
+Network access is disabled by default. Without `--osv`, ORIX does not contact OSV.dev. With the flag, it sends package ecosystem, name and exact version identifiers to the public OSV API. Source files, lockfiles, manifests, artifact bytes and repository contents are not uploaded. Private package names and versions can still be sensitive metadata, so review the inventory before opting in.
+
+OSV matches are vulnerability intelligence, not proof of reachability or exploitability. Review the linked advisory and affected version range, then validate against the application's actual use. See [Dependency Vulnerability Intelligence](VULNERABILITY-INTELLIGENCE.md).
+
 ### Analyze project architecture
 
 Build a bounded report from the project's discovered local-import graph:

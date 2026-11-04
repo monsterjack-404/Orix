@@ -15,6 +15,7 @@ const schema_paths = [
   new URL('../schemas/rizin-imports.v1.schema.json', import.meta.url),
   new URL('../schemas/provider-execution.v1.schema.json', import.meta.url),
   new URL('../schemas/provider-probe.v1.schema.json', import.meta.url),
+  new URL('../schemas/vulnerability-audit.v1.schema.json', import.meta.url),
 ];
 
 test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
@@ -55,4 +56,13 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.equal(schemas[9].properties.schema_version.const, 'orix.provider-probe.v1');
   assert.equal(schemas[9].properties.provider.properties.id.const, 'rizin.static');
   assert.equal(schemas[9].properties.status.const, 'available');
+  assert.equal(schemas[10].properties.schema_version.const, 'orix.vulnerability-audit.v1');
+  assert.equal(schemas[10].properties.source.properties.source_files_uploaded.const, false);
+  assert.ok(schemas[10].properties.source.required.includes('response_bytes_budget'));
+  assert.ok(schemas[10].properties.source.required.includes('response_bytes_retrieved'));
+  assert.equal(schemas[10].properties.summary.properties.status.enum.includes('partial'), true);
+  assert.ok(schemas[10].properties.packages.items.properties.vulnerability_ids);
+  assert.ok(schemas[10].properties.vulnerabilities.items.properties.affected);
+  assert.ok(schemas[10].properties.vulnerabilities.items.required.includes('affected'));
+  assert.ok(schemas[10].required.includes('unsupported_packages'));
 });

@@ -32,6 +32,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
 | Evidence model | Stable report evidence plus append-only SHA-256 chained JSONL ledger, verify/list commands and append receipts | Not a signature, trusted timestamp or external transparency log |
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
+| Dependency vulnerability audit | Explicit opt-in OSV lookup for exact lockfile-resolved versions, bounded batch pagination, advisory details and partial-coverage reporting | No offline advisory cache, local affected-range engine, reachability proof or exploitability verdict |
 | MCP integration | Local stdio JSON-RPC server with nine typed tools, including bounded project architecture analysis, inspect, scan, project, formats, comparison and evidence-ledger operations | No HTTP listener, remote auth, resource subscription or prompt catalog |
 | Provider integrations | Declarative manifests, immutable registry, bounded shell-free process runner, Rizin version doctor, snapshot-isolated static-import adapter, provider discovery/list CLI and JSON/Markdown reports | No OS sandbox, dynamic execution provider, installer, daemon or automatic provider discovery |
 
@@ -64,7 +65,10 @@ node src/cli.mjs project ./source-tree
 node src/cli.mjs project ./source-tree --json
 node src/cli.mjs project ./source-tree --format cyclonedx --out ./sbom.cdx.json
 node src/cli.mjs project ./source-tree --format sarif --out ./project-findings.sarif
+node src/cli.mjs audit ./source-tree --osv --json --out ./vulnerabilities.json
 ```
+
+Dependency auditing is a separate explicit network opt-in. It sends only exact package ecosystem/name/version identifiers from supported lockfiles to OSV.dev; without `--osv`, no advisory lookup is performed. See [Vulnerability Intelligence](docs/VULNERABILITY-INTELLIGENCE.md).
 
 It records file hashes, language counts, selected dependency declarations, npm package-lock v1-v3, Yarn classic/Berry, pnpm v5/v6/v9, Cargo.lock v1-v4, Composer.lock, Poetry, Pipenv and uv.lock resolved package inventories, plus Go checksums, source import edges, symbol candidates, redacted credential-shaped findings and bounded Git repository metadata (refs, tags, sanitized remotes and loose HEAD commit identity). Packed Git objects and linked-worktree gitdir targets are not decoded or followed. CycloneDX export includes resolved lockfile components and package relationships when supported lockfiles are present; otherwise it reports declared dependencies only. See [`docs/PROJECT_INTELLIGENCE.md`](docs/PROJECT_INTELLIGENCE.md) for parser boundaries and resource limits.
 

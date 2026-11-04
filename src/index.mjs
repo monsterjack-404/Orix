@@ -41,3 +41,5 @@ export { render_rizin_imports_markdown } from './reports/rizin.mjs';
 
 export { analyze_project_architecture } from './project/architecture.mjs';
 export { render_architecture_markdown, render_architecture_mermaid } from './reports/architecture.mjs';
+
+export { audit_project_dependencies, render_vulnerability_audit_markdown } from './vulnerability/osv.mjs';
