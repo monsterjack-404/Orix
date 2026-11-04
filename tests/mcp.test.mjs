@@ -655,3 +655,21 @@ test('MCP exposes a read-only workspace-confined Android package analysis tool',
   assert.deepEqual(tool.inputSchema.required, ['path']);
   assert.equal(tool.inputSchema.additionalProperties, false);
 });
+
+test('Android package MCP analysis is workspace-confined and rejects invalid archives', async () => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-android-'));
+  try {
+    const target = path.join(workspace, 'invalid.apk');
+    await writeFile(target, 'not a ZIP archive');
+    await assert.rejects(
+      call_orix_tool('orix.analyze_android_package', { path: target }, { roots: [workspace] }),
+      error => error.code === 'ORIX_ZIP_EOCD_MISSING',
+    );
+    await assert.rejects(
+      call_orix_tool('orix.analyze_android_package', { path: path.resolve('README.md') }, { roots: [workspace] }),
+      /workspace|outside|root/i,
+    );
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
