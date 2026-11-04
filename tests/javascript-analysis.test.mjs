@@ -110,3 +110,11 @@ test('preserves repeated imports and rejects source text beyond its configured c
     /max_source_chars/,
   );
 });
+test('stops malformed regex scanning at line terminators', () => {
+  const report = analyze_javascript_source([
+    'const matcher = /unterminated',
+    "const actual = require('./actual.cjs');",
+    'const valid = /safe/;',
+  ].join('\n'));
+  assert.deepEqual(report.imports.map(item => item.specifier), ['./actual.cjs']);
+});
