@@ -35,6 +35,8 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Safe regular-file intake | Implemented | Symlink rejection, regular-file checks, bounded reads | Stronger platform-specific race tests |
 | Full-file SHA-256 | Implemented | Streaming hash with bounded buffer and size ceiling | Acquisition provenance and optional signed receipts |
 | Signature registry | Implemented | ELF, PE/MZ, Mach-O, universal Mach-O, WASM, PDF, PNG, JPEG, SQLite, GZIP, ZIP | Extend with fixtures and confidence semantics |
+| DEX parser | Partial | DEX 035/037-040 fixed header, byte order and bounded table-range validation | DEX 041 containers, string/class/code decoding, disassembly and decompilation |
+| Android APK/AAB inventory | Partial | ZIP entry inventory, stored DEX header inspection, binary XML root-chunk recognition, native-library and v1 signature filename inventory | Manifest decoding, compressed DEX extraction, resource decoding, signature verification, device/adb observations |
 | PE parser | Partial | PE32/PE32+, sections, imports, delay imports, exports, resources, relocation records, WIN_CERTIFICATE framing | CLR metadata, relocation application, Authenticode verification, debug data |
 | ELF parser | Partial | ELF32/64, program/section metadata, dynamic tags, symbols, REL/RELA, GNU versions and GNU hash tables | Extended numbering, relocation semantics, DWARF, architecture-specific naming |
 | Mach-O parser | Partial | Thin/FAT/FAT64, segments, sections, symbols, indirect symbols, CodeDirectory metadata | Chained fixups, Objective-C metadata, signature verification |
