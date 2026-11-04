@@ -19,7 +19,10 @@ export function analyze_known_format(buffer, options = {}) {
   const parser = PARSERS.get(detection.format);
   if (!parser) return { detection, parsed: null, parser_status: 'not-supported' };
   try {
-    return { detection, parsed: parser(buffer, options), parser_status: 'parsed' };
+    const parser_options = detection.format === 'DEX' && Number.isSafeInteger(options.file_size)
+      ? { ...options, header_only: true, declared_size: options.file_size }
+      : options;
+    return { detection, parsed: parser(buffer, parser_options), parser_status: 'parsed' };
   } catch (error) {
     return { detection, parsed: null, parser_status: 'rejected', parser_error: { code: error.code ?? 'ORIX_PARSER_ERROR', message: error.message, details: error.details ?? null } };
   }
