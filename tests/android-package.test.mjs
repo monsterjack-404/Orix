@@ -1,7 +1,10 @@
 // JavaScript, tests/android-package.test.mjs, Node.js 20+, APK/AAB inventory contracts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyze_android_package } from '../src/android/package.mjs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { analyze_android_package, analyze_android_package_file, render_android_package_markdown } from '../src/android/package.mjs';
 
 function dex_header() {
   const dex = Buffer.alloc(112);
@@ -98,4 +101,35 @@ test('rejects mismatched local entry names before inspecting DEX data', () => {
     { name: 'classes.dex', local_name: 'other.dex', data: dex_header() },
   ]));
   assert.equal(report.dex[0].status, 'local-header-mismatch');
+});
+
+test('ignores unsafe archive paths when inventorying DEX entries', () => {
+  const report = analyze_android_package(zip_fixture([
+    { name: 'AndroidManifest.xml', data: [3, 0, 8, 0, 8, 0, 0, 0] },
+    { name: '../classes.dex', data: dex_header() },
+  ]));
+  assert.equal(report.summary.dex_entries, 0);
+  assert.equal(report.archive.unsafe_or_symlink_entries, 1);
+});
+
+test('safe file acquisition rejects symlinks and Markdown renderer emits real line breaks', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'orix-android-'));
+  try {
+    const file = path.join(root, 'sample.apk');
+    await writeFile(file, zip_fixture([
+      { name: 'AndroidManifest.xml', data: [3, 0, 8, 0, 8, 0, 0, 0] },
+      { name: 'classes.dex', data: dex_header() },
+    ]));
+    const report = await analyze_android_package_file(file);
+    const markdown = render_android_package_markdown(report);
+    assert.match(markdown, /^# ORIX Android Package Report/m);
+    assert.match(markdown, /## DEX inventory/);
+    assert.ok(markdown.includes(String.fromCharCode(10)));
+    const link = path.join(root, 'linked.apk');
+    const { symlink } = await import('node:fs/promises');
+    await symlink(file, link);
+    await assert.rejects(analyze_android_package_file(link), /regular non-symlink file/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
