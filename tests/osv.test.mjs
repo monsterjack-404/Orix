@@ -124,6 +124,29 @@ test('OSV pagination continues only package queries that include a next_page_tok
   assert.equal(report.summary.complete, true);
 });
 
+test('OSV retains first-page matches when a later page request fails', async () => {
+  let page = 0;
+  const report = await audit_project_dependencies(project([dep('alpha', '1.0.0')]), {
+    fetch_impl: async (url, init) => {
+      if (String(url).endsWith('/querybatch')) {
+        page += 1;
+        if (page === 1) {
+          return json_response({
+            results: [{ vulns: [{ id: 'OSV-FIRST-PAGE' }], next_page_token: 'next' }],
+          });
+        }
+        throw new Error('pagination service unavailable');
+      }
+      return json_response(advisory('OSV-FIRST-PAGE'));
+    },
+  });
+  assert.equal(report.summary.complete, false);
+  assert.equal(report.packages[0].status, 'query-error');
+  assert.deepEqual(report.packages[0].vulnerability_ids, ['OSV-FIRST-PAGE']);
+  assert.equal(report.vulnerabilities.length, 1);
+  assert.equal(report.vulnerabilities[0].matched_packages[0].name, 'alpha');
+});
+
 test('OSV withdrawn advisories are separated and removed from active package matches', async () => {
   const fetch_impl = async url => {
     if (String(url).endsWith('/querybatch')) {
