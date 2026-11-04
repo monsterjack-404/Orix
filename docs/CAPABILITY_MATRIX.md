@@ -157,7 +157,8 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Native decompilation | Planned | No decompiler adapter; Rizin imports only | Provider-neutral function/xref/disassembly/decompiler contract |
 | JavaScript / Electron | Partial | Source inventory and regex import/symbol candidates | AST analysis and Electron main/preload/renderer/IPC model |
 | .NET / CLR / IL | Planned | C# source and NuGet inventory only | PE/CLI metadata, IL, PDB and reviewed decompiler provider |
-| Android DEX | Partial | Standalone DEX 035/037/038/039 header, map, string/type indices and class definitions | Instruction decoding, class-data/annotation/debug decoding, verification and decompilation |\n| Android APK / AAB | Planned | ZIP central-directory metadata; no APK-aware manifest/resource workflow | Binary manifest/resources, APK-to-DEX integration and JADX/Apktool adapters |
+| Android DEX | Partial | Standalone DEX 035/037/038/039 header, map, string/type indices and class definitions | Instruction decoding, class-data/annotation/debug decoding, verification and decompilation |
+| Android APK / AAB | Planned | ZIP central-directory metadata; no APK-aware manifest/resource workflow | Binary manifest/resources, APK-to-DEX integration and JADX/Apktool adapters |
 | Android device observations | Planned | No ADB/emulator/Frida provider | Explicit device approval, scope, capture budgets and cleanup |
 | Website structure | Planned | No dedicated HTML/DOM/source-map analyzer | Offline asset graph and static script analysis |
 | Browser observations | Planned | No live browser provider | Disposable Playwright/CDP session and local fixture corpus |
