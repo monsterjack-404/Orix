@@ -195,7 +195,7 @@ test('Rizin function Markdown renderer bounds rows and displays instruction outp
   assert.match(markdown, /Bounded disassembly/);
   assert.match(markdown, /Optional pseudocode decompilation/);
   assert.match(markdown, /int main/);
-  assert.ok(markdown.includes('ret\|safe'));
+  assert.ok(markdown.includes('ret\\|safe'));
 });
 
 test('provider CLI refuses missing executable configuration and invalid output formats', async () => {
