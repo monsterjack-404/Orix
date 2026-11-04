@@ -19,6 +19,7 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | Tool | Input | Result |
 |---|---|---|
 | `orix.inspect_file` | `path`, optional read/file MiB and string limits | Versioned artifact report with complete-file SHA-256 |
+| `orix.rizin_functions` | Workspace-confined `path`, explicit `executable`, optional function/address/instruction/time/output limits | Rizin function inventory and optional address-scoped assembly disassembly with SHA-256 provenance |
 | `orix.scan_directory` | `path`, optional file/entry/depth/concurrency limits | Bounded directory scan and artifact reports |
 | `orix.scan_project` | `path`, optional file/entry/depth limits | Project inventory, manifests, imports and symbol candidates |
 | `orix.analyze_architecture` | `path`, optional inventory and graph limits | Static source-import graph with entry-point candidates, cycles, reachability, hotspots and explicit limitations |
@@ -40,8 +41,8 @@ Tool definitions also publish MCP safety annotations: inspection, inventory, com
 
 ## Security boundary
 
-- Analysis tools are static and read-only; HAR analysis reads a user-supplied local capture and never replays network requests or exports payload/header/query values. The explicit `orix.ledger.append` tool is the only state-changing operation and is confined to workspace ledger files. No target file or project code is executed.
-- No shell, arbitrary command, plugin, network or remote URL tools are exposed.
+- Analysis tools are static and read-only; HAR analysis reads a user-supplied local capture and never replays network requests or exports payload/header/query values. The explicit `orix.ledger.append` tool is the only state-changing operation and is confined to workspace ledger files. Rizin itself runs as an external analysis process, but the inspected target file and project code are not executed.
+- No shell command-string, arbitrary command-argument, remote URL or network-request tool is exposed. `orix.rizin_functions` is the explicit exception that launches a user-selected Rizin executable with fixed adapter arguments; it is not a sandbox and has the same OS permissions as its account.
 - Symlinks are not followed by the underlying scanners.
 - Existing parser, traversal and file-size limits remain active.
 - Tool output is JSON text in MCP content blocks. Errors are returned with `isError: true`. Comparison reads each report through a no-follow, 64 MiB-bounded file reader and never rescans the original artifacts.
