@@ -37,8 +37,10 @@ check('CLI guide release marker', () => {
   assert.ok(!cli.includes('ORIX 0.2.1'), 'stale 0.2.1 release claim remains');
 });
 check('Product charter discoverability', () => {
-  assert.ok(readme.includes('[PRODUCT_CHARTER.md](docs/PRODUCT_CHARTER.md)'));
-  assert.ok(readme.includes('[CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md)'));
+  assert.ok(/\\[[^\\]]+\\]\\(docs\\/PRODUCT_CHARTER\\.md\\)/.test(readme),
+    'README must link to docs/PRODUCT_CHARTER.md');
+  assert.ok(/\\[[^\\]]+\\]\\(docs\\/CAPABILITY_MATRIX\\.md\\)/.test(readme),
+    'README must link to docs/CAPABILITY_MATRIX.md');
   assert.ok(charter.includes('Definition of done'));
   assert.ok(matrix.includes('Priority order'));
   assert.ok(roadmap.includes('P0'), 'roadmap must retain explicit priority gates');
