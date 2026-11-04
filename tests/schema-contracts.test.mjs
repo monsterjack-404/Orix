@@ -18,6 +18,7 @@ const schema_paths = [
   new URL('../schemas/vulnerability-audit.v1.schema.json', import.meta.url),
   new URL('../schemas/capabilities.v1.schema.json', import.meta.url),
   new URL('../schemas/capabilities.v1.schema.json', import.meta.url),
+  new URL('../schemas/rizin-functions.v1.schema.json', import.meta.url),
 ];
 
 test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
@@ -73,4 +74,8 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.equal(schemas[11].properties.schema_version.const, 'orix.capabilities.v1');
   assert.ok(schemas[11].required.includes('formats'));
   assert.ok(schemas[11].required.includes('global_boundaries'));
+  assert.equal(schemas[13].properties.schema_version.const, 'orix.rizin-functions.v1');
+  assert.equal(schemas[13].additionalProperties, false);
+  assert.ok(schemas[13].properties.functions.items.required.includes('offset'));
+  assert.equal(schemas[13].properties.disassembly.oneOf.length, 2);
 });
