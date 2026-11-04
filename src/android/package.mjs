@@ -183,7 +183,16 @@ export async function analyze_android_package_file(file_path, options = {}) {
 }
 
 function markdown_cell(value) {
-  return String(value ?? '').replace(/\\\\/g, '\\\\\\\\').replace(/\\|/g, '\\\\|').replace(/[\\r\\n]+/g, ' ');
+  const slash = String.fromCharCode(92);
+  let output = '';
+  for (const character of String(value ?? '')) {
+    const code = character.charCodeAt(0);
+    if (character === slash) output += slash + slash;
+    else if (character === '|') output += slash + '|';
+    else if (code === 10 || code === 13) output += ' ';
+    else output += character;
+  }
+  return output;
 }
 
 export function render_android_package_markdown(report) {
