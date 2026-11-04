@@ -32,16 +32,16 @@ function bounded_text(value, maximum = 256) {
 
 function markdown_escape(value) {
   return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\\/g, '\\\\')
-    .replace(/\\|/g, '\\\\|')
-    .replace(/`/g, '\\\\`')
-    .replace(/\\[/g, '\\\\[')
-    .replace(/\\]/g, '\\\\]')
-    .replace(/\\*/g, '\\\\*')
-    .replace(/_/g, '\\\\_');
+    .replaceAll('\\\\', '\\\\\\\\')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('|', '\\\\|')
+    .replaceAll('`', '\\\\`')
+    .replaceAll('[', '\\\\[')
+    .replaceAll(']', '\\\\]')
+    .replaceAll('*', '\\\\*')
+    .replaceAll('_', '\\\\_');
 }
 
 function header_index(headers, label) {
