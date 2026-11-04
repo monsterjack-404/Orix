@@ -22,7 +22,7 @@
 | Optional reverse-engineering tools | Partial | Rizin version probe, imports, bounded function inventory, address-scoped disassembly and opt-in `rz-ghidra` pseudocode; no dedicated Ghidra/JADX/Apktool adapter yet |
 | JavaScript and source projects | Partial | Extension inventory, bounded manifests, regex-based import/symbol candidates and architecture graph; not a JavaScript AST or Electron-specific analyzer |
 | .NET | Planned | C# project files and NuGet metadata can be inventoried; PE/CLI metadata, CLR tables, IL, assemblies and PDB analysis are absent |
-| Android | Planned | ZIP metadata exists; APK manifests, DEX/ART, resources and device state are not decoded |
+| Android | Partial | Offline APK/AAB ZIP inventory, stored DEX 035/037-040 header/table-range checks, binary XML root-chunk recognition, native-library and v1 signature filename inventory; no device access | Full AXML/resources, compressed DEX, bytecode analysis, signer verification and explicitly authorized device observations |
 | Website and browser | Partial / planned | Source inventory and offline HAR 1.2 analysis exist; no live browser observation, DOM snapshot or runtime trace |
 | Network traces | Partial | Offline HAR 1.2 metadata analysis; no PCAP/PCAPNG parser or live packet capture |
 | Firmware | Planned | No firmware filesystem or firmware-specific parser is shipped |
