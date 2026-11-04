@@ -98,6 +98,7 @@ test('CLI analyzes HAR captures and emits a bounded JSON evidence report', async
     assert.equal(report.summary.entries_analyzed, 1);
     assert.equal(cli.stdout.includes('hidden'), false);
     assert.equal(parse_arguments(['har', file, '--max-har-entries', '12']).flags.max_har_entries, 12);
+    assert.equal(parse_arguments(['har', file, '--max-har-hosts', '8']).flags.max_har_hosts, 8);
   });
 });
 
