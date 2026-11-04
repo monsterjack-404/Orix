@@ -6,6 +6,7 @@ import { parse_pe } from '../src/formats/pe.mjs';
 import { parse_elf } from '../src/formats/elf.mjs';
 import { parse_macho, parse_macho_fat } from '../src/formats/macho.mjs';
 import { parse_wasm } from '../src/formats/wasm.mjs';
+import { parse_dex } from '../src/formats/dex.mjs';
 import { analyze_known_format } from '../src/formats/index.mjs';
 import { create_elf_fixture, create_pe_fixture, create_wasm_fixture } from './helpers.mjs';
 
@@ -1136,4 +1137,131 @@ test('ZIP parser rejects invalid direct entry limits', async () => {
   for (const max_entries of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1_000_001]) {
     assert.throws(() => parse_zip(fixture, { max_entries }), /max_entries must be an integer/);
   }
+});
+
+
+function create_dex_fixture() {
+  const buffer = Buffer.alloc(140);
+  buffer.write('dex\n035\0', 0, 'ascii');
+  buffer.writeUInt32LE(buffer.length, 32); buffer.writeUInt32LE(112, 36); buffer.writeUInt32LE(0x12345678, 40);
+  buffer.writeUInt32LE(112, 52); buffer.writeUInt32LE(28, 104); buffer.writeUInt32LE(112, 108);
+  buffer.writeUInt32LE(2, 112); buffer.writeUInt16LE(0, 116); buffer.writeUInt32LE(1, 120); buffer.writeUInt32LE(0, 124);
+  buffer.writeUInt16LE(0x1000, 128); buffer.writeUInt32LE(1, 132); buffer.writeUInt32LE(112, 136);
+  return buffer;
+}
+
+test('DEX parser validates header and bounded map metadata', () => {
+  const parsed = parse_dex(create_dex_fixture());
+  assert.equal(parsed.format, 'DEX'); assert.equal(parsed.version, '035'); assert.equal(parsed.file_size, 140);
+  assert.equal(parsed.map_items.length, 2); assert.equal(parsed.map_items[1].name, 'map_list');
+  assert.equal(parsed.integrity.adler32_verified, false);
+});
+
+test('DEX parser accepts each explicitly supported header version', () => {
+  for (const version of ['035', '037', '038', '039']) {
+    const fixture = create_dex_fixture();
+    fixture.write('dex\n' + version + '\0', 0, 'ascii');
+    const parsed = parse_dex(fixture);
+    assert.equal(parsed.version, version);
+    assert.equal(parsed.file_size, fixture.length);
+  }
+});
+
+test('DEX parser is available through package exports and format dispatch', async () => {
+  const fixture = create_dex_fixture();
+  assert.equal(analyze_known_format(fixture).detection.format, 'DEX');
+  assert.equal(analyze_known_format(fixture).parser_status, 'parsed');
+  const exported = await import('@orix/cli/formats/dex'); assert.equal(exported.parse_dex, parse_dex);
+});
+
+test('DEX parser rejects malformed magic, endian, map and resource limits', () => {
+  const badMagic = create_dex_fixture(); badMagic[0] = 0;
+  assert.throws(() => parse_dex(badMagic), error => error.code === 'ORIX_DEX_BAD_MAGIC');
+  const badEndian = create_dex_fixture(); badEndian.writeUInt32LE(0x78563412, 40);
+  assert.throws(() => parse_dex(badEndian), error => error.code === 'ORIX_DEX_ENDIAN');
+  const badMap = create_dex_fixture(); badMap.writeUInt16LE(7, 128);
+  assert.throws(() => parse_dex(badMap), error => error.code.startsWith('ORIX_DEX_MAP_'));
+  assert.throws(() => parse_dex(create_dex_fixture(), { max_map_items: 1 }), error => error.code === 'ORIX_DEX_MAP_LIMIT');
+  assert.throws(() => parse_dex(create_dex_fixture(), { max_file_bytes: 112 }), error => error.code === 'ORIX_DEX_FILE_LIMIT');
+});
+
+
+test('DEX parser rejects inconsistent file and overlapping fixed-table ranges', () => {
+  const trailing = create_dex_fixture(); trailing.writeUInt32LE(trailing.length - 1, 32);
+  assert.throws(() => parse_dex(trailing), error => error.code === 'ORIX_DEX_FILE_SIZE');
+  const overlap = create_dex_fixture();
+  overlap.writeUInt32LE(1, 56); overlap.writeUInt32LE(116, 60);
+  overlap.writeUInt32LE(1, 64); overlap.writeUInt32LE(116, 68);
+  assert.throws(() => parse_dex(overlap), error => error.code === 'ORIX_DEX_TABLE_OVERLAP');
+});
+
+
+function create_dex_class_fixture() {
+  const buffer = Buffer.alloc(264);
+  buffer.write('dex\n035\0', 0, 'ascii');
+  buffer.writeUInt32LE(buffer.length, 32);
+  buffer.writeUInt32LE(112, 36);
+  buffer.writeUInt32LE(0x12345678, 40);
+  buffer.writeUInt32LE(2, 56);
+  buffer.writeUInt32LE(112, 60);
+  buffer.writeUInt32LE(2, 64);
+  buffer.writeUInt32LE(120, 68);
+  buffer.writeUInt32LE(1, 96);
+  buffer.writeUInt32LE(128, 100);
+  buffer.writeUInt32LE(104, 104);
+  buffer.writeUInt32LE(160, 108);
+  buffer.writeUInt32LE(160, 112);
+  buffer.writeUInt32LE(180, 116);
+  buffer.writeUInt32LE(0, 120);
+  buffer.writeUInt32LE(1, 124);
+  buffer.writeUInt32LE(1, 128);
+  buffer.writeUInt32LE(1, 132);
+  buffer.writeUInt32LE(0, 136);
+  buffer.writeUInt32LE(0, 140);
+  buffer.writeUInt32LE(0xffffffff, 144);
+  buffer.writeUInt32LE(0, 148);
+  buffer.writeUInt32LE(0, 152);
+  buffer.writeUInt32LE(0, 156);
+  const first = Buffer.from('Ljava/lang/Object;', 'ascii');
+  buffer[160] = first.length;
+  first.copy(buffer, 161);
+  buffer[161 + first.length] = 0;
+  buffer[180] = 3;
+  Buffer.from('Lx;', 'ascii').copy(buffer, 181);
+  buffer[184] = 0;
+  buffer.writeUInt32LE(6, 188);
+  const items = [
+    [0x0000, 1, 0],
+    [0x0001, 2, 112],
+    [0x0002, 2, 120],
+    [0x0006, 1, 128],
+    [0x2002, 2, 160],
+    [0x1000, 1, 188],
+  ];
+  items.forEach(([type, size, offset], index) => {
+    const p = 192 + index * 12;
+    buffer.writeUInt16LE(type, p);
+    buffer.writeUInt32LE(size, p + 4);
+    buffer.writeUInt32LE(offset, p + 8);
+  });
+  buffer.writeUInt32LE(188, 52);
+  return buffer;
+}
+
+test('DEX parser resolves bounded strings, type descriptors and class definitions', () => {
+  const parsed = parse_dex(create_dex_class_fixture());
+  assert.equal(parsed.strings.length, 2);
+  assert.equal(parsed.strings[0].value, 'Ljava/lang/Object;');
+  assert.equal(parsed.types[1].descriptor, 'Lx;');
+  assert.equal(parsed.classes[0].descriptor, 'Lx;');
+  assert.equal(parsed.classes[0].superclass, 'Ljava/lang/Object;');
+  assert.equal(parsed.classes[0].source_file, null);
+});
+
+test('DEX class descriptors remain correct when type output is truncated', () => {
+  const parsed = parse_dex(create_dex_class_fixture(), { max_output_items: 1 });
+  assert.equal(parsed.types.length, 1);
+  assert.equal(parsed.classes[0].descriptor, 'Lx;');
+  assert.equal(parsed.classes[0].superclass, 'Ljava/lang/Object;');
+  assert.equal(parsed.output_truncated, true);
 });

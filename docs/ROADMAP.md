@@ -61,6 +61,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [x] Deterministic malformed-input mutation and truncation smoke corpus for all registered binary parsers.
 - [x] PDF classic xref tables, trailer metadata, bounded incremental /Prev chain, xref-stream recognition and indirect-object index with explicit active-content triage; compressed xref/object streams remain unsupported.
 - [x] Bounded structural indexing of WebAssembly function types, imports, exports, function/type indices, start function and code-body ranges, with vector/name limits and malformed-boundary tests.
+- Standalone DEX 035/037/038/039 header, map, string/type index and class-definition metadata parsing; bytecode decoding and APK integration remain unsupported.
 - Versioned JSON Schema documents and golden report fixtures.
 - [x] SARIF 2.1.0 export and baseline/current report comparison.
 - [x] SARIF 2.1.0 export for artifact and directory reports.
