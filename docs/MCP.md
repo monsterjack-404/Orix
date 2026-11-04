@@ -41,7 +41,7 @@ Tool definitions also publish MCP safety annotations: inspection, inventory, com
 
 ## Security boundary
 
-- Analysis tools are static and read-only; HAR analysis reads a user-supplied local capture and never replays network requests or exports payload/header/query values. The explicit `orix.ledger.append` tool is the only state-changing operation and is confined to workspace ledger files. Rizin itself runs as an external analysis process, but the inspected target file and project code are not executed.
+- Analysis tools are static and read-only; HAR analysis reads a user-supplied local capture and never replays network requests or exports payload/header/query values. The explicit `orix.ledger.append` tool is the only ORIX-managed data mutation and is confined to workspace ledger files. The Rizin tool is marked as an external-process operation: it starts the user-selected executable with fixed arguments, which has the same OS permissions as the account and is not sandboxed. Use only trusted Rizin/plugin installations. The inspected target file and project code are not executed.
 - No shell command-string, arbitrary command-argument, remote URL or network-request tool is exposed. `orix.rizin_functions` is the explicit exception that launches a user-selected Rizin executable with fixed adapter arguments; it is not a sandbox and has the same OS permissions as its account.
 - Symlinks are not followed by the underlying scanners.
 - Existing parser, traversal and file-size limits remain active.
