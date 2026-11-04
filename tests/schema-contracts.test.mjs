@@ -16,6 +16,7 @@ const schema_paths = [
   new URL('../schemas/provider-execution.v1.schema.json', import.meta.url),
   new URL('../schemas/provider-probe.v1.schema.json', import.meta.url),
   new URL('../schemas/vulnerability-audit.v1.schema.json', import.meta.url),
+  new URL('../schemas/capabilities.v1.schema.json', import.meta.url),
 ];
 
 test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
@@ -65,4 +66,7 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.ok(schemas[10].properties.vulnerabilities.items.properties.affected);
   assert.ok(schemas[10].properties.vulnerabilities.items.required.includes('affected'));
   assert.ok(schemas[10].required.includes('unsupported_packages'));
+  assert.equal(schemas[11].properties.schema_version.const, 'orix.capabilities.v1');
+  assert.ok(schemas[11].required.includes('formats'));
+  assert.ok(schemas[11].required.includes('global_boundaries'));
 });
