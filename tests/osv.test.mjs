@@ -208,9 +208,9 @@ test('OSV requests are sent in bounded batches', async () => {
   );
   const batch_sizes = [];
   const report = await audit_project_dependencies(project(dependencies), {
-    fetch_impl: async url => {
+    fetch_impl: async (url, init) => {
       assert.ok(String(url).endsWith('/querybatch'));
-      const body = JSON.parse(arguments[1]?.body ?? '{}');
+      const body = JSON.parse(init.body);
       batch_sizes.push(body.queries.length);
       return json_response({ results: body.queries.map(() => ({ vulns: [] })) });
     },
