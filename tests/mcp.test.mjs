@@ -95,7 +95,7 @@ test('MCP capability tool returns the source-backed inventory including its own 
 });
 
 test('MCP HAR tool analyzes only workspace-confined captures and omits secret values', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-har-'));
+  const directory = await mkdtemp(path.join(process.cwd(), '.orix-mcp-har-'));
   const allowed_root = path.join(directory, 'workspace');
   try {
     await mkdir(allowed_root);
