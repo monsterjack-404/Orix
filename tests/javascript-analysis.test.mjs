@@ -86,6 +86,7 @@ test('project scanner uses structural JS/TS imports and records token coverage',
     assert.equal(entry.imports[0].kind, 'import');
     assert.ok(entry.javascript_analysis.tokens > 0);
     assert.ok(report.symbols.some(item => item.name === 'main' && item.file === 'index.ts'));
+    assert.ok(entry.symbols.some(item => item.name === 'main' && item.kind === 'function' && item.confidence === 'declaration-token'));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
