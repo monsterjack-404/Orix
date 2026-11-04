@@ -1,10 +1,11 @@
-// JavaScript, src/mcp/server.mjs, Node.js 20+, bounded read-only Model Context Protocol stdio server.
+// JavaScript, src/mcp/server.mjs, Node.js 20+, bounded static-analysis Model Context Protocol stdio server.
 
 import { inspect_file } from '../core/inspect.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project } from '../project/intelligence.mjs';
 import { analyze_project_architecture } from '../project/architecture.mjs';
 import { list_format_capabilities } from '../formats/index.mjs';
+import { build_capability_report } from '../capabilities/registry.mjs';
 import { verify_ledger, list_ledger, append_ledger } from '../evidence/ledger.mjs';
 import { compare_reports } from '../analyzer/compare.mjs';
 import { normalize_error } from '../core/errors.mjs';
@@ -105,6 +106,12 @@ export const ORIX_MCP_TOOLS = Object.freeze([
     name: 'orix.formats',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'List recognized signatures and structural parser capabilities.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'orix.capabilities',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    description: 'Return the source-backed ORIX capability inventory, including implemented, partial and planned boundaries.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -270,6 +277,11 @@ export async function call_orix_tool(name, args = {}, options = {}) {
     }
     case 'orix.formats':
       return { schema_version: 'orix.formats.v1', formats: list_format_capabilities() };
+    case 'orix.capabilities':
+      return build_capability_report({
+        mcp_protocol_version: MCP_PROTOCOL_VERSION,
+        mcp_tools: ORIX_MCP_TOOLS,
+      });
     case 'orix.compare_reports': {
       const baseline = await read_workspace_json(args.baseline_path, roots);
       const current = await read_workspace_json(args.current_path, roots);

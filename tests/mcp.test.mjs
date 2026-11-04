@@ -66,6 +66,7 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   assert.deepEqual(response.result.tools.map(tool => tool.name), ORIX_MCP_TOOLS.map(tool => tool.name));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.inspect_file'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_architecture'));
+  assert.ok(response.result.tools.some(tool => tool.name === 'orix.capabilities'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.ledger.verify'));
   for (const tool of response.result.tools) {
     assert.ok(tool.annotations, tool.name + ' must advertise safety annotations');
@@ -74,6 +75,22 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.inspect_file').annotations.readOnlyHint, true);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.readOnlyHint, false);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
+});
+
+test('MCP capability tool returns the source-backed inventory including its own tool definition', async () => {
+  const response = await handle_mcp_message({
+    jsonrpc: '2.0', id: 91, method: 'tools/call',
+    params: { name: 'orix.capabilities', arguments: {} },
+  });
+  assert.equal(response.result.isError, false);
+  const report = JSON.parse(response.result.content[0].text);
+  assert.equal(report.schema_version, 'orix.capabilities.v1');
+  assert.ok(report.formats.some(item => item.format === 'PNG' && item.parser_status === 'available'));
+  const mcp = report.interfaces.find(item => item.id === 'mcp.stdio');
+  assert.equal(mcp.protocol_version, '2025-03-26');
+  assert.ok(mcp.tools.some(tool => tool.name === 'orix.capabilities'));
+  assert.equal(mcp.tools.length, ORIX_MCP_TOOLS.length);
+  assert.ok(report.intelligence.some(item => item.id === 'dynamic-analysis' && item.status === 'planned'));
 });
 
 test('MCP inspect tool returns the same versioned artifact report as the library API', async () => {

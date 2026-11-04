@@ -36,7 +36,8 @@
     "./project/architecture": "./src/project/architecture.mjs",
     "./reports/architecture": "./src/reports/architecture.mjs",
     "./vulnerability/osv": "./src/vulnerability/osv.mjs",
-    "./formats/png": "./src/formats/png.mjs"
+    "./formats/png": "./src/formats/png.mjs",
+    "./capabilities": "./src/capabilities/registry.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",

@@ -2,7 +2,7 @@
 
 This file is the status ledger for product claims. It is deliberately conservative. “Implemented” means the current main-branch source and tests contain a working vertical slice; it does not mean the domain is complete. “Partial” means a useful slice exists with material scope limitations. “Planned” means the capability is not operational in the current repository.
 
-**Baseline:** ORIX 0.5.0, main branch, reviewed 2026-11-03.  
+**Baseline:** ORIX 0.5.0, main branch, reviewed 2026-11-04.  
 **Authority:** source + tests + current CI, not the project vision or README aspiration.
 
 ## Status vocabulary
@@ -23,6 +23,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Cross-platform CI | Partial | Linux Node 20/22/24; Windows/macOS Node 22 smoke jobs | Expanded OS/runtime matrix and release gates |
 | Syntax checks | Implemented | scripts/check-syntax.mjs | Keep CI enforced |
 | Documentation consistency gate | Implemented | `npm run check` validates release, parser registry, format docs, MCP version and indicator-rule coverage | Expand contracts to capability registry and generated docs |
+| Machine-readable capability inventory | Implemented | `orix capabilities --json`, public API and `orix.capabilities` MCP tool derive format and tool records from runtime registries | Expand registry coverage to generated CLI/report contracts and validate every output against the schema |
 | Reproducible release artifacts | Planned | No signed release artifact pipeline or published version | Build provenance and signatures |
 | Desktop installer / updater | Planned | No desktop shell | Architecture after stable workspace APIs |
 | Telemetry | Not planned by default | Local-first privacy posture | Any opt-in telemetry needs explicit consent and minimization |
@@ -121,7 +122,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 
 | Capability | Status | Current evidence / boundary | Completion direction |
 |---|---|---|---|
-| MCP stdio server | Implemented | Nine tools, workspace-confined operations, lifecycle validation, bounded batches and per-session rate limits | Per-tool authorization policy and append-only tool audit receipts |
+| MCP stdio server | Implemented | Ten tools, workspace-confined operations, lifecycle validation, bounded batches and per-session rate limits | Per-tool authorization policy and append-only tool audit receipts |
 | MCP protocol current support | Implemented | 2025-03-26; JSON-RPC validation, initialization lifecycle, notification/batch semantics and tool safety annotations | Evaluate 2026-07-28 compatibility before upgrade |
 | MCP HTTP transport | Planned | No HTTP listener or remote auth | Streamable HTTP, auth, origin/session policy |
 | MCP resources/prompts/subscriptions | Planned | Tools only | Typed resources and prompts with trust labeling |

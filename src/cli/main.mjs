@@ -9,6 +9,8 @@ import { scan_project, render_project_markdown } from '../project/intelligence.m
 import { analyze_project_architecture } from '../project/architecture.mjs';
 import { render_architecture_markdown, render_architecture_mermaid } from '../reports/architecture.mjs';
 import { list_format_capabilities } from '../formats/index.mjs';
+import { build_capability_report } from '../capabilities/registry.mjs';
+import { MCP_PROTOCOL_VERSION, ORIX_MCP_TOOLS } from '../mcp/server.mjs';
 import { render_json } from '../reports/json.mjs';
 import { render_inspection_markdown, render_scan_markdown } from '../reports/markdown.mjs';
 import { render_sarif } from '../reports/sarif.mjs';
@@ -39,6 +41,7 @@ function validate_command_flags(command, flags) {
     architecture: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'max_architecture_nodes', 'max_architecture_edges', 'max_architecture_hotspots'],
     compare: ['format', 'out'],
     formats: ['format', 'out'],
+    capabilities: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
     providers: ['format', 'out', 'provider_executable', 'timeout_ms', 'max_output_bytes', 'max_imports'],
     audit: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'osv_lookup', 'max_osv_packages', 'max_osv_advisories', 'max_osv_response_bytes', 'timeout_ms'],
@@ -58,6 +61,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
   if(parsed.command==='providers'&&parsed.provider_action==='doctor'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('provider doctor output currently supports JSON only');
   if(parsed.command==='compare'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('compare output supports JSON or Markdown only');
   if(parsed.command==='formats'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('formats output currently supports JSON only');
+  if(parsed.command==='capabilities'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('capabilities output currently supports JSON only');
   if(parsed.command==='providers'){
     if(parsed.provider_action==='list'){
       const report={
@@ -123,6 +127,12 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
     return 0;
   }
   if(parsed.command==='formats'){if(parsed.target)throw new Error('The formats command does not accept a target');await write_or_print(render_json({schema_version:'orix.formats.v1',formats:list_format_capabilities()}),parsed.flags.out);return 0;}
+  if(parsed.command==='capabilities'){
+    if(parsed.target)throw new Error('The capabilities command does not accept a target');
+    const report=build_capability_report({mcp_protocol_version:MCP_PROTOCOL_VERSION,mcp_tools:ORIX_MCP_TOOLS});
+    await write_or_print(render_json(report),parsed.flags.out);
+    return 0;
+  }
   if(parsed.command==='audit'){
     if(!parsed.target)throw new Error('audit requires a project directory');
     if(!parsed.flags.osv_lookup)throw new Error('Dependency audit is network-enabled and opt-in; pass --osv to query OSV.dev. No network request was made.');

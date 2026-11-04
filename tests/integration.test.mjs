@@ -79,6 +79,18 @@ test('CLI JSON output is valid machine-readable JSON', async () => {
   });
 });
 
+test('capabilities command emits source-backed implemented, partial and planned inventory', () => {
+  const cli = spawnSync(process.execPath, ['src/cli.mjs', 'capabilities', '--json'], {
+    encoding: 'utf8', cwd: path.resolve('.'),
+  });
+  assert.equal(cli.status, 0, cli.stderr);
+  const report = JSON.parse(cli.stdout);
+  assert.equal(report.schema_version, 'orix.capabilities.v1');
+  assert.ok(report.formats.some(item => item.format === 'PNG' && item.parser_status === 'available'));
+  assert.ok(report.interfaces.some(item => item.id === 'mcp.stdio'));
+  assert.ok(report.intelligence.some(item => item.id === 'dynamic-analysis' && item.status === 'planned'));
+});
+
 test('formats command distinguishes structural parsers from signature-only formats', () => {
   const cli = spawnSync(process.execPath, ['src/cli.mjs','formats','--json'], { encoding: 'utf8', cwd: path.resolve('.') });
   assert.equal(cli.status, 0, cli.stderr);

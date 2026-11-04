@@ -34,7 +34,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Evidence model | Stable report evidence plus append-only SHA-256 chained JSONL ledger, verify/list commands and append receipts | Not a signature, trusted timestamp or external transparency log |
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
 | Dependency vulnerability audit | Explicit opt-in OSV lookup for exact lockfile-resolved versions, bounded batch pagination, advisory details and partial-coverage reporting | No offline advisory cache, local affected-range engine, reachability proof or exploitability verdict |
-| MCP integration | Local stdio JSON-RPC server with nine typed tools, including bounded project architecture analysis, inspect, scan, project, formats, comparison and evidence-ledger operations | No HTTP listener, remote auth, resource subscription or prompt catalog |
+| MCP integration | Local stdio JSON-RPC server with ten typed tools, including bounded project architecture analysis, inspect, scan, project, formats, comparison and evidence-ledger operations | No HTTP listener, remote auth, resource subscription or prompt catalog |
 | Provider integrations | Declarative manifests, immutable registry, bounded shell-free process runner, Rizin version doctor, snapshot-isolated static-import adapter, provider discovery/list CLI and JSON/Markdown reports | No OS sandbox, dynamic execution provider, installer, daemon or automatic provider discovery |
 
 | Reports | JSON, Markdown, SARIF 2.1.0 for artifact, directory-scan and source-project findings, report comparison and CycloneDX 1.5 SBOM | No hosted dashboard or relational database |
@@ -101,6 +101,9 @@ node src/cli.mjs scan ./build --max-files 3000 --max-depth 16 --concurrency 4
 
 # List known signatures
 node src/cli.mjs formats
+
+# List implemented, partial and planned capabilities
+node src/cli.mjs capabilities --json
 
 # List optional providers and invoke Rizin static import extraction
 node src/cli.mjs providers list --json
