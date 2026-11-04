@@ -27,7 +27,7 @@ function is_dex_entry(name) {
 
 function local_stored_prefix(buffer, entry, minimum) {
   if (!entry.local_header_valid || !entry.local_data_range_valid) return { status: 'invalid-local-range' };
-  if (entry.encrypted) return { status: 'encrypted' };
+  if (entry.encrypted || entry.strongly_encrypted) return { status: 'encrypted' };
   if (entry.compression_method !== 'stored' || entry.compressed_size !== entry.uncompressed_size) return { status: 'compressed' };
   const offset = entry.local_header_offset;
   if (offset < 0 || offset > buffer.length - 30 || buffer.readUInt32LE(offset) !== LOCAL_HEADER) return { status: 'invalid-local-header' };
@@ -46,7 +46,7 @@ function local_stored_prefix(buffer, entry, minimum) {
       local_uncompressed_size !== entry.uncompressed_size;
   const name_length = buffer.readUInt16LE(offset + 26);
   const extra_length = buffer.readUInt16LE(offset + 28);
-  if ((flags & 0x0809) !== expected_flags || method !== 0 || descriptor_mismatch) return { status: 'local-header-mismatch' };
+  if ((flags & 0x0809) !== expected_flags || (flags & 0x0040) !== 0 || method !== 0 || descriptor_mismatch) return { status: 'local-header-mismatch' };
   const name_start = offset + 30;
   const data_offset = name_start + name_length + extra_length;
   if (name_start > buffer.length - name_length || data_offset > buffer.length || entry.compressed_size > buffer.length - data_offset) {
