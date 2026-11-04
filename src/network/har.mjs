@@ -8,6 +8,8 @@ import { OrixError } from '../core/errors.mjs';
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_ENTRIES = 20_000;
 const HARD_MAX_ENTRIES = 100_000;
+const DEFAULT_MAX_HOSTS = 5_000;
+const HARD_MAX_HOSTS = 10_000;
 const MAX_HEADER_NAME = 256;
 
 function fail(code, message, details = null) {
@@ -125,6 +127,7 @@ export function parse_har(input, options = {}) {
   if (!Buffer.isBuffer(input)) throw new TypeError('parse_har requires a Buffer');
   const max_bytes = safe_limit(options.max_bytes, DEFAULT_MAX_BYTES, 'max_bytes', DEFAULT_MAX_BYTES);
   const max_entries = safe_limit(options.max_entries, DEFAULT_MAX_ENTRIES, 'max_entries', HARD_MAX_ENTRIES);
+  const max_hosts = safe_limit(options.max_hosts, DEFAULT_MAX_HOSTS, 'max_hosts', HARD_MAX_HOSTS);
   if (input.length > max_bytes) fail('ORIX_HAR_FILE_TOO_LARGE', 'HAR input exceeds the configured byte ceiling', { size_bytes: input.length, max_bytes });
 
   let text;
@@ -282,7 +285,7 @@ export function parse_har(input, options = {}) {
   const host_list = [...hosts.values()].map(item => ({
     ...item,
     schemes: [...item.schemes].sort(),
-  })).sort((a, b) => b.requests - a.requests || a.host.localeCompare(b.host)).slice(0, 5_000);
+  })).sort((a, b) => b.requests - a.requests || a.host.localeCompare(b.host)).slice(0, max_hosts);
   const hosts_truncated = hosts.size > host_list.length;
   const totals = Object.values(timings).reduce((sum, value) => sum + value, 0);
   const truncated = analyzed_entries < log.entries.length;
@@ -311,7 +314,15 @@ export function parse_har(input, options = {}) {
       timing_totals_ms: timings,
       summed_phase_time_ms: totals,
     },
-    coverage: { complete: !truncated, truncated, omitted_entries: Math.max(0, log.entries.length - analyzed_entries), max_entries },
+    coverage: {
+      complete: !truncated && !hosts_truncated,
+      truncated,
+      omitted_entries: Math.max(0, log.entries.length - analyzed_entries),
+      max_entries,
+      hosts_complete: !hosts_truncated,
+      omitted_hosts: Math.max(0, hosts.size - host_list.length),
+      max_hosts,
+    },
     hosts: host_list,
     entries,
     findings,
@@ -326,7 +337,7 @@ export function parse_har(input, options = {}) {
     },
     warnings: [
       ...(truncated ? ['Entry analysis was truncated by max_entries; findings cover only analyzed entries.'] : []),
-      ...(hosts_truncated ? ['Host inventory was truncated at 5,000 hosts; the unique-host summary still counts all analyzed entries.'] : []),
+      ...(hosts_truncated ? ['Host inventory was truncated at max_hosts; the unique-host summary still counts all analyzed entries.'] : []),
       'HAR data is a browser/proxy capture supplied by the user, not independently verified live network traffic.',
       'Missing-header and cookie findings are review leads, not proof of exploitability or a complete web security assessment.',
     ],
