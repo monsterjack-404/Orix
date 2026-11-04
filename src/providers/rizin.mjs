@@ -602,7 +602,7 @@ export async function analyze_rizin_functions(options = {}) {
         max_output_bytes: remaining_output,
       });
       if (!result.ok) {
-        const code = result.cancelled
+        let code = result.cancelled
           ? 'ORIX_RIZIN_CANCELLED'
           : result.timed_out ? 'ORIX_RIZIN_TIMEOUT'
             : result.output_limited ? 'ORIX_RIZIN_OUTPUT_LIMIT' : 'ORIX_RIZIN_' + label.toUpperCase() + '_FAILED';
