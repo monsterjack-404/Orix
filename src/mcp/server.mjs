@@ -37,7 +37,7 @@ const path_schema = {
 export const ORIX_MCP_TOOLS = Object.freeze([
   {
     name: 'orix.inspect_file',
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     description: 'Statically inspect one regular file. Hashes complete bytes, parses a bounded prefix, and never executes the target.',
     inputSchema: {
       type: 'object',
