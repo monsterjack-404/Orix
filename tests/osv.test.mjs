@@ -147,6 +147,35 @@ test('OSV retains first-page matches when a later page request fails', async () 
   assert.equal(report.vulnerabilities[0].matched_packages[0].name, 'alpha');
 });
 
+test('OSV pagination failures do not taint package queries that already completed', async () => {
+  let page = 0;
+  const report = await audit_project_dependencies(project([
+    dep('alpha', '1.0.0'),
+    dep('beta', '2.0.0'),
+  ]), {
+    fetch_impl: async (url, init) => {
+      if (String(url).endsWith('/querybatch')) {
+        page += 1;
+        if (page === 1) {
+          return json_response({
+            results: [
+              { vulns: [{ id: 'OSV-ALPHA-PAGE' }], next_page_token: 'alpha-next' },
+              { vulns: [] },
+            ],
+          });
+        }
+        throw new Error('alpha pagination unavailable');
+      }
+      return json_response(advisory('OSV-ALPHA-PAGE'));
+    },
+  });
+  assert.equal(report.packages[0].status, 'query-error');
+  assert.deepEqual(report.packages[0].vulnerability_ids, ['OSV-ALPHA-PAGE']);
+  assert.equal(report.packages[1].status, 'no-match');
+  assert.deepEqual(report.packages[1].vulnerability_ids, []);
+  assert.equal(report.summary.query_failures, 1);
+});
+
 test('OSV withdrawn advisories are separated and removed from active package matches', async () => {
   const fetch_impl = async url => {
     if (String(url).endsWith('/querybatch')) {
