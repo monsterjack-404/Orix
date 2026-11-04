@@ -14,6 +14,7 @@
   "exports": {
     ".": "./src/index.mjs",
     "./formats/pe": "./src/formats/pe.mjs",
+    "./formats/dex": "./src/formats/dex.mjs",
     "./formats/elf": "./src/formats/elf.mjs",
     "./project": "./src/project/intelligence.mjs",
     "./formats/pdf": "./src/formats/pdf.mjs",
@@ -38,7 +39,8 @@
     "./vulnerability/osv": "./src/vulnerability/osv.mjs",
     "./formats/png": "./src/formats/png.mjs",
     "./capabilities": "./src/capabilities/registry.mjs",
-    "./network/har": "./src/network/har.mjs"
+    "./network/har": "./src/network/har.mjs",
+    "./android/package": "./src/android/package.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
