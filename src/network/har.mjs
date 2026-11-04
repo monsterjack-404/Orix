@@ -30,6 +30,20 @@ function bounded_text(value, maximum = 256) {
   return typeof value === 'string' ? value.slice(0, maximum) : null;
 }
 
+function markdown_escape(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\\/g, '\\\\')
+    .replace(/\\|/g, '\\\\|')
+    .replace(/`/g, '\\\\`')
+    .replace(/\\[/g, '\\\\[')
+    .replace(/\\]/g, '\\\\]')
+    .replace(/\\*/g, '\\\\*')
+    .replace(/_/g, '\\\\_');
+}
+
 function header_index(headers, label) {
   if (headers === undefined) return new Map();
   if (!Array.isArray(headers)) fail('ORIX_HAR_INVALID_HEADERS', label + ' headers must be an array');
@@ -352,9 +366,9 @@ export function render_har_markdown(report) {
   const lines = [
     '# ORIX HAR Investigation',
     '',
-    '- Source: ' + (report.source.name ?? 'in-memory HAR'),
+    '- Source: ' + markdown_escape(report.source.name ?? 'in-memory HAR'),
     '- HAR version: ' + report.source.version,
-    '- Creator: ' + report.source.creator.name + ' ' + report.source.creator.version,
+    '- Creator: ' + markdown_escape(report.source.creator.name) + ' ' + markdown_escape(report.source.creator.version),
     '- SHA-256: ' + report.integrity.digest,
     '- Requests: ' + report.summary.entries_analyzed + ' / ' + report.summary.entries_total,
     '- Hosts: ' + report.summary.unique_hosts,
