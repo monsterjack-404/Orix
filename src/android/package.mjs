@@ -159,7 +159,9 @@ export async function analyze_android_package_file(file_path, options = {}) {
   try {
     handle = await fs.open(absolute, fs_constants.O_RDONLY | (fs_constants.O_NOFOLLOW ?? 0));
     const opened = await handle.stat();
-    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
+    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino ||
+        opened.size !== before.size || opened.size > max_file_bytes ||
+        opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) {
       throw new Error('Android package changed before it could be read');
     }
     const buffer = Buffer.alloc(opened.size);
