@@ -5,7 +5,7 @@ import { parse_dex } from '../src/formats/dex.mjs';
 
 function dex_fixture({ version = '035', file_size = 112, endian = 'little', string_count = 0, string_offset = 0 } = {}) {
   const buffer = Buffer.alloc(112);
-  buffer.write('dex\\n' + version + '\\0', 0, 'ascii');
+  buffer.set([0x64, 0x65, 0x78, 0x0a, ...Buffer.from(version, 'ascii'), 0], 0);
   const write16 = endian === 'little' ? 'writeUInt16LE' : 'writeUInt16BE';
   const write32 = endian === 'little' ? 'writeUInt32LE' : 'writeUInt32BE';
   buffer[write32](file_size, 32);
