@@ -5,9 +5,10 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { analyze_rizin_imports, analyze_rizin_functions, probe_rizin, RIZIN_PROVIDER_MANIFEST } from '../src/providers/rizin.mjs';
 
-const RIZIN_STUB = new URL('./fixtures/rizin-stub.mjs', import.meta.url).pathname;
+const RIZIN_STUB = fileURLToPath(new URL('./fixtures/rizin-stub.mjs', import.meta.url));
 
 async function with_fixture(callback) {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-test-'));
