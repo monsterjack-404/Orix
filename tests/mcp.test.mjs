@@ -128,6 +128,43 @@ test('MCP server enforces advertised argument schemas', async () => {
   await assert.rejects(call_orix_tool('orix.inspect_file', {}), /Missing required/);
 });
 
+test('MCP processes bounded JSON-RPC batches and omits notification responses', async () => {
+  const batch = await handle_mcp_message([
+    { jsonrpc: '2.0', id: 'batch-1', method: 'ping' },
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+    { jsonrpc: '2.0', id: 2, method: 'ping' },
+  ]);
+  assert.equal(batch.length, 2);
+  assert.deepEqual(batch.map(item => item.id), ['batch-1', 2]);
+  assert.ok(batch.every(item => item.result && !item.error));
+
+  const notifications_only = await handle_mcp_message([
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+  ]);
+  assert.equal(notifications_only, null);
+
+  const empty = await handle_mcp_message([]);
+  assert.equal(empty.error.code, -32600);
+
+  const initialize = await handle_mcp_message([{
+    jsonrpc: '2.0', id: 9, method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'batch-client', version: '1.0.0' },
+    },
+  }]);
+  assert.equal(initialize[0].error.code, -32600);
+});
+
+test('MCP rejects batches beyond the configured message ceiling', async () => {
+  const oversized = Array.from({ length: 101 }, (_, index) => ({
+    jsonrpc: '2.0', id: index, method: 'ping',
+  }));
+  const response = await handle_mcp_message(oversized);
+  assert.equal(response.error.code, -32600);
+});
+
 test('MCP stdio transport reads and writes newline-delimited JSON-RPC messages', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
