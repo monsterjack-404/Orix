@@ -24,7 +24,7 @@ function validate_range(offset, size, file_size, label) {
   }
 }
 
-function table(buffer, offset, little, count_offset, item_size, file_size, label) {
+function table(buffer, little, count_offset, item_size, file_size, label) {
   const count = read_u32(buffer, count_offset, little, label + ' count');
   const data_offset = read_u32(buffer, count_offset + 4, little, label + ' offset');
   if (count > 10_000_000) invalid('ORIX_DEX_TABLE_LIMIT', label + ' count exceeds the parser limit', { count });
@@ -66,12 +66,12 @@ export function parse_dex(buffer, options = {}) {
   validate_range(link_offset, link_size, file_size, 'link data');
   if (map_offset !== 0 && (map_offset < header_size || map_offset > file_size - 4)) invalid('ORIX_DEX_MAP_RANGE', 'DEX map offset lies outside the declared file', { map_offset, file_size });
   const tables = {
-    string_ids: table(buffer, 0, little, 56, 4, file_size, 'string_ids'),
-    type_ids: table(buffer, 0, little, 64, 4, file_size, 'type_ids'),
-    proto_ids: table(buffer, 0, little, 72, 12, file_size, 'proto_ids'),
-    field_ids: table(buffer, 0, little, 80, 8, file_size, 'field_ids'),
-    method_ids: table(buffer, 0, little, 88, 8, file_size, 'method_ids'),
-    class_defs: table(buffer, 0, little, 96, 32, file_size, 'class_defs'),
+    string_ids: table(buffer, little, 56, 4, file_size, 'string_ids'),
+    type_ids: table(buffer, little, 64, 4, file_size, 'type_ids'),
+    proto_ids: table(buffer, little, 72, 12, file_size, 'proto_ids'),
+    field_ids: table(buffer, little, 80, 8, file_size, 'field_ids'),
+    method_ids: table(buffer, little, 88, 8, file_size, 'method_ids'),
+    class_defs: table(buffer, little, 96, 32, file_size, 'class_defs'),
   };
   const data_size = read_u32(buffer, 104, little, 'data size');
   const data_offset = read_u32(buffer, 108, little, 'data offset');
