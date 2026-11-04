@@ -95,6 +95,20 @@ test('HAR parser reports entry truncation explicitly instead of implying complet
   assert.equal(report.entries.length, 2);
 });
 
+test('HAR parser reports host inventory truncation independently from entry truncation', () => {
+  const report = parse_har(make_har([
+    entry({ request: { method: 'GET', url: 'https://one.test/' }, response: { status: 200, statusText: 'OK', headers: [], content: { size: 0, mimeType: 'application/json' } } }),
+    entry({ request: { method: 'GET', url: 'https://two.test/' }, response: { status: 200, statusText: 'OK', headers: [], content: { size: 0, mimeType: 'application/json' } } }),
+  ]), { max_hosts: 1 });
+  assert.equal(report.coverage.truncated, false);
+  assert.equal(report.coverage.complete, false);
+  assert.equal(report.coverage.hosts_complete, false);
+  assert.equal(report.coverage.omitted_hosts, 1);
+  assert.equal(report.coverage.max_hosts, 1);
+  assert.equal(report.summary.unique_hosts, 2);
+  assert.equal(report.hosts.length, 1);
+});
+
 test('HAR parser rejects malformed roots, unsupported versions, invalid UTF-8 and malformed entries', () => {
   assert.throws(() => parse_har(Buffer.from('{}')), error => error.code === 'ORIX_HAR_INVALID_ROOT');
   assert.throws(() => parse_har(Buffer.from(JSON.stringify({ log: { version: '1.3', entries: [] } }))), error => error.code === 'ORIX_HAR_UNSUPPORTED_VERSION');
