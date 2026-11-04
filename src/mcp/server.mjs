@@ -364,8 +364,6 @@ export async function handle_mcp_message(message, options = {}) {
       return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(normalized) }], isError: true } };
     }
   }
-  if (message.method === 'resources/list') return { jsonrpc: '2.0', id, result: { resources: [] } };
-  if (message.method === 'prompts/list') return { jsonrpc: '2.0', id, result: { prompts: [] } };
   return jsonrpc_error(id, -32601, 'Method not found: ' + message.method);
 }
 
