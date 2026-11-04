@@ -18,6 +18,22 @@ ORIX's built-in analysis remains static and read-only: it reads file bytes, calc
 | External provider process | Absolute executable path, no shell interpolation, minimal explicit environment, timeout, cancellation and output-byte cap | Provider binaries are not sandboxed; filesystem/network side effects and Windows child-tree teardown are not enforced |
 | Dependency supply chain | No third-party runtime dependencies in current package | Node.js runtime, npm and development tooling still require trusted acquisition |
 
+## MCP, browser viewer and network boundaries
+
+| Surface | Threat | Current mitigation | Residual risk / non-claim |
+|---|---|---|---|
+| MCP stdio | Malformed JSON-RPC envelopes, oversized frames/batches and repeated tool calls | Strict UTF-8/JSON parsing, request-ID validation, 4 MiB frame cap, 100-message batch cap, 60 tool calls per minute by default, argument schemas | No remote HTTP transport or remote authorization; stdio clients must be locally trusted |
+| MCP workspace tools | Path traversal, symlink escape and unintended writes | Workspace-root resolution, no-follow file reads, bounded reports; only `orix.ledger.append` writes and it is confined to ledger paths | Safety annotations are hints, not authorization; local filesystem permissions remain authoritative |
+| Browser report viewer | Stored script injection through report strings or untrusted filenames | DOM construction with `textContent`, fixed static-asset allowlist, loopback-only binding, CSP with `connect-src 'none'`, `nosniff` | The viewer is not a sandbox for a compromised browser; do not open untrusted files in a compromised environment |
+| CSV export | Spreadsheet formula injection and CSV quoting confusion | Cells beginning with whitespace then `=`, `+`, `-` or `@` are prefixed with an apostrophe; quotes are doubled and line breaks normalized | CSV is for review/interchange, not a signed or canonical evidence format |
+| OSV dependency audit | Network disclosure and oversized/untrusted advisory responses | Explicit `--osv` opt-in; only ecosystem/name/version package identities are queried; response bytes, batches, pages and advisory counts are bounded | Public OSV service availability and data quality are external; source files are not uploaded; partial results must remain partial |
+| Evidence ledger | Local modification, truncation or record reordering | Append-only writer lock and SHA-256 chain verification | Tamper-evident, not tamper-proof; no signature, trusted timestamp or remote transparency log |
+| Future case database | Cross-case leakage, corrupt migrations and unsafe local database paths | Not implemented; requirements are tracked before adoption | No persistent SQLite case store is currently shipped |
+
+Strings, package metadata and report fields may contain prompt-injection text. ORIX currently has no autonomous agent that consumes these strings as instructions. Any future agent must treat artifact/report content as untrusted data, keep instructions separate from evidence, require approval for writes/network actions and retain replayable tool/audit records.
+
+ORIX does not decompress ZIP entries or inflate PNG IDAT data. ZIP-bomb and decompression-bomb behavior is therefore not exercised by current core parsing; adding decompression requires separate expansion-ratio, output-byte, nesting-depth, time and cancellation limits.
+
 ## Static indicator interpretation
 
 The built-in rule set is deliberately small and explainable. It can report PE writable/executable sections, invalid section raw ranges, unsafe ZIP entry paths or symlink markers, encrypted ZIP entries, high-entropy samples, selected process-memory or credential-access API-name strings, parser rejection and file-metadata instability. Each finding carries a stable rule ID, a triage severity, a confidence label and a bounded list of supporting observations.
