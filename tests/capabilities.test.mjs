@@ -7,6 +7,11 @@ import { list_format_capabilities } from '../src/formats/index.mjs';
 import { ORIX_MCP_TOOLS, MCP_PROTOCOL_VERSION } from '../src/mcp/server.mjs';
 import { RIZIN_PROVIDER_MANIFEST } from '../src/providers/rizin.mjs';
 
+test('capability inventory is exported through the package subpath', async () => {
+  const public_api = await import('@orix/cli/capabilities');
+  assert.equal(typeof public_api.build_capability_report, 'function');
+});
+
 test('capability inventory is derived from live parser, MCP and provider registries', () => {
   const report = build_capability_report({
     mcp_protocol_version: MCP_PROTOCOL_VERSION,
