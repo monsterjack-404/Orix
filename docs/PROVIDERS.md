@@ -139,6 +139,28 @@ console.log(report.imports);
 
 The adapter report contract is defined in [rizin-imports.v1.schema.json](../schemas/rizin-imports.v1.schema.json). The adapter checks the manifest's supported platform before launch (`linux`, `windows`, or `macos`), uses Rizin's `-N` no-user-settings option and `-q -c iij` command form, and passes only the bounded private snapshot path to the import command. See the [Rizin CLI options](https://book.rizin.re/src/first_steps/commandline_options.html) and [Rizin command-line guide](https://book.rizin.re/src/first_steps/commandline_rizin.html). Rizin remains an optional external installation; ORIX does not bundle it or claim it was run when it is unavailable. The upstream repository contains files under multiple licenses, including LGPL and GPL; the manifest therefore uses SPDX `NOASSERTION` rather than claiming one license covers the whole installation. The automated adapter tests use a deterministic executable fixture and do not substitute for verification against every supported upstream Rizin release.
 
+### Function inventory and bounded disassembly
+
+`analyze_rizin_functions` uses Rizin's documented `-A` automatic-analysis option and `aflj` JSON output to return a bounded function inventory. Pass `address` to request a bounded instruction window from one exact function-entry address; the adapter confirms that the address is present in the returned function inventory before using Rizin's `pdj` JSON disassembly command.
+
+~~~js
+import { analyze_rizin_functions } from '@orix/cli';
+
+const report = await analyze_rizin_functions({
+  executable: '/opt/rizin/bin/rizin',
+  input_path: '/evidence/sample.elf',
+  max_functions: 10000,
+  address: '0x401000',
+  max_instructions: 100,
+});
+
+console.log(report.functions);
+console.log(report.disassembly?.instructions);
+~~~
+
+The function inventory is capped at 100,000 entries; the default is 10,000. Address-scoped disassembly is optional and capped at 1,000 instructions; the default is 100. Runtime and captured stdout/stderr share one total budget across the version, function and optional disassembly processes. Each report includes the input SHA-256 and records whether function inventory was truncated.
+
+This capability does **not** claim source reconstruction or decompilation. `pdj` returns assembly instructions. Pseudo-C decompilation requires an explicitly installed and verified Rizin plugin/backend and will be a separate adapter capability. Rizin's automatic analysis is heuristic; it may miss functions or classify code incorrectly. See the [Rizin command-line options](https://book.rizin.re/src/first_steps/commandline_options.html), [code analysis guide](https://book.rizin.re/src/analysis/code_analysis.html) and [function analysis reference](https://book.rizin.re/src/analysis/code_analysis.html#analyze-functions).
 ### CLI
 
 List adapters without probing external installations:
@@ -167,6 +189,13 @@ node src/cli.mjs providers rizin imports ./sample.elf \
 ~~~
 
 The timeout applies to the complete adapter workflow, including the version and import probes. The output cap is applied per process and covers combined stdout/stderr capture. The Markdown renderer displays at most 2,000 rows by default; use JSON to preserve the complete normalized result.
+
+Run bounded function inventory and an optional instruction window:
+
+~~~sh
+orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --max-functions 10000 --json
+orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --address 0x401000 --max-instructions 100 --json
+~~~
 
 
 ## 6. Runtime adapter requirements
@@ -199,8 +228,10 @@ A manifest is untrusted input. It is descriptive metadata, not a signed identity
 - PROVIDER_CONTRACT_VERSION — current contract identifier.
 - DEFAULT_PROVIDER_MANIFEST_LIMIT — default 64 KiB input ceiling.
 - run_static_provider(options) — bounded shell-free process launch for a declared static provider.
-- analyze_rizin_imports(options) — Rizin CLI adapter returning an `orix.rizin-imports.v1` report. The adapter hashes the source, creates a private read-only temporary snapshot, analyzes the snapshot rather than the caller's original path, and verifies the snapshot digest after provider execution.
+- analyze_rizin_imports(options) — Rizin CLI adapter returning an `orix.rizin-imports.v1` report.
+- analyze_rizin_functions(options) — Rizin CLI adapter returning a bounded `orix.rizin-functions.v1` function inventory and optional address-scoped instruction disassembly; it does not decompile source. The adapter hashes the source, creates a private read-only temporary snapshot, analyzes the snapshot rather than the caller's original path, and verifies the snapshot digest after provider execution.
 - probe_rizin(options) — invoke an explicitly selected executable with `-v` and return an `orix.provider-probe.v1` availability/version report. This does not search PATH or claim compatibility beyond the version probe.
+- render_rizin_functions_markdown(report, options) — bounded Markdown renderer for function and disassembly reports.
 - RIZIN_PROVIDER_MANIFEST and RIZIN_ADAPTER_VERSION — Rizin integration metadata.
 
 
