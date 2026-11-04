@@ -124,6 +124,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
       }
       const report=await analyze_rizin_imports({
         executable:parsed.flags.provider_executable,
+        executable_args:parsed.flags.provider_executable_args,
         input_path:parsed.target,
         timeout_ms:parsed.flags.timeout_ms,
         max_output_bytes:parsed.flags.max_output_bytes,
