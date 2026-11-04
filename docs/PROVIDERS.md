@@ -141,7 +141,7 @@ The adapter report contract is defined in [rizin-imports.v1.schema.json](../sche
 
 ### Function inventory and bounded disassembly
 
-`analyze_rizin_functions` uses Rizin's documented `-A` automatic-analysis option and `aflj` JSON output to return a bounded function inventory. Pass `address` to request a bounded instruction window from one exact function-entry address; the adapter confirms that the address is present in the returned function inventory before using Rizin's `pdj` JSON disassembly command.
+`analyze_rizin_functions` uses Rizin's `-A` automatic-analysis option and `aflj` JSON output to return a bounded function inventory. Pass `address` to request a bounded instruction window from one exact function-entry address; the adapter confirms that the address is present in the returned function inventory before using Rizin's `pdj` JSON disassembly command. Add `decompile: true` to request optional pseudocode from Rizin's `pdg` command.
 
 ~~~js
 import { analyze_rizin_functions } from '@orix/cli';
@@ -152,6 +152,7 @@ const report = await analyze_rizin_functions({
   max_functions: 10000,
   address: '0x401000',
   max_instructions: 100,
+  decompile: true, // optional; requires rz-ghidra to be installed in Rizin
 });
 
 console.log(report.functions);
@@ -160,7 +161,7 @@ console.log(report.disassembly?.instructions);
 
 The function inventory is capped at 100,000 entries; the default is 10,000. Address-scoped disassembly is optional and capped at 1,000 instructions; the default is 100. Runtime and captured stdout/stderr share one total budget across the version, function and optional disassembly processes. Each report includes the input SHA-256 and records whether function inventory was truncated.
 
-This capability does **not** claim source reconstruction or decompilation. `pdj` returns assembly instructions. Pseudo-C decompilation requires an explicitly installed and verified Rizin plugin/backend and will be a separate adapter capability. Rizin's automatic analysis is heuristic; it may miss functions or classify code incorrectly. See the [Rizin command-line options](https://book.rizin.re/src/first_steps/commandline_options.html), [code analysis guide](https://book.rizin.re/src/analysis/code_analysis.html) and [function analysis reference](https://book.rizin.re/src/analysis/code_analysis.html#analyze-functions).
+The `pdg` pseudocode mode requires the separately installed `rz-ghidra` plugin; it is never downloaded or installed by ORIX. Its output is heuristic and may be incomplete, incorrect or non-compilable. When the plugin is absent, the request returns `ORIX_RIZIN_DECOMPILER_UNAVAILABLE`. Rizin's automatic analysis is heuristic and may miss or misclassify functions. See the [rz-ghidra project and command reference](https://github.com/rizinorg/rz-ghidra), which documents `pdg` as its native Ghidra decompiler command. See the [Rizin command-line options](https://book.rizin.re/src/first_steps/commandline_options.html), [code analysis guide](https://book.rizin.re/src/analysis/code_analysis.html) and [function analysis reference](https://book.rizin.re/src/analysis/code_analysis.html#analyze-functions).
 ### CLI
 
 List adapters without probing external installations:
