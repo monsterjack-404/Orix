@@ -35,7 +35,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
 | Dependency vulnerability audit | Explicit opt-in OSV lookup for exact lockfile-resolved versions, bounded batch pagination, advisory details and partial-coverage reporting | No offline advisory cache, local affected-range engine, reachability proof or exploitability verdict |
 | MCP integration | Local stdio JSON-RPC server with ten typed tools, including bounded project architecture analysis, inspect, scan, project, formats, comparison and evidence-ledger operations | No HTTP listener, remote auth, resource subscription or prompt catalog |
-| Provider integrations | Declarative manifests, immutable registry, bounded shell-free process runner, Rizin version doctor, snapshot-isolated import adapter, function inventory and address-scoped instruction disassembly, provider discovery/list CLI and JSON/Markdown reports | No decompiler backend, OS sandbox, dynamic execution provider, installer, daemon or automatic provider discovery |
+| Provider integrations | Declarative manifests, immutable registry, bounded shell-free process runner, Rizin version doctor, snapshot-isolated import adapter, function inventory and address-scoped instruction disassembly, provider discovery/list CLI and JSON/Markdown reports | No bundled decompiler plugin or automatic plugin installer, OS sandbox, dynamic execution provider, installer, daemon or automatic provider discovery |
 | HAR network analysis | Offline HAR 1.2 request inventory, host/status/timing summaries, review findings and SHA-256 evidence; bodies and secret header/query values are excluded | Does not capture live traffic, validate TLS certificates or prove that a capture is authentic |
 
 | Reports | JSON, Markdown, SARIF 2.1.0 for artifact, directory-scan and source-project findings, report comparison and CycloneDX 1.5 SBOM | No hosted dashboard or relational database |
@@ -112,6 +112,7 @@ node src/cli.mjs providers rizin doctor --executable /usr/bin/rizin --json
 node src/cli.mjs providers rizin imports ./sample.elf --executable /usr/bin/rizin --json --timeout-ms 30000 --max-output-kib 4096 --max-imports 100000
 node src/cli.mjs providers rizin functions ./sample.elf --executable /usr/bin/rizin --max-functions 10000 --json
 node src/cli.mjs providers rizin functions ./sample.elf --executable /usr/bin/rizin --address 0x401000 --max-instructions 100 --json
+node src/cli.mjs providers rizin functions ./sample.elf --executable /usr/bin/rizin --address 0x401000 --decompile --json
 
 # Start local MCP stdio server
 npm run mcp
