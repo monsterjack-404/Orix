@@ -89,9 +89,11 @@ test('identifies Android App Bundles and skips compressed DEX entries', () => {
     { name: 'BundleConfig.pb', data: [1] },
     { name: 'base/manifest/AndroidManifest.xml', data: [3, 0, 8, 0, 8, 0, 0, 0] },
     { name: 'base/dex/classes.dex', data: dex_header(), method: 8 },
+    { name: 'base/lib/arm64-v8a/libbundle.so', data: [1, 2, 3] },
   ]));
   assert.equal(report.format, 'AAB');
   assert.equal(report.summary.dex_entries_not_inspected, 1);
+  assert.equal(report.summary.native_libraries, 1);
   assert.equal(report.dex[0].status, 'compressed');
 });
 
