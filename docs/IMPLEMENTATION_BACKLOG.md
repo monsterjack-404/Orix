@@ -127,11 +127,14 @@ This backlog turns the product charter into reviewable engineering work. It is i
 - Acceptance: each language adapter reports parser version, syntax coverage and unresolved edges.
 
 ### G3.4 — Vulnerability intelligence
-- Integrate OSV as a versioned advisory source with ecosystem-aware package matching and affected-range evaluation.
-- Cache advisory snapshots and retain retrieval timestamp/source identifiers.
-- Distinguish direct, transitive, unreachable and runtime-observed dependencies when evidence supports it.
-- Network lookup is opt-in and reports offline/partial status.
-- Acceptance: fixture tests cover ranges, aliases, withdrawn advisories, unknown versions and false matches.
+- [x] Add opt-in OSV.dev `querybatch` lookup for exact lockfile-resolved package versions with ecosystem mapping.
+- [x] Follow per-package pagination tokens, fetch advisory detail by ID, retain source timestamps/links and separate withdrawn records.
+- [x] Keep source files and lockfile contents local; report unsupported packages, query failures, omitted packages and partial coverage explicitly.
+- [x] Add deterministic mock-service fixtures for matching, aliases, withdrawn records, pagination, malformed responses, limits and CLI opt-in.
+- [ ] Add a persistent, timestamped advisory cache/snapshot format and offline re-evaluation.
+- [ ] Extend ecosystem coverage and validate all OSV affected-range events locally against pinned package-version semantics.
+- [ ] Add dependency graph reachability only where source evidence supports it; runtime-observed status requires a separate observation provider.
+- Acceptance: fixtures cover ranges, aliases, withdrawn advisories, unknown versions and false matches.
 
 ### G3.5 — SBOM and license policy
 - Validate CycloneDX output against selected spec versions; evaluate SPDX import/export and license expression parsing.
