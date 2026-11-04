@@ -112,6 +112,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
       properties: {
         path: { type: 'string', minLength: 1 },
         max_entries: integer('Maximum HAR transactions analyzed.', 100000, 1),
+        max_hosts: integer('Maximum distinct hosts returned.', 10000, 1),
       },
       required: ['path'],
       additionalProperties: false,
@@ -292,7 +293,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
     }
     case 'orix.analyze_har': {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-      return analyze_har_file(target.path, { max_entries: args.max_entries });
+      return analyze_har_file(target.path, { max_entries: args.max_entries, max_hosts: args.max_hosts });
     }
     case 'orix.formats':
       return { schema_version: 'orix.formats.v1', formats: list_format_capabilities() };
