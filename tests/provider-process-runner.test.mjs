@@ -74,6 +74,18 @@ test('static provider runner uses argv without shell interpolation and returns b
   assert.equal(result.stderr_bytes, Buffer.byteLength(result.stderr));
 });
 
+test('static provider runner prepends bounded executable arguments without shell evaluation', async () => {
+  const result = await run_static_provider({
+    manifest: manifest(),
+    executable: await node_executable(),
+    executable_args: ['-e', 'process.stdout.write(process.argv.slice(1).join("|"))'],
+    args: ['first literal', 'second $(not-a-shell) literal'],
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.stdout, 'first literal|second $(not-a-shell) literal');
+  assert.equal(result.args_count, 4);
+});
+
 test('static provider runner does not inherit the parent environment by default', async () => {
   const key = 'ORIX_PROCESS_RUNNER_PARENT_SECRET';
   const previous = process.env[key];
