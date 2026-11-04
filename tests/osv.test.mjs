@@ -30,6 +30,7 @@ function json_response(value, init = {}) {
 function advisory(id, extra = {}) {
   return {
     id,
+    affected: [],
     summary: 'A test advisory summary',
     published: '2025-01-01T00:00:00Z',
     modified: '2025-01-02T00:00:00Z',
@@ -132,6 +133,31 @@ test('OSV maps every currently supported lockfile ecosystem to OSV identifiers',
   assert.deepEqual(submitted, expected);
   assert.equal(report.summary.queried_packages, inputs.length);
   assert.equal(report.summary.status, 'complete');
+});
+
+test('OSV preserves bounded affected package ranges and fixed-version events', async () => {
+  const report = await audit_project_dependencies(project([dep('alpha', '1.0.0')]), {
+    fetch_impl: async url => {
+      if (String(url).endsWith('/querybatch')) {
+        return json_response({ results: [{ vulns: [{ id: 'OSV-AFFECTED-RANGES' }] }] });
+      }
+      return json_response(advisory('OSV-AFFECTED-RANGES', {
+        affected: [{
+          package: { ecosystem: 'npm', name: 'alpha', purl: 'pkg:npm/alpha' },
+          ranges: [{
+            type: 'ECOSYSTEM',
+            events: [{ introduced: '0' }, { fixed: '1.2.3' }],
+          }],
+          versions: ['1.0.0', '1.1.0'],
+        }],
+      }));
+    },
+  });
+  assert.deepEqual(report.vulnerabilities[0].affected, [{
+    package: { ecosystem: 'npm', name: 'alpha', purl: 'pkg:npm/alpha' },
+    ranges: [{ type: 'ECOSYSTEM', repo: null, events: [{ introduced: '0' }, { fixed: '1.2.3' }] }],
+    versions: ['1.0.0', '1.1.0'],
+  }]);
 });
 
 test('OSV treats inherited object property names as unsupported ecosystems', async () => {
