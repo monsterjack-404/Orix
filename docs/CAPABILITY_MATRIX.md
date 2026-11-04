@@ -159,7 +159,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Native decompilation | Planned | No decompiler adapter; Rizin imports only | Provider-neutral function/xref/disassembly/decompiler contract |
 | JavaScript / Electron | Partial | Source inventory and regex import/symbol candidates | AST analysis and Electron main/preload/renderer/IPC model |
 | .NET / CLR / IL | Planned | C# source and NuGet inventory only | PE/CLI metadata, IL, PDB and reviewed decompiler provider |
-| Android APK / AAB / DEX | Planned | ZIP central-directory metadata only | Binary manifest/resources/DEX parser and JADX/Apktool adapters |
+| Android APK / AAB / DEX | Partial | Bounded APK/AAB ZIP inventory, stored DEX 035/037-040 header and table-range checks, manifest binary-XML root-chunk recognition | Full binary manifest/resources, compressed DEX, bytecode analysis, JADX/Apktool adapters and signing verification |\n| Android device observations | Planned | No adb/device connector; APK analysis is offline only | Explicitly authorized read-only adb observations with device selection, permission boundaries and audit records |
 | Android device observations | Planned | No ADB/emulator/Frida provider | Explicit device approval, scope, capture budgets and cleanup |
 | Website structure | Planned | No dedicated HTML/DOM/source-map analyzer | Offline asset graph and static script analysis |
 | Browser observations | Planned | No live browser provider | Disposable Playwright/CDP session and local fixture corpus |
