@@ -103,7 +103,7 @@ test('preserves repeated imports and rejects source text beyond its configured c
   const report = analyze_javascript_source([
     "import first from './shared.js';",
     "import second from './shared.js';",
-  ].join('\\n'));
+  ].join('\n'));
   assert.deepEqual(report.imports.map(item => item.specifier), ['./shared.js', './shared.js']);
   assert.throws(
     () => analyze_javascript_source('const value = 1;', { max_source_chars: 4 }),
