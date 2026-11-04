@@ -2,6 +2,7 @@
 // This is a tokenizer and shallow declaration recognizer, not a standards-complete AST.
 
 const DEFAULT_MAX_TOKENS = 200000;
+const DEFAULT_MAX_SOURCE_CHARS = 8 * 1024 * 1024;
 const DEFAULT_MAX_IMPORTS = 2000;
 const DEFAULT_MAX_SYMBOLS = 2000;
 const REGEX_PREFIX_KEYWORDS = new Set(['return', 'throw', 'case', 'delete', 'void', 'typeof', 'instanceof', 'in', 'of', 'yield', 'await', 'else', 'do']);
@@ -162,17 +163,13 @@ function tokenize(source, maximum) {
   return { tokens, truncated };
 }
 
-function add_import(imports, seen, token, kind, from_token) {
+function add_import(imports, token, kind, from_token) {
   if (!token || token.type !== 'string' || !token.static_value || !token.value || token.value.length > 2048) return;
-  const key = kind + '\0' + token.value + '\0' + token.line;
-  if (seen.has(key)) return;
-  seen.add(key);
   imports.push({ specifier: token.value, kind, line: from_token?.line ?? token.line, confidence: 'static-literal' });
 }
 
 function collect_imports(tokens, maximum) {
   const imports = [];
-  const seen = new Set();
   for (let index = 0; index < tokens.length && imports.length < maximum; index += 1) {
     const token = tokens[index];
     if (token.type !== 'identifier') continue;
@@ -181,16 +178,16 @@ function collect_imports(tokens, maximum) {
     if ((previous === '.' || (previous === '.' && tokens[index - 2]?.value === '?')) && !module_require) continue;
     if (token.value === 'require' && tokens[index + 1]?.value === '(') {
       const argument = tokens[index + 2];
-      if (tokens[index + 3]?.value === ')') add_import(imports, seen, argument, 'require', token);
+      if (tokens[index + 3]?.value === ')') add_import(imports, argument, 'require', token);
       continue;
     }
     if (token.value !== 'import' && token.value !== 'export') continue;
     if (token.value === 'import' && tokens[index + 1]?.value === '(') {
-      if (tokens[index + 3]?.value === ')' || tokens[index + 3]?.value === ',') add_import(imports, seen, tokens[index + 2], 'dynamic-import', token);
+      if (tokens[index + 3]?.value === ')' || tokens[index + 3]?.value === ',') add_import(imports, tokens[index + 2], 'dynamic-import', token);
       continue;
     }
     if (token.value === 'import' && tokens[index + 1]?.type === 'string') {
-      add_import(imports, seen, tokens[index + 1], 'side-effect-import', token);
+      add_import(imports, tokens[index + 1], 'side-effect-import', token);
       continue;
     }
     const start_line = token.line;
@@ -198,7 +195,7 @@ function collect_imports(tokens, maximum) {
       const current = tokens[index + offset];
       if (current.value === ';') break;
       if (current.value === 'from' && tokens[index + offset + 1]?.type === 'string') {
-        add_import(imports, seen, tokens[index + offset + 1], token.value === 'import' ? 'import' : 're-export', token);
+        add_import(imports, tokens[index + offset + 1], token.value === 'import' ? 'import' : 're-export', token);
         break;
       }
       if (offset > 1 && current.line > start_line && current.type === 'identifier' &&
@@ -238,6 +235,8 @@ function collect_symbols(tokens, maximum) {
  */
 export function analyze_javascript_source(source, options = {}) {
   if (typeof source !== 'string') throw new TypeError('JavaScript source must be a string');
+  const max_source_chars = bounded_option(options, 'max_source_chars', DEFAULT_MAX_SOURCE_CHARS, 64 * 1024 * 1024);
+  if (source.length > max_source_chars) throw new RangeError('JavaScript source exceeds max_source_chars');
   const max_tokens = bounded_option(options, 'max_tokens', DEFAULT_MAX_TOKENS, 500000);
   const max_imports = bounded_option(options, 'max_imports', DEFAULT_MAX_IMPORTS, 10000);
   const max_symbols = bounded_option(options, 'max_symbols', DEFAULT_MAX_SYMBOLS, 10000);
@@ -257,6 +256,7 @@ export function analyze_javascript_source(source, options = {}) {
       'This is bounded lexical and shallow declaration analysis, not a complete ECMAScript or TypeScript AST.',
       'Type resolution, scopes, control flow, data flow, JSX semantics, regular-expression literal bodies and compiler transforms are not analyzed.',
       'Computed module specifiers, non-literal imports, macro-generated code and runtime loading may be missed.',
+      'Analysis rejects source text above max_source_chars; token, import and symbol counts are independently capped.',
     ],
   };
 }
