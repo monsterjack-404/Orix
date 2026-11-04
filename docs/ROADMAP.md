@@ -111,6 +111,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [x] Workspace-confined artifact, directory, project, format, comparison and evidence-ledger tools.
 - [x] Tool argument contracts, path checks, no-follow report reads and input/output byte budgets.
 - [x] Protocol-version negotiation, JSON-RPC batch handling, request/parameter validation, per-connection call limits and initialize/initialized lifecycle enforcement.
+- [x] Source-backed capability inventory exposed through CLI, programmatic API and a read-only MCP tool.
 - [ ] Tool catalog generated from typed operation contracts.
 - [x] MCP server exposing artifact, project, comparison and evidence workflows.
 - [ ] HTTP transport, resource/prompt subscriptions and remote authentication.
