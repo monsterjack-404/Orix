@@ -106,14 +106,6 @@ function tokenize(source, maximum) {
       while (cursor < source.length && source[cursor] !== '\n') cursor += 1;
       continue;
     }
-    if (character === '/' && can_start_regex(tokens[tokens.length - 1])) {
-      const end = read_regex(source, cursor);
-      if (end !== null) {
-        tokens.push({ type: 'regex', value: '', line });
-        cursor = end;
-        continue;
-      }
-    }
     if (character === '/' && source[cursor + 1] === '*') {
       cursor += 2;
       while (cursor < source.length && !(source[cursor] === '*' && source[cursor + 1] === '/')) {
@@ -122,6 +114,14 @@ function tokenize(source, maximum) {
       }
       if (cursor < source.length) cursor += 2;
       continue;
+    }
+    if (character === '/' && can_start_regex(tokens[tokens.length - 1])) {
+      const end = read_regex(source, cursor);
+      if (end !== null) {
+        tokens.push({ type: 'regex', value: '', line });
+        cursor = end;
+        continue;
+      }
     }
     if (character === "'" || character === '"') {
       const start_line = line;
