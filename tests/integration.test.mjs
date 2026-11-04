@@ -80,7 +80,8 @@ test('CLI JSON output is valid machine-readable JSON', async () => {
 });
 
 test('CLI analyzes HAR captures and emits a bounded JSON evidence report', async () => {
-  await with_temp_dir(async directory => {
+  const directory = await mkdtemp(path.join(process.cwd(), '.orix-cli-har-'));
+  try {
     const file = path.join(directory, 'capture.har');
     await writeFile(file, Buffer.from(JSON.stringify({ log: {
       version: '1.2', creator: { name: 'CLI fixture', version: '1' },
@@ -99,7 +100,9 @@ test('CLI analyzes HAR captures and emits a bounded JSON evidence report', async
     assert.equal(cli.stdout.includes('hidden'), false);
     assert.equal(parse_arguments(['har', file, '--max-har-entries', '12']).flags.max_har_entries, 12);
     assert.equal(parse_arguments(['har', file, '--max-har-hosts', '8']).flags.max_har_hosts, 8);
-  });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test('capabilities command emits source-backed implemented, partial and planned inventory', () => {
