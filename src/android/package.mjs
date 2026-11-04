@@ -168,3 +168,42 @@ export async function analyze_android_package_file(file_path, options = {}) {
     if (handle) await handle.close().catch(() => {});
   }
 }
+
+function markdown_cell(value) {
+  return String(value ?? '').replace(/\\\\/g, '\\\\\\\\').replace(/\\|/g, '\\\\|').replace(/[\\r\\n]+/g, ' ');
+}
+
+export function render_android_package_markdown(report) {
+  const lines = [
+    '# ORIX Android Package Report',
+    '',
+    '- **Format:** ' + markdown_cell(report.format),
+    '- **Detected:** ' + String(report.detected),
+    '- **ZIP entries:** ' + report.archive.entry_count,
+    '- **DEX entries:** ' + report.summary.dex_entries,
+    '- **DEX headers parsed:** ' + report.summary.dex_headers_parsed,
+    '- **Native libraries:** ' + report.summary.native_libraries,
+    '- **Manifest entries:** ' + report.summary.manifest_entries,
+    '- **V1 signature files:** ' + report.summary.v1_signature_files,
+    '',
+    '## DEX inventory',
+    '',
+    '| Entry | Status | Version | Size |',
+    '|---|---|---:|---:|',
+  ];
+  if (report.dex.length === 0) lines.push('| None | — | — | — |');
+  for (const item of report.dex) {
+    lines.push('| ' + markdown_cell(item.path) + ' | ' + markdown_cell(item.status) + ' | ' +
+      markdown_cell(item.version ?? '—') + ' | ' + (item.uncompressed_size ?? '—') + ' |');
+  }
+  lines.push('', '## Manifests', '');
+  if (report.manifests.length === 0) lines.push('No Android manifest entry was found.');
+  for (const item of report.manifests) lines.push('- ' + markdown_cell(item.path) + ': ' + markdown_cell(item.status));
+  lines.push('', '## Limitations', '');
+  for (const note of report.limitations) lines.push('- ' + note);
+  if (report.warnings.length > 0) {
+    lines.push('', '## Warnings', '');
+    for (const warning of report.warnings) lines.push('- ' + markdown_cell(warning.path) + ': ' + markdown_cell(warning.reason));
+  }
+  return lines.join('\\n') + '\\n';
+}
