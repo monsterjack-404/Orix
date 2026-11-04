@@ -31,6 +31,7 @@ const path_schema = {
 export const ORIX_MCP_TOOLS = Object.freeze([
   {
     name: 'orix.inspect_file',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Statically inspect one regular file. Hashes complete bytes, parses a bounded prefix, and never executes the target.',
     inputSchema: {
       type: 'object',
@@ -47,6 +48,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   },
   {
     name: 'orix.scan_directory',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Inventory and statically inspect a directory with bounded traversal and concurrency. Symlinks are skipped.',
     inputSchema: {
       type: 'object',
@@ -63,6 +65,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   },
   {
     name: 'orix.scan_project',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Build a bounded source, manifest, import and symbol inventory without running project code, scripts, builds or tests.',
     inputSchema: {
       type: 'object',
@@ -78,6 +81,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   },
   {
     name: 'orix.analyze_architecture',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Build a bounded source-import graph and report entry-point candidates, circular dependencies, reachability, isolated modules and external imports. Uses static inventory only; it never executes project code.',
     inputSchema: {
       type: 'object',
@@ -96,11 +100,13 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   },
   {
     name: 'orix.formats',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'List recognized signatures and structural parser capabilities.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'orix.compare_reports',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Compare two previously generated artifact or directory-scan JSON reports by normalized path, SHA-256 and indicator deltas. Does not rescan either path.',
     inputSchema: {
       type: 'object',
@@ -114,16 +120,19 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   },
   {
     name: 'orix.ledger.verify',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Verify sequence, canonical record hashes and previous-hash links in a workspace-confined local evidence ledger.',
     inputSchema: path_schema,
   },
   {
     name: 'orix.ledger.list',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Read and validate all records in a workspace-confined local evidence ledger.',
     inputSchema: path_schema,
   },
   {
     name: 'orix.ledger.append',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     description: 'Append a typed evidence event to a workspace-confined, hash-chained local ledger.',
     inputSchema: {
       type: 'object',
