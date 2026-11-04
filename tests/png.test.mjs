@@ -147,3 +147,28 @@ test('PNG parser validates grayscale and truecolor tRNS sample values against bi
     chunk('IEND'),
   ])), error => error.code === 'ORIX_PNG_TRNS_SAMPLE_OUT_OF_RANGE');
 });
+
+
+test('PNG parser requires a truecolor PLTE chunk to precede tRNS when both are present', () => {
+  const transparency = Buffer.alloc(6);
+  transparency.writeUInt16BE(1, 0);
+  transparency.writeUInt16BE(2, 2);
+  transparency.writeUInt16BE(3, 4);
+  const invalid = png([
+    chunk('IHDR', header({ color_type: 2 })),
+    chunk('tRNS', transparency),
+    chunk('PLTE', Buffer.from([255, 0, 0])),
+    chunk('IDAT', IDAT),
+    chunk('IEND'),
+  ]);
+  assert.throws(() => parse_png(invalid), error => error.code === 'ORIX_PNG_PLTE_AFTER_TRNS');
+
+  const valid = png([
+    chunk('IHDR', header({ color_type: 2 })),
+    chunk('PLTE', Buffer.from([255, 0, 0])),
+    chunk('tRNS', transparency),
+    chunk('IDAT', IDAT),
+    chunk('IEND'),
+  ]);
+  assert.equal(parse_png(valid).chunks.find(item => item.type === 'tRNS').length, 6);
+});
