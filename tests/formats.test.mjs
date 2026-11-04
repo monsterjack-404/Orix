@@ -1142,7 +1142,7 @@ test('ZIP parser rejects invalid direct entry limits', async () => {
 
 function create_dex_fixture() {
   const buffer = Buffer.alloc(140);
-  buffer.write('dex\\n035\\0', 0, 'ascii');
+  buffer.write('dex\n035\0', 0, 'ascii');
   buffer.writeUInt32LE(buffer.length, 32); buffer.writeUInt32LE(112, 36); buffer.writeUInt32LE(0x12345678, 40);
   buffer.writeUInt32LE(112, 52); buffer.writeUInt32LE(28, 104); buffer.writeUInt32LE(112, 108);
   buffer.writeUInt32LE(2, 112); buffer.writeUInt16LE(0, 116); buffer.writeUInt32LE(1, 120); buffer.writeUInt32LE(0, 124);
