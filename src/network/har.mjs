@@ -383,10 +383,11 @@ export async function analyze_har_file(file_path, options = {}) {
       fail('ORIX_HAR_FILE_TOO_LARGE', 'Opened HAR file size is empty, unsafe or above the configured byte ceiling', { size_bytes: opened.size, max_bytes });
     }
 
-    // O_NOFOLLOW is not available on every supported platform. This post-open
-    // path check is supplemental; the descriptor remains the object we read.
-    const path_stat = await fs.lstat(absolute);
-    if (path_stat.isSymbolicLink()) fail('ORIX_HAR_SYMLINK_REJECTED', 'HAR analyzer does not follow symbolic links', { path: absolute });
+    // Inspect the original caller-supplied path after opening the canonical
+    // target. This still detects a final-component symlink without trusting a
+    // pre-open path check to identify the descriptor that will be read.
+    const path_stat = await fs.lstat(requested_path);
+    if (path_stat.isSymbolicLink()) fail('ORIX_HAR_SYMLINK_REJECTED', 'HAR analyzer does not follow symbolic links', { path: requested_path });
     if (!path_stat.isFile() || path_stat.size !== opened.size ||
         String(path_stat.ino) !== String(opened.ino) || String(path_stat.dev) !== String(opened.dev)) {
       fail('ORIX_HAR_FILE_REPLACED', 'HAR path no longer identifies the opened regular file');
