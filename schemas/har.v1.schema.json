@@ -190,7 +190,8 @@
         "omitted_entries",
         "max_entries",
         "hosts_complete",
-        "omitted_hosts"
+        "omitted_hosts",
+        "max_hosts"
       ],
       "properties": {
         "complete": {
@@ -214,6 +215,11 @@
         "omitted_hosts": {
           "type": "integer",
           "minimum": 0
+        },
+        "max_hosts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
         }
       },
       "additionalProperties": false
