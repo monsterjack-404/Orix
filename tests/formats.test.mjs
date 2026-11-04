@@ -1157,6 +1157,16 @@ test('DEX parser validates header and bounded map metadata', () => {
   assert.equal(parsed.integrity.adler32_verified, false);
 });
 
+test('DEX parser accepts each explicitly supported header version', () => {
+  for (const version of ['035', '037', '038', '039']) {
+    const fixture = create_dex_fixture();
+    fixture.write('dex\\n' + version + '\\0', 0, 'ascii');
+    const parsed = parse_dex(fixture);
+    assert.equal(parsed.version, version);
+    assert.equal(parsed.file_size, fixture.length);
+  }
+});
+
 test('DEX parser is available through package exports and format dispatch', async () => {
   const fixture = create_dex_fixture();
   assert.equal(analyze_known_format(fixture).detection.format, 'DEX');
