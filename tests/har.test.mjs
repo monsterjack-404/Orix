@@ -1,9 +1,11 @@
 // JavaScript, tests/har.test.mjs, Node.js 20+, HAR network-analysis regression suite.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile, symlink } from 'node:fs/promises';
+import { rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { parse_har, analyze_har_file, render_har_markdown } from '../src/network/har.mjs';
 
 function make_har(entries = []) {
@@ -152,19 +154,17 @@ test('HAR file analyzer rejects shared OS temporary paths', async () => {
 });
 
 test('HAR file analyzer rejects symlinks and returns a hashed source receipt', async () => {
-  const directory = await mkdtemp(path.join(process.cwd(), '.orix-har-'));
-  const file = path.join(directory, 'capture.har');
-  const link = path.join(directory, 'capture-link.har');
+  const file = fileURLToPath(new URL('./fixtures/network/basic.har', import.meta.url));
+  const link = path.join(path.dirname(file), '.basic-' + randomUUID() + '.har');
   try {
-    await writeFile(file, make_har([entry()]));
     const report = await analyze_har_file(file);
-    assert.equal(report.source.name, 'capture.har');
+    assert.equal(report.source.name, 'basic.har');
     assert.equal(report.integrity.stable_during_read, true);
     assert.equal(report.integrity.bytes > 0, true);
     await symlink(file, link);
     await assert.rejects(analyze_har_file(link), error => error.code === 'ORIX_HAR_SYMLINK_REJECTED');
   } finally {
-    await rm(directory, { recursive: true, force: true });
+    await rm(link, { force: true });
   }
 });
 
