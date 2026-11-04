@@ -19,6 +19,7 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | `orix.inspect_file` | `path`, optional read/file MiB and string limits | Versioned artifact report with complete-file SHA-256 |
 | `orix.scan_directory` | `path`, optional file/entry/depth/concurrency limits | Bounded directory scan and artifact reports |
 | `orix.scan_project` | `path`, optional file/entry/depth limits | Project inventory, manifests, imports and symbol candidates |
+| `orix.analyze_architecture` | `path`, optional inventory and graph limits | Static source-import graph with entry-point candidates, cycles, reachability, hotspots and explicit limitations |
 | `orix.formats` | No arguments | Recognized signatures and parser capability metadata |
 | `orix.compare_reports` | `baseline_path`, `current_path` | Deterministic artifact/scan comparison, SHA-256 deltas and indicator changes |
 | `orix.ledger.verify` | `path` | Evidence-ledger chain verification |
@@ -26,6 +27,8 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | `orix.ledger.append` | `path`, event `type`, JSON object `payload` | Workspace-confined append receipt for the hash-chained ledger |
 
 Every tool validates its input server-side against the same schema advertised by `tools/list`. Output is capped at 2 MiB per tool response; reduce scan limits if a result exceeds the cap.
+
+Tool definitions also publish MCP safety annotations: inspection, inventory, comparison and ledger-read tools are marked read-only and idempotent; `orix.ledger.append` is marked as a state-changing, non-idempotent operation. These annotations are client-facing hints, not an authorization boundary. Workspace confinement and server-side validation remain authoritative.
 
 ## Security boundary
 
@@ -36,5 +39,7 @@ Every tool validates its input server-side against the same schema advertised by
 - Tool output is JSON text in MCP content blocks. Errors are returned with `isError: true`. Comparison reads each report through a no-follow, 64 MiB-bounded file reader and never rescans the original artifacts.
 - Ledger append is explicit, workspace-confined and serialized through the ledger writer lock; records are hash-chained and size-bounded.
 - Input frames are streamed with a 4 MiB maximum; tool responses are capped at 2 MiB.
+
+Architecture analysis uses only the scanner's resolved local-import graph. It is not compiler-backed, a runtime call graph, or proof that a module is dead code. Its default graph ceilings are 4,000 nodes, 8,000 edges and 25 hotspots to keep ordinary responses within the transport budget; callers can request higher limits up to the tool schema ceilings. Its limits are independently bounded before the result is returned.
 
 MCP is a transport adapter over ORIX's existing public analysis functions; it does not fork or reimplement parsers.

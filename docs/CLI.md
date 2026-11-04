@@ -1,6 +1,6 @@
 # CLI and Automation Guide
 
-The CLI is the supported human and automation entry point for ORIX 0.2.1. It is a thin command layer over the same programmatic functions exported from `src/index.mjs`.
+The CLI is the supported human and automation entry point for ORIX 0.5.0. See the repository README and capability matrix for the current release surface. It is a thin command layer over the same programmatic functions exported from `src/index.mjs`.
 
 ## Commands
 
@@ -52,6 +52,22 @@ node src/cli.mjs project ./repository --format sarif --out ./project-findings.sa
 Project SARIF export maps source findings to SARIF 2.1.0 file and line locations. ORIX exports the rule ID, severity, confidence and a stable finding fingerprint. Credential-shaped match values are deliberately excluded from messages, evidence properties and fingerprints. The project root and each finding path are checked so a report cannot manufacture file locations outside its declared root.
 
 A project scan is still static and heuristic. SARIF output does not upgrade a pattern match into a confirmed secret, vulnerability or runtime behavior finding. Review the reported line in the source repository before taking action.
+
+### Analyze project architecture
+
+Build a bounded report from the project's discovered local-import graph:
+
+```bash
+node src/cli.mjs architecture ./repository
+node src/cli.mjs architecture ./repository --json
+node src/cli.mjs architecture ./repository --format mermaid --out ./architecture.mmd
+node src/cli.mjs architecture ./repository --json --out ./architecture.json
+node src/cli.mjs architecture ./repository --max-nodes 10000 --max-edges 50000 --max-hotspots 40
+```
+
+The analyzer reports source-graph entry-point candidates, strongly connected components (circular imports and self-loops), graph reachability, isolated and leaf modules, connectivity hotspots, language/directory counts and external import specifiers. It reuses `--max-files`, `--max-entries` and `--max-depth` for inventory. Graph analysis has separate controls: `--max-nodes` (default 20,000, maximum 50,000), `--max-edges` (default 100,000, maximum 250,000) and `--max-hotspots` (default 25, maximum 100). If a graph limit is reached, the report marks graph coverage incomplete and records omitted work. Mermaid output is separately bounded to 120 nodes and 300 edges by default. Output files are create-only.
+
+These are static heuristics over imports resolved by the project scanner—not compiler-backed call graphs, runtime traces or proof of dead code. Dynamic imports, reflection, generated code, conditional exports and unsupported language resolution may be absent. No source file, build, test, package script or target program is executed. See [Architecture Analysis](ARCHITECTURE-ANALYSIS.md) for report fields and interpretation limits.
 
 ### List known signatures
 

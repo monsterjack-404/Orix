@@ -3,6 +3,7 @@
 import { inspect_file } from '../core/inspect.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project } from '../project/intelligence.mjs';
+import { analyze_project_architecture } from '../project/architecture.mjs';
 import { list_format_capabilities } from '../formats/index.mjs';
 import { verify_ledger, list_ledger, append_ledger } from '../evidence/ledger.mjs';
 import { compare_reports } from '../analyzer/compare.mjs';
@@ -30,6 +31,7 @@ const path_schema = {
 export const ORIX_MCP_TOOLS = Object.freeze([
   {
     name: 'orix.inspect_file',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Statically inspect one regular file. Hashes complete bytes, parses a bounded prefix, and never executes the target.',
     inputSchema: {
       type: 'object',
@@ -46,6 +48,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   },
   {
     name: 'orix.scan_directory',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Inventory and statically inspect a directory with bounded traversal and concurrency. Symlinks are skipped.',
     inputSchema: {
       type: 'object',
@@ -62,6 +65,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   },
   {
     name: 'orix.scan_project',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Build a bounded source, manifest, import and symbol inventory without running project code, scripts, builds or tests.',
     inputSchema: {
       type: 'object',
@@ -76,12 +80,33 @@ export const ORIX_MCP_TOOLS = Object.freeze([
     },
   },
   {
+    name: 'orix.analyze_architecture',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    description: 'Build a bounded source-import graph and report entry-point candidates, circular dependencies, reachability, isolated modules and external imports. Uses static inventory only; it never executes project code.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', minLength: 1 },
+        max_files: integer('Maximum source files inventoried.', 50000, 1),
+        max_entries: integer('Maximum project entries examined.', 200000, 1),
+        max_depth: integer('Maximum traversal depth.', 24),
+        max_nodes: integer('Maximum graph nodes analyzed.', 50000, 1),
+        max_edges: integer('Maximum graph edges analyzed.', 250000, 1),
+        max_hotspots: integer('Maximum connectivity hotspots returned.', 100, 1),
+      },
+      required: ['path'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'orix.formats',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'List recognized signatures and structural parser capabilities.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'orix.compare_reports',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Compare two previously generated artifact or directory-scan JSON reports by normalized path, SHA-256 and indicator deltas. Does not rescan either path.',
     inputSchema: {
       type: 'object',
@@ -95,16 +120,19 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   },
   {
     name: 'orix.ledger.verify',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Verify sequence, canonical record hashes and previous-hash links in a workspace-confined local evidence ledger.',
     inputSchema: path_schema,
   },
   {
     name: 'orix.ledger.list',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Read and validate all records in a workspace-confined local evidence ledger.',
     inputSchema: path_schema,
   },
   {
     name: 'orix.ledger.append',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     description: 'Append a typed evidence event to a workspace-confined, hash-chained local ledger.',
     inputSchema: {
       type: 'object',
@@ -201,6 +229,21 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       if (args.max_depth !== undefined) limits.max_depth = args.max_depth;
       const target = await resolve_workspace_path(args.path, roots, { kind: 'directory' });
       return scan_project(target.path, limits);
+    }
+    case 'orix.analyze_architecture': {
+      const limits = {};
+      if (args.max_files !== undefined) limits.max_files = args.max_files;
+      if (args.max_entries !== undefined) limits.max_entries = args.max_entries;
+      if (args.max_depth !== undefined) limits.max_depth = args.max_depth;
+      const target = await resolve_workspace_path(args.path, roots, { kind: 'directory' });
+      const project = await scan_project(target.path, limits);
+      // Keep default MCP graph results comfortably below the 2 MiB transport
+      // result ceiling. Callers can raise these ceilings explicitly when needed.
+      return analyze_project_architecture(project, {
+        max_nodes: args.max_nodes ?? 4000,
+        max_edges: args.max_edges ?? 8000,
+        max_hotspots: args.max_hotspots ?? 25,
+      });
     }
     case 'orix.formats':
       return { schema_version: 'orix.formats.v1', formats: list_format_capabilities() };

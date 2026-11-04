@@ -6,6 +6,8 @@ import { HELP_TEXT } from './help.mjs';
 import { inspect_file } from '../core/inspect.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project, render_project_markdown } from '../project/intelligence.mjs';
+import { analyze_project_architecture } from '../project/architecture.mjs';
+import { render_architecture_markdown, render_architecture_mermaid } from '../reports/architecture.mjs';
 import { list_format_capabilities } from '../formats/index.mjs';
 import { render_json } from '../reports/json.mjs';
 import { render_inspection_markdown, render_scan_markdown } from '../reports/markdown.mjs';
@@ -33,6 +35,7 @@ function validate_command_flags(command, flags) {
     inspect: ['format', 'out', 'ledger', 'extract_strings', 'max_strings', 'max_read_bytes', 'max_file_bytes'],
     scan: ['format', 'out', 'ledger', 'extract_strings', 'max_strings', 'max_scan_files', 'max_scan_directories', 'max_scan_entries', 'max_scan_depth', 'max_read_bytes', 'max_file_bytes', 'max_scan_concurrency'],
     project: ['format', 'out', 'ledger', 'max_scan_files', 'max_scan_entries', 'max_scan_depth'],
+    architecture: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'max_architecture_nodes', 'max_architecture_edges', 'max_architecture_hotspots'],
     compare: ['format', 'out'],
     formats: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
@@ -46,6 +49,7 @@ export async function main(argv=process.argv.slice(2)) {
   const parsed=parse_arguments(argv);
   if(parsed.flags.help||parsed.command==='help'||!parsed.command){process.stdout.write(HELP_TEXT);return 0;}
   validate_command_flags(parsed.command, parsed.flags);
+  if(parsed.flags.format==='mermaid'&&parsed.command!=='architecture')throw new Error('Mermaid output is only supported by the architecture command');
   if(parsed.command==='ledger'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('ledger output currently supports JSON only');
   if(parsed.command==='providers'&&parsed.provider_action==='list'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('providers list output currently supports JSON only');
   if(parsed.command==='providers'&&parsed.provider_action==='imports'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('provider import output supports JSON or Markdown only');
@@ -117,6 +121,20 @@ export async function main(argv=process.argv.slice(2)) {
     return 0;
   }
   if(parsed.command==='formats'){if(parsed.target)throw new Error('The formats command does not accept a target');await write_or_print(render_json({schema_version:'orix.formats.v1',formats:list_format_capabilities()}),parsed.flags.out);return 0;}
+  if(parsed.command==='architecture'){
+    if(!parsed.target)throw new Error('architecture requires a target directory');
+    if(parsed.flags.format&&!['json','markdown','mermaid'].includes(parsed.flags.format))throw new Error('architecture output supports JSON, Markdown or Mermaid');
+    const project=await scan_project(parsed.target,{max_files:parsed.flags.max_scan_files,max_entries:parsed.flags.max_scan_entries,max_depth:parsed.flags.max_scan_depth});
+    const report=analyze_project_architecture(project, {
+      max_nodes: parsed.flags.max_architecture_nodes,
+      max_edges: parsed.flags.max_architecture_edges,
+      max_hotspots: parsed.flags.max_architecture_hotspots,
+    });
+    const format=parsed.flags.format??'markdown';
+    const output=format==='json'?render_json(report):format==='mermaid'?render_architecture_mermaid(report):render_architecture_markdown(report);
+    await write_or_print(output,parsed.flags.out);
+    return 0;
+  }
   if(!['inspect','scan','project'].includes(parsed.command))throw new Error('Unknown command: '+parsed.command);
   if(!parsed.target)throw new Error(parsed.command+' requires a target path');
   const options={...parsed.flags,limits:parsed.flags};

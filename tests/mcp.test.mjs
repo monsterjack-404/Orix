@@ -20,7 +20,15 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   const response = await handle_mcp_message({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
   assert.deepEqual(response.result.tools.map(tool => tool.name), ORIX_MCP_TOOLS.map(tool => tool.name));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.inspect_file'));
+  assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_architecture'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.ledger.verify'));
+  for (const tool of response.result.tools) {
+    assert.ok(tool.annotations, tool.name + ' must advertise safety annotations');
+    assert.equal(tool.annotations.openWorldHint, false);
+  }
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.inspect_file').annotations.readOnlyHint, true);
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.readOnlyHint, false);
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
 });
 
 test('MCP inspect tool returns the same versioned artifact report as the library API', async () => {
@@ -267,4 +275,43 @@ test('MCP rejects malformed UTF-8 frames and continues with the next request', a
   assert.equal(messages[0].error.code, -32700);
   assert.equal(messages[1].id, 71);
   assert.deepEqual(messages[1].result, {});
+});
+
+test('MCP architecture analysis reuses the bounded scanner and reports local cycles', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-architecture-'));
+  try {
+    await writeFile(path.join(directory, 'index.js'), "import './service.js';\n");
+    await writeFile(path.join(directory, 'service.js'), "import './index.js';\n");
+    await writeFile(path.join(directory, 'isolated.js'), 'export const isolated = true;\n');
+
+    const report = await call_orix_tool('orix.analyze_architecture', {
+      path: directory,
+      max_files: 100,
+      max_nodes: 100,
+      max_edges: 100,
+      max_hotspots: 10,
+    }, { roots: [directory] });
+
+    assert.equal(report.schema_version, 'orix.architecture.v1');
+    assert.equal(report.summary.source_files, 3);
+    assert.equal(report.summary.cycle_count, 1);
+    assert.deepEqual(report.cycles[0].members, ['index.js', 'service.js']);
+    assert.deepEqual(report.isolated_files, ['isolated.js']);
+    assert.equal(report.coverage.input_inventory_complete, true);
+
+    const default_report = await call_orix_tool(
+      'orix.analyze_architecture',
+      { path: directory },
+      { roots: [directory] },
+    );
+    assert.equal(default_report.schema_version, 'orix.architecture.v1');
+    assert.equal(default_report.summary.cycle_count, 1);
+
+    await assert.rejects(
+      call_orix_tool('orix.analyze_architecture', { path: directory, max_nodes: 50001 }, { roots: [directory] }),
+      /between 1 and 50000/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
