@@ -79,5 +79,7 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.ok(schemas[13].required.includes('privacy'));
   assert.ok(schemas[13].properties.coverage.required.includes('hosts_complete'));
   assert.ok(schemas[13].properties.coverage.required.includes('omitted_hosts'));
+  assert.ok(schemas[13].properties.coverage.required.includes('max_hosts'));
+  assert.ok(schemas[13].properties.entries.items.properties.status_text);
   assert.equal(schemas[13].properties.privacy.properties.request_bodies_included.const, false);
 });
