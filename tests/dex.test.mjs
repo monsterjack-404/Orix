@@ -34,6 +34,7 @@ test('parses reverse-endian DEX header fields', () => {
 test('supports header-only inspection with a trusted containing-entry size', () => {
   const report = parse_dex(dex_fixture({ file_size: 4096 }), { header_only: true, declared_size: 4096 });
   assert.equal(report.header.file_size, 4096);
+  assert.throws(() => parse_dex(dex_fixture({ file_size: 4096 }), { header_only: true }), /trusted declared_size/);
   assert.throws(() => parse_dex(dex_fixture({ file_size: 4096 })), error => error.code === 'ORIX_DEX_TRUNCATED_FILE');
   assert.throws(() => parse_dex(dex_fixture({ file_size: 4096 }), { header_only: true, declared_size: 4097 }), error => error.code === 'ORIX_DEX_SIZE_MISMATCH');
 });
