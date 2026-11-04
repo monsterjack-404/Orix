@@ -4,6 +4,9 @@ ORIX currently negotiates MCP protocol version `2025-03-26` over stdio. The newe
 
 ORIX includes a dependency-free Model Context Protocol server using the standard input/output transport.
 
+
+
+The `orix.rizin_functions` tool accepts an optional `executable_args` array (up to 16 literal strings) for explicitly selected wrapper executables. Values are prepended to Rizin's argv without shell evaluation and remain subject to the bounded provider process runner.
 ## Start
 
 From the repository root:
