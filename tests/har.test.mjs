@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parse_har, analyze_har_file, render_har_markdown } from '../src/network/har.mjs';
 
@@ -144,6 +145,10 @@ test('HAR Markdown renderer escapes hostile creator metadata', () => {
   assert.ok(markdown.includes('\\['));
   assert.ok(markdown.includes('\\*'));
   assert.ok(markdown.includes('\\_'));
+});
+
+test('HAR file analyzer rejects shared OS temporary paths', async () => {
+  await assert.rejects(analyze_har_file(tmpdir()), error => error.code === 'ORIX_HAR_TEMP_PATH_REJECTED');
 });
 
 test('HAR file analyzer rejects symlinks and returns a hashed source receipt', async () => {
