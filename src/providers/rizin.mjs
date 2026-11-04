@@ -502,7 +502,7 @@ export async function analyze_rizin_functions(options = {}) {
     throw new TypeError('Rizin function-analysis options must be an object');
   }
   const allowed = new Set([
-    'executable', 'input_path', 'manifest', 'cwd', 'env',
+    'executable', 'executable_args', 'input_path', 'manifest', 'cwd', 'env',
     'timeout_ms', 'max_output_bytes', 'max_functions',
     'address', 'max_instructions', 'decompile', 'max_decompilation_chars', 'signal',
   ]);
@@ -582,6 +582,7 @@ export async function analyze_rizin_functions(options = {}) {
     const common = {
       manifest,
       executable: descriptors.executable?.value,
+      executable_args: descriptors.executable_args?.value,
       cwd: descriptors.cwd?.value,
       env: descriptors.env?.value,
       signal,
