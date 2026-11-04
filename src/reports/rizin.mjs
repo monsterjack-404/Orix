@@ -45,42 +45,6 @@ export function render_rizin_imports_markdown(report, options = {}) {
   if (report.diagnostics?.stderr) {
     lines.push('', '## Provider diagnostics', '', '~~~text', report.diagnostics.stderr.slice(0, 1024), '~~~');
   }
-  if (report.decompilation) {
-    const source = String(report.decompilation.source ?? '').replace(/\r/g, '');
-    const longest_fence = Math.max(2, ...Array.from(source.matchAll(/~+/g), match => match[0].length));
-    const fence = '~'.repeat(longest_fence + 1);
-    lines.push(
-      '',
-      '## Optional pseudocode decompilation',
-      '',
-      '- **Backend:** ' + function_cell(report.decompilation.backend),
-      '- **Function:** ' + function_cell(report.decompilation.function_name),
-      '- **Entry:** 0x' + report.decompilation.address.toString(16),
-      '- **Output truncated:** ' + (report.decompilation.truncated ? 'yes' : 'no'),
-      '',
-      fence + 'c',
-      source,
-      fence,
-    );
-  }
-  if (report.decompilation) {
-    const source = String(report.decompilation.source ?? '').replace(/\r/g, '');
-    const longest_fence = Math.max(2, ...Array.from(source.matchAll(/~+/g), match => match[0].length));
-    const fence = '~'.repeat(longest_fence + 1);
-    lines.push(
-      '',
-      '## Optional pseudocode decompilation',
-      '',
-      '- **Backend:** ' + function_cell(report.decompilation.backend),
-      '- **Function:** ' + function_cell(report.decompilation.function_name),
-      '- **Entry:** 0x' + report.decompilation.address.toString(16),
-      '- **Output truncated:** ' + (report.decompilation.truncated ? 'yes' : 'no'),
-      '',
-      fence + 'c',
-      source,
-      fence,
-    );
-  }
   lines.push(
     '',
     '## Analysis boundaries',
@@ -147,6 +111,42 @@ export function render_rizin_functions_markdown(report, options = {}) {
         function_cell(item.disassembly ?? item.opcode ?? ''),
       ),
       '~~~',
+    );
+  }
+  if (report.decompilation) {
+    const source = String(report.decompilation.source ?? '').replace(/\r/g, '');
+    const longest_fence = Math.max(2, ...Array.from(source.matchAll(/~+/g), match => match[0].length));
+    const fence = '~'.repeat(longest_fence + 1);
+    lines.push(
+      '',
+      '## Optional pseudocode decompilation',
+      '',
+      '- **Backend:** ' + function_cell(report.decompilation.backend),
+      '- **Function:** ' + function_cell(report.decompilation.function_name),
+      '- **Entry:** 0x' + report.decompilation.address.toString(16),
+      '- **Output truncated:** ' + (report.decompilation.truncated ? 'yes' : 'no'),
+      '',
+      fence + 'c',
+      source,
+      fence,
+    );
+  }
+  if (report.decompilation) {
+    const source = String(report.decompilation.source ?? '').replace(/\r/g, '');
+    const longest_fence = Math.max(2, ...Array.from(source.matchAll(/~+/g), match => match[0].length));
+    const fence = '~'.repeat(longest_fence + 1);
+    lines.push(
+      '',
+      '## Optional pseudocode decompilation',
+      '',
+      '- **Backend:** ' + function_cell(report.decompilation.backend),
+      '- **Function:** ' + function_cell(report.decompilation.function_name),
+      '- **Entry:** 0x' + report.decompilation.address.toString(16),
+      '- **Output truncated:** ' + (report.decompilation.truncated ? 'yes' : 'no'),
+      '',
+      fence + 'c',
+      source,
+      fence,
     );
   }
   lines.push(
