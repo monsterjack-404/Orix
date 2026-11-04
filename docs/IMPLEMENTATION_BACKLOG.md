@@ -177,7 +177,8 @@ This backlog turns the product charter into reviewable engineering work. It is i
 
 ### G4.3 — Rizin adapter expansion
 - [x] Add bounded function inventory with `-A` + `aflj`, explicit output ceilings, private input snapshot and SHA-256 provenance.
-- [x] Add address-validated, instruction-limited `pdj` disassembly (assembly only; not decompilation).
+- [x] Add address-validated, instruction-limited `pdj` disassembly.
+- [x] Add opt-in `pdg` pseudocode when the external `rz-ghidra` plugin is present; no plugin bundling or automatic installation.
 - [ ] Add sections, strings, symbols and xrefs as separate bounded capabilities.
 - [ ] Compare provider results against native parsers; preserve provider warnings and unsupported formats.
 - Acceptance: adapter contract tests across supported Rizin versions/platforms; golden checks against real Rizin releases remain outstanding.
