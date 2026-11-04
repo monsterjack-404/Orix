@@ -66,6 +66,7 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   const response = await handle_mcp_message({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
   assert.deepEqual(response.result.tools.map(tool => tool.name), ORIX_MCP_TOOLS.map(tool => tool.name));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.inspect_file'));
+  assert.ok(response.result.tools.some(tool => tool.name === 'orix.rizin_functions'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_architecture'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_har'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.capabilities'));
@@ -77,6 +78,45 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.inspect_file').annotations.readOnlyHint, true);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.readOnlyHint, false);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
+});
+
+test('MCP Rizin function tool runs only an explicit provider against a workspace-confined artifact', async context => {
+  if (process.platform === 'win32') {
+    context.skip('POSIX executable fixture is used for the optional Rizin provider contract test');
+    return;
+  }
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-'));
+  try {
+    const file = path.join(directory, 'native sample.elf');
+    const executable = path.join(directory, 'rizin-stub');
+    await writeFile(file, Buffer.from('MCP native fixture'));
+    const script = [
+      '#!/bin/sh',
+      'if [ "$1" = "-v" ]; then printf "%s\\n" "rizin 0.8.2"; exit 0; fi',
+      'if [ "$1" = "-N" ] && [ "$3" = "-A" ] && [ "$5" = "aflj" ]; then',
+      '  printf "%s" \'[{"offset":4198400,"name":"sym.main","size":24,"bits":64,"type":"fcn","nbbs":2}]\'',
+      '  exit 0',
+      'fi',
+      'exit 64',
+      '',
+    ].join('\\n');
+    await writeFile(executable, script, { mode: 0o700 });
+    await chmod(executable, 0o700);
+    const response = await handle_mcp_message({
+      jsonrpc: '2.0', id: 510, method: 'tools/call',
+      params: {
+        name: 'orix.rizin_functions',
+        arguments: { path: file, executable, max_functions: 100, timeout_ms: 10000 },
+      },
+    }, { roots: [directory] });
+    assert.equal(response.result.isError, false);
+    const report = JSON.parse(response.result.content[0].text);
+    assert.equal(report.schema_version, 'orix.rizin-functions.v1');
+    assert.equal(report.functions[0].name, 'sym.main');
+    assert.equal(report.artifact.stable_during_analysis, true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test('MCP capability tool returns the source-backed inventory including its own tool definition', async () => {
