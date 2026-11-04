@@ -159,9 +159,10 @@ Request an instruction window from one exact function entry:
 
 ~~~sh
 node src/cli.mjs providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --address 0x401000 --max-instructions 100 --json
+node src/cli.mjs providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --address 0x401000 --decompile --json
 ~~~
 
-The function report uses `-A` and `aflj`; the optional instruction window uses `pdj`. Addresses must match an entry returned in the function inventory. Function listing is capped at 100,000 entries (default 10,000), and disassembly is capped at 1,000 instructions (default 100). The total workflow shares one timeout and output budget across all Rizin processes. These commands return function metadata and assembly only; they do **not** perform pseudo-C decompilation.
+The function report uses `-A` and `aflj`; the optional instruction window uses `pdj`. Addresses must match an entry returned in the function inventory. Function listing is capped at 100,000 entries (default 10,000), and disassembly is capped at 1,000 instructions (default 100). The total workflow shares one timeout and output budget across all Rizin processes. Add `--decompile` with `--address` to ask the optional `pdg` command for pseudocode; this requires the separately installed `rz-ghidra` plugin and is heuristic, not a compilable source reconstruction.
 ## Output contracts
 
 `--json` is intended for scripts and downstream tools. Do not parse the human Markdown table output as an API. The top-level `schema_version` field identifies the current report contract. Unknown fields should be ignored by consumers so the contract can grow without breaking compatible readers.
