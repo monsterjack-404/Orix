@@ -259,6 +259,20 @@ function validate_arguments(name, value) {
       }
       if (schema.pattern && !new RegExp(schema.pattern).test(item)) throw new TypeError(key + ' does not match its required pattern');
     }
+    if (schema.type === 'array') {
+      if (!Array.isArray(item) || item.length > (schema.maxItems ?? Infinity)) {
+        throw new TypeError(key + ' must be an array within its declared item limit');
+      }
+      if (schema.items?.type === 'string') {
+        for (const entry of item) {
+          if (typeof entry !== 'string' ||
+              entry.length < (schema.items.minLength ?? 0) ||
+              entry.length > (schema.items.maxLength ?? Infinity)) {
+            throw new TypeError(key + ' entries must be strings within their declared length bounds');
+          }
+        }
+      }
+    }
     if (schema.type === 'boolean' && typeof item !== 'boolean') throw new TypeError(key + ' must be a boolean');
     if (schema.type === 'integer' && (!Number.isSafeInteger(item) || item < schema.minimum || item > schema.maximum)) {
       throw new TypeError(key + ' must be an integer between ' + schema.minimum + ' and ' + schema.maximum);
