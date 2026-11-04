@@ -97,6 +97,12 @@ test('MCP Rizin function tool runs only an explicit provider against a workspace
       '  printf "%s" \'[{"offset":4198400,"name":"sym.main","size":24,"bits":64,"type":"fcn","nbbs":2}]\'',
       '  exit 0',
       'fi',
+      'if [ "$1" = "-N" ] && [ "$3" = "-c" ]; then',
+      '  case "$4" in',
+      '    pdj*) printf "%s" \'[{"offset":4198400,"size":1,"bytes":"c3","opcode":"ret","disasm":"ret","type":"ret"}]\'; exit 0 ;;',
+      '    pdg*) printf "%s\\n" \'int main(void) { return 0; }\'; exit 0 ;;',
+      '  esac',
+      'fi',
       'exit 64',
       '',
     ].join('\n');
@@ -106,13 +112,15 @@ test('MCP Rizin function tool runs only an explicit provider against a workspace
       jsonrpc: '2.0', id: 510, method: 'tools/call',
       params: {
         name: 'orix.rizin_functions',
-        arguments: { path: file, executable, max_functions: 100, timeout_ms: 10000 },
+        arguments: { path: file, executable, max_functions: 100, address: '0x401000', decompile: true, timeout_ms: 10000 },
       },
     }, { roots: [directory] });
     assert.equal(response.result.isError, false);
     const report = JSON.parse(response.result.content[0].text);
     assert.equal(report.schema_version, 'orix.rizin-functions.v1');
     assert.equal(report.functions[0].name, 'sym.main');
+    assert.equal(report.disassembly.instructions[0].disassembly, 'ret');
+    assert.match(report.decompilation.source, /int main/);
     assert.equal(report.artifact.stable_during_analysis, true);
   } finally {
     await rm(directory, { recursive: true, force: true });
