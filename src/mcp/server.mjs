@@ -290,6 +290,10 @@ export async function call_orix_tool(name, args = {}, options = {}) {
         max_hotspots: args.max_hotspots ?? 25,
       });
     }
+    case 'orix.analyze_har': {
+      const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
+      return analyze_har_file(target.path, { max_entries: args.max_entries });
+    }
     case 'orix.formats':
       return { schema_version: 'orix.formats.v1', formats: list_format_capabilities() };
     case 'orix.capabilities':
