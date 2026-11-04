@@ -468,7 +468,6 @@ function normalize_rizin_disassembly(source, maximum) {
   return {
     instructions,
     total_returned: parsed.length,
-    truncated: parsed.length > instructions.length,
     instruction_limit_reached: parsed.length >= maximum,
   };
 }
@@ -637,7 +636,6 @@ export async function analyze_rizin_functions(options = {}) {
         instruction_limit: max_instructions,
         instructions: parsed_disassembly.instructions,
         total_returned: parsed_disassembly.total_returned,
-        truncated: parsed_disassembly.truncated,
         instruction_limit_reached: parsed_disassembly.instruction_limit_reached,
       };
       disassembly_duration_ms = disassembly_result.duration_ms;
