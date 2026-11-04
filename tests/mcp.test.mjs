@@ -95,30 +95,18 @@ test('MCP capability tool returns the source-backed inventory including its own 
 });
 
 test('MCP HAR tool analyzes only workspace-confined captures and omits secret values', async () => {
-  const directory = await mkdtemp(path.join(process.cwd(), '.orix-mcp-har-'));
-  const allowed_root = path.join(directory, 'workspace');
-  try {
-    await mkdir(allowed_root);
-    const file = path.join(directory, 'capture.har');
-    await writeFile(file, JSON.stringify({ log: {
-      version: '1.2', creator: { name: 'MCP fixture', version: '1' },
-      entries: [{
-        startedDateTime: '2026-11-04T10:00:00.000Z', time: 3,
-        request: { method: 'GET', url: 'https://example.test/?api_key=secret', headers: [{ name: 'Authorization', value: 'Bearer secret-value' }] },
-        response: { status: 200, statusText: 'OK', headers: [], content: { size: 0, mimeType: 'application/json' } },
-        timings: { send: 1, wait: 1, receive: 1 },
-      }],
-    } }));
-    const result = await call_orix_tool('orix.analyze_har', { path: file, max_entries: 10 }, { roots: [directory] });
+  const file = new URL('./fixtures/network/basic.har', import.meta.url);
+  const file_path = path.resolve(file.pathname);
+  const workspace = path.dirname(file_path);
+  {
+    const result = await call_orix_tool('orix.analyze_har', { path: file_path, max_entries: 10 }, { roots: [workspace] });
     assert.equal(result.schema_version, 'orix.har.v1');
     assert.equal(result.summary.entries_analyzed, 1);
     assert.equal(JSON.stringify(result).includes('secret-value'), false);
     await assert.rejects(
-      call_orix_tool('orix.analyze_har', { path: file }, { roots: [allowed_root] }),
+      call_orix_tool('orix.analyze_har', { path: path.resolve('README.md') }, { roots: [workspace] }),
       /workspace|outside|root/i,
     );
-  } finally {
-    await rm(directory, { recursive: true, force: true });
   }
 });
 
