@@ -35,6 +35,9 @@ function bounded_text(value, maximum = 256) {
 function markdown_escape(value) {
   const slash = String.fromCharCode(92);
   return String(value ?? '')
+    .replaceAll('\\r', ' ')
+    .replaceAll('\\n', ' ')
+    .replaceAll('\\t', ' ')
     .replaceAll(slash, slash + slash)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
