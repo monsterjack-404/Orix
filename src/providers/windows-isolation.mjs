@@ -162,7 +162,11 @@ export async function prepare_windows_provider_isolation({
   const cleanup = () => {
     if (cleanupPromise) return cleanupPromise;
     cleanupPromise = (async () => {
-      await run_powershell(powershell, script, 'cleanup', configPath, logPath, temporary, env);
+      try {
+        await run_powershell(powershell, script, 'cleanup', configPath, logPath, temporary, env);
+      } finally {
+        cleanup.last_log = await readFile(logPath, 'utf8').catch(() => '');
+      }
       await rm(temporary, { recursive: true, force: true });
     })().catch(error => {
       cleanupPromise = null;

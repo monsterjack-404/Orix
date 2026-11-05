@@ -426,6 +426,7 @@ export async function run_static_provider(options) {
           executable,
           reason: error?.code ?? error?.name ?? 'spawn-error',
           diagnostic: error?.details ?? null,
+          isolation_log: isolation_cleanup?.last_log ?? null,
         },
         cause: error,
         recoverable: true,
