@@ -164,7 +164,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Website structure | Partial | Bounded offline HTML page, script, stylesheet, link, form, iframe and metadata inventory with heuristic review findings | Standards-complete DOM, CSS/source-map analysis, script execution and browser observation |
 | Browser observations | Planned | No live browser provider | Disposable Playwright/CDP session and local fixture corpus |
 | HAR network analysis | Implemented | Bounded offline HAR 1.2 metadata parser, CLI/API/MCP, evidence IDs and SHA-256 | Broader validation, corpus, normalized browser/proxy input |
-| PCAP / PCAPNG | Planned | No packet capture parser or live capture | Bounded metadata/flow decoder; payload inspection remains separate |
+| PCAP / PCAPNG | Partial | Classic PCAP 2.4 framing with bounded Ethernet/VLAN, BSD DLT_NULL, Linux cooked, raw-IP, IPv4/IPv6 endpoint and TCP/UDP port metadata | PCAPNG, IPv6 extension traversal, reassembly, checksums, application protocols and live capture remain unsupported |
 | Firmware and filesystems | Partial | Raw CPIO newc/CRC-newc metadata parser with bounded file ranges, CRC-newc checksum verification and path-safety inventory; no extraction | GZIP wrappers, TAR, SquashFS, cramfs, ext, UBI/UBIFS, boot images and device-tree parsers |
 | Evidence investigation workflows | Partial | Reports, ledger and report comparison | Case store, finding lifecycle, evidence graph and case bundles |
 | Recorded behavior replay | Planned | No event trace or replay runtime | Versioned trace schema and deterministic test-environment replay |

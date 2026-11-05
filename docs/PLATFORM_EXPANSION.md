@@ -24,7 +24,7 @@
 | .NET | Partial | PE/CLI header, CLR runtime flags, entry-point token and bounded metadata stream inventory | Metadata tables/heaps, IL bodies/instructions, PDB/debug data and decompilation |
 | Android | Partial | Bounded APK ZIP entry reads with CRC32 validation, binary/plain XML manifest metadata, DEX header/link/data/table validation, class descriptors, native ABI and signer-entry inventory | DEX bytecode/methods, resources.arsc, intent filters, cryptographic signer verification, AAB and device/runtime observations |
 | Website and browser | Partial / planned | Offline HTML structure, script/style/link/form/iframe inventory and heuristic review findings; offline HAR 1.2 analysis | Standards-complete DOM/CSS/source-map analysis, live browser observation, console/network trace and screenshots |
-| Network traces | Partial | Offline HAR 1.2 metadata analysis; no PCAP/PCAPNG parser or live packet capture |
+| Network traces | Partial | Offline HAR 1.2 and classic PCAP 2.4 metadata analysis; no PCAPNG, live capture or payload inspection |
 | Firmware | Partial | Bounded raw CPIO newc/CRC-newc metadata parser plus GZIP member decompression, CRC/ISIZE verification and nested CPIO analysis; no filesystem extraction | TAR/GZIP wrappers, SquashFS, cramfs, ext, UBI/UBIFS, boot images, device-tree blobs and filesystem semantics |
 | Evidence and workflows | Partial | Reports, evidence records, JSONL hash chain, comparisons and MCP/CLI; no relational case store or cross-case evidence graph |
 | AI/RL environments | Planned | No behavior-recording format, replay engine, environment adapter or RL training runtime |
@@ -98,7 +98,8 @@ Acceptance: deterministic local sites; CSP, redirects, workers, service-workers,
 
 Next:
 - Add import/export normalization contracts for browser, proxy, mobile and test-runner captures.
-- Add PCAP/PCAPNG parsing for bounded packet metadata and TCP/UDP flow indexes, with explicit snaplen/truncation and timestamp coverage.
+- [x] Add classic PCAP 2.4 framing and bounded Ethernet/VLAN, BSD DLT_NULL, Linux cooked, raw-IP, IPv4/IPv6 endpoint and TCP/UDP port metadata; packet payloads are never exported.
+- Add PCAPNG parsing and bounded TCP/UDP flow indexes with explicit interface, snaplen/truncation and timestamp coverage.
 - Add optional Wireshark/tshark or other protocol-decoder providers only through reviewed, bounded manifests.
 - Keep TLS certificate validation, decryption and key-log use as separate explicit operations. Never imply encrypted payload inspection from flow metadata alone.
 - Add DNS, HTTP/1.1, HTTP/2 and QUIC metadata only where tested parsers/providers establish protocol coverage.

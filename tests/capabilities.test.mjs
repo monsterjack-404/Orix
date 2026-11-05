@@ -42,8 +42,10 @@ test('capability inventory labels important missing domains instead of claiming 
   assert.equal(status('dotnet-analysis'), 'partial');
   assert.equal(status('website-structure-analysis'), 'partial');
   assert.equal(status('firmware-analysis'), 'partial');
+  assert.equal(status('pcap-network-analysis'), 'partial');
   assert.equal(report.formats.find(item => item.format === 'CPIO newc')?.parser_status, 'available');
   assert.equal(report.formats.find(item => item.format === 'GZIP')?.parser_status, 'available');
+  assert.equal(report.formats.find(item => item.format === 'PCAP')?.parser_status, 'available');
   assert.equal(status('android-device-observation'), 'planned');
   assert.equal(report.interfaces.find(item => item.id === 'desktop').status, 'planned');
   assert.ok(report.global_boundaries.length >= 3);

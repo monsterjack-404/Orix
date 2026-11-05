@@ -44,7 +44,8 @@
     "./vulnerability/osv": "./src/vulnerability/osv.mjs",
     "./formats/png": "./src/formats/png.mjs",
     "./capabilities": "./src/capabilities/registry.mjs",
-    "./network/har": "./src/network/har.mjs"
+    "./network/har": "./src/network/har.mjs",
+    "./formats/pcap": "./src/formats/pcap.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
