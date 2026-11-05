@@ -8,7 +8,7 @@ function fixture({ little = true, size = 4096, flags = 0x0002, rootMode = 0x41ed
   const b = Buffer.alloc(size);
   const w16 = (o, v) => little ? b.writeUInt16LE(v, o) : b.writeUInt16BE(v, o);
   const w32 = (o, v) => little ? b.writeUInt32LE(v, o) : b.writeUInt32BE(v, o);
-  w32(0, little ? 0x28cd3d45 : 0x453dcd28);
+  w32(0, 0x28cd3d45);
   w32(4, size); w32(8, flags); w32(12, 0);
   b.write('Compressed ROMFS', 16, 'ascii');
   w32(32, 0x12345678); w32(36, 1); w32(40, 1); w32(44, 1);
