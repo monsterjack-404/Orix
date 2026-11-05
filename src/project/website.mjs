@@ -206,6 +206,7 @@ function safe_label(value, maximum = 160) {
 
 function sanitize_module_specifier(value) {
   const raw = String(value ?? '').trim();
+  if (/^(?:file|data|blob):/i.test(raw)) return { value: '[' + raw.split(':', 1)[0].toLowerCase() + '-url]', redacted: true };
   if (/^(?:https?:)?\/\//i.test(raw)) {
     try {
       const parsed = new URL(raw.startsWith('//') ? 'https:' + raw : raw);
@@ -219,7 +220,9 @@ function sanitize_module_specifier(value) {
 }
 
 function resolve_local_module(specifier, from_path, known_paths) {
-  const raw = String(specifier ?? '').split(/[?#]/, 1)[0];
+  let raw = String(specifier ?? '').split(/[?#]/, 1)[0];
+  try { raw = decodeURIComponent(raw); } catch { return { kind: 'invalid-local-reference', path: null }; }
+  raw = raw.replace(/\\/g, '/');
   if (!raw.startsWith('./') && !raw.startsWith('../') && !raw.startsWith('/')) return { kind: 'package-or-nonlocal', path: null };
   let candidate = raw.startsWith('/') ? raw.replace(/^\/+/, '') : path.posix.join(path.posix.dirname(from_path), raw);
   candidate = path.posix.normalize(candidate);
