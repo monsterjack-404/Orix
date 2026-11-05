@@ -330,7 +330,7 @@ npm run test:coverage
 
 GitHub Actions validates Node.js 20, 22 and 24 on Linux, runs Windows and macOS smoke suites on Node.js 22, checks syntax, runs the full test suite, and generates Linux coverage on Node.js 22. A separate scheduled CodeQL `security-extended` workflow analyzes JavaScript/TypeScript; Dependabot checks npm and GitHub Actions dependencies.
 
-The test suite includes handcrafted PE32/PE32+ fixtures with bounded import/export tables, ELF64, thin Mach-O, WebAssembly and classic PCAP fixtures; malformed-header and RVA boundaries; string extraction; evidence semantics; symlink handling; directory traversal; project-intelligence regression cases; and real CLI JSON output. The fixtures are generated as small byte buffers at test time and are not executable samples.
+The test suite includes handcrafted PE32/PE32+ fixtures with bounded import/export tables, ELF64, thin Mach-O, WebAssembly and classic PCAP and PCAPNG block fixtures; malformed-header and RVA boundaries; string extraction; evidence semantics; symlink handling; directory traversal; project-intelligence regression cases; and real CLI JSON output. The fixtures are generated as small byte buffers at test time and are not executable samples.
 
 Before adding a parser:
 
