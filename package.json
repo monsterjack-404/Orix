@@ -16,6 +16,7 @@
     "./formats/pe": "./src/formats/pe.mjs",
     "./formats/elf": "./src/formats/elf.mjs",
     "./project": "./src/project/intelligence.mjs",
+    "./project/javascript": "./src/project/javascript.mjs",
     "./formats/pdf": "./src/formats/pdf.mjs",
     "./formats/wasm": "./src/formats/wasm.mjs",
     "./reports/sarif": "./src/reports/sarif.mjs",
@@ -43,7 +44,7 @@
   "scripts": {
     "start": "node ./src/cli.mjs",
     "orix": "node ./src/cli.mjs",
-    "check": "node scripts/check-syntax.mjs && node scripts/check-docs.mjs",
+    "check": "node scripts/check-syntax.mjs && node scripts/check-docs.mjs && node scripts/check-test-skips.mjs",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage",
     "mcp": "node ./src/mcp.mjs",

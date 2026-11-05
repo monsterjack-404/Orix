@@ -60,7 +60,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Manifest inventory | Partial | Selected npm, Python, Cargo, Go, Composer, Maven, NuGet and Ruby manifests | Broader ecosystem coverage and schema validation |
 | Lockfile readers | Partial | npm, Yarn, pnpm, Cargo, Composer, Poetry, uv, Pipenv, Go sum, Ruby, NuGet and Gradle | More versions/edge cases and compatibility corpora |
 | Dependency graph | Partial | Resolved package/root edges where lockfiles expose them | Workspace resolution and graph confidence |
-| Source import extraction | Partial | Conservative language-specific patterns | AST/compiler/LSP-backed imports |
+| Source import extraction | Partial | Bounded JS/TS tokenizer for static imports, re-exports, require and dynamic-import literals; conservative patterns for other languages | Full ECMAScript/TypeScript AST, scopes, type/data-flow and compiler-backed resolution |
 | Symbol candidates | Partial | Syntax-pattern extraction | Compiler-backed symbols and cross-reference index |
 | Local import resolution | Partial | Conservative relative path candidates | Language-aware module resolution |
 | Git metadata | Partial | HEAD, loose/packed refs, tags, sanitized remotes and verified loose HEAD commit identity | Packed object and commit history indexing |

@@ -2,43 +2,31 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { main } from '../src/cli/main.mjs';
 import { parse_arguments } from '../src/cli/arguments.mjs';
 import { HELP_TEXT } from '../src/cli/help.mjs';
 import { render_rizin_imports_markdown, render_rizin_functions_markdown } from '../src/reports/rizin.mjs';
 
+const RIZIN_STUB = fileURLToPath(new URL('./fixtures/rizin-stub.mjs', import.meta.url));
+
 async function with_fixture(callback) {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-provider-cli-'));
   try {
-    const executable = path.join(directory, 'rizin-stub');
+    const config_path = path.join(directory, 'rizin-stub-config.json');
     const input = path.join(directory, 'sample with spaces.elf');
     await writeFile(input, Buffer.from('ELF fixture'));
-    const script = [
-      '#!/bin/sh',
-      'if [ "$1" = "-v" ]; then printf "%s\\n" "rizin 0.8.2"; exit 0; fi',
-      'if [ "$1" = "-N" ] && [ "$3" = "-A" ] && [ "$5" = "aflj" ]; then',
-      '  printf "%s" \'[{"offset":4198400,"name":"sym.main","size":40,"realsz":40,"bits":64,"type":"fcn","calltype":"amd64","nbbs":3,"edges":2,"nargs":1,"nlocals":2,"noreturn":false}]\'',
-      '  exit 0',
-      'fi',
-      'if [ "$1" = "-N" ] && [ "$3" = "-c" ]; then',
-      '  case "$4" in',
-      '    pdj*) printf "%s" \'[{"offset":4198400,"size":5,"bytes":"554889e5","opcode":"push rbp","disasm":"push rbp","type":"push"}]\'; exit 0 ;;',
-      '    pdg*) printf "%s\\n" \'int main(void) { return 0; }\'; exit 0 ;;',
-      '  esac',
-      'fi',
-      'if [ "$1" = "-N" ] && [ "$4" = "iij" ]; then',
-      '  printf "%s" \'[{"name":"open","libname":"libc.so.6","ordinal":4,"bind":"GLOBAL","type":"FUNC","plt":4096}]\'',
-      '  exit 0',
-      'fi',
-      'exit 64',
-      '',
-    ].join('\n');
-    await writeFile(executable, script, { mode: 0o700 });
-    await chmod(executable, 0o700);
-    await callback({ directory, executable, input });
+    await writeFile(config_path, JSON.stringify({
+      import_output: JSON.stringify([
+        { name: 'open', libname: 'libc.so.6', ordinal: 4, bind: 'GLOBAL', type: 'FUNC', plt: 4096 },
+      ]),
+    }));
+    const executable = await realpath(process.execPath);
+    const executable_args = [RIZIN_STUB, config_path];
+    await callback({ directory, executable, executable_args, input });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -58,6 +46,8 @@ test('provider CLI parser accepts list and Rizin import operations', () => {
   const invocation = parse_arguments([
     'providers', 'rizin', 'imports', './sample.elf',
     '--executable', '/opt/rizin/bin/rizin',
+    '--executable-arg', '/tmp/provider-wrapper.mjs',
+    '--executable-arg', '--fixture-mode',
     '--timeout-ms', '12000',
     '--max-output-kib', '2048',
     '--max-imports', '25000',
@@ -66,6 +56,7 @@ test('provider CLI parser accepts list and Rizin import operations', () => {
   assert.equal(invocation.provider_action, 'imports');
   assert.equal(invocation.target, './sample.elf');
   assert.equal(invocation.flags.provider_executable, '/opt/rizin/bin/rizin');
+  assert.deepEqual(invocation.flags.provider_executable_args, ['/tmp/provider-wrapper.mjs', '--fixture-mode']);
   assert.equal(invocation.flags.timeout_ms, 12000);
   assert.equal(invocation.flags.max_output_bytes, 2 * 1024 * 1024);
   assert.equal(invocation.flags.max_imports, 25000);
@@ -122,16 +113,13 @@ test('providers list creates a report without probing or requiring an external i
   });
 });
 
-test('providers rizin imports writes the actual normalized JSON report', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the provider CLI test');
-    return;
-  }
-  await with_fixture(async ({ directory, executable, input }) => {
+test('providers rizin imports writes the actual normalized JSON report', async () => {
+  await with_fixture(async ({ directory, executable, executable_args, input }) => {
     const output = path.join(directory, 'rizin-imports.json');
     const exit_code = await main([
       'providers', 'rizin', 'imports', input,
       '--executable', executable,
+      ...executable_args.flatMap(argument => ['--executable-arg', argument]),
       '--format', 'json',
       '--out', output,
     ]);
@@ -144,16 +132,13 @@ test('providers rizin imports writes the actual normalized JSON report', async c
   });
 });
 
-test('providers rizin functions writes the actual bounded function/disassembly report', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the provider CLI test');
-    return;
-  }
-  await with_fixture(async ({ directory, executable, input }) => {
+test('providers rizin functions writes the actual bounded function/disassembly report', async () => {
+  await with_fixture(async ({ directory, executable, executable_args, input }) => {
     const output = path.join(directory, 'rizin-functions.json');
     const exit_code = await main([
       'providers', 'rizin', 'functions', input,
       '--executable', executable,
+      ...executable_args.flatMap(argument => ['--executable-arg', argument]),
       '--address', '0x401000',
       '--max-instructions', '1',
       '--decompile',
@@ -241,16 +226,13 @@ test('provider help documents the opt-in provider commands and limits', () => {
   assert.match(HELP_TEXT, /not an OS sandbox/);
 });
 
-test('providers rizin doctor performs a real explicit executable version probe', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the provider CLI test');
-    return;
-  }
-  await with_fixture(async ({ directory, executable }) => {
+test('providers rizin doctor performs a real explicit executable version probe', async () => {
+  await with_fixture(async ({ directory, executable, executable_args }) => {
     const output = path.join(directory, 'rizin-doctor.json');
     const exit_code = await main([
       'providers', 'rizin', 'doctor',
       '--executable', executable,
+      ...executable_args.flatMap(argument => ['--executable-arg', argument]),
       '--json',
       '--out', output,
     ]);

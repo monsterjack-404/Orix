@@ -30,6 +30,18 @@ export function parse_arguments(argv) {
       else result.flags.help = true;
       continue;
     }
+    if (token === '--executable-arg') {
+      const raw = tokens.shift();
+      if (raw === undefined || raw.length === 0) {
+        throw new OrixError('ORIX_CLI_MISSING_VALUE', '--executable-arg requires a non-empty value', { recoverable: true });
+      }
+      result.flags.provider_executable_args ??= [];
+      if (result.flags.provider_executable_args.length >= 16) {
+        throw new OrixError('ORIX_CLI_ARGUMENT_LIMIT', '--executable-arg may be supplied at most 16 times', { recoverable: true });
+      }
+      result.flags.provider_executable_args.push(raw);
+      continue;
+    }
     if (VALUE_OPTIONS.has(token)) {
       const raw = tokens.shift();
       if (raw === undefined || raw.startsWith('--')) throw new OrixError('ORIX_CLI_MISSING_VALUE', `${token} requires a value`, { recoverable: true });

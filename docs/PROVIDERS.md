@@ -2,6 +2,11 @@
 
 The provider layer validates metadata, maintains an in-memory capability catalog, and supports an opt-in bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, grant authorization, create an OS sandbox, or claim that a provider is available before it has actually been located and invoked.
 
+
+
+### Executable argument prefixes
+
+For wrapper executables, the provider adapter accepts an optional `executable_args` array. These literal arguments are prepended to the provider's own argument vector; they are passed directly to the selected absolute executable with `shell: false`. The CLI exposes this as repeatable `--executable-arg <value>` (maximum 16), and the MCP `orix.rizin_functions` tool accepts `executable_args` with the same 16-item bound. Prefix arguments are subject to the process runner's argument-count, byte-size and NUL-byte checks. This does not change executable allowlisting or turn the provider into an OS sandbox.
 ## 1. Manifest format
 
 Provider manifests use the **orix.provider.v1** contract defined by [provider-manifest.v1.schema.json](../schemas/provider-manifest.v1.schema.json).

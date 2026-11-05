@@ -72,7 +72,7 @@ node src/cli.mjs audit ./source-tree --osv --json --out ./vulnerabilities.json
 
 Dependency auditing is a separate explicit network opt-in. It sends only exact package ecosystem/name/version identifiers from supported lockfiles to OSV.dev; without `--osv`, no advisory lookup is performed. See [Vulnerability Intelligence](docs/VULNERABILITY-INTELLIGENCE.md).
 
-It records file hashes, language counts, selected dependency declarations, npm package-lock v1-v3, Yarn classic/Berry, pnpm v5/v6/v9, Cargo.lock v1-v4, Composer.lock, Poetry, Pipenv and uv.lock resolved package inventories, plus Go checksums, source import edges, symbol candidates, redacted credential-shaped findings and bounded Git repository metadata (refs, tags, sanitized remotes and loose HEAD commit identity). Packed Git objects and linked-worktree gitdir targets are not decoded or followed. CycloneDX export includes resolved lockfile components and package relationships when supported lockfiles are present; otherwise it reports declared dependencies only. See [`docs/PROJECT_INTELLIGENCE.md`](docs/PROJECT_INTELLIGENCE.md) for parser boundaries and resource limits.
+It records file hashes, language counts, selected dependency declarations, npm package-lock v1-v3, Yarn classic/Berry, pnpm v5/v6/v9, Cargo.lock v1-v4, Composer.lock, Poetry, Pipenv and uv.lock resolved package inventories, plus Go checksums, bounded JavaScript/TypeScript lexical import and declaration analysis, source import edges, symbol candidates, redacted credential-shaped findings and bounded Git repository metadata (refs, tags, sanitized remotes and loose HEAD commit identity). Packed Git objects and linked-worktree gitdir targets are not decoded or followed. CycloneDX export includes resolved lockfile components and package relationships when supported lockfiles are present; otherwise it reports declared dependencies only. See [`docs/PROJECT_INTELLIGENCE.md`](docs/PROJECT_INTELLIGENCE.md) for parser boundaries and resource limits.
 
 ## Quick start
 
@@ -109,6 +109,8 @@ node src/cli.mjs capabilities --json
 # List optional providers and invoke Rizin static import extraction
 node src/cli.mjs providers list --json
 node src/cli.mjs providers rizin doctor --executable /usr/bin/rizin --json
+# Wrapper executables may receive literal prefix arguments without a shell:
+node src/cli.mjs providers rizin doctor --executable /usr/bin/node --executable-arg ./rizin-wrapper.mjs --json
 node src/cli.mjs providers rizin imports ./sample.elf --executable /usr/bin/rizin --json --timeout-ms 30000 --max-output-kib 4096 --max-imports 100000
 node src/cli.mjs providers rizin functions ./sample.elf --executable /usr/bin/rizin --max-functions 10000 --json
 node src/cli.mjs providers rizin functions ./sample.elf --executable /usr/bin/rizin --address 0x401000 --max-instructions 100 --json

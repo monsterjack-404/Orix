@@ -74,6 +74,18 @@ test('static provider runner uses argv without shell interpolation and returns b
   assert.equal(result.stderr_bytes, Buffer.byteLength(result.stderr));
 });
 
+test('static provider runner prepends bounded executable arguments without shell evaluation', async () => {
+  const result = await run_static_provider({
+    manifest: manifest(),
+    executable: await node_executable(),
+    executable_args: ['-e', 'process.stdout.write(process.argv.slice(1).join("|"))'],
+    args: ['first literal', 'second $(not-a-shell) literal'],
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.stdout, 'first literal|second $(not-a-shell) literal');
+  assert.equal(result.args_count, 4);
+});
+
 test('static provider runner does not inherit the parent environment by default', async () => {
   const key = 'ORIX_PROCESS_RUNNER_PARENT_SECRET';
   const previous = process.env[key];
@@ -200,19 +212,15 @@ test('static provider runner rejects NUL, sparse, accessor-backed and custom-pro
   );
 });
 
-test('static provider runner rejects symlink executables and working directories', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX symlink and executable semantics differ on Windows');
-    return;
-  }
+test('static provider runner rejects symlink executables and working directories', async () => {
   await with_directory(async directory => {
     const executable = await node_executable();
     const executable_link = path.join(directory, 'node-link');
     const cwd_link = path.join(directory, 'cwd-link');
     const cwd_target = path.join(directory, 'cwd-target');
-    await symlink(executable, executable_link);
+    await symlink(executable, executable_link, process.platform === 'win32' ? 'file' : undefined);
     await import('node:fs/promises').then(fs => fs.mkdir(cwd_target));
-    await symlink(cwd_target, cwd_link);
+    await symlink(cwd_target, cwd_link, process.platform === 'win32' ? 'junction' : undefined);
     await assert.rejects(
       run_static_provider({ manifest: manifest(), executable: executable_link, args: [] }),
       error => error.code === 'ORIX_PROVIDER_EXECUTABLE_NOT_REGULAR',
@@ -293,19 +301,15 @@ test('static provider runner confines its working directory to an explicit allow
   });
 });
 
-test('static provider runner rejects symlinks inside executable and working-directory allowlists', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX symlink semantics differ on Windows');
-    return;
-  }
+test('static provider runner rejects symlinks inside executable and working-directory allowlists', async () => {
   await with_directory(async directory => {
     const executable = await node_executable();
     const executable_link = path.join(directory, 'node-allowlist-link');
     const root_link = path.join(directory, 'cwd-allowlist-link');
     const root_target = path.join(directory, 'cwd-allowlist-target');
-    await symlink(executable, executable_link);
+    await symlink(executable, executable_link, process.platform === 'win32' ? 'file' : undefined);
     await import('node:fs/promises').then(fs => fs.mkdir(root_target));
-    await symlink(root_target, root_link);
+    await symlink(root_target, root_link, process.platform === 'win32' ? 'junction' : undefined);
     await assert.rejects(
       run_static_provider({
         manifest: manifest(),

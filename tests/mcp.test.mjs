@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -81,39 +81,54 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
 });
 
-test('MCP Rizin function tool runs only an explicit provider against a workspace-confined artifact', async context => {
-  if (process.platform === 'win32') {
-    context.skip('POSIX executable fixture is used for the optional Rizin provider contract test');
-    return;
-  }
+test('MCP Rizin tool validates executable argument prefixes before resolving workspace paths', async () => {
+  await assert.rejects(
+    call_orix_tool('orix.rizin_functions', {
+      path: '/not/used/sample.elf',
+      executable: '/not/used/rizin',
+      executable_args: 'not-an-array',
+    }),
+    /executable_args must be an array/,
+  );
+  await assert.rejects(
+    call_orix_tool('orix.rizin_functions', {
+      path: '/not/used/sample.elf',
+      executable: '/not/used/rizin',
+      executable_args: Array.from({ length: 17 }, () => 'prefix'),
+    }),
+    /executable_args must be an array/,
+  );
+});
+
+test('MCP Rizin function tool runs an explicit provider through a bounded argv prefix', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-'));
   try {
     const file = path.join(directory, 'native sample.elf');
-    const executable = path.join(directory, 'rizin-stub');
+    const config_path = path.join(directory, 'rizin-stub-config.json');
+    const executable = await realpath(process.execPath);
+    const executable_args = [
+      fileURLToPath(new URL('./fixtures/rizin-stub.mjs', import.meta.url)),
+      config_path,
+    ];
     await writeFile(file, Buffer.from('MCP native fixture'));
-    const script = [
-      '#!/bin/sh',
-      'if [ "$1" = "-v" ]; then printf "%s\\n" "rizin 0.8.2"; exit 0; fi',
-      'if [ "$1" = "-N" ] && [ "$3" = "-A" ] && [ "$5" = "aflj" ]; then',
-      '  printf "%s" \'[{"offset":4198400,"name":"sym.main","size":24,"bits":64,"type":"fcn","nbbs":2}]\'',
-      '  exit 0',
-      'fi',
-      'if [ "$1" = "-N" ] && [ "$3" = "-c" ]; then',
-      '  case "$4" in',
-      '    pdj*) printf "%s" \'[{"offset":4198400,"size":1,"bytes":"c3","opcode":"ret","disasm":"ret","type":"ret"}]\'; exit 0 ;;',
-      '    pdg*) printf "%s\\n" \'int main(void) { return 0; }\'; exit 0 ;;',
-      '  esac',
-      'fi',
-      'exit 64',
-      '',
-    ].join('\n');
-    await writeFile(executable, script, { mode: 0o700 });
-    await chmod(executable, 0o700);
+    await writeFile(config_path, JSON.stringify({
+      function_output: JSON.stringify([
+        { offset: 4198400, name: 'sym.main', size: 24, bits: 64, type: 'fcn', nbbs: 2 },
+      ]),
+      disassembly_output: JSON.stringify([
+        { offset: 4198400, size: 1, bytes: 'c3', opcode: 'ret', disasm: 'ret', type: 'ret' },
+      ]),
+      decompilation_output: 'int main(void) { return 0; }',
+    }));
     const response = await handle_mcp_message({
       jsonrpc: '2.0', id: 510, method: 'tools/call',
       params: {
         name: 'orix.rizin_functions',
-        arguments: { path: file, executable, max_functions: 100, address: '0x401000', decompile: true, timeout_ms: 10000 },
+        arguments: {
+          path: file, executable, executable_args,
+          max_functions: 100, address: '0x401000',
+          decompile: true, timeout_ms: 10000,
+        },
       },
     }, { roots: [directory] });
     assert.equal(response.result.isError, false);

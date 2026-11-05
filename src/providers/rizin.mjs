@@ -207,7 +207,7 @@ export async function analyze_rizin_imports(options = {}) {
     throw new TypeError('Rizin adapter options must be an object');
   }
   const allowed = new Set([
-    'executable', 'input_path', 'manifest', 'cwd', 'env',
+    'executable', 'executable_args', 'input_path', 'manifest', 'cwd', 'env',
     'timeout_ms', 'max_output_bytes', 'max_imports', 'signal',
   ]);
   const descriptors = Object.getOwnPropertyDescriptors(options);
@@ -276,6 +276,7 @@ export async function analyze_rizin_imports(options = {}) {
     const common = {
       manifest,
       executable: descriptors.executable?.value,
+      executable_args: descriptors.executable_args?.value,
       cwd: descriptors.cwd?.value,
       env: descriptors.env?.value,
       timeout_ms,
@@ -501,7 +502,7 @@ export async function analyze_rizin_functions(options = {}) {
     throw new TypeError('Rizin function-analysis options must be an object');
   }
   const allowed = new Set([
-    'executable', 'input_path', 'manifest', 'cwd', 'env',
+    'executable', 'executable_args', 'input_path', 'manifest', 'cwd', 'env',
     'timeout_ms', 'max_output_bytes', 'max_functions',
     'address', 'max_instructions', 'decompile', 'max_decompilation_chars', 'signal',
   ]);
@@ -581,6 +582,7 @@ export async function analyze_rizin_functions(options = {}) {
     const common = {
       manifest,
       executable: descriptors.executable?.value,
+      executable_args: descriptors.executable_args?.value,
       cwd: descriptors.cwd?.value,
       env: descriptors.env?.value,
       signal,
@@ -752,7 +754,7 @@ export async function probe_rizin(options = {}) {
   if (options === null || typeof options !== 'object' || Array.isArray(options)) {
     throw new TypeError('Rizin probe options must be an object');
   }
-  const allowed = new Set(['executable', 'manifest', 'cwd', 'env', 'timeout_ms', 'max_output_bytes', 'signal']);
+  const allowed = new Set(['executable', 'executable_args', 'manifest', 'cwd', 'env', 'timeout_ms', 'max_output_bytes', 'signal']);
   const descriptors = Object.getOwnPropertyDescriptors(options);
   for (const key of Reflect.ownKeys(options)) {
     if (typeof key !== 'string' || !allowed.has(key) ||
@@ -777,6 +779,7 @@ export async function probe_rizin(options = {}) {
   const result = await run_static_provider({
     manifest,
     executable: descriptors.executable?.value,
+    executable_args: descriptors.executable_args?.value,
     cwd: descriptors.cwd?.value,
     env: descriptors.env?.value,
     args: ['-v'],
