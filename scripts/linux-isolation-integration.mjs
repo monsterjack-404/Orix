@@ -1,6 +1,6 @@
 // Linux Bubblewrap hostile-process integration gate. Run only on Linux with Bubblewrap and util-linux.
 import assert from 'node:assert/strict';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, rmdir, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
@@ -55,14 +55,28 @@ async function make_minimal_rootfs(root) {
 
 async function main() {
   assert.equal(process.platform, 'linux', 'This integration gate must run on Linux');
+  assert.equal(process.getuid?.(), 0, 'The cgroup-v2 integration gate must run with permission to create a delegated test hierarchy');
   const base = await mkdtemp(path.join(os.tmpdir(), 'orix-bwrap-integration-'));
   const root = path.join(base, 'rootfs');
   const hostSecret = path.join(os.tmpdir(), 'orix-host-secret-' + process.pid);
   const hostSecretValue = 'host-only-secret-' + process.pid;
+  const cgroupParent = path.join('/sys/fs/cgroup', 'orix-integration-' + process.pid);
   let server;
+  let cgroupParentCreated = false;
   try {
     await mkdir(root);
     await make_minimal_rootfs(root);
+    const cgroupRoot = '/sys/fs/cgroup';
+    const available = (await readFile(path.join(cgroupRoot, 'cgroup.controllers'), 'utf8')).trim().split(/\s+/);
+    for (const controller of ['cpu', 'memory', 'pids']) {
+      assert.ok(available.includes(controller), 'Missing cgroup-v2 controller: ' + controller);
+    }
+    const rootEnabled = (await readFile(path.join(cgroupRoot, 'cgroup.subtree_control'), 'utf8')).trim().split(/\s+/);
+    const rootMissing = ['cpu', 'memory', 'pids'].filter(controller => !rootEnabled.includes(controller));
+    if (rootMissing.length) await writeFile(path.join(cgroupRoot, 'cgroup.subtree_control'), rootMissing.map(item => '+' + item).join(' '));
+    await mkdir(cgroupParent);
+    cgroupParentCreated = true;
+    await writeFile(path.join(cgroupParent, 'cgroup.subtree_control'), '+cpu +memory +pids');
     await writeFile(hostSecret, hostSecretValue, { mode: 0o600 });
 
     server = net.createServer();
@@ -101,20 +115,51 @@ async function main() {
         socket.setTimeout(700, () => { socket.destroy(); resolve('blocked'); });
         socket.once('error', () => resolve('blocked'));
       });
+      await new Promise(resolve => setTimeout(resolve, 1800));
       process.stdout.write(JSON.stringify(result));
     `;
 
-    const execution = await run_static_provider({
+    const executionPromise = run_static_provider({
       manifest: manifest(),
       executable: path.join(root, 'usr/bin/node'),
       cwd: path.join(root, 'work'),
       sandbox_root: root,
+      sandbox_cgroup_parent: cgroupParent,
       isolation: 'required',
       env: { ORIX_HOST_PID: String(process.pid) },
       args: ['--input-type=module', '-e', probe],
       timeout_ms: 8_000,
       max_output_bytes: 4_096,
     });
+    let providerCgroup = null;
+    let observed = null;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const entries = await readdir(cgroupParent);
+      if (entries.length) {
+        providerCgroup = path.join(cgroupParent, entries[0]);
+        observed = {
+          memory: (await readFile(path.join(providerCgroup, 'memory.max'), 'utf8')).trim(),
+          swap: (await readFile(path.join(providerCgroup, 'memory.swap.max'), 'utf8')).trim(),
+          oom_group: (await readFile(path.join(providerCgroup, 'memory.oom.group'), 'utf8')).trim(),
+          pids: (await readFile(path.join(providerCgroup, 'pids.max'), 'utf8')).trim(),
+          cpu: (await readFile(path.join(providerCgroup, 'cpu.max'), 'utf8')).trim(),
+          processes: (await readFile(path.join(providerCgroup, 'cgroup.procs'), 'utf8')).trim(),
+          events: (await readFile(path.join(providerCgroup, 'cgroup.events'), 'utf8')).trim(),
+        };
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    const execution = await executionPromise;
+    assert.ok(providerCgroup, 'Provider cgroup was not created');
+    assert.equal(observed.memory, '536870912');
+    assert.equal(observed.swap, '0');
+    assert.equal(observed.oom_group, '1');
+    assert.equal(observed.pids, '64');
+    assert.equal(observed.cpu, '50000 100000');
+    assert.match(observed.processes, /[1-9][0-9]*/);
+    assert.match(observed.events, /populated 1/);
+    assert.deepEqual(await readdir(cgroupParent), [], 'Provider cgroup was not cleaned up after exit');
     assert.equal(execution.ok, true, execution.stderr || 'Sandboxed provider failed');
     const result = JSON.parse(execution.stdout);
     assert.notEqual(result.namespace_pid, result.host_pid, 'Provider PID was not remapped into a private PID namespace');
@@ -128,11 +173,12 @@ async function main() {
     assert.deepEqual(result.rlimits.file_size_bytes, ['67108864', '67108864'], 'File-size RLIMIT was not inherited');
     assert.deepEqual(result.rlimits.open_files, ['256', '256'], 'Open-file RLIMIT was not inherited');
     assert.equal(await readFile(hostSecret, 'utf8'), hostSecretValue, 'Host secret changed unexpectedly');
-    process.stdout.write('Linux Bubblewrap hostile-process checks passed: filesystem, PID/network namespaces, private tmp, and inherited CPU/core/file-size/open-file RLIMITs.\\n');
+    process.stdout.write('Linux Bubblewrap hostile-process checks passed: filesystem, PID/network namespaces, private tmp, inherited RLIMITs, and cgroup-v2 CPU/memory/swap/PID limits.\\n');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await rm(hostSecret, { force: true });
     await rm(base, { recursive: true, force: true });
+    if (cgroupParentCreated) await rmdir(cgroupParent);
   }
 }
 
