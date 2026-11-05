@@ -44,7 +44,8 @@ This file is the status ledger for product claims. It is deliberately conservati
 | PNG | Partial | Bounded chunk structure, IHDR, ordering, palette/transparency constraints and CRC budget | IDAT decompression, scanline and pixel decoding, color management |
 | JPEG | Signature only | SOI recognition | Marker/segment parser |
 | SQLite | Signature only | Database signature recognition | Page/schema/WAL parser |
-| SquashFS | Partial | SquashFS v4.0 superblock, endian, block geometry, compression/flags and bounded top-level table offsets; no table decompression or inode traversal | Metadata block decoding, inode/directory semantics, fragments, xattrs and file extraction |\n| GZIP | Partial | Bounded DEFLATE member decompression, optional header CRC16, trailer CRC32/ISIZE validation, concatenated members and nested CPIO/TAR parsing | Other compression methods and arbitrary nested-format recursion |
+| SquashFS | Partial | SquashFS v4.0 superblock, endian, block geometry, compression/flags and bounded top-level table offsets; no table decompression or inode traversal | Metadata block decoding, inode/directory semantics, fragments, xattrs and file extraction |
+| GZIP | Partial | Bounded DEFLATE member decompression, optional header CRC16, trailer CRC32/ISIZE validation, concatenated members and nested CPIO/TAR parsing | Other compression methods and arbitrary nested-format recursion |
 | Parser dispatch | Implemented | Parsed/rejected/not-supported status | Capability details and parser version metadata |
 | Binary reader | Implemented | Bounds-checked reads and safe ranges | Continue fuzz/differential testing |
 | Parser resource limits | Partial | Count/range ceilings across current parsers | Per-format aggregate CPU/memory budgets and coverage |
@@ -165,7 +166,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Browser observations | Planned | No live browser provider | Disposable Playwright/CDP session and local fixture corpus |
 | HAR network analysis | Implemented | Bounded offline HAR 1.2 metadata parser, CLI/API/MCP, evidence IDs and SHA-256 | Broader validation, corpus, normalized browser/proxy input |
 | PCAP / PCAPNG | Partial | Classic PCAP 2.4 plus bounded PCAPNG section/block/interface/packet metadata, timestamp options and safe secret-block inventory; endpoint/port metadata from supported link types | IPv6 extension traversal, reassembly, checksum validation, application protocols, payload export and live capture remain unsupported |
-| Firmware and filesystems | Partial | Raw CPIO newc/CRC-newc and USTAR/PAX/GNU TAR metadata parsers with bounded file ranges, checksum validation and path-safety inventory; GZIP wrappers validate CRC/ISIZE and can parse nested CPIO/TAR; no extraction | Sparse TAR maps, SquashFS, cramfs, ext, UBI/UBIFS, boot images and device-tree parsers |
+| Firmware and filesystems | Partial | SquashFS v4.0 superblock metadata plus raw CPIO newc/CRC-newc and USTAR/PAX/GNU TAR metadata parsers with bounded file ranges, checksum validation and path-safety inventory; GZIP wrappers validate CRC/ISIZE and can parse nested CPIO/TAR; no extraction | SquashFS metadata decompression/inode traversal, sparse TAR maps, cramfs, ext, UBI/UBIFS, boot images and device-tree parsers |
 | Evidence investigation workflows | Partial | Reports, ledger and report comparison | Case store, finding lifecycle, evidence graph and case bundles |
 | Recorded behavior replay | Planned | No event trace or replay runtime | Versioned trace schema and deterministic test-environment replay |
 | AI / RL environments | Planned | No environment adapter/training integration | Allowlisted observation/action API and replay/permission gates |
