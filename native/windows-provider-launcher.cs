@@ -8,6 +8,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Web.Script.Serialization;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace OrixWindowsSandbox {
@@ -147,8 +148,6 @@ namespace OrixWindowsSandbox {
     static extern int DeriveAppContainerSidFromAppContainerName(string name, out IntPtr appContainerSid);
     [DllImport("userenv.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
     static extern int DeleteAppContainerProfile(string name);
-    [DllImport("userenv.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
-    static extern int GetAppContainerFolderPath(IntPtr appContainerSid, out IntPtr path);
     [DllImport("advapi32.dll", SetLastError = true)]
     static extern IntPtr FreeSid(IntPtr sid);
 
@@ -197,6 +196,7 @@ namespace OrixWindowsSandbox {
         string logPath = Environment.GetEnvironmentVariable("ORIX_WINDOWS_LOG");
         if (!String.IsNullOrEmpty(logPath))
           File.AppendAllText(logPath, DateTime.UtcNow.ToString("o") + " " + message + Environment.NewLine);
+        Console.Error.WriteLine("ORIX_WINDOWS_TRACE=" + message);
       } catch { }
     }
 
@@ -293,22 +293,44 @@ namespace OrixWindowsSandbox {
       return pointer;
     }
 
-    static string CreatePrivateTemp(IntPtr sid, IDictionary environment) {
-      IntPtr pathPointer = IntPtr.Zero;
-      int hr = GetAppContainerFolderPath(sid, out pathPointer);
-      if (hr != 0) Marshal.ThrowExceptionForHR(hr);
-      string appFolder;
-      try { appFolder = Marshal.PtrToStringUni(pathPointer); }
-      finally { if (pathPointer != IntPtr.Zero) Marshal.FreeCoTaskMem(pathPointer); }
-      if (String.IsNullOrEmpty(appFolder)) throw new InvalidOperationException("Windows returned an empty AppContainer data path");
-      string temp = Path.Combine(appFolder, "Temp");
-      Directory.CreateDirectory(temp);
+    static void SetIntegrityLevel(string path, string level) {
+      string systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
+      if (String.IsNullOrEmpty(systemRoot)) throw new InvalidOperationException("SystemRoot is unavailable for integrity-label configuration");
+      string icacls = Path.Combine(systemRoot, "System32", "icacls.exe");
+      ProcessStartInfo start = new ProcessStartInfo();
+      start.FileName = icacls;
+      start.Arguments = Quote(path) + " /setintegritylevel (OI)(CI)" + level;
+      start.UseShellExecute = false;
+      start.CreateNoWindow = true;
+      start.RedirectStandardOutput = true;
+      start.RedirectStandardError = true;
+      using (Process process = Process.Start(start)) {
+        if (!process.WaitForExit(10000)) {
+          try { process.Kill(); } catch { }
+          throw new TimeoutException("icacls integrity-label operation timed out");
+        }
+        string output = process.StandardOutput.ReadToEnd();
+        string error = process.StandardError.ReadToEnd();
+        if (process.ExitCode != 0)
+          throw new InvalidOperationException("Could not set " + level + " integrity on scratch directory: " + error + output);
+      }
+    }
+
+    static string PrepareScratch(string root, IntPtr sid, IDictionary environment) {
+      string temp = Path.Combine(root, "tmp");
+      if (!Directory.Exists(temp)) throw new DirectoryNotFoundException("sandbox_root/tmp is required for provider scratch writes");
+      DirectorySecurity security = Directory.GetAccessControl(temp, AccessControlSections.Access);
+      security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.Modify,
+        InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+        PropagationFlags.None, AccessControlType.Allow));
+      Directory.SetAccessControl(temp, security);
+      SetIntegrityLevel(temp, "L");
       environment["TEMP"] = temp;
       environment["TMP"] = temp;
-      environment["HOME"] = appFolder;
-      environment["USERPROFILE"] = appFolder;
-      environment["LOCALAPPDATA"] = appFolder;
-      environment["APPDATA"] = appFolder;
+      environment["HOME"] = temp;
+      environment["USERPROFILE"] = temp;
+      environment["LOCALAPPDATA"] = temp;
+      environment["APPDATA"] = temp;
       return temp;
     }
 
@@ -353,7 +375,7 @@ namespace OrixWindowsSandbox {
         SecurityIdentifier identity = new SecurityIdentifier(sid);
         GrantTree(root, identity, FileSystemRights.ReadAndExecute, true);
         Log("RUN:ROOT_ACL_GRANTED");
-        CreatePrivateTemp(sid, environment);
+        PrepareScratch(root, sid, environment);
         Log("RUN:PRIVATE_TEMP_READY");
 
         job = CreateJobObject(IntPtr.Zero, null);
@@ -461,6 +483,8 @@ namespace OrixWindowsSandbox {
         Log("CLEANUP:SID_DERIVED");
         SecurityIdentifier identity = new SecurityIdentifier(sid);
         if (Directory.Exists(root)) PurgeTree(root, identity);
+        string scratch = Path.Combine(root, "tmp");
+        if (Directory.Exists(scratch)) SetIntegrityLevel(scratch, "M");
         Console.Error.WriteLine("ORIX_CLEANUP:ROOT_ACL_PURGED");
         Log("CLEANUP:ROOT_ACL_PURGED");
         int deleteResult = DeleteAppContainerProfile(profileName);

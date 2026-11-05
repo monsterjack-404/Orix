@@ -60,7 +60,7 @@ async function main() {
       catch (error) { result.root_write = error.code || 'blocked'; }
       try { fs.writeFileSync(path.join(os.tmpdir(), 'provider-write-probe'), 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
-      result.temp_is_private = os.tmpdir().toLowerCase().includes('packages');
+      result.tmp_inside_root = path.resolve(os.tmpdir()) === path.resolve(`${root}`, 'tmp');
       result.host_network = await new Promise(resolve => {
         const socket = net.createConnection({ host: '127.0.0.1', port: ${port} });
         let settled = false;
