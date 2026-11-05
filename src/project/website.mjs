@@ -446,8 +446,8 @@ export function analyze_website_project(raw_files, options = {}) {
     script_import_graph,
     findings,
     coverage: {
-      complete: truncated_pages === 0 && !findings_truncated,
-      truncated: truncated_pages > 0 || findings_truncated,
+      complete: truncated_pages === 0 && !findings_truncated && !script_analysis_truncated,
+      truncated: truncated_pages > 0 || findings_truncated || script_analysis_truncated,
       truncated_pages,
       script_analysis_truncated,
       script_bytes_analyzed,
