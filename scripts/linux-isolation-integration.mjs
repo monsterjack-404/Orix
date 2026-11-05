@@ -85,7 +85,8 @@ async function main() {
       const limits = fs.readFileSync('/proc/self/limits', 'utf8');
       const limit = label => {
         const line = limits.split('\\n').find(item => item.startsWith(label));
-        return line ? line.trim().split(/\\s+/).slice(3, 5) : null;
+        const columns = label.split(' ').length;
+        return line ? line.trim().split(/\\s+/).slice(columns, columns + 2) : null;
       };
       result.rlimits = {
         cpu_seconds: limit('Max cpu time'),
