@@ -284,7 +284,7 @@ export async function verify_case(workspace_path, case_id) {
   const verified = await verify_evidence_ledger(paths.events_path);
   const state = await load_state(paths);
   const reports = await verify_report_files(paths, state);
-  return { schema_version: 'orix.case-verification.v1', case_id, valid: verified.valid && state.integrity.valid && reports.every(item => item.valid), records_verified: verified.records, head_hash: verified.head_hash, bytes: verified.bytes, first_timestamp: verified.first_timestamp, last_timestamp: verified.last_timestamp, findings: state.findings.length, artifacts: state.artifacts.length, reports_verified: reports.length, reports };
+  return { schema_version: 'orix.case-verification.v1', case_id, valid: verified.valid && state.integrity.valid && reports.every(item => item.valid), records_verified: verified.records, head_hash: verified.head_hash, bytes: verified.bytes, first_timestamp: verified.first_timestamp, last_timestamp: verified.last_timestamp, findings: state.findings.length, artifact_references_recorded: state.artifacts.length, artifact_sources_revalidated: false, reports_verified: reports.length, reports };
 }
 export async function add_case_artifact(workspace_path, case_id, file_path, options = {}) {
   const paths = await case_directory(workspace_path, case_id);

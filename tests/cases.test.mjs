@@ -90,7 +90,10 @@ test('case records analysis reports, findings, evidence, relationships, notes an
   assert.equal(loaded.notes.length, 1);
   assert.equal(loaded.relationships.length, 1);
   assert.equal(loaded.case.status, 'in_review');
-  assert.equal((await verify_case(root, created.case.id)).valid, true);
+  const verification = await verify_case(root, created.case.id);
+  assert.equal(verification.valid, true);
+  assert.equal(verification.artifact_references_recorded, 1);
+  assert.equal(verification.artifact_sources_revalidated, false);
 });
 
 test('case bundles export and import reports and event history without embedding source artifacts', async t => {
