@@ -490,6 +490,7 @@ function parse_trace_events(trace_bytes, limits) {
       ...(actions_omitted ? ['Action inventory was truncated by max_actions.'] : []),
       ...(requests_omitted ? ['Network request inventory was truncated by max_requests.'] : []),
       ...(page_ids_omitted ? ['Page inventory was truncated by max_pages.'] : []),
+      ...(unknown_events ? ['Unknown event types were skipped; report coverage is incomplete.'] : []),
     ],
   };
 }
