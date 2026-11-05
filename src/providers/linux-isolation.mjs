@@ -1,6 +1,7 @@
-// Linux provider isolation through Bubblewrap. The supplied rootfs is the complete
-// provider-visible filesystem; it is mounted read-only except for an ephemeral /tmp.
-// No host home, project tree, credentials, or network namespace is exposed by default.
+// Linux provider isolation through Bubblewrap and inherited process resource limits.
+// The supplied rootfs is the complete provider-visible filesystem; it is mounted
+// read-only except for an ephemeral /tmp. Host home, project, credentials and
+// network namespace are not exposed by default.
 
 import { access, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
@@ -16,8 +17,8 @@ function within(root, candidate) {
     !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
 }
 
-async function resolve_bwrap() {
-  for (const candidate of ['/usr/bin/bwrap', '/bin/bwrap']) {
+async function resolve_trusted_executable(candidates, label) {
+  for (const candidate of candidates) {
     try {
       const info = await lstat(candidate);
       if (info.isSymbolicLink() || !info.isFile()) continue;
@@ -25,14 +26,22 @@ async function resolve_bwrap() {
       await access(canonical, 1);
       return canonical;
     } catch {
-      // Try the next fixed system location; never resolve through PATH.
+      // Only fixed system paths are considered; never resolve through PATH.
     }
   }
   isolation_error(
     'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
-    'Bubblewrap is not installed at a trusted system path; required isolation cannot start',
-    { platform: process.platform, backend: 'bubblewrap' },
+    label + ' is not installed at a trusted system path; required isolation cannot start',
+    { platform: process.platform, backend: label },
   );
+}
+
+async function resolve_bwrap() {
+  return resolve_trusted_executable(['/usr/bin/bwrap', '/bin/bwrap'], 'bubblewrap');
+}
+
+async function resolve_prlimit() {
+  return resolve_trusted_executable(['/usr/bin/prlimit', '/bin/prlimit'], 'prlimit');
 }
 
 async function validate_rootfs(value) {
@@ -87,6 +96,12 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
   const sandboxExecutable = sandbox_path(root, executable, 'executable');
   const sandboxCwd = sandbox_path(root, cwd, 'cwd');
   const bwrap = await resolve_bwrap();
+  const prlimit = await resolve_prlimit();
+
+  // These are per-process RLIMITs inherited by the provider and its descendants.
+  // They are not aggregate cgroup quotas: memory/PID-wide accounting remains a
+  // separate gate. CPU is capped at 60 seconds per process, file size at 64 MiB,
+  // open descriptors at 256, and core dumps are disabled.
   const bwrapArgs = [
     '--die-with-parent',
     '--new-session',
@@ -104,9 +119,19 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
     bwrapArgs.push('--setenv', key, value);
   }
   bwrapArgs.push('--', sandboxExecutable, ...args);
+
+  const limitArgs = [
+    '--cpu=60:60',
+    '--fsize=67108864:67108864',
+    '--nofile=256:256',
+    '--core=0:0',
+    '--',
+    bwrap,
+    ...bwrapArgs,
+  ];
   return Object.freeze({
-    executable: bwrap,
-    args: Object.freeze(bwrapArgs),
+    executable: prlimit,
+    args: Object.freeze(limitArgs),
     cwd: '/',
     env: Object.freeze({}),
   });
