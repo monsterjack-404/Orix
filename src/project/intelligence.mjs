@@ -10,7 +10,17 @@ import { analyze_website_project } from './website.mjs';
 
 const DEFAULTS={max_files:50000,max_entries:200000,max_depth:24,max_file_bytes:1048576,max_total_bytes:134217728,max_symbols_per_file:100,max_imports_per_file:200,max_lockfile_packages:100000,max_lockfile_edges:500000,max_git_refs:5000,max_git_ref_depth:24,max_git_metadata_bytes:4194304,max_git_object_bytes:2097152,max_git_pack_files:1000,include_hidden:false};
 const IGNORED=new Set(['.git','.hg','.svn','node_modules','vendor','dist','build','coverage','.next','.nuxt','.turbo','.cache','.venv','venv','__pycache__','target','bin','obj']);
-const EXT={'.js':'JavaScript','.mjs':'JavaScript','.cjs':'JavaScript','.jsx':'JavaScript','.ts':'TypeScript','.tsx':'TypeScript','.py':'Python','.go':'Go','.rs':'Rust','.c':'C','.h':'C/C++','.cc':'C++','.cpp':'C++','.hpp':'C++','.java':'Java','.kt':'Kotlin','.swift':'Swift','.cs':'C#','.php':'PHP','.rb':'Ruby','.sh':'Shell','.sql':'SQL','.html':'HTML','.css':'CSS','.xml':'XML','.yaml':'YAML','.yml':'YAML','.toml':'TOML','.json':'JSON','.md':'Markdown','.mdx':'MDX','.vue':'Vue','.svelte':'Svelte'};
+const EXT={
+ '.js':'JavaScript','.mjs':'JavaScript','.cjs':'JavaScript','.jsx':'JavaScript','.ts':'TypeScript','.mts':'TypeScript','.cts':'TypeScript','.tsx':'TypeScript',
+ '.py':'Python','.pyi':'Python','.pyx':'Cython','.go':'Go','.rs':'Rust',
+ '.c':'C','.h':'C/C++','.cc':'C++','.cpp':'C++','.cxx':'C++','.hpp':'C++','.hh':'C++','.hxx':'C++',
+ '.m':'Objective-C','.mm':'Objective-C++','.java':'Java','.kt':'Kotlin','.kts':'Kotlin','.swift':'Swift','.cs':'C#','.csx':'C#',
+ '.php':'PHP','.phtml':'PHP','.rb':'Ruby','.rake':'Ruby','.sh':'Shell','.bash':'Shell','.zsh':'Shell','.fish':'Shell',
+ '.sql':'SQL','.dart':'Dart','.scala':'Scala','.sc':'Scala','.lua':'Lua','.pl':'Perl','.pm':'Perl','.r':'R','.R':'R',
+ '.ex':'Elixir','.exs':'Elixir','.hs':'Haskell','.lhs':'Haskell','.clj':'Clojure','.cljs':'Clojure','.cljc':'Clojure',
+ '.fs':'F#','.fsx':'F#','.vb':'Visual Basic','.ps1':'PowerShell','.psm1':'PowerShell',
+ '.html':'HTML','.htm':'HTML','.xhtml':'HTML','.css':'CSS','.xml':'XML','.yaml':'YAML','.yml':'YAML','.toml':'TOML','.json':'JSON','.md':'Markdown','.mdx':'MDX','.vue':'Vue','.svelte':'Svelte'
+};
 const LOCKFILES=new Set(['package-lock.json','yarn.lock','Cargo.lock','pnpm-lock.yaml','composer.lock','poetry.lock','Pipfile.lock','uv.lock','go.sum','packages.lock.json','gradle.lockfile','Gemfile.lock']);
 const LOCKFILE_FAILURE_IDENTITIES = Object.freeze({
  'package-lock.json': { ecosystem: 'npm', format: 'npm-package-lock' },
@@ -79,21 +89,64 @@ function parse_manifest(file,text){
 }
 const IMPORTS={
  JavaScript:[/(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g,/require\s*\(\s*["']([^"']+)["']\s*\)/g,/import\s*\(\s*["']([^"']+)["']\s*\)/g],
- TypeScript:[/(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g,/require\s*\(\s*["']([^"']+)["']\s*\)/g],
- Python:[/^\s*(?:from|import)\s+([A-Za-z0-9_./]+)/gm],Go:[/^\s*import\s+"([^"]+)"/gm],Rust:[/^\s*(?:use|mod)\s+([A-Za-z0-9_:]+)/gm],
- 'C/C++':[/^\s*#\s*include\s*[<"]([^>"]+)[>"]/gm],'C++':[/^\s*#\s*include\s*[<"]([^>"]+)[>"]/gm],
- Java:[/^\s*import\s+(?:static\s+)?([A-Za-z0-9_.*]+)/gm],Kotlin:[/^\s*import\s+([A-Za-z0-9_.*]+)/gm],
- 'C#':[/^\s*using\s+([A-Za-z0-9_.]+)/gm],Ruby:[/^\s*require(?:_relative)?\s+["']([^"']+)["']/gm],
+ TypeScript:[/(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g,/require\s*\(\s*["']([^"']+)["']\s*\)/g],
+ Python:[/^\s*(?:from\s+([.A-Za-z0-9_]+)\s+import|import\s+([A-Za-z0-9_., ]+))/gm],
+ Go:[/^\s*(?:import\s+)?(?:"([^"]+)"|[A-Za-z_]\w*\s+"([^"]+)")/gm],
+ Rust:[/^\s*(?:pub(?:\([^)]*\))?\s+)?(?:use|mod)\s+([A-Za-z0-9_:]+)/gm],
+ C:[/^\s*#\s*(?:include|import)\s*[<"]([^>"]+)[>"]/gm],
+ 'C/C++':[/^\s*#\s*(?:include|import)\s*[<"]([^>"]+)[>"]/gm],
+ 'C++':[/^\s*#\s*(?:include|import)\s*[<"]([^>"]+)[>"]/gm],
+ 'Objective-C':[/^\s*#\s*(?:import|include)\s*[<"]([^>"]+)[>"]/gm],
+ 'Objective-C++':[/^\s*#\s*(?:import|include)\s*[<"]([^>"]+)[>"]/gm],
+ Java:[/^\s*import\s+(?:static\s+)?([A-Za-z0-9_.*]+)/gm],
+ Kotlin:[/^\s*import\s+([A-Za-z0-9_.*]+)/gm],
+ 'C#':[/^\s*using\s+(?:static\s+)?([A-Za-z0-9_.]+)/gm],
+ Swift:[/^\s*import\s+(?:class|struct|enum|protocol|func|var|let|typealias)?\s*([A-Za-z_][A-Za-z0-9_.]*)/gm],
+ PHP:[/^\s*(?:use\s+([A-Za-z_\\][A-Za-z0-9_\\]*)|(?:require|require_once|include|include_once)\s*\(?\s*['"]([^'"]+)['"])/gm],
+ Ruby:[/^\s*require(?:_relative)?\s+['"]([^'"]+)['"]/gm],
+ Shell:[/^\s*(?:source|\.)\s+['"]?([^'"\s;]+)['"]?/gm],
+ Dart:[/^\s*(?:import|export|part)\s+['"]([^'"]+)['"]/gm],
+ Scala:[/^\s*import\s+([A-Za-z0-9_.*{} ,]+)/gm],
+ Lua:[/\brequire\s*\(?\s*['"]([^'"]+)['"]\s*\)?/g],
+ Elixir:[/^\s*(?:alias|import|require|use)\s+([A-Z][A-Za-z0-9_.]*)/gm],
+ Haskell:[/^\s*import\s+(?:qualified\s+)?([A-Z][A-Za-z0-9_.]*)/gm],
+ Clojure:[/^\s*\((?:ns|require|use)\s+([A-Za-z0-9_.-]+)/gm],
+ PowerShell:[/^\s*(?:Import-Module|using\s+module)\s+['"]?([A-Za-z0-9_.\\-]+)/gim],
 };
 const SYMBOLS={
  JavaScript:/^\s*(?:export\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)|^\s*export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm,
- TypeScript:/^\s*(?:export\s+)?(?:declare\s+)?(?:abstract\s+)?(?:async\s+)?(?:function|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)|^\s*export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm,
- Python:/^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_]\w*)/gm,Go:/^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)|^\s*type\s+([A-Za-z_]\w*)\s+(?:struct|interface)/gm,
- Rust:/^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:fn|struct|enum|trait|type)\s+([A-Za-z_]\w*)/gm,
+ TypeScript:/^\s*(?:export\s+)?(?:declare\s+)?(?:abstract\s+)?(?:async\s+)?(?:function|class|interface|type|enum|namespace)\s+([A-Za-z_$][\w$]*)|^\s*export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm,
+ Python:/^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_]\w*)/gm,
+ Go:/^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)|^\s*type\s+([A-Za-z_]\w*)\s+(?:struct|interface)/gm,
+ Rust:/^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:fn|struct|enum|trait|type|mod)\s+([A-Za-z_]\w*)/gm,
+ C:/^\s*(?:typedef\s+)?(?:struct|enum|union)\s+([A-Za-z_]\w*)|^\s*(?:static\s+)?(?:inline\s+)?(?:[A-Za-z_*][\w\s*]+)\s+([A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{/gm,
+ 'C/C++':/^\s*(?:class|struct|enum|namespace)\s+([A-Za-z_]\w*)/gm,
+ 'C++':/^\s*(?:class|struct|enum|namespace)\s+([A-Za-z_]\w*)|^\s*(?:[A-Za-z_:~][\w:<>*& ,]+)\s+([A-Za-z_~]\w*)\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?\{/gm,
+ 'Objective-C':/^\s*@interface\s+([A-Za-z_]\w*)|^\s*@implementation\s+([A-Za-z_]\w*)/gm,
+ 'Objective-C++':/^\s*@interface\s+([A-Za-z_]\w*)|^\s*@implementation\s+([A-Za-z_]\w*)/gm,
+ Java:/^\s*(?:(?:public|protected|private|abstract|final|static|sealed|non-sealed)\s+)*(?:class|interface|enum|record)\s+([A-Za-z_]\w*)/gm,
+ Kotlin:/^\s*(?:(?:public|internal|private|protected|data|sealed|abstract|open|enum|annotation)\s+)*(?:class|interface|object|fun|typealias)\s+([A-Za-z_]\w*)/gm,
+ 'C#':/^\s*(?:(?:public|private|protected|internal|abstract|sealed|static|partial|readonly)\s+)*(?:class|interface|struct|record|enum|delegate)\s+([A-Za-z_]\w*)/gm,
+ Swift:/^\s*(?:(?:public|private|fileprivate|internal|open|final|indirect|actor)\s+)*(?:class|struct|enum|protocol|func|actor|typealias)\s+([A-Za-z_]\w*)/gm,
+ PHP:/^\s*(?:(?:abstract|final|readonly)\s+)*(?:class|interface|trait|enum|function)\s+([A-Za-z_]\w*)/gm,
+ Ruby:/^\s*(?:class|module|def)\s+([A-Za-z_][A-Za-z0-9_!?=]*)/gm,
+ Shell:/^\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))/gm,
+ SQL:/^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:TEMP(?:ORARY)?\s+)?(?:TABLE|VIEW|FUNCTION|PROCEDURE|INDEX|TRIGGER)\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?([A-Za-z_][A-Za-z0-9_]*)/gim,
+ Dart:/^\s*(?:(?:abstract|base|final|interface|sealed)\s+)*(?:class|mixin|enum|extension|typedef)\s+([A-Za-z_]\w*)|^\s*(?:Future<[^>]+>|void|[A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*\(/gm,
+ Scala:/^\s*(?:(?:sealed|abstract|final|case)\s+)*(?:class|object|trait|enum|def|type)\s+([A-Za-z_]\w*)/gm,
+ Lua:/^\s*function\s+([A-Za-z_][A-Za-z0-9_.:]*)/gm,
+ Perl:/^\s*sub\s+([A-Za-z_]\w*)/gm,
+ R:/^\s*([A-Za-z.][A-Za-z0-9._]*)\s*<-\s*function\s*\(/gm,
+ Elixir:/^\s*(?:defmodule|defprotocol|defimpl|def(?:p|macro|macrop)?)\s+([A-Za-z_!?][A-Za-z0-9_!?]*)/gm,
+ Haskell:/^\s*([a-z][A-Za-z0-9_']*)\s*(?:::|[^=]*=)/gm,
+ Clojure:/^\s*\(def(?:n|macro|once)?\s+([A-Za-z_*!?+<>.-]+)/gm,
+ 'F#':/^\s*let\s+(?:rec\s+)?([A-Za-z_][A-Za-z0-9_']*)/gm,
+ 'Visual Basic':/^\s*(?:(?:Public|Private|Protected|Friend|Shared|Partial|MustInherit|NotInheritable)\s+)*(?:Class|Interface|Structure|Module|Enum|Sub|Function)\s+([A-Za-z_]\w*)/gim,
+ PowerShell:/^\s*function\s+([A-Za-z_][A-Za-z0-9_-]*)/gim,
 };
 function extract(regexes,text,limit){const out=[];for(const regex of regexes??[])for(const match of text.matchAll(regex)){const value=match[1]??match[2];if(value&&value.length<=300)out.push(value);if(out.length>=limit)break;}return unique(out).slice(0,limit);}
-function symbol_list(regex,text,limit){if(!regex)return[];const out=[];for(const m of text.matchAll(regex)){const name=m[1]??m[2];if(name)out.push({name,line:text.slice(0,m.index).split('\n').length});if(out.length>=limit)break;}return out;}
-function resolve_import(source,specifier,known){if(!specifier.startsWith('.'))return null;const base=path.posix.normalize(path.posix.join(path.posix.dirname(source),specifier));const candidates=[base,...['.js','.mjs','.cjs','.ts','.tsx','.jsx','.py','.go','.rs','.json'].map(ext=>base+ext),...['index.js','index.ts','index.tsx','__init__.py'].map(file=>path.posix.join(base,file))];return candidates.find(item=>known.has(item))??null;}
+function symbol_list(regex,text,limit){if(!regex)return[];const out=[];for(const m of text.matchAll(regex)){const name=m[1]??m[2];if(name)out.push({name,kind:'declaration-candidate',line:text.slice(0,m.index).split('\n').length,confidence:'syntax-pattern'});if(out.length>=limit)break;}return out;}
+function resolve_import(source,specifier,known){if(!specifier.startsWith('.'))return null;if(/\.(?:py|pyi)$/i.test(source)){const python_relative=/^(\.+)(.+)$/.exec(specifier);if(python_relative)specifier='../'.repeat(Math.max(0,python_relative[1].length-1))+python_relative[2].replaceAll('.','/');}const base=path.posix.normalize(path.posix.join(path.posix.dirname(source),specifier));const candidates=[base,...['.js','.mjs','.cjs','.jsx','.ts','.tsx','.mts','.cts','.py','.pyi','.go','.rs','.c','.h','.cc','.cpp','.hpp','.java','.kt','.kts','.swift','.cs','.php','.rb','.sh','.sql','.dart','.scala','.lua','.ex','.exs','.hs','.clj','.fs','.fsx','.ps1','.json'].map(ext=>base+ext),...['index.js','index.ts','index.tsx','index.py','index.dart','index.php','__init__.py','mod.rs','lib.rs','main.rs'].map(file=>path.posix.join(base,file))];return candidates.find(item=>known.has(item))??null;}
 function secret_findings(file,text){const out=[],lines=text.split('\n');for(let i=0;i<lines.length;i++)for(const [rule,label,regex]of SECRET_RULES){regex.lastIndex=0;if(regex.test(lines[i]))out.push({rule_id:rule,severity:'high',confidence:'heuristic',file,line:i+1,label,evidence:'Credential-shaped match; value redacted.'});}return out.slice(0,100);}
 function signals(paths){const names=new Set(paths.map(x=>path.posix.basename(x)));return{package_managers:unique([...(names.has('package.json')?['npm-compatible']:[]),...(names.has('pnpm-lock.yaml')?['pnpm']:[]),...(names.has('yarn.lock')?['yarn']:[]),...(names.has('requirements.txt')||names.has('pyproject.toml')?['python']:[]),...(names.has('Cargo.toml')?['cargo']:[]),...(names.has('go.mod')?['go-modules']:[]),...(names.has('composer.json')?['composer']:[]),...(names.has('pom.xml')||names.has('build.gradle')?['jvm-build']:[]),([...names].some(x=>x.endsWith('.csproj'))?['dotnet']:[])]),has_readme:[...names].some(x=>/^readme(?:\..+)?$/i.test(x)),has_license:[...names].some(x=>/^licen[cs]e(?:\..+)?$/i.test(x)),has_ci:paths.some(x=>x.startsWith('.github/workflows/')||x.startsWith('.circleci/')||x.startsWith('.gitlab-ci')),has_tests:paths.some(x=>/(^|\/)(test|tests|spec|specs|__tests__)(\/|$)/i.test(x)),has_container:names.has('Dockerfile')||names.has('compose.yaml')||names.has('docker-compose.yml')};}
 export async function scan_project(root_path,input={}){
