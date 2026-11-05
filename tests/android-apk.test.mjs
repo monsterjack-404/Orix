@@ -182,3 +182,17 @@ test('APK parser rejects local-header CRC and size metadata mismatches', () => {
   archive.writeUInt32LE(0x12345678, 14);
   assert.throws(() => parse_apk(archive), error => error.code === 'ORIX_ANDROID_LOCAL_METADATA_MISMATCH');
 });
+
+test('APK parser rejects DEX link sections outside the file', () => {
+  const dex = create_minimal_dex_fixture();
+  dex.writeUInt32LE(4, 0x2c);
+  dex.writeUInt32LE(dex.length - 2, 0x30);
+  assert.throws(() => parse_apk(apk_fixture({ dex })), error => error.code === 'ORIX_ANDROID_DEX_LINK_RANGE');
+});
+
+test('APK parser rejects DEX data sections outside the file', () => {
+  const dex = create_minimal_dex_fixture();
+  dex.writeUInt32LE(8, 0x68);
+  dex.writeUInt32LE(dex.length - 4, 0x6c);
+  assert.throws(() => parse_apk(apk_fixture({ dex })), error => error.code === 'ORIX_ANDROID_DEX_DATA_RANGE');
+});
