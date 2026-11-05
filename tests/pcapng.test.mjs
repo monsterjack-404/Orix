@@ -219,3 +219,25 @@ test('PCAPNG is registered for inspection, package subpath and public API', asyn
   const root = await import('../src/index.mjs');
   assert.equal(typeof root.parse_pcapng, 'function');
 });
+
+function obsolete_packet(little, packet, { interface_id = 0, drops_count = 3, high = 0, low = 4 } = {}) {
+  const data = Buffer.from(packet);
+  const body = Buffer.alloc(20 + pad(data.length));
+  write16(body, 0, interface_id, little);
+  write16(body, 2, drops_count, little);
+  write32(body, 4, high, little);
+  write32(body, 8, low, little);
+  write32(body, 12, data.length, little);
+  write32(body, 16, data.length, little);
+  data.copy(body, 20);
+  return block(2, body, little);
+}
+
+test('PCAPNG parses obsolete Packet Blocks and retains the per-block drop count', () => {
+  const capture = Buffer.concat([section(), interface_block(), obsolete_packet(true, ethernet_ipv4_tcp(), { drops_count: 7 })]);
+  const report = parse_pcapng(capture);
+  assert.equal(report.packets.length, 1);
+  assert.equal(report.packets[0].timestamp.ticks, '4');
+  assert.equal(report.packets[0].options.obsolete_drops_count, 7);
+  assert.equal(report.packets[0].network.transport.destination_port, 443);
+});
