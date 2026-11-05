@@ -95,6 +95,9 @@ export function parse_ubifs_master(buffer, options = {}) {
   }
 
   const gc_lnum = gc_raw === 0xffffffff ? null : gc_raw;
+  if (log_lnum >= leb_count || root_lnum >= leb_count || (gc_lnum !== null && gc_lnum >= leb_count) || ihead_lnum >= leb_count || lscan_lnum >= leb_count) {
+    reject('ORIX_UBIFS_MASTER_LEB_BOUNDS', 'Master node contains a LEB reference outside its own declared LEB count', { log_lnum, root_lnum, gc_lnum, ihead_lnum, lscan_lnum, leb_count });
+  }
   const geometry = options.superblock?.superblock ?? options.superblock ?? null;
   let geometry_validated = false;
   if (geometry !== null) {
