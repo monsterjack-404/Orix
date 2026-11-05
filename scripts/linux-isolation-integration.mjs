@@ -178,7 +178,10 @@ async function main() {
     if (server) await new Promise(resolve => server.close(resolve));
     await rm(hostSecret, { force: true });
     await rm(base, { recursive: true, force: true });
-    if (cgroupParentCreated) await rmdir(cgroupParent);
+    if (cgroupParentCreated) {
+      await writeFile(path.join(cgroupParent, 'cgroup.subtree_control'), '-cpu -memory -pids');
+      await rmdir(cgroupParent);
+    }
   }
 }
 
