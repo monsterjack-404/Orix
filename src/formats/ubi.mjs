@@ -68,6 +68,140 @@ function parse_vid(reader, base) {
   };
 }
 
+
+const LAYOUT_VOLUME_ID = 0x7fffffff - 4096;
+const VOLUME_TABLE_RECORD_SIZE = 172;
+const MAX_VOLUME_COUNT = 128;
+const VOLUME_FLAGS = Object.freeze([[1, 'auto_resize'], [2, 'skip_static_crc_check']]);
+
+function parse_volume_table_copy(buffer, candidate, peb_size, total_pebs) {
+  const leb_size = peb_size - candidate.data_offset;
+  const record_count = Math.min(MAX_VOLUME_COUNT, Math.floor(leb_size / VOLUME_TABLE_RECORD_SIZE));
+  if (record_count < 1) reject('ORIX_UBI_VTBL_TOO_SMALL', 'Layout-volume LEB cannot contain a complete volume-table record', { leb_size });
+  const table_start = candidate.base + candidate.data_offset;
+  const table_length = record_count * VOLUME_TABLE_RECORD_SIZE;
+  if (table_start + table_length > candidate.base + peb_size) {
+    reject('ORIX_UBI_VTBL_RANGE', 'Volume table extends beyond its layout-volume PEB', { table_start, table_length, peb_size });
+  }
+  const records = [];
+  let empty_records = 0;
+  for (let id = 0; id < record_count; id += 1) {
+    const start = table_start + id * VOLUME_TABLE_RECORD_SIZE;
+    const record = buffer.subarray(start, start + VOLUME_TABLE_RECORD_SIZE);
+    const reserved_pebs = record.readUInt32BE(0);
+    const alignment = record.readUInt32BE(4);
+    const data_pad = record.readUInt32BE(8);
+    const volume_type_id = record[12];
+    const update_marker = record[13];
+    const name_length = record.readUInt16BE(14);
+    const flags = record[144];
+    const padding = record.subarray(145, 168);
+    const stored_crc = record.readUInt32BE(168);
+    const calculated_crc = ubi_crc32(record.subarray(0, 168));
+    if (stored_crc !== calculated_crc) {
+      reject('ORIX_UBI_VTBL_RECORD_CRC', 'UBI volume-table record CRC does not match', { volume_id: id, stored_crc, calculated_crc });
+    }
+    if (padding.some(byte => byte !== 0)) {
+      reject('ORIX_UBI_VTBL_PADDING', 'UBI volume-table reserved padding must be zero', { volume_id: id });
+    }
+    if (reserved_pebs === 0) {
+      if (record.subarray(0, 168).some(byte => byte !== 0)) {
+        reject('ORIX_UBI_VTBL_EMPTY_RECORD', 'Empty UBI volume-table records must contain zeroed fields', { volume_id: id });
+      }
+      empty_records += 1;
+      records.push({ volume_id: id, status: 'empty', crc_valid: true, stored_crc, calculated_crc });
+      continue;
+    }
+    if (reserved_pebs > total_pebs || alignment === 0 || alignment > leb_size || data_pad >= alignment ||
+        data_pad !== (leb_size % alignment) || ![1, 2].includes(volume_type_id) ||
+        update_marker > 1 || name_length > 127) {
+      reject('ORIX_UBI_VTBL_INVALID_RECORD', 'UBI volume-table record fields are outside supported bounds', {
+        volume_id: id, reserved_pebs, total_pebs, alignment, data_pad, leb_size,
+        volume_type_id, update_marker, name_length,
+      });
+    }
+    const name_bytes = record.subarray(16, 16 + name_length);
+    let name;
+    try {
+      name = new TextDecoder('utf-8', { fatal: true }).decode(name_bytes);
+    } catch {
+      reject('ORIX_UBI_VTBL_INVALID_NAME', 'UBI volume name is not valid UTF-8', { volume_id: id, name_length });
+    }
+    const known_flags = VOLUME_FLAGS.reduce((mask, [bit]) => mask | bit, 0);
+    records.push({
+      volume_id: id,
+      status: update_marker === 1 ? 'update-in-progress' : 'active',
+      reserved_pebs,
+      alignment,
+      data_pad,
+      volume_type: volume_type_id === 1 ? 'dynamic' : 'static',
+      update_marker,
+      name_length,
+      name,
+      flags: {
+        value: flags,
+        enabled: VOLUME_FLAGS.filter(([bit]) => (flags & bit) !== 0).map(([, label]) => label),
+        unknown_bits: flags & ~known_flags,
+      },
+      crc_valid: true,
+      stored_crc,
+      calculated_crc,
+    });
+  }
+  return {
+    logical_eraseblock: candidate.logical_eraseblock,
+    physical_eraseblock: candidate.physical_eraseblock,
+    data_offset: candidate.data_offset,
+    leb_size,
+    record_size: VOLUME_TABLE_RECORD_SIZE,
+    record_count,
+    active_records: record_count - empty_records,
+    empty_records,
+    records,
+    raw_table: buffer.subarray(table_start, table_start + table_length),
+  };
+}
+
+function decode_volume_table(buffer, candidates, peb_size) {
+  if (candidates.length === 0) {
+    reject('ORIX_UBI_LAYOUT_VOLUME_MISSING', 'No UBI layout-volume PEB containing a volume-table copy was found');
+  }
+  const by_lnum = new Map();
+  for (const candidate of candidates) {
+    if (candidate.logical_eraseblock > 1) {
+      reject('ORIX_UBI_LAYOUT_VOLUME_LNUM', 'UBI layout volume contains an unexpected logical eraseblock number', { logical_eraseblock: candidate.logical_eraseblock, physical_eraseblock: candidate.physical_eraseblock });
+    }
+    const list = by_lnum.get(candidate.logical_eraseblock) ?? [];
+    list.push(candidate);
+    by_lnum.set(candidate.logical_eraseblock, list);
+  }
+  for (const [lnum, list] of by_lnum) {
+    if (list.length > 1) {
+      reject('ORIX_UBI_LAYOUT_VOLUME_AMBIGUOUS', 'Multiple physical PEBs claim the same layout-volume LEB; copy selection is intentionally not guessed', { logical_eraseblock: lnum, physical_eraseblocks: list.map(item => item.physical_eraseblock) });
+    }
+  }
+  const copies = [...by_lnum.values()].flat().sort((a, b) => a.logical_eraseblock - b.logical_eraseblock)
+    .map(candidate => parse_volume_table_copy(buffer, candidate, peb_size, buffer.length / peb_size));
+  const primary = copies.find(copy => copy.logical_eraseblock === 0) ?? copies[0];
+  const copies_identical = copies.length < 2 ? null : copies.every(copy => copy.raw_table.equals(primary.raw_table));
+  return {
+    layout_volume_id: LAYOUT_VOLUME_ID,
+    copies_found: copies.length,
+    copies_identical,
+    redundancy_complete: copies.length === 2,
+    record_size: VOLUME_TABLE_RECORD_SIZE,
+    record_count: primary.record_count,
+    active_records: primary.active_records,
+    empty_records: primary.empty_records,
+    records: primary.records,
+    copies: copies.map(({ raw_table, ...copy }) => copy),
+    limitations: [
+      'The parser does not select between duplicate physical PEB candidates for one layout LEB; ambiguous mappings are rejected.',
+      'Volume-table records are decoded from available layout-volume LEBs, but no UBI attach/recovery or volume payload mapping is performed.',
+    ],
+  };
+}
+
 /**
  * Inspect UBI EC/VID headers. Supply peb_size to scan a complete multi-PEB image.
  * This does not decode volume-table payloads, UBIFS nodes, or filesystem data.
