@@ -159,3 +159,83 @@ test('TAR parser enforces path and link-name byte ceilings', () => {
   const archive = create_tar_fixture([{ name: 'long-name', contents: 'x' }]);
   assert.throws(() => parse_tar(archive, { max_name_bytes: 4 }), error => error.code === 'ORIX_TAR_NAME_LIMIT');
 });
+
+test('TAR parser inventories directory, symlink and hardlink types without resolving them', () => {
+  const archive = create_tar_fixture([
+    { name: 'rootfs/etc', typeflag: '5', contents: '' },
+    { name: 'rootfs/config-link', typeflag: '2', linkname: 'etc/config', contents: '' },
+    { name: 'rootfs/config-hardlink', typeflag: '1', linkname: 'rootfs/etc/config', contents: '' },
+  ]);
+  const report = parse_tar(archive);
+  assert.deepEqual(report.entries.map(entry => entry.type), ['directory', 'symlink', 'hardlink']);
+  assert.equal(report.entries[1].safe_link_target, true);
+  assert.equal(report.entries[2].safe_link_target, true);
+  assert.equal(report.summary.links, 2);
+});
+
+test('TAR parser separately flags unsafe symlink and hardlink targets', () => {
+  const archive = create_tar_fixture([
+    { name: 'safe-name', typeflag: '2', linkname: '../../outside', contents: '' },
+    { name: 'absolute-link', typeflag: '1', linkname: '/etc/passwd', contents: '' },
+  ]);
+  const report = parse_tar(archive);
+  assert.equal(report.summary.unsafe_paths, 0);
+  assert.equal(report.summary.unsafe_link_targets, 2);
+  assert.equal(report.entries[0].safe_path, true);
+  assert.equal(report.entries[0].safe_link_target, false);
+});
+
+test('TAR parser applies global PAX metadata and reports trailing bytes', () => {
+  const pax = create_pax_record('uname', 'firmware-builder');
+  const archive = Buffer.concat([
+    create_tar_fixture([
+      { name: 'GlobalHead', typeflag: 'g', contents: pax },
+      { name: 'first', contents: 'a' },
+      { name: 'second', contents: 'b' },
+    ]),
+    Buffer.from('TRAILER'),
+  ]);
+  const report = parse_tar(archive);
+  assert.equal(report.entries[0].uname, 'firmware-builder');
+  assert.equal(report.entries[1].uname, 'firmware-builder');
+  assert.equal(report.complete, true);
+  assert.equal(report.trailing_bytes, 7);
+});
+
+test('TAR parser rejects malformed PAX lengths and bounds extension metadata', () => {
+  const malformed = create_tar_fixture([
+    { name: 'PaxHeaders/file', typeflag: 'x', contents: Buffer.from('999 path=x\\n') },
+  ]);
+  assert.throws(() => parse_tar(malformed), error => error.code === 'ORIX_TAR_BAD_PAX_RECORD');
+  const large_metadata = create_tar_fixture([
+    { name: 'PaxHeaders/file', typeflag: 'x', contents: Buffer.alloc(32, 0x41) },
+  ]);
+  assert.throws(() => parse_tar(large_metadata, { max_metadata_bytes: 8 }), error => error.code === 'ORIX_TAR_METADATA_LIMIT');
+});
+
+test('TAR parser enforces aggregate data, entry count and metadata record ceilings', () => {
+  const archive = create_tar_fixture([
+    { name: 'one', contents: '1234' },
+    { name: 'two', contents: '5678' },
+  ]);
+  assert.throws(() => parse_tar(archive, { max_total_data_bytes: 6 }), error => error.code === 'ORIX_TAR_ENTRY_LIMIT');
+  assert.throws(() => parse_tar(archive, { max_entries: 1 }), error => error.code === 'ORIX_TAR_ENTRY_COUNT_LIMIT');
+  const pax = Buffer.concat([create_pax_record('uname', 'a'), create_pax_record('gname', 'b')]);
+  const with_pax = create_tar_fixture([{ name: 'PaxHeaders/file', typeflag: 'x', contents: pax }]);
+  assert.throws(() => parse_tar(with_pax, { max_pax_records: 1 }), error => error.code === 'ORIX_TAR_PAX_RECORD_LIMIT');
+});
+
+test('TAR parser rejects truncated headers and missing entry padding', () => {
+  assert.throws(() => parse_tar(Buffer.alloc(511)), error => error.code === 'ORIX_TAR_HEADER_TRUNCATED');
+  const archive = create_tar_fixture([{ name: 'file', contents: 'x' }]);
+  assert.throws(() => parse_tar(archive.subarray(0, 513)), error => error.code === 'ORIX_TAR_ENTRY_PADDING_TRUNCATED');
+});
+
+test('TAR parser treats backslash traversal and drive-prefixed paths as unsafe', () => {
+  const archive = create_tar_fixture([
+    { name: '..\\\\outside', contents: 'x' },
+    { name: 'C:/Windows/system.ini', contents: 'y' },
+  ]);
+  const report = parse_tar(archive);
+  assert.equal(report.summary.unsafe_paths, 2);
+});
