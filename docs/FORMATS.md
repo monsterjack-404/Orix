@@ -18,8 +18,9 @@ ORIX distinguishes **signature recognition**, **structural parsing**, **semantic
 | PNG | Yes | Yes | Signature, IHDR fields, chunk boundaries/order, PLTE-before-tRNS ordering, bit-depth-bounded grayscale/truecolor tRNS samples, IDAT sequence, IEND and bounded CRC validation | IDAT inflation, scanline/pixel decoding, color management and full ancillary-chunk semantics |
 | JPEG | Yes | No | JPEG SOI marker | Marker/segment parser and metadata |
 | SQLite | Yes | No | Sixteen-byte database signature | Page layout, schema, WAL and freelist parsing |
-| GZIP | Yes | Yes | Bounded DEFLATE members, optional header fields/FHCRC, CRC32 and ISIZE verification, concatenated members and nested CPIO newc parsing | Other compression methods, arbitrary nested-format recursion, extraction and trailing-data recovery |
-| CPIO newc | Yes | Yes | 070701 and 070702 headers, bounded entry/name/data ranges, file types, path safety, duplicate inventory, trailer detection and CRC-newc byte-sum verification | Extraction, gzip/compressed wrappers, concatenated archives, filesystem semantics and symlink/hardlink resolution |
+| GZIP | Yes | Yes | Bounded DEFLATE members, optional header fields/FHCRC, CRC32 and ISIZE verification, concatenated members and nested CPIO newc/TAR parsing | Other compression methods, arbitrary nested-format recursion, extraction and trailing-data recovery |
+| CPIO newc | Yes | Yes | 070701 and 070702 headers, bounded entry/name/data ranges, file types, path safety, duplicate inventory, trailer detection and CRC-newc byte-sum verification | Extraction, concatenated archives, filesystem semantics and symlink/hardlink resolution |
+| TAR | Yes | Yes | Header checksums, octal/base-256 fields, bounded file ranges, path safety, PAX records, GNU long names/links and end markers | Legacy V7-only headers, sparse maps, ACLs/xattrs, extraction and filesystem reconstruction |
 
 The registry recognizes PE from the MZ prefix as a candidate. A DOS executable without a PE signature is therefore reported as a PE candidate and rejected by the PE parser. This is intentional candidate recognition, not proof of PE structure.
 
@@ -62,6 +63,10 @@ The parser locates the end-of-central-directory record within a bounded trailing
 ### GZIP
 
 The parser reads bounded RFC 1952 members using raw DEFLATE, validates optional extra/name/comment framing, reserved flags, optional header CRC16, trailer CRC32 and ISIZE, and supports concatenated members. Decompressed output is capped per member and across the stream, hashed with SHA-256 and not written to disk. If the combined output begins with CPIO newc/CRC-newc, the bounded CPIO parser is applied; other nested signatures are identified only. Trailing bytes after the last complete member are reported and make the stream incomplete.
+
+### TAR (USTAR-compatible)
+
+The parser validates 512-byte USTAR-compatible headers and unsigned or signed header checksums, accepts octal and positive base-256 numeric fields, bounds declared entry sizes and aggregate data, and inventories path/type/ownership/mode/link metadata without reading or extracting file payloads. POSIX PAX local/global records and GNU long-name/long-link extension headers are interpreted under strict metadata and record ceilings. Absolute paths, drive-prefixed names and parent-directory segments are marked unsafe; duplicate paths are reported. A complete archive requires two consecutive zero end blocks. Legacy V7-only headers, GNU sparse maps, ACLs/xattrs, filesystem reconstruction and extraction are not implemented.
 
 ### CPIO newc
 

@@ -115,7 +115,7 @@ export function build_capability_report({
       { id: 'browser-observation', status: 'planned', boundary: 'No Playwright/CDP live browser observation provider is shipped.' },
       { id: 'network-har-analysis', status: 'implemented', boundary: 'Offline HAR 1.2 metadata analysis with bounded entries; payloads and header/query values are excluded, and captured traffic is not independently verified.' },
       { id: 'pcap-network-analysis', status: 'partial', boundary: 'Classic PCAP 2.4 packet and endpoint metadata only; PCAPNG, IPv6 extension traversal, reassembly, checksums, application protocols, payload export and live capture are not implemented.' },
-      { id: 'firmware-analysis', status: 'partial', boundary: 'Bounded raw CPIO newc/CRC-newc inventory and GZIP member decompression with CRC/ISIZE verification plus nested CPIO parsing are available; no general filesystem extraction or filesystem parser.' },
+      { id: 'firmware-analysis', status: 'partial', boundary: 'Bounded raw CPIO newc/CRC-newc and USTAR/PAX/GNU TAR metadata inventory, plus GZIP member decompression with CRC/ISIZE verification and nested CPIO/TAR parsing, are available; no general filesystem extraction or filesystem parser.' },
       { id: 'evidence-investigation-workflows', status: 'partial', boundary: 'Artifact evidence, hash-chained ledger and report comparison exist; no persistent case database or cross-case evidence graph.' },
       { id: 'recorded-behavior-replay', status: 'planned', boundary: 'No normalized behavior trace or deterministic replay engine is shipped.' },
       { id: 'ai-rl-environments', status: 'planned', boundary: 'No Gymnasium-compatible environment adapter or RL training runtime is shipped.' },

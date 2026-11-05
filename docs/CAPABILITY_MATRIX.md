@@ -34,7 +34,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 |---|---|---|---|
 | Safe regular-file intake | Implemented | Symlink rejection, regular-file checks, bounded reads | Stronger platform-specific race tests |
 | Full-file SHA-256 | Implemented | Streaming hash with bounded buffer and size ceiling | Acquisition provenance and optional signed receipts |
-| Signature registry | Implemented | ELF, PE/MZ, Mach-O, universal Mach-O, WASM, PDF, PNG, JPEG, SQLite, GZIP, ZIP, CPIO newc | Extend with fixtures and confidence semantics |
+| Signature registry | Implemented | ELF, PE/MZ, Mach-O, universal Mach-O, WASM, PDF, PNG, JPEG, SQLite, GZIP, ZIP, CPIO newc, USTAR-compatible TAR | Extend with fixtures and confidence semantics |
 | PE parser | Partial | PE32/PE32+, sections, imports, delay imports, exports, resources, relocation records, WIN_CERTIFICATE framing, bounded CLR header and metadata stream inventory | CLR metadata tables/IL decoding, decompilation, relocation application, Authenticode verification, debug data |
 | ELF parser | Partial | ELF32/64, program/section metadata, dynamic tags, symbols, REL/RELA, GNU versions and GNU hash tables | Extended numbering, relocation semantics, DWARF, architecture-specific naming |
 | Mach-O parser | Partial | Thin/FAT/FAT64, segments, sections, symbols, indirect symbols, CodeDirectory metadata | Chained fixups, Objective-C metadata, signature verification |
@@ -44,7 +44,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | PNG | Partial | Bounded chunk structure, IHDR, ordering, palette/transparency constraints and CRC budget | IDAT decompression, scanline and pixel decoding, color management |
 | JPEG | Signature only | SOI recognition | Marker/segment parser |
 | SQLite | Signature only | Database signature recognition | Page/schema/WAL parser |
-| GZIP | Partial | Bounded DEFLATE member decompression, optional header CRC16, trailer CRC32/ISIZE validation, concatenated members and nested CPIO parsing | Other compression methods and arbitrary nested-format recursion |
+| GZIP | Partial | Bounded DEFLATE member decompression, optional header CRC16, trailer CRC32/ISIZE validation, concatenated members and nested CPIO/TAR parsing | Other compression methods and arbitrary nested-format recursion |
 | Parser dispatch | Implemented | Parsed/rejected/not-supported status | Capability details and parser version metadata |
 | Binary reader | Implemented | Bounds-checked reads and safe ranges | Continue fuzz/differential testing |
 | Parser resource limits | Partial | Count/range ceilings across current parsers | Per-format aggregate CPU/memory budgets and coverage |
@@ -165,7 +165,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Browser observations | Planned | No live browser provider | Disposable Playwright/CDP session and local fixture corpus |
 | HAR network analysis | Implemented | Bounded offline HAR 1.2 metadata parser, CLI/API/MCP, evidence IDs and SHA-256 | Broader validation, corpus, normalized browser/proxy input |
 | PCAP / PCAPNG | Partial | Classic PCAP 2.4 framing with bounded Ethernet/VLAN, BSD DLT_NULL, Linux cooked, raw-IP, IPv4/IPv6 endpoint and TCP/UDP port metadata | PCAPNG, IPv6 extension traversal, reassembly, checksums, application protocols and live capture remain unsupported |
-| Firmware and filesystems | Partial | Raw CPIO newc/CRC-newc metadata parser with bounded file ranges, CRC-newc checksum verification and path-safety inventory; no extraction | GZIP wrappers, TAR, SquashFS, cramfs, ext, UBI/UBIFS, boot images and device-tree parsers |
+| Firmware and filesystems | Partial | Raw CPIO newc/CRC-newc and USTAR/PAX/GNU TAR metadata parsers with bounded file ranges, checksum validation and path-safety inventory; GZIP wrappers validate CRC/ISIZE and can parse nested CPIO/TAR; no extraction | Sparse TAR maps, SquashFS, cramfs, ext, UBI/UBIFS, boot images and device-tree parsers |
 | Evidence investigation workflows | Partial | Reports, ledger and report comparison | Case store, finding lifecycle, evidence graph and case bundles |
 | Recorded behavior replay | Planned | No event trace or replay runtime | Versioned trace schema and deterministic test-environment replay |
 | AI / RL environments | Planned | No environment adapter/training integration | Allowlisted observation/action API and replay/permission gates |

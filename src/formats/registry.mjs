@@ -1,5 +1,22 @@
 // JavaScript, src/formats/registry.mjs, Node.js 20+, signature-based format registry.
 
+function matches_ustar(buffer) {
+  if (buffer.length < 512) return false;
+  const magic = buffer.toString('ascii', 257, 263);
+  if (magic !== 'ustar\0' && magic !== 'ustar ') return false;
+  const raw = buffer.toString('ascii', 148, 156).replace(/\0.*$/s, '').trim();
+  if (!/^[0-7]+$/.test(raw)) return false;
+  const expected = Number.parseInt(raw, 8);
+  let unsigned = 0;
+  let signed = 0;
+  for (let i = 0; i < 512; i += 1) {
+    const value = i >= 148 && i < 156 ? 0x20 : buffer[i];
+    unsigned += value;
+    signed += value > 127 ? value - 256 : value;
+  }
+  return expected === unsigned || expected === signed;
+}
+
 const SIGNATURES = [
   { format: 'ELF', description: 'Executable and Linkable Format', matches: b => b.length >= 4 && b.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46])) },
   { format: 'PE', description: 'Portable Executable / COFF', matches: b => b.length >= 2 && b[0] === 0x4d && b[1] === 0x5a },
@@ -14,6 +31,7 @@ const SIGNATURES = [
   { format: 'SQLite', description: 'SQLite database', matches: b => b.length >= 16 && b.subarray(0, 16).toString('ascii') === 'SQLite format 3\0' },
   { format: 'GZIP', description: 'GZIP compressed stream', matches: b => b.length >= 2 && b[0] === 0x1f && b[1] === 0x8b },
   { format: 'CPIO newc', description: 'CPIO newc or CRC-newc archive', matches: b => b.length >= 6 && ['070701', '070702'].includes(b.subarray(0, 6).toString('ascii')) },
+  { format: 'TAR', description: 'USTAR-compatible archive', matches: matches_ustar },
 ];
 
 export function detect_format(buffer) {
