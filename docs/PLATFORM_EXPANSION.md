@@ -45,32 +45,25 @@ Acceptance: benign PE/ELF/Mach-O fixtures across x86/x64/ARM/AArch64; malformed-
 ## Workstream 2 — JavaScript, Electron and .NET
 
 **JavaScript / TypeScript**
-- Add a parser-backed AST adapter for selected syntax. Record parser/version and unsupported syntax.
-- Resolve package exports, import maps, dynamic imports, CommonJS, workers, source maps and generated bundles only where fixtures demonstrate behavior.
-- Map definitions, references, call candidates, event handlers, URL construction, storage use and process/child-process APIs to source locations.
-- Keep regex findings low-confidence until AST or data-flow evidence supports stronger conclusions.
+- Implemented first slice: bounded lexical tokenizer for static imports, re-exports, literal require/import calls and declaration candidates, integrated into project indexing.
+- Remaining: full ECMAScript/TypeScript AST, scopes, type/data-flow, source maps and compiler-backed resolution.
 
 **Electron**
-- Detect Electron projects from dependency and configuration evidence.
-- Separate main, preload, renderer and utility-process contexts.
-- Review context isolation, node integration, sandbox settings, navigation/window creation, IPC sender validation, preload bridge exposure, remote content and permission handling.
-- Treat configuration findings as review leads, not proof of exploitability.
-- Dynamic observation requires an explicitly launched disposable profile and bounded permissions.
+- Implemented first slice: bounded static project triage identifies Electron metadata/source signals and direct literal risky webPreferences settings with file/line evidence.
+- Remaining: parser-backed AST, main/preload/renderer and IPC relationships, CSP/runtime correlation and browser observation. Findings remain review leads, not proof of exploitability.
 
 **.NET**
-- Implement bounded PE/CLI header and metadata-root parsing; tables, heaps, assembly/references, methods and signatures; managed-resource and strong-name structure triage.
-- Add IL decoding as a separate bounded layer and optional PDB identity/source-link analysis.
-- Integrate ILSpy or another compatible decompiler only after license/provider review. Decompiler output remains derived evidence.
-- Add NuGet project/lockfile relationships without conflating declared and resolved versions.
+- Implemented first slice: bounded PE/CLI header and CLR metadata-root/stream inventory, runtime flags and entry-point token.
+- Remaining: metadata table/heap decoding, IL method bodies/instructions, PDB/debug data and reviewed decompiler provider. Integrate ILSpy or another compatible decompiler only after license/provider review; output remains derived evidence.
 
 Acceptance: versioned .NET fixtures, malformed metadata heap/table indices, overflow/count ceilings, deterministic C#/IL locations, provider provenance and no execution of inspected assemblies.
 
 ## Workstream 3 — Android APK, AAB and device observations
 
 **Static package analysis**
-- Implemented first slice: bounded ZIP entry extraction with CRC32 checks, AndroidManifest.xml binary/plain XML metadata, DEX header/table/class descriptor inventory, native ABI library inventory and signer-related entry inventory.\n- Remaining: resources.arsc, intent-filter/component correlation, DEX instructions/method bodies, ODEX/VDEX, signer-block parsing and cryptographic certificate verification.
+- Implemented first slice: bounded ZIP entry extraction with CRC32 checks, AndroidManifest.xml binary/plain XML metadata, DEX header/link/data/table validation, class descriptor inventory, native ABI library inventory and signer-related entry inventory.
+- Remaining: resources.arsc, intent-filter/component correlation, DEX instructions/method bodies, ODEX/VDEX, signer-block parsing and cryptographic certificate verification.
 - AAB: bundle metadata and module/split inventory; do not assume an AAB is directly installable.
-- DEX/ART: header, string/type/proto/field/method/class tables, code-item framing, annotations and debug metadata with strict index/offset bounds.
 - Correlate manifest components and permissions with DEX references, exported components, intent filters, network-security configuration, native libraries and resources.
 - Add optional JADX and Apktool adapters using explicit executable paths and the bounded provider runner.
 
@@ -84,11 +77,11 @@ Acceptance: benign open-source APK fixtures, malformed ZIP/DEX/AXML corpus, spli
 
 ## Workstream 4 — Website structure, scripts and browser observations
 
-**Offline website inspection**\n- Implemented first slice: bounded HTML/HTM/XHTML page inventory, script/stylesheet/link/form/iframe/image references, selected metadata and heuristic security review findings. No page content is executed or fetched.\n- Remaining: standards-complete DOM, CSS and source-map analysis, richer asset graph and script-to-page relationship analysis.
-- Inventory HTML, CSS, JavaScript bundles, service workers, manifests, source maps, WebAssembly assets and static resources.
-- Parse HTML structure without executing scripts. Index forms, links, script imports, external origins, security-related meta tags and resource relationships.
+**Offline website inspection**
+- Implemented first slice: bounded HTML/HTM/XHTML page inventory, script/stylesheet/link/form/iframe/image references, selected metadata and heuristic security review findings. No page content is executed or fetched.
+- Remaining: standards-complete DOM, CSS and source-map analysis, richer asset graph and script-to-page relationship analysis.
+- Inventory service workers, web app manifests, source maps, WebAssembly assets and static resources in later bounded slices.
 - Correlate local source maps with generated bundles only when hashes and mapping ranges validate.
-- Add parser-backed JavaScript analysis for dangerous sinks/sources and trust boundaries; heuristic-only results remain provisional.
 
 **Browser observation**
 - Add an optional Playwright/CDP adapter after provider threat modeling. Use a disposable profile, explicit target allowlist, navigation/action/time ceilings and download restrictions.
