@@ -54,7 +54,8 @@ function entry_type(mode) {
   }
 }
 
-function path_safety(name) {
+function path_safety(name, name_encoding_valid = true) {
+  if (!name_encoding_valid) return { safe: false, reason: 'non-utf8-name' };
   const slash_name = name.replace(/\\/g, '/');
   const segments = slash_name.split('/');
   const normalized = path.posix.normalize(slash_name);
@@ -117,9 +118,9 @@ export function parse_cpio(buffer, options = {}) {
     reader.require(name_offset, fields.namesize, 'CPIO filename');
     const name_bytes = reader.bytes(name_offset, fields.namesize, 'CPIO filename');
     if (name_bytes[name_bytes.length - 1] !== 0 || name_bytes.subarray(0, -1).includes(0)) invalid('ORIX_CPIO_BAD_NAME_TERMINATOR', 'CPIO filename must contain exactly one trailing NUL byte', { offset, namesize: fields.namesize });
-    let name;
-    try { name = new TextDecoder('utf-8', { fatal: true }).decode(name_bytes.subarray(0, -1)); }
-    catch { invalid('ORIX_CPIO_BAD_NAME_ENCODING', 'CPIO filename is not valid UTF-8', { offset }); }
+    const raw_name = name_bytes.subarray(0, -1);
+    const name = raw_name.toString('utf8');
+    const name_encoding_valid = Buffer.from(name, 'utf8').equals(raw_name);
     const data_offset = align4(name_offset + fields.namesize);
     if (fields.filesize > limits.max_entry_bytes) invalid('ORIX_CPIO_ENTRY_LIMIT', 'CPIO entry exceeds the configured per-entry data limit', { name, size: fields.filesize, limit: limits.max_entry_bytes });
     if (fields.filesize > limits.max_total_data_bytes - total_data_bytes) invalid('ORIX_CPIO_TOTAL_DATA_LIMIT', 'CPIO declared file data exceeds the aggregate byte limit', { name, total_data_bytes, size: fields.filesize, limit: limits.max_total_data_bytes });
@@ -138,7 +139,7 @@ export function parse_cpio(buffer, options = {}) {
       const actual = byte_sum(buffer, data_offset, fields.filesize);
       if (actual !== fields.check) invalid('ORIX_CPIO_CHECKSUM_MISMATCH', 'CPIO CRC variant entry byte-sum does not match the header check field', { name, expected: fields.check, actual });
     }
-    const safety = path_safety(name);
+    const safety = path_safety(name, name_encoding_valid);
     if (!safety.safe) unsafe_entries.push({ name, reason: safety.reason });
     if (known.has(name)) duplicates.push(name);
     known.add(name);
@@ -148,6 +149,7 @@ export function parse_cpio(buffer, options = {}) {
     if (type === 'symlink') symlinks += 1;
     entries.push({
       name,
+      name_encoding_valid,
       normalized_path: path.posix.normalize(name.replace(/\\/g, '/')),
       safe_path: safety.safe,
       unsafe_reason: safety.reason,
