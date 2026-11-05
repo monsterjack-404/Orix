@@ -1,4 +1,5 @@
 // JavaScript, tests/helpers.mjs, Node.js 20+, deterministic binary fixture builders.
+import { createHash } from 'node:crypto';
 import { deflateRawSync } from 'node:zlib';
 
 export function create_pe_fixture({ is_64 = false } = {}) {
@@ -183,13 +184,25 @@ export function create_zip_entries(entries) {
   return Buffer.concat([...local_parts, central_bytes, eocd]);
 }
 
+function finalize_dex_integrity(buffer) {
+  createHash('sha1').update(buffer.subarray(32)).digest().copy(buffer, 12);
+  let a = 1;
+  let b = 0;
+  for (let i = 12; i < buffer.length; i += 1) {
+    a = (a + buffer[i]) % 65521;
+    b = (b + a) % 65521;
+  }
+  buffer.writeUInt32LE(((b << 16) | a) >>> 0, 8);
+  return buffer;
+}
+
 export function create_minimal_dex_fixture() {
   const buffer = Buffer.alloc(0x70);
   buffer.write('dex\n039\0', 0, 'binary');
   buffer.writeUInt32LE(buffer.length, 0x20);
   buffer.writeUInt32LE(0x70, 0x24);
   buffer.writeUInt32LE(0x12345678, 0x28);
-  return buffer;
+  return finalize_dex_integrity(buffer);
 }
 
 
@@ -201,6 +214,8 @@ export function create_dex_class_fixture(descriptor = 'Lcom/example/App;') {
   buffer.writeUInt32LE(buffer.length, 0x20);
   buffer.writeUInt32LE(0x70, 0x24);
   buffer.writeUInt32LE(0x12345678, 0x28);
+  buffer.writeUInt32LE(buffer.length - string_data_offset, 0x68);
+  buffer.writeUInt32LE(string_data_offset, 0x6c);
   buffer.writeUInt32LE(1, 0x38);
   buffer.writeUInt32LE(0x70, 0x3c);
   buffer.writeUInt32LE(1, 0x40);
@@ -220,5 +235,5 @@ export function create_dex_class_fixture(descriptor = 'Lcom/example/App;') {
   buffer.writeUInt8(text.length, string_data_offset);
   text.copy(buffer, string_data_offset + 1);
   buffer.writeUInt8(0, string_data_offset + 1 + text.length);
-  return buffer;
+  return finalize_dex_integrity(buffer);
 }

@@ -23,6 +23,21 @@ test('APK parser inventories plain XML manifest metadata without executing conte
   assert.equal(parsed.signing_metadata.signature_verified, false);
 });
 
+test('APK parser verifies DEX Adler32 and SHA-1 integrity fields', () => {
+  const parsed = parse_apk(apk_fixture({ dex: create_minimal_dex_fixture() }));
+  assert.equal(parsed.dex[0].integrity.adler32.valid, true);
+  assert.equal(parsed.dex[0].integrity.sha1.valid, true);
+});
+
+test('APK parser reports DEX integrity mismatches without confusing them with publisher trust', () => {
+  const dex = create_dex_class_fixture();
+  dex[0x99] ^= 0x01;
+  const parsed = parse_apk(apk_fixture({ dex }));
+  assert.equal(parsed.dex[0].integrity.adler32.valid, false);
+  assert.equal(parsed.dex[0].integrity.sha1.valid, false);
+  assert.equal(parsed.signing_metadata.signature_verified, false);
+});
+
 test('APK parser reads bounded DEX header and reports class inventory counts', () => {
   const parsed = parse_apk(apk_fixture({ dex: create_minimal_dex_fixture() }));
   assert.equal(parsed.dex_file_count, 1);
