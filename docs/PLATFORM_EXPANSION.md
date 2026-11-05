@@ -25,7 +25,7 @@
 | Android | Partial | Bounded APK ZIP entry reads with CRC32 validation, binary/plain XML manifest metadata, DEX header/link/data/table validation, class descriptors, native ABI and signer-entry inventory | DEX bytecode/methods, resources.arsc, intent filters, cryptographic signer verification, AAB and device/runtime observations |
 | Website and browser | Partial / planned | Offline HTML structure, script/style/link/form/iframe inventory and heuristic review findings; offline HAR 1.2 analysis | Standards-complete DOM/CSS/source-map analysis, live browser observation, console/network trace and screenshots |
 | Network traces | Partial | Offline HAR 1.2 metadata analysis; no PCAP/PCAPNG parser or live packet capture |
-| Firmware | Planned | No firmware filesystem or firmware-specific parser is shipped |
+| Firmware | Partial | Bounded raw CPIO newc/CRC-newc archive metadata parser, path-safety and duplicate inventory, CRC-newc checksum verification; no extraction | TAR/GZIP wrappers, SquashFS, cramfs, ext, UBI/UBIFS, boot images, device-tree blobs and filesystem semantics |
 | Evidence and workflows | Partial | Reports, evidence records, JSONL hash chain, comparisons and MCP/CLI; no relational case store or cross-case evidence graph |
 | AI/RL environments | Planned | No behavior-recording format, replay engine, environment adapter or RL training runtime |
 
@@ -157,7 +157,7 @@ Acceptance: deterministic local fixtures, replay-equivalence checks, state-reset
 | P2 | Android APK/DEX/AXML static analysis | Resource, intent-filter, DEX bytecode and signer verification slices; current metadata parser is partial |
 | P2 | .NET PE/CLI metadata and IL indexing | Metadata tables/heaps, IL indexing and managed assembly corpus; current header/stream parser is partial |
 | P3 | Offline website inspection and browser adapter | Standards-complete DOM/CSS/source-map analysis and separately authorized Playwright/CDP observation |
-| P3 | Firmware metadata/filesystem parser slices | Format corpus, extraction safety and adversarial tests |
+| P3 | Firmware metadata/filesystem parser slices | Extend beyond the implemented CPIO newc slice with compressed wrappers, filesystem superblocks and extraction-safety tests |
 | P3 | PCAP/PCAPNG metadata analysis | Golden captures, truncation/fuzz tests and payload privacy contract |
 | P4 | SQLite case store and evidence graph | Migrations, recovery, portable bundle and tamper tests |
 | P5 | Behavior recording and deterministic replay | Replay-equivalence, reset and permission-denial tests |
