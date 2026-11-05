@@ -44,7 +44,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | PNG | Partial | Bounded chunk structure, IHDR, ordering, palette/transparency constraints and CRC budget | IDAT decompression, scanline and pixel decoding, color management |
 | JPEG | Signature only | SOI recognition | Marker/segment parser |
 | SQLite | Signature only | Database signature recognition | Page/schema/WAL parser |
-| GZIP | Signature only | Magic recognition | Header/trailer and bounded decompression |
+| GZIP | Partial | Bounded DEFLATE member decompression, optional header CRC16, trailer CRC32/ISIZE validation, concatenated members and nested CPIO parsing | Other compression methods and arbitrary nested-format recursion |
 | Parser dispatch | Implemented | Parsed/rejected/not-supported status | Capability details and parser version metadata |
 | Binary reader | Implemented | Bounds-checked reads and safe ranges | Continue fuzz/differential testing |
 | Parser resource limits | Partial | Count/range ceilings across current parsers | Per-format aggregate CPU/memory budgets and coverage |
