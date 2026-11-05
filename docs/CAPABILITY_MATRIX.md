@@ -161,7 +161,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Android APK / manifest / DEX | Partial | APK detection from validated ZIP central directory, bounded stored/raw-DEFLATE entry reads, binary/plain XML manifest metadata, DEX header/table and class descriptor inventory, native ABI library inventory | DEX instruction/method analysis, resources and intent-filter resolution, APK signing verification, runtime/device observations |
 | Android App Bundle (AAB) | Planned | No AAB bundle-module or bundle-metadata parser | Bundle manifest/resource inspection and split-APK relationship analysis |
 | Android device observations | Planned | No ADB/emulator/Frida provider | Explicit device approval, scope, capture budgets and cleanup |
-| Website structure | Planned | No dedicated HTML/DOM/source-map analyzer | Offline asset graph and static script analysis |
+| Website structure | Partial | Bounded offline HTML page, script, stylesheet, link, form, iframe and metadata inventory with heuristic review findings | Standards-complete DOM, CSS/source-map analysis, script execution and browser observation |
 | Browser observations | Planned | No live browser provider | Disposable Playwright/CDP session and local fixture corpus |
 | HAR network analysis | Implemented | Bounded offline HAR 1.2 metadata parser, CLI/API/MCP, evidence IDs and SHA-256 | Broader validation, corpus, normalized browser/proxy input |
 | PCAP / PCAPNG | Planned | No packet capture parser or live capture | Bounded metadata/flow decoder; payload inspection remains separate |

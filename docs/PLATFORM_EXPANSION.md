@@ -20,10 +20,10 @@
 |---|---|---|
 | Native formats | Partial | PE, ELF, Mach-O, universal Mach-O and WebAssembly have bounded structural parsers; no bundled general-purpose decompiler or runtime execution engine |
 | Optional reverse-engineering tools | Partial | Rizin version probe, imports, bounded function inventory, address-scoped disassembly and opt-in `rz-ghidra` pseudocode; no dedicated Ghidra/JADX/Apktool adapter yet |
-| JavaScript and source projects | Partial | Extension inventory, bounded manifests, regex-based import/symbol candidates and architecture graph; not a JavaScript AST or Electron-specific analyzer |
-| .NET | Planned | C# project files and NuGet metadata can be inventoried; PE/CLI metadata, CLR tables, IL, assemblies and PDB analysis are absent |
-| Android | Planned | ZIP metadata exists; APK manifests, DEX/ART, resources and device state are not decoded |
-| Website and browser | Partial / planned | Source inventory and offline HAR 1.2 analysis exist; no live browser observation, DOM snapshot or runtime trace |
+| JavaScript and source projects | Partial | Bounded JavaScript/TypeScript lexical import and declaration analysis, project graph and Electron static triage for direct literal webPreferences settings | Full ECMAScript/TypeScript AST, type/data-flow, IPC/preload/renderer runtime observation |
+| .NET | Partial | PE/CLI header, CLR runtime flags, entry-point token and bounded metadata stream inventory | Metadata tables/heaps, IL bodies/instructions, PDB/debug data and decompilation |
+| Android | Partial | Bounded APK ZIP entry reads with CRC32 validation, binary/plain XML manifest metadata, DEX header/link/data/table validation, class descriptors, native ABI and signer-entry inventory | DEX bytecode/methods, resources.arsc, intent filters, cryptographic signer verification, AAB and device/runtime observations |
+| Website and browser | Partial / planned | Offline HTML structure, script/style/link/form/iframe inventory and heuristic review findings; offline HAR 1.2 analysis | Standards-complete DOM/CSS/source-map analysis, live browser observation, console/network trace and screenshots |
 | Network traces | Partial | Offline HAR 1.2 metadata analysis; no PCAP/PCAPNG parser or live packet capture |
 | Firmware | Planned | No firmware filesystem or firmware-specific parser is shipped |
 | Evidence and workflows | Partial | Reports, evidence records, JSONL hash chain, comparisons and MCP/CLI; no relational case store or cross-case evidence graph |
@@ -45,32 +45,25 @@ Acceptance: benign PE/ELF/Mach-O fixtures across x86/x64/ARM/AArch64; malformed-
 ## Workstream 2 — JavaScript, Electron and .NET
 
 **JavaScript / TypeScript**
-- Add a parser-backed AST adapter for selected syntax. Record parser/version and unsupported syntax.
-- Resolve package exports, import maps, dynamic imports, CommonJS, workers, source maps and generated bundles only where fixtures demonstrate behavior.
-- Map definitions, references, call candidates, event handlers, URL construction, storage use and process/child-process APIs to source locations.
-- Keep regex findings low-confidence until AST or data-flow evidence supports stronger conclusions.
+- Implemented first slice: bounded lexical tokenizer for static imports, re-exports, literal require/import calls and declaration candidates, integrated into project indexing.
+- Remaining: full ECMAScript/TypeScript AST, scopes, type/data-flow, source maps and compiler-backed resolution.
 
 **Electron**
-- Detect Electron projects from dependency and configuration evidence.
-- Separate main, preload, renderer and utility-process contexts.
-- Review context isolation, node integration, sandbox settings, navigation/window creation, IPC sender validation, preload bridge exposure, remote content and permission handling.
-- Treat configuration findings as review leads, not proof of exploitability.
-- Dynamic observation requires an explicitly launched disposable profile and bounded permissions.
+- Implemented first slice: bounded static project triage identifies Electron metadata/source signals and direct literal risky webPreferences settings with file/line evidence.
+- Remaining: parser-backed AST, main/preload/renderer and IPC relationships, CSP/runtime correlation and browser observation. Findings remain review leads, not proof of exploitability.
 
 **.NET**
-- Implement bounded PE/CLI header and metadata-root parsing; tables, heaps, assembly/references, methods and signatures; managed-resource and strong-name structure triage.
-- Add IL decoding as a separate bounded layer and optional PDB identity/source-link analysis.
-- Integrate ILSpy or another compatible decompiler only after license/provider review. Decompiler output remains derived evidence.
-- Add NuGet project/lockfile relationships without conflating declared and resolved versions.
+- Implemented first slice: bounded PE/CLI header and CLR metadata-root/stream inventory, runtime flags and entry-point token.
+- Remaining: metadata table/heap decoding, IL method bodies/instructions, PDB/debug data and reviewed decompiler provider. Integrate ILSpy or another compatible decompiler only after license/provider review; output remains derived evidence.
 
 Acceptance: versioned .NET fixtures, malformed metadata heap/table indices, overflow/count ceilings, deterministic C#/IL locations, provider provenance and no execution of inspected assemblies.
 
 ## Workstream 3 — Android APK, AAB and device observations
 
 **Static package analysis**
-- APK: bounded ZIP inventory, AndroidManifest.xml binary XML decoder, resources.arsc index, DEX/ODEX/VDEX parsing, native library/ABI inventory, signer-block structure and certificate metadata.
+- Implemented first slice: bounded ZIP entry extraction with CRC32 checks, AndroidManifest.xml binary/plain XML metadata, DEX header/link/data/table validation, class descriptor inventory, native ABI library inventory and signer-related entry inventory.
+- Remaining: resources.arsc, intent-filter/component correlation, DEX instructions/method bodies, ODEX/VDEX, signer-block parsing and cryptographic certificate verification.
 - AAB: bundle metadata and module/split inventory; do not assume an AAB is directly installable.
-- DEX/ART: header, string/type/proto/field/method/class tables, code-item framing, annotations and debug metadata with strict index/offset bounds.
 - Correlate manifest components and permissions with DEX references, exported components, intent filters, network-security configuration, native libraries and resources.
 - Add optional JADX and Apktool adapters using explicit executable paths and the bounded provider runner.
 
@@ -85,10 +78,10 @@ Acceptance: benign open-source APK fixtures, malformed ZIP/DEX/AXML corpus, spli
 ## Workstream 4 — Website structure, scripts and browser observations
 
 **Offline website inspection**
-- Inventory HTML, CSS, JavaScript bundles, service workers, manifests, source maps, WebAssembly assets and static resources.
-- Parse HTML structure without executing scripts. Index forms, links, script imports, external origins, security-related meta tags and resource relationships.
+- Implemented first slice: bounded HTML/HTM/XHTML page inventory, script/stylesheet/link/form/iframe/image references, selected metadata and heuristic security review findings. No page content is executed or fetched.
+- Remaining: standards-complete DOM, CSS and source-map analysis, richer asset graph and script-to-page relationship analysis.
+- Inventory service workers, web app manifests, source maps, WebAssembly assets and static resources in later bounded slices.
 - Correlate local source maps with generated bundles only when hashes and mapping ranges validate.
-- Add parser-backed JavaScript analysis for dangerous sinks/sources and trust boundaries; heuristic-only results remain provisional.
 
 **Browser observation**
 - Add an optional Playwright/CDP adapter after provider threat modeling. Use a disposable profile, explicit target allowlist, navigation/action/time ceilings and download restrictions.
@@ -160,10 +153,10 @@ Acceptance: deterministic local fixtures, replay-equivalence checks, state-reset
 | P0 | HAR analysis and evidence contract | Unit/integration tests, CLI/MCP parity, docs and main CI |
 | P1 | Normalized evidence/address/finding contracts | Schemas, migration and provenance tests |
 | P1 | Rizin expansion and native parser gaps | Golden fixtures, provider conformance and current CI |
-| P2 | JavaScript AST and Electron intelligence | AST fixtures, IPC/preload tests and confidence labels |
-| P2 | Android APK/DEX/AXML static analysis | Benign corpus, bounds/fuzz tests and provider provenance |
-| P2 | .NET PE/CLI metadata and IL indexing | Managed assembly corpus and metadata fuzz tests |
-| P3 | Offline website inspection and browser adapter | Local-only fixtures, profile isolation and capture budgets |
+| P2 | JavaScript AST and Electron intelligence | AST fixtures, IPC/preload tests and confidence labels; current lexical/Electron triage is partial |
+| P2 | Android APK/DEX/AXML static analysis | Resource, intent-filter, DEX bytecode and signer verification slices; current metadata parser is partial |
+| P2 | .NET PE/CLI metadata and IL indexing | Metadata tables/heaps, IL indexing and managed assembly corpus; current header/stream parser is partial |
+| P3 | Offline website inspection and browser adapter | Standards-complete DOM/CSS/source-map analysis and separately authorized Playwright/CDP observation |
 | P3 | Firmware metadata/filesystem parser slices | Format corpus, extraction safety and adversarial tests |
 | P3 | PCAP/PCAPNG metadata analysis | Golden captures, truncation/fuzz tests and payload privacy contract |
 | P4 | SQLite case store and evidence graph | Migrations, recovery, portable bundle and tamper tests |

@@ -365,3 +365,17 @@ test('project intelligence rejects zero Git limits before calling the Git reader
     /Invalid project limit: max_git_refs/,
   );
 }));
+
+
+test('project intelligence integrates offline website structure and findings', async () => with_project(async root => {
+  await mkdir(path.join(root, 'assets'), { recursive: true });
+  await writeFile(path.join(root, 'index.html'), '<html lang="en"><head><title>Project site</title><script src="./assets/app.js"></script></head><body><a href="javascript:alert(1)">bad</a></body></html>');
+  await writeFile(path.join(root, 'assets', 'app.js'), 'void 0;');
+  const report = await scan_project(root);
+  assert.equal(report.website.detected, true);
+  assert.equal(report.website.summary.pages_analyzed, 1);
+  assert.equal(report.website.pages[0].title, 'Project site');
+  assert.ok(report.summary.website_findings >= 1);
+  assert.ok(report.findings.some(item => item.rule_id === 'ORIX_WEB_JAVASCRIPT_URL'));
+  assert.match(render_project_markdown(report), /Website pages/);
+}));

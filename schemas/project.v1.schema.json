@@ -53,6 +53,10 @@
         "electron_findings": {
           "type": "integer",
           "minimum": 0
+        },
+        "website_findings": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
@@ -324,6 +328,71 @@
         "analysis_truncated_files": {
           "type": "integer",
           "minimum": 0
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "website": {
+      "type": "object",
+      "required": [
+        "detected",
+        "confidence",
+        "summary",
+        "pages",
+        "findings",
+        "coverage",
+        "limitations"
+      ],
+      "properties": {
+        "detected": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "enum": [
+            "html-files-present",
+            "not-detected"
+          ]
+        },
+        "summary": {
+          "type": "object",
+          "required": [
+            "pages_seen",
+            "pages_analyzed",
+            "script_references",
+            "inline_scripts",
+            "stylesheets",
+            "forms",
+            "iframes",
+            "references_seen",
+            "findings",
+            "findings_truncated"
+          ]
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "required": [
+            "complete",
+            "truncated",
+            "truncated_pages",
+            "limits"
+          ]
         },
         "limitations": {
           "type": "array",

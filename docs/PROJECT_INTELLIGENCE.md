@@ -29,6 +29,16 @@ Project scans inspect JavaScript and TypeScript source for Electron module impor
 
 This is bounded lexical triage, not a complete JavaScript parser or Electron runtime model. Only direct literal boolean properties inside a `webPreferences` object are inspected; nested properties and computed values are not interpreted. Comments, ordinary strings, regular-expression bodies and template literal bodies are treated as opaque. Each source file is capped at 100,000 tokens, and the report records how many files hit that cap in `electron.analysis_truncated_files`. Process roles inferred from file names are candidates only. Findings require manual review and are not exploitability verdicts.
 
+## Website offline analysis
+
+Project scans identify HTML, HTM and XHTML files and build a bounded offline inventory of page titles/language, script and stylesheet references, links, forms, iframes, images and selected metadata. References are normalized against the scanned project without DNS or HTTP requests; query strings and fragments are not retained in reference records.
+
+Review findings include `javascript:` URLs, local references that escape the project root, plain-HTTP references and form actions, `_blank` links without `noopener`/`noreferrer`, inline event handlers and external scripts without an integrity attribute. These are triage leads, not exploitability or compliance verdicts.
+
+The tokenizer is a bounded lexical HTML scanner, not a standards-complete HTML5 parser or browser DOM. Scripts, stylesheets, templates and embedded documents are never executed or fetched. Default ceilings are 500 pages, 1 MiB per page, 20,000 tags per page, 100,000 attributes per page, 2,000 references per page and 500 findings. Truncation is reported in `website.coverage`.
+
+Live browser observation, DOM snapshots, console/network events, screenshots, storage inspection and runtime traces remain separate future provider capabilities requiring explicit scope and approval.
+
 ## Lockfile analysis
 
 The lockfile reader currently supports:
