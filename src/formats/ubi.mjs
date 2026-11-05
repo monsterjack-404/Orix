@@ -112,7 +112,7 @@ function parse_volume_table_copy(buffer, candidate, peb_size, total_pebs) {
       records.push({ volume_id: id, status: 'empty', crc_valid: true, stored_crc, calculated_crc });
       continue;
     }
-    if (reserved_pebs > total_pebs || alignment === 0 || alignment > leb_size || data_pad >= alignment ||
+    if (reserved_pebs > total_pebs || alignment === 0 || alignment > leb_size || data_pad >= alignment || name_length === 0 ||
         data_pad !== (leb_size % alignment) || ![1, 2].includes(volume_type_id) ||
         update_marker > 1 || name_length > 127) {
       reject('ORIX_UBI_VTBL_INVALID_RECORD', 'UBI volume-table record fields are outside supported bounds', {
@@ -166,6 +166,8 @@ function decode_volume_table(buffer, candidates, peb_size) {
   if (candidates.length === 0) {
     reject('ORIX_UBI_LAYOUT_VOLUME_MISSING', 'No UBI layout-volume PEB containing a volume-table copy was found');
   }
+  const data_offsets = new Set(candidates.map(candidate => candidate.data_offset));
+  if (data_offsets.size > 1) reject('ORIX_UBI_LAYOUT_DATA_OFFSET_MISMATCH', 'Layout-volume PEBs do not share a consistent data offset', { data_offsets: [...data_offsets] });
   const by_lnum = new Map();
   for (const candidate of candidates) {
     if (candidate.logical_eraseblock > 1) {
