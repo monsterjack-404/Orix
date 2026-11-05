@@ -181,6 +181,12 @@ function parse_dex(buffer, limits, name) {
   const header_size = reader.u32(0x24, true, 'DEX header size');
   const endian_tag = reader.u32(0x28, true, 'DEX endian tag');
   if (file_size !== buffer.length || header_size !== 0x70 || endian_tag !== 0x12345678) fail('ORIX_ANDROID_BAD_DEX_HEADER', 'DEX header size, file size or byte order is invalid', { name, file_size, actual_size: buffer.length, header_size, endian_tag });
+  const link_size = reader.u32(0x2c, true, 'DEX link size');
+  const link_offset = reader.u32(0x30, true, 'DEX link offset');
+  if ((link_size === 0 && link_offset !== 0) || (link_size > 0 && (link_offset < 0x70 || link_offset > buffer.length || link_size > buffer.length - link_offset))) fail('ORIX_ANDROID_DEX_LINK_RANGE', 'DEX link section has inconsistent or out-of-file bounds', { name, link_size, link_offset });
+  const data_size = reader.u32(0x68, true, 'DEX data size');
+  const data_offset = reader.u32(0x6c, true, 'DEX data offset');
+  if ((data_size === 0 && data_offset !== 0) || (data_size > 0 && (data_offset < 0x70 || data_offset > buffer.length || data_size > buffer.length - data_offset))) fail('ORIX_ANDROID_DEX_DATA_RANGE', 'DEX data section has inconsistent or out-of-file bounds', { name, data_size, data_offset });
   const tables = {};
   for (const [key, size_at, offset_at, width] of [['strings',0x38,0x3c,4],['types',0x40,0x44,4],['protos',0x48,0x4c,12],['fields',0x50,0x54,8],['methods',0x58,0x5c,8],['classes',0x60,0x64,32]]) {
     const count = reader.u32(size_at, true, key + ' count');
@@ -290,6 +296,6 @@ export function parse_apk(buffer, options = {}) {
     manifest, dex, dex_file_count: dex.length, class_count: dex.reduce((sum, item) => sum + item.classes.length, 0),
     native_libraries, signing_metadata: { entries: signing_entries, signature_verified: false },
     extraction: { decompressed_bytes: limits.max_total_extract_bytes - budget, remaining_budget: budget, content_executed: false },
-    limitations: ['APK signing blocks, v1/v2/v3/v4 cryptographic verification and certificate-chain trust are not verified.', 'DEX method bodies, bytecode instructions, annotations, debug info and control flow are not decoded.', 'Manifest component intent filters and resource references are not resolved.', 'Only stored and raw-DEFLATE ZIP entries are decompressed; unsupported methods are rejected.', 'This is bounded static metadata analysis, not Android runtime behavior or malware classification.'],
+    limitations: ['APK signing blocks, v1/v2/v3/v4 cryptographic verification and certificate-chain trust are not verified.', 'DEX method bodies, bytecode instructions, annotations, debug info and control flow are not decoded.', 'DEX SHA-1 signature and Adler32 checksum fields are reported or retained as metadata but are not cryptographically verified.', 'Manifest component intent filters and resource references are not resolved.', 'Only stored and raw-DEFLATE ZIP entries are decompressed; unsupported methods are rejected.', 'Plain-text XML manifest extraction is conservative pattern matching, not a complete XML parser.', 'This is bounded static metadata analysis, not Android runtime behavior or malware classification.'],
   };
 }
