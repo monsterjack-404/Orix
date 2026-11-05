@@ -238,6 +238,7 @@ export function parse_tar(buffer, options = {}) {
       const effective_pax = { ...global_pax, ...local_pax };
       const path_value = effective_pax.path ?? long_name ?? header_path;
       const link_value = effective_pax.linkpath ?? long_link ?? link_field.value;
+      if (Buffer.byteLength(path_value, 'utf8') > limits.max_name_bytes || Buffer.byteLength(link_value, 'utf8') > limits.max_name_bytes) invalid('ORIX_TAR_NAME_LIMIT', 'TAR path or link name exceeds configured byte limit', { offset, path_bytes: Buffer.byteLength(path_value, 'utf8'), link_bytes: Buffer.byteLength(link_value, 'utf8'), limit: limits.max_name_bytes });
       const path_valid = effective_pax.path !== undefined || long_name !== null ? true : header_path_valid;
       const safety = path_safety(path_value, path_valid);
       if (!safety.safe) unsafe_entries.push({ name: path_value, reason: safety.reason });
