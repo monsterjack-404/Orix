@@ -59,6 +59,8 @@ test('website analysis identifies local references that escape the project root'
   const html = '<html><body><a href="../../outside.html">outside</a></body></html>';
   const report = analyze_website_project([{ path: 'pages/index.html', text: html, size_bytes: html.length }]);
   assert.ok(report.findings.some(item => item.rule_id === 'ORIX_WEB_PATH_ESCAPE_REFERENCE'));
+  const encoded = analyze_website_project([{ path: 'pages/index.html', text: '<a href="..%5c..%5coutside.html">encoded</a>', size_bytes: 45 }]);
+  assert.ok(encoded.findings.some(item => item.rule_id === 'ORIX_WEB_PATH_ESCAPE_REFERENCE'));
 });
 
 test('website analysis marks page, tag and finding limits as incomplete', () => {
