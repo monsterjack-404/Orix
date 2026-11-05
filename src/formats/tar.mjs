@@ -153,6 +153,7 @@ export function parse_tar(buffer, options = {}) {
   const reader = new BinaryReader(buffer, { label: 'TAR archive' });
   const entries = [];
   const unsafe_entries = [];
+  const unsafe_link_targets = [];
   const duplicates = [];
   const known = new Set();
   const global_pax = {};
@@ -242,12 +243,20 @@ export function parse_tar(buffer, options = {}) {
       const path_valid = effective_pax.path !== undefined || long_name !== null ? true : header_path_valid;
       const safety = path_safety(path_value, path_valid);
       if (!safety.safe) unsafe_entries.push({ name: path_value, reason: safety.reason });
+      const link_valid = effective_pax.linkpath !== undefined || long_link !== null ? true : link_field.valid_utf8;
+      const link_safety = (typeflag === '1' || typeflag === '2')
+        ? path_safety(link_value, link_valid)
+        : { safe: true, reason: null };
+      if (!link_safety.safe) unsafe_link_targets.push({ name: path_value, link_name: link_value, reason: link_safety.reason });
       if (known.has(path_value)) duplicates.push(path_value);
       known.add(path_value);
       const type = entry_type(typeflag);
       entries.push({
         name: path_value,
         link_name: link_value || null,
+        link_target_encoding_valid: link_valid,
+        safe_link_target: link_safety.safe,
+        unsafe_link_reason: link_safety.reason,
         path_encoding_valid: path_valid,
         safe_path: safety.safe,
         unsafe_reason: safety.reason,
@@ -283,6 +292,7 @@ export function parse_tar(buffer, options = {}) {
     variant: 'ustar-compatible',
     entries,
     unsafe_entries,
+    unsafe_link_targets,
     duplicates,
     extension_headers,
     pax_records,
@@ -295,6 +305,7 @@ export function parse_tar(buffer, options = {}) {
       directories: entries.filter(entry => entry.type === 'directory').length,
       links: entries.filter(entry => entry.type === 'symlink' || entry.type === 'hardlink').length,
       unsafe_paths: unsafe_entries.length,
+      unsafe_link_targets: unsafe_link_targets.length,
       duplicate_paths: duplicates.length,
       total_data_bytes,
       total_metadata_bytes,
