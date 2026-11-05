@@ -114,7 +114,7 @@ export function build_capability_report({
       { id: 'website-structure-analysis', status: 'partial', boundary: 'Bounded offline HTML page, script, stylesheet, link, form, iframe and metadata inventory with heuristic security review leads; no standards-complete DOM, source-map analysis or live browser observation.' },
       { id: 'browser-observation', status: 'planned', boundary: 'No Playwright/CDP live browser observation provider is shipped.' },
       { id: 'network-har-analysis', status: 'implemented', boundary: 'Offline HAR 1.2 metadata analysis with bounded entries; payloads and header/query values are excluded, and captured traffic is not independently verified.' },
-      { id: 'pcap-network-analysis', status: 'planned', boundary: 'No PCAP/PCAPNG parser or live packet capture is shipped.' },
+      { id: 'pcap-network-analysis', status: 'partial', boundary: 'Classic PCAP 2.4 packet and endpoint metadata only; PCAPNG, IPv6 extension traversal, reassembly, checksums, application protocols, payload export and live capture are not implemented.' },
       { id: 'firmware-analysis', status: 'partial', boundary: 'Bounded raw CPIO newc/CRC-newc inventory and GZIP member decompression with CRC/ISIZE verification plus nested CPIO parsing are available; no general filesystem extraction or filesystem parser.' },
       { id: 'evidence-investigation-workflows', status: 'partial', boundary: 'Artifact evidence, hash-chained ledger and report comparison exist; no persistent case database or cross-case evidence graph.' },
       { id: 'recorded-behavior-replay', status: 'planned', boundary: 'No normalized behavior trace or deterministic replay engine is shipped.' },

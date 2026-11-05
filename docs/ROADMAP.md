@@ -44,7 +44,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 ## 0.4 — Structural Analysis Expansion
 
-**Status: PE, ELF, Mach-O and ZIP64 structural-analysis slices implemented; other format work remains planned.**
+**Status: PE, ELF, Mach-O, ZIP64, WebAssembly and classic PCAP 2.4 structural-analysis slices implemented; other format work remains planned.**
 
 - [x] PE import/export tables and file-backed RVA mapping, including named/ordinal imports, named exports and forwarded-export markers.
 - [x] PE resource directory traversal and WIN_CERTIFICATE record framing.
@@ -61,6 +61,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 - [x] Deterministic malformed-input mutation and truncation smoke corpus for all registered binary parsers.
 - [x] PDF classic xref tables, trailer metadata, bounded incremental /Prev chain, xref-stream recognition and indirect-object index with explicit active-content triage; compressed xref/object streams remain unsupported.
 - [x] Bounded structural indexing of WebAssembly function types, imports, exports, function/type indices, start function and code-body ranges, with vector/name limits and malformed-boundary tests.
+- [x] Classic PCAP 2.4 metadata parsing with endian/timestamp variants, bounded record and byte budgets, supported link-layer framing, IPv4/IPv6 endpoints and TCP/UDP ports; packet payloads are omitted.
 - Versioned JSON Schema documents and golden report fixtures.
 - [x] SARIF 2.1.0 export and baseline/current report comparison.
 - [x] SARIF 2.1.0 export for artifact and directory reports.

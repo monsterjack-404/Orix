@@ -6,6 +6,7 @@ import { parse_pe } from '../src/formats/pe.mjs';
 import { parse_elf } from '../src/formats/elf.mjs';
 import { parse_macho, parse_macho_fat } from '../src/formats/macho.mjs';
 import { parse_wasm } from '../src/formats/wasm.mjs';
+import { parse_pcap } from '../src/formats/pcap.mjs';
 import { analyze_known_format } from '../src/formats/index.mjs';
 import { create_elf_fixture, create_pe_fixture, create_wasm_fixture } from './helpers.mjs';
 
@@ -1136,4 +1137,282 @@ test('ZIP parser rejects invalid direct entry limits', async () => {
   for (const max_entries of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1_000_001]) {
     assert.throws(() => parse_zip(fixture, { max_entries }), /max_entries must be an integer/);
   }
+});
+
+
+function create_pcap_fixture({ little = true, nanoseconds = false, captured_length = 54, original_length = 54, fraction = 1234, ip_protocol = 6, fragment = 0 } = {}) {
+  const packet = Buffer.alloc(54);
+  packet.writeUInt16BE(0x0800, 12);
+  packet[14] = 0x45;
+  packet.writeUInt16BE(40, 16);
+  packet.writeUInt16BE(fragment, 20);
+  packet[22] = 64;
+  packet[23] = ip_protocol;
+  packet.set([192, 0, 2, 10], 26);
+  packet.set([198, 51, 100, 20], 30);
+  packet.writeUInt16BE(51515, 34);
+  packet.writeUInt16BE(443, 36);
+  const header = Buffer.alloc(24 + 16 + packet.length);
+  if (little) {
+    header.writeUInt32LE(nanoseconds ? 0xa1b23c4d : 0xa1b2c3d4, 0);
+    header.writeUInt16LE(2, 4); header.writeUInt16LE(4, 6);
+    header.writeUInt32LE(65535, 16); header.writeUInt32LE(1, 20);
+    header.writeUInt32LE(100, 24); header.writeUInt32LE(fraction, 28);
+    header.writeUInt32LE(captured_length, 32); header.writeUInt32LE(original_length, 36);
+  } else {
+    header.writeUInt32BE(nanoseconds ? 0xa1b23c4d : 0xa1b2c3d4, 0);
+    header.writeUInt16BE(2, 4); header.writeUInt16BE(4, 6);
+    header.writeUInt32BE(65535, 16); header.writeUInt32BE(1, 20);
+    header.writeUInt32BE(100, 24); header.writeUInt32BE(fraction, 28);
+    header.writeUInt32BE(captured_length, 32); header.writeUInt32BE(original_length, 36);
+  }
+  packet.copy(header, 40, 0, captured_length);
+  return header.subarray(0, 40 + captured_length);
+}
+
+
+function create_pcap_capture(packet, { little = true, nanoseconds = false, link_type = 1 } = {}) {
+  const capture = Buffer.alloc(40 + packet.length);
+  if (little) {
+    capture.writeUInt32LE(nanoseconds ? 0xa1b23c4d : 0xa1b2c3d4, 0);
+    capture.writeUInt16LE(2, 4);
+    capture.writeUInt16LE(4, 6);
+    capture.writeUInt32LE(65535, 16);
+    capture.writeUInt32LE(link_type, 20);
+    capture.writeUInt32LE(100, 24);
+    capture.writeUInt32LE(1234, 28);
+    capture.writeUInt32LE(packet.length, 32);
+    capture.writeUInt32LE(packet.length, 36);
+  } else {
+    capture.writeUInt32BE(nanoseconds ? 0xa1b23c4d : 0xa1b2c3d4, 0);
+    capture.writeUInt16BE(2, 4);
+    capture.writeUInt16BE(4, 6);
+    capture.writeUInt32BE(65535, 16);
+    capture.writeUInt32BE(link_type, 20);
+    capture.writeUInt32BE(100, 24);
+    capture.writeUInt32BE(1234, 28);
+    capture.writeUInt32BE(packet.length, 32);
+    capture.writeUInt32BE(packet.length, 36);
+  }
+  packet.copy(capture, 40);
+  return capture;
+}
+
+test('PCAP parser indexes classic little-endian Ethernet TCP metadata without payload export', () => {
+  const parsed = parse_pcap(create_pcap_fixture());
+  assert.equal(parsed.format, 'PCAP');
+  assert.equal(parsed.capture.packet_count, 1);
+  assert.equal(parsed.capture.byte_order, 'little-endian');
+  assert.equal(parsed.packets[0].network.protocol, 'IPv4');
+  assert.equal(parsed.packets[0].network.source, '192.0.2.10');
+  assert.equal(parsed.packets[0].network.destination, '198.51.100.20');
+  assert.equal(parsed.packets[0].network.transport.protocol, 'TCP');
+  assert.equal(parsed.packets[0].network.transport.source_port, 51515);
+  assert.equal(parsed.packets[0].network.transport.destination_port, 443);
+  assert.equal(Object.hasOwn(parsed.packets[0], 'payload'), false);
+});
+
+
+test('PCAP parser follows bounded 802.1Q VLAN encapsulation to IPv4 transport metadata', () => {
+  const original = create_pcap_fixture().subarray(40);
+  const vlan = Buffer.alloc(original.length + 4);
+  original.copy(vlan, 0, 0, 12);
+  vlan.writeUInt16BE(0x8100, 12);
+  vlan.writeUInt16BE(42, 14);
+  vlan.writeUInt16BE(0x0800, 16);
+  original.copy(vlan, 18, 14);
+  const parsed = parse_pcap(create_pcap_capture(vlan));
+  assert.equal(parsed.packets[0].network.protocol, 'IPv4');
+  assert.equal(parsed.packets[0].network.source, '192.0.2.10');
+  assert.equal(parsed.packets[0].network.transport.source_port, 51515);
+  assert.equal(parsed.packets[0].network.transport.destination_port, 443);
+});
+
+
+test('PCAP parser reads BSD DLT_NULL IPv4 family values in either host byte order', () => {
+  const ipv4 = create_pcap_fixture().subarray(40 + 14);
+  const little_family = Buffer.alloc(4 + ipv4.length);
+  little_family.writeUInt32LE(2, 0);
+  ipv4.copy(little_family, 4);
+  const little = parse_pcap(create_pcap_capture(little_family, { link_type: 0 }));
+  assert.equal(little.capture.link_type_name, 'NULL');
+  assert.equal(little.packets[0].network.protocol, 'IPv4');
+  assert.equal(little.packets[0].network.source, '192.0.2.10');
+
+  const big_family = Buffer.alloc(4 + ipv4.length);
+  big_family.writeUInt32BE(2, 0);
+  ipv4.copy(big_family, 4);
+  const big = parse_pcap(create_pcap_capture(big_family, { little: false, link_type: 0 }));
+  assert.equal(big.packets[0].network.protocol, 'IPv4');
+  assert.equal(big.packets[0].network.transport.destination_port, 443);
+});
+
+test('PCAP parser reads common BSD DLT_NULL IPv6 family variants', () => {
+  const ethernet = Buffer.alloc(14 + 40 + 4);
+  ethernet.writeUInt16BE(0x86dd, 12);
+  ethernet[14] = 0x60;
+  ethernet.writeUInt16BE(4, 18);
+  ethernet[20] = 6;
+  ethernet[21] = 64;
+  Buffer.from('20010db8000000000000000000000001', 'hex').copy(ethernet, 22);
+  Buffer.from('20010db8000000000000000000000002', 'hex').copy(ethernet, 38);
+  ethernet.writeUInt16BE(12345, 54);
+  ethernet.writeUInt16BE(443, 56);
+
+  const null_loopback = Buffer.alloc(4 + 44);
+  null_loopback.writeUInt32BE(30, 0);
+  ethernet.copy(null_loopback, 4, 14);
+  const parsed = parse_pcap(create_pcap_capture(null_loopback, { link_type: 0 }));
+  assert.equal(parsed.packets[0].network.protocol, 'IPv6');
+  assert.equal(parsed.packets[0].network.source, '2001:db8:0:0:0:0:0:1');
+  assert.equal(parsed.packets[0].network.transport.destination_port, 443);
+});
+
+test('PCAP parser classifies truncated and unsupported DLT_NULL family headers', () => {
+  const truncated = parse_pcap(create_pcap_capture(Buffer.alloc(2), { link_type: 0 }));
+  assert.equal(truncated.packets[0].network.status, 'truncated-null-header');
+  const unsupported = Buffer.alloc(4 + 40);
+  unsupported.writeUInt32LE(999, 0);
+  const report = parse_pcap(create_pcap_capture(unsupported, { link_type: 0 }));
+  assert.equal(report.packets[0].network.status, 'unsupported-null-family');
+});
+
+test('PCAP parser handles raw IPv4 and Linux cooked capture link headers', () => {
+  const raw_ip = create_pcap_fixture().subarray(40 + 14);
+  const raw = parse_pcap(create_pcap_capture(raw_ip, { link_type: 101 }));
+  assert.equal(raw.capture.link_type_name, 'Raw IP');
+  assert.equal(raw.packets[0].network.protocol, 'IPv4');
+  assert.equal(raw.packets[0].network.source, '192.0.2.10');
+
+  const cooked = Buffer.alloc(16 + raw_ip.length);
+  cooked.writeUInt16BE(0x0800, 14);
+  raw_ip.copy(cooked, 16);
+  const linux = parse_pcap(create_pcap_capture(cooked, { link_type: 113 }));
+  assert.equal(linux.capture.link_type_name, 'Linux cooked capture');
+  assert.equal(linux.packets[0].network.protocol, 'IPv4');
+  assert.equal(linux.packets[0].network.transport.destination_port, 443);
+});
+
+test('PCAP parser extracts IPv6 base-header endpoints and immediate TCP ports', () => {
+  const frame = Buffer.alloc(14 + 40 + 4);
+  frame.writeUInt16BE(0x86dd, 12);
+  frame[14] = 0x60;
+  frame.writeUInt16BE(4, 18);
+  frame[20] = 6;
+  frame[21] = 64;
+  Buffer.from('20010db8000000000000000000000001', 'hex').copy(frame, 22);
+  Buffer.from('20010db8000000000000000000000002', 'hex').copy(frame, 38);
+  frame.writeUInt16BE(12345, 54);
+  frame.writeUInt16BE(443, 56);
+  const parsed = parse_pcap(create_pcap_capture(frame));
+  assert.equal(parsed.packets[0].network.protocol, 'IPv6');
+  assert.equal(parsed.packets[0].network.source, '2001:db8:0:0:0:0:0:1');
+  assert.equal(parsed.packets[0].network.destination, '2001:db8:0:0:0:0:0:2');
+  assert.equal(parsed.packets[0].network.transport.protocol, 'TCP');
+  assert.equal(parsed.packets[0].network.transport.source_port, 12345);
+  assert.equal(parsed.packets[0].network.transport.destination_port, 443);
+});
+
+test('PCAP parser supports big-endian nanosecond timestamps', () => {
+  const parsed = parse_pcap(create_pcap_fixture({ little: false, nanoseconds: true, fraction: 999_999_999 }));
+  assert.equal(parsed.capture.byte_order, 'big-endian');
+  assert.equal(parsed.capture.timestamp_resolution, 'nanoseconds');
+  assert.equal(parsed.packets[0].timestamp_fraction, 999_999_999);
+});
+
+test('PCAP parser reports capture truncation and rejects malformed lengths', () => {
+  const parsed = parse_pcap(create_pcap_fixture({ captured_length: 40, original_length: 54 }));
+  assert.equal(parsed.packets[0].capture_truncated, true);
+  assert.throws(() => parse_pcap(create_pcap_fixture({ captured_length: 54, original_length: 40 })), error => error.code === 'ORIX_PCAP_INVALID_PACKET_LENGTH');
+});
+
+test('PCAP parser rejects invalid magic, timestamp fractions, truncated records and limits', () => {
+  const bad_magic = Buffer.alloc(24);
+  assert.throws(() => parse_pcap(bad_magic), error => error.code === 'ORIX_PCAP_BAD_MAGIC');
+  assert.throws(() => parse_pcap(create_pcap_fixture({ fraction: 1_000_000 })), error => error.code === 'ORIX_PCAP_INVALID_TIMESTAMP');
+  assert.throws(() => parse_pcap(create_pcap_fixture().subarray(0, 45)), error => error.code === 'ORIX_PCAP_TRUNCATED_PACKET_DATA');
+  assert.throws(() => parse_pcap(create_pcap_fixture(), { max_packets: 0 }), /max_packets must be/);
+});
+
+test('PCAP parser does not mislabel non-TCP/UDP bytes as transport ports', () => {
+  const parsed = parse_pcap(create_pcap_fixture({ ip_protocol: 1 }));
+  assert.equal(parsed.packets[0].network.transport.protocol, 'other');
+  assert.equal(parsed.packets[0].network.transport.source_port, null);
+  assert.equal(parsed.packets[0].network.transport.destination_port, null);
+});
+
+test('PCAP is registered for normal artifact inspection dispatch', () => {
+  const result = analyze_known_format(create_pcap_fixture());
+  assert.equal(result.detection.format, 'PCAP');
+  assert.equal(result.parser_status, 'parsed');
+  assert.equal(result.parsed.format, 'PCAP');
+});
+
+test('PCAP parser suppresses ports for first IPv4 fragments with the more-fragments flag', () => {
+  const parsed = parse_pcap(create_pcap_fixture({ fragment: 0x2000 }));
+  assert.equal(parsed.packets[0].network.fragmented, true);
+  assert.equal(parsed.packets[0].network.transport.source_port, null);
+  assert.equal(parsed.packets[0].network.transport.destination_port, null);
+});
+
+test('PCAP parser is available through the declared package subpath export', async () => {
+  const exported = await import('@orix/cli/formats/pcap');
+  assert.equal(exported.parse_pcap, parse_pcap);
+});
+
+
+// Additional cross-endian, legacy-linktype and malformed-boundary regressions.
+test('PCAP parser recognizes all four endian and timestamp magic variants', () => {
+  const little_nanoseconds = parse_pcap(create_pcap_fixture({ little: true, nanoseconds: true, fraction: 999_999_999 }));
+  const big_microseconds = parse_pcap(create_pcap_fixture({ little: false, nanoseconds: false, fraction: 999_999 }));
+  assert.equal(little_nanoseconds.capture.byte_order, 'little-endian');
+  assert.equal(little_nanoseconds.capture.timestamp_resolution, 'nanoseconds');
+  assert.equal(big_microseconds.capture.byte_order, 'big-endian');
+  assert.equal(big_microseconds.capture.timestamp_resolution, 'microseconds');
+});
+
+test('PCAP parser supports legacy DLT_RAW 12 and reports unknown link types', () => {
+  const raw_ip = create_pcap_fixture().subarray(40 + 14);
+  const legacy = parse_pcap(create_pcap_capture(raw_ip, { link_type: 12 }));
+  assert.equal(legacy.capture.link_type_name, 'Raw IP (legacy DLT_RAW)');
+  assert.equal(legacy.packets[0].network.protocol, 'IPv4');
+  const unknown = parse_pcap(create_pcap_capture(raw_ip, { link_type: 999 }));
+  assert.equal(unknown.packets[0].network.status, 'unsupported-link-type');
+});
+
+test('PCAP parser enforces aggregate byte and packet-size budgets and validates options', () => {
+  const fixture = create_pcap_fixture();
+  assert.throws(() => parse_pcap(fixture, null), /PCAP options must be an object/);
+  assert.throws(() => parse_pcap(fixture, []), /PCAP options must be an object/);
+  assert.throws(() => parse_pcap(fixture, { max_packet_bytes: 8 }), error => error.code === 'ORIX_PCAP_PACKET_SIZE_LIMIT');
+  assert.throws(() => parse_pcap(fixture, { max_total_packet_bytes: 8 }), error => error.code === 'ORIX_PCAP_TOTAL_BYTE_LIMIT');
+  assert.throws(() => parse_pcap(fixture, { max_total_packet_bytes: 0 }), /max_total_packet_bytes must be/);
+});
+
+test('PCAP parser rejects unsupported global versions and zero snapshot lengths', () => {
+  const bad_version = create_pcap_fixture();
+  bad_version.writeUInt16LE(3, 4);
+  assert.throws(() => parse_pcap(bad_version), error => error.code === 'ORIX_PCAP_UNSUPPORTED_VERSION');
+  const bad_snaplen = create_pcap_fixture();
+  bad_snaplen.writeUInt32LE(0, 16);
+  assert.throws(() => parse_pcap(bad_snaplen), error => error.code === 'ORIX_PCAP_INVALID_SNAPLEN');
+});
+
+test('PCAP parser does not infer ports through unsupported IPv6 extension headers', () => {
+  const frame = Buffer.alloc(14 + 40 + 8 + 4);
+  frame.writeUInt16BE(0x86dd, 12);
+  frame[14] = 0x60;
+  frame.writeUInt16BE(12, 18);
+  frame[20] = 0;
+  frame[21] = 64;
+  Buffer.from('20010db8000000000000000000000001', 'hex').copy(frame, 22);
+  Buffer.from('20010db8000000000000000000000002', 'hex').copy(frame, 38);
+  frame[54] = 6;
+  frame[55] = 0;
+  frame.writeUInt16BE(12345, 62);
+  frame.writeUInt16BE(443, 64);
+  const parsed = parse_pcap(create_pcap_capture(frame));
+  assert.equal(parsed.packets[0].network.extension_headers_not_decoded, true);
+  assert.equal(parsed.packets[0].network.transport.protocol, 'other');
+  assert.equal(parsed.packets[0].network.transport.source_port, null);
 });
