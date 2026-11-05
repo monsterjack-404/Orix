@@ -97,7 +97,7 @@ test('UBIFS master parser validates commit order, offsets and geometry', () => {
   const root = master(); root.writeUInt32LE(1, 52); root.writeUInt32LE(crc32(root.subarray(8)), 4);
   assert.throws(() => parse_ubifs_master(root, { superblock: geometry() }), e => e.code === 'ORIX_UBIFS_MASTER_LAYOUT');
   const outside = master(); outside.writeUInt32LE(70, 48); outside.writeUInt32LE(crc32(outside.subarray(8)), 4);
-  assert.throws(() => parse_ubifs_master(outside, { superblock: geometry() }), e => e.code === 'ORIX_UBIFS_MASTER_LEB_RANGE');
+  assert.throws(() => parse_ubifs_master(outside, { superblock: geometry() }), e => e.code === 'ORIX_UBIFS_MASTER_LEB_BOUNDS');
 });
 
 test('UBIFS dispatch selects the master parser by node type', () => {
