@@ -97,6 +97,7 @@ function tokenize_html(source, limits) {
       if (end < 0) break;
       cursor = end + 1;
       tags.push({ name, closing: true, attrs, offset: opening, line: line_for(starts, opening) });
+      if (tags.length >= limits.max_tags_per_page) { truncated = true; break; }
       continue;
     }
     let tag_closed = false;
