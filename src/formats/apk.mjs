@@ -1,4 +1,5 @@
 // JavaScript, src/formats/apk.mjs, Node.js 20+, bounded read-only Android APK/DEX structural analysis.
+import { createHash } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
 import { BinaryReader } from '../core/binary-reader.mjs';
 import { OrixError } from '../core/errors.mjs';
@@ -224,7 +225,24 @@ function parse_dex(buffer, limits, name) {
     if (class_index >= types.length) fail('ORIX_ANDROID_DEX_CLASS_INDEX', 'DEX class definition references an unavailable type', { name, class_index, type_count: types.length });
     classes.push({ descriptor: types[class_index], access_flags });
   }
-  return { name, version: magic.slice(4, 7), file_size, checksum: '0x' + reader.u32(8, true, 'DEX checksum').toString(16).padStart(8, '0'), tables, classes, classes_truncated: tables.classes.count > class_count, map_offset };
+  const expected_checksum = reader.u32(8, true, 'DEX checksum');
+  let adler_a = 1;
+  let adler_b = 0;
+  for (let i = 12; i < buffer.length; i += 1) {
+    adler_a = (adler_a + buffer[i]) % 65521;
+    adler_b = (adler_b + adler_a) % 65521;
+  }
+  const actual_checksum = ((adler_b << 16) | adler_a) >>> 0;
+  const expected_signature = buffer.subarray(12, 32).toString('hex');
+  const actual_signature = createHash('sha1').update(buffer.subarray(32)).digest('hex');
+  return {
+    name, version: magic.slice(4, 7), file_size,
+    integrity: {
+      adler32: { expected: '0x' + expected_checksum.toString(16).padStart(8, '0'), actual: '0x' + actual_checksum.toString(16).padStart(8, '0'), valid: expected_checksum === actual_checksum },
+      sha1: { expected: expected_signature, actual: actual_signature, valid: expected_signature === actual_signature },
+    },
+    tables, classes, classes_truncated: tables.classes.count > class_count, map_offset,
+  };
 }
 function crc32(buffer) {
   let crc = 0xffffffff;
