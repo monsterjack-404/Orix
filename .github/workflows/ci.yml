@@ -59,13 +59,7 @@ jobs:
       - name: Allow Bubblewrap user namespaces under Ubuntu AppArmor
         run: |
           if [ -r /sys/module/apparmor/parameters/enabled ] && grep -q '^Y' /sys/module/apparmor/parameters/enabled; then
-            printf '%s\\n' \\
-            'abi <abi/4.0>,' \\
-            'include <tunables/global>' \\
-            'profile bwrap /usr/bin/bwrap flags=(unconfined) {' \\
-            '  userns,' \\
-            '  include if exists <local/bwrap>' \\
-            '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
             sudo apparmor_parser -r /etc/apparmor.d/bwrap || sudo apparmor_parser -a /etc/apparmor.d/bwrap
           fi
       - name: Verify Bubblewrap availability
