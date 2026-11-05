@@ -27,8 +27,8 @@ function as_safe_number(value, field) {
   }
   return value;
 }
-function table_offset(reader, offset, field, bytes_used) {
-  const value = reader.u64(offset, true, field);
+function table_offset(reader, offset, field, bytes_used, little_endian) {
+  const value = reader.u64(offset, little_endian, field);
   if (value === U64_SENTINEL) return { offset: null, present: false, sentinel: true, in_bounds: true };
   const numeric = as_safe_number(value, field);
   if (numeric < SUPERBLOCK_SIZE || numeric >= bytes_used) {
@@ -92,12 +92,12 @@ export function parse_squashfs(buffer, options = {}) {
   }
 
   const offsets = {
-    id_table: table_offset(reader, 48, 'ID table', bytes_used),
-    xattr_id_table: table_offset(reader, 56, 'xattr ID table', bytes_used),
-    inode_table: table_offset(reader, 64, 'inode table', bytes_used),
-    directory_table: table_offset(reader, 72, 'directory table', bytes_used),
-    fragment_table: table_offset(reader, 80, 'fragment table', bytes_used),
-    export_table: table_offset(reader, 88, 'export table', bytes_used),
+    id_table: table_offset(reader, 48, 'ID table', bytes_used, little_endian),
+    xattr_id_table: table_offset(reader, 56, 'xattr ID table', bytes_used, little_endian),
+    inode_table: table_offset(reader, 64, 'inode table', bytes_used, little_endian),
+    directory_table: table_offset(reader, 72, 'directory table', bytes_used, little_endian),
+    fragment_table: table_offset(reader, 80, 'fragment table', bytes_used, little_endian),
+    export_table: table_offset(reader, 88, 'export table', bytes_used, little_endian),
   };
   const present = Object.entries(offsets).filter(([, item]) => item.present).map(([name, item]) => ({ name, offset: item.offset })).sort((a, b) => a.offset - b.offset);
   const duplicate_offsets = [];
