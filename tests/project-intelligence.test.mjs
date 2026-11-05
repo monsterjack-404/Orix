@@ -105,7 +105,7 @@ test('project Markdown includes lockfile graph status and resolved package prove
   assert.match(markdown, /npm-package-lock/);
   assert.match(markdown, /## Resolved package sample/);
   assert.match(markdown, /alpha/);
-  assert.doesNotMatch(markdown, /\\\n/);
+  assert.doesNotMatch(markdown, /\\n/);
 }));
 
 
@@ -336,7 +336,7 @@ test('malformed JSON manifest maps do not create phantom dependencies or scripts
 
 test('project intelligence treats files with late NUL bytes as binary', async () => with_project(async root => {
   const binary = Buffer.concat([
-    Buffer.from('export const visiblePrefix = 1;\\n' + 'A'.repeat(9000)),
+    Buffer.from('export const visiblePrefix = 1;\n' + 'A'.repeat(9000)),
     Buffer.from([0]),
     Buffer.from('const api_key = "late-secret-value-123456";'),
   ]);
@@ -444,14 +444,14 @@ test('project intelligence inventories declarations and imports across a broad p
 
 test('TypeScript type-only imports and exported declaration metadata are preserved', async () => with_project(async root => {
   await mkdir(path.join(root, 'src'), { recursive: true });
-  await writeFile(path.join(root, 'src', 'types.ts'), 'export interface User { id: string; }\\n');
+  await writeFile(path.join(root, 'src', 'types.ts'), 'export interface User { id: string; }\n');
   await writeFile(path.join(root, 'src', 'index.ts'), [
     "import type { User } from './types';",
     "export type { User as PublicUser } from './types';",
     'export interface UserShape { id: string; }',
     'export declare const API_VERSION: string;',
     'class InternalHelper {}',
-  ].join('\\n'));
+  ].join('\n'));
   const report = await scan_project(root);
   const source = report.files.find(file => file.path === 'src/index.ts');
   assert.ok(source);
