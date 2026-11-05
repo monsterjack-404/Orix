@@ -154,3 +154,8 @@ test('TAR parser rejects invalid UTF-8 in PAX metadata', () => {
   const archive = create_tar_fixture([{ name: 'PaxHeaders/file', typeflag: 'x', contents: payload }]);
   assert.throws(() => parse_tar(archive), error => error.code === 'ORIX_TAR_BAD_PAX_RECORD' || error.code === 'ORIX_TAR_INVALID_UTF8');
 });
+
+test('TAR parser enforces path and link-name byte ceilings', () => {
+  const archive = create_tar_fixture([{ name: 'long-name', contents: 'x' }]);
+  assert.throws(() => parse_tar(archive, { max_name_bytes: 4 }), error => error.code === 'ORIX_TAR_NAME_LIMIT');
+});
