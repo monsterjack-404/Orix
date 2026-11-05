@@ -5,7 +5,7 @@ import { analyze_known_format, parse_cpio } from '../src/formats/index.mjs';
 
 function cpio_entry(name, data = Buffer.alloc(0), { magic = '070701', mode = 0o100644, uid = 1000, gid = 1000, nlink = 1, ino = 1, mtime = 1, check_override = null } = {}) {
   const payload = Buffer.from(data);
-  const filename = Buffer.from(name + '\0', 'utf8');
+  const filename = Buffer.isBuffer(name) ? Buffer.concat([name, Buffer.from([0])]) : Buffer.from(name + '\0', 'utf8');
   let check = 0;
   for (const byte of payload) check = (check + byte) >>> 0;
   if (check_override !== null) check = check_override >>> 0;
@@ -90,4 +90,12 @@ test('format dispatcher recognizes and parses CPIO newc', () => {
 test('CPIO parser is exported through the package subpath', async () => {
   const public_api = await import('@orix/cli/formats/cpio');
   assert.equal(typeof public_api.parse_cpio, 'function');
+});
+
+test('CPIO parser preserves non-UTF8 filenames as unsafe inventory records', () => {
+  const archive = cpio_archive([cpio_entry(Buffer.from([0xff, 0x61]), Buffer.from('x'))]);
+  const report = parse_cpio(archive);
+  assert.equal(report.entries[0].name_encoding_valid, false);
+  assert.equal(report.entries[0].safe_path, false);
+  assert.equal(report.entries[0].unsafe_reason, 'non-utf8-name');
 });
