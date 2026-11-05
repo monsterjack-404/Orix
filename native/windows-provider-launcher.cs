@@ -285,8 +285,8 @@ namespace OrixWindowsSandbox {
       PROCESS_INFORMATION processInfo = new PROCESS_INFORMATION();
       bool processCreated = false;
       try {
-        if (!Directory.Exists(root) || !Directory.Exists(scratch) || !Directory.Exists(cwd))
-          throw new DirectoryNotFoundException("Provider rootfs, scratch or working directory is missing");
+        if (!Directory.Exists(root) || !Directory.Exists(cwd))
+          throw new DirectoryNotFoundException("Provider rootfs or working directory is missing");
         ValidateTree(root);
         sid = CreateProfile(profileName);
         SecurityIdentifier identity = new SecurityIdentifier(sid);
@@ -347,18 +347,18 @@ namespace OrixWindowsSandbox {
 
         Console.Error.WriteLine("ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64");
         if (ResumeThread(processInfo.hThread) == 0xFFFFFFFF) throw Win32("Resume AppContainer provider");
-        WaitForSingleObject(processInfo.hProcess, 0xFFFFFFFF);
+        if (WaitForSingleObject(processInfo.hProcess, 0xFFFFFFFF) != 0) throw Win32("Wait for AppContainer provider");
         uint exitCode;
         if (!GetExitCodeProcess(processInfo.hProcess, out exitCode)) throw Win32("Read provider exit code");
 
         // The provider's descendants stay in the job. Terminate any that outlive the main process.
-        TerminateJobObject(job, exitCode);
-        WaitForSingleObject(job, 5000);
+        if (!TerminateJobObject(job, exitCode)) throw Win32("Terminate remaining provider descendants");
+        if (WaitForSingleObject(job, 5000) != 0) throw new TimeoutException("Provider Job Object did not become empty");
         return unchecked((int)exitCode);
       } finally {
         if (processCreated && processInfo.hProcess != IntPtr.Zero) {
           if (job != IntPtr.Zero) TerminateJobObject(job, 1);
-          else TerminateProcess(processInfo.hProcess, 1);
+          TerminateProcess(processInfo.hProcess, 1);
         }
         if (tokenInfo != IntPtr.Zero) Marshal.FreeHGlobal(tokenInfo);
         if (token != IntPtr.Zero) CloseHandle(token);

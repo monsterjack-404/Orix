@@ -107,7 +107,7 @@ export async function prepare_windows_provider_isolation({
   const provider = await realpath(executable);
   if (!within(root, provider) || !within(root, work)) {
     isolation_error('ORIX_PROVIDER_SANDBOX_PATH_DENIED',
-      'Windows provider executable, working directory and scratch directory must be inside sandbox_root');
+      'Windows provider executable and working directory must be inside sandbox_root');
   }
 
   const powershell = await resolve_powershell(env);
@@ -117,10 +117,8 @@ export async function prepare_windows_provider_isolation({
   const profileName = 'ORIX-' + randomUUID().replaceAll('-', '');
   const providerEnvironment = {
     ...env,
-    TEMP: scratch,
-    TMP: scratch,
-    HOME: scratch,
-    USERPROFILE: scratch,
+    HOME: root,
+    USERPROFILE: root,
   };
   const config = {
     executable: provider,
