@@ -223,6 +223,7 @@ function resolve_local_module(specifier, from_path, known_paths) {
   let raw = String(specifier ?? '').split(/[?#]/, 1)[0];
   try { raw = decodeURIComponent(raw); } catch { return { kind: 'invalid-local-reference', path: null }; }
   raw = raw.replace(/\\/g, '/');
+  if (/^(?:https?:)?\/\//i.test(raw)) return { kind: 'external-url', path: null };
   if (!raw.startsWith('./') && !raw.startsWith('../') && !raw.startsWith('/')) return { kind: 'package-or-nonlocal', path: null };
   let candidate = raw.startsWith('/') ? raw.replace(/^\/+/, '') : path.posix.join(path.posix.dirname(from_path), raw);
   candidate = path.posix.normalize(candidate);
