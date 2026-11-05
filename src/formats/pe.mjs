@@ -404,6 +404,124 @@ function parse_certificates(reader, directory, buffer, options) {
   return { certificates, range_valid: true, truncated: false };
 }
 
+
+function parse_clr_runtime(reader, directory, map_rva, options) {
+  if (!directory || (directory.address === 0 && directory.size === 0)) return null;
+  if (directory.address === 0 || directory.size === 0) invalid('ORIX_PE_BAD_CLR_DIRECTORY', 'CLR runtime directory must provide both an RVA and a size', { address: directory.address, size: directory.size });
+  if (directory.size < 72) invalid('ORIX_PE_BAD_CLR_HEADER', 'CLR runtime directory is smaller than IMAGE_COR20_HEADER', { size: directory.size });
+  const offset = map_rva(directory.address, 72);
+  if (offset === null) invalid('ORIX_PE_INVALID_CLR_HEADER', 'CLR runtime header cannot be mapped to file data', { rva: directory.address });
+  const cb = reader.u32(offset, true, 'CLR header size');
+  if (cb < 72 || cb > directory.size) invalid('ORIX_PE_BAD_CLR_HEADER_SIZE', 'CLR header size is outside its data-directory bounds', { cb, directory_size: directory.size });
+  const major_runtime_version = reader.u16(offset + 4, true, 'CLR major runtime version');
+  const minor_runtime_version = reader.u16(offset + 6, true, 'CLR minor runtime version');
+  const metadata_rva = reader.u32(offset + 8, true, 'CLR metadata RVA');
+  const metadata_size = reader.u32(offset + 12, true, 'CLR metadata size');
+  const flags = reader.u32(offset + 16, true, 'CLR flags');
+  const entry_point_token = reader.u32(offset + 20, true, 'CLR entry point token');
+  const maximum_metadata_bytes = options.max_clr_metadata_bytes ?? 16 * 1024 * 1024;
+  const maximum_streams = options.max_clr_streams ?? 32;
+  if (!Number.isSafeInteger(maximum_metadata_bytes) || maximum_metadata_bytes < 20 || maximum_metadata_bytes > 64 * 1024 * 1024) {
+    invalid('ORIX_PE_CLR_METADATA_LIMIT', 'CLR metadata byte limit must be a safe integer between 20 bytes and 64 MiB', { maximum_metadata_bytes });
+  }
+  if (!Number.isSafeInteger(maximum_streams) || maximum_streams < 1 || maximum_streams > 128) {
+    invalid('ORIX_PE_CLR_STREAM_LIMIT', 'CLR stream limit must be a safe integer between 1 and 128', { maximum_streams });
+  }
+  if (metadata_rva === 0 || metadata_size < 20 || metadata_size > maximum_metadata_bytes) {
+    invalid('ORIX_PE_CLR_METADATA_LIMIT', 'CLR metadata directory is missing or exceeds the configured bound', { metadata_rva, metadata_size, maximum: options.max_clr_metadata_bytes ?? 16 * 1024 * 1024 });
+  }
+  const metadata_offset = map_rva(metadata_rva, metadata_size);
+  if (metadata_offset === null) invalid('ORIX_PE_INVALID_CLR_METADATA', 'CLR metadata directory cannot be mapped to file data', { metadata_rva, metadata_size });
+  const metadata_end = metadata_offset + metadata_size;
+  if (reader.ascii(metadata_offset, 4, 'CLR metadata signature') !== 'BSJB') {
+    invalid('ORIX_PE_BAD_CLR_METADATA_SIGNATURE', 'CLR metadata root does not contain the BSJB signature', { metadata_rva });
+  }
+  const metadata_major = reader.u16(metadata_offset + 4, true, 'metadata major version');
+  const metadata_minor = reader.u16(metadata_offset + 6, true, 'metadata minor version');
+  const version_length = reader.u32(metadata_offset + 12, true, 'metadata version string length');
+  if (version_length > 256 || version_length % 4 !== 0 || version_length > metadata_size - 16) {
+    invalid('ORIX_PE_CLR_VERSION_LIMIT', 'CLR metadata version string exceeds its bounded metadata root', { version_length, metadata_size });
+  }
+  const version_start = metadata_offset + 16;
+  const version_end = version_start + version_length;
+  let version = reader.bytes(version_start, version_length, 'CLR metadata version').toString('utf8');
+  while (version.endsWith(String.fromCharCode(0))) version = version.slice(0, -1);
+  const stream_header = metadata_offset + ((version_end - metadata_offset + 3) & ~3);
+  if (stream_header + 4 > metadata_end) invalid('ORIX_PE_CLR_STREAM_HEADERS', 'CLR metadata stream header is truncated');
+  const stream_count = reader.u16(stream_header + 2, true, 'CLR metadata stream count');
+  if (stream_count > maximum_streams) invalid('ORIX_PE_CLR_STREAM_LIMIT', 'CLR metadata stream count exceeds configured limit', { stream_count, maximum_streams });
+  let cursor = stream_header + 4;
+  const streams = [];
+  const names = new Set();
+  for (let index = 0; index < stream_count; index += 1) {
+    if (cursor + 8 > metadata_end) invalid('ORIX_PE_CLR_STREAM_HEADERS', 'CLR metadata stream descriptor is truncated', { index });
+    const stream_offset = reader.u32(cursor, true, 'metadata stream offset');
+    const size = reader.u32(cursor + 4, true, 'metadata stream size');
+    cursor += 8;
+    const name_start = cursor;
+    let terminator = -1;
+    const maximum_name = Math.min(32, metadata_end - cursor);
+    for (let n = 0; n < maximum_name; n += 1) {
+      if (reader.u8(cursor + n, 'metadata stream name') === 0) { terminator = cursor + n; break; }
+    }
+    if (terminator < 0) invalid('ORIX_PE_CLR_STREAM_NAME', 'CLR metadata stream name is not terminated within its bound', { index });
+    const name = reader.bytes(name_start, terminator - name_start, 'metadata stream name').toString('ascii');
+    if (!name || names.has(name)) invalid('ORIX_PE_CLR_DUPLICATE_STREAM', 'CLR metadata stream names must be non-empty and unique', { index, name });
+    names.add(name);
+    cursor = metadata_offset + ((terminator - metadata_offset + 4) & ~3);
+    if (stream_offset > metadata_size || size > metadata_size - stream_offset) {
+      invalid('ORIX_PE_CLR_STREAM_RANGE', 'CLR metadata stream exceeds metadata root bounds', { index, name, stream_offset, size, metadata_size });
+    }
+    streams.push({ name, offset: stream_offset, size });
+  }
+  const stream_headers_size = cursor - metadata_offset;
+  const ordered_streams = [...streams].sort((a, b) => a.offset - b.offset);
+  for (let index = 0; index < ordered_streams.length; index += 1) {
+    const current = ordered_streams[index];
+    if (current.offset < stream_headers_size) {
+      invalid('ORIX_PE_CLR_STREAM_OVERLAPS_HEADERS', 'CLR metadata stream overlaps its stream-header table', { name: current.name, offset: current.offset, stream_headers_size });
+    }
+    const next = ordered_streams[index + 1];
+    if (next && current.size > next.offset - current.offset) {
+      invalid('ORIX_PE_CLR_STREAM_OVERLAP', 'CLR metadata streams overlap one another', { first: current.name, second: next.name });
+    }
+  }
+  return {
+    present: true,
+    header_size: cb,
+    runtime_version: { major: major_runtime_version, minor: minor_runtime_version },
+    metadata: {
+      rva: metadata_rva,
+      size: metadata_size,
+      signature: 'BSJB',
+      version,
+      major: metadata_major,
+      minor: metadata_minor,
+      streams,
+      tables_stream: streams.find(item => item.name === '#~' || item.name === '#-')?.name ?? null,
+      strings_stream: streams.some(item => item.name === '#Strings'),
+      blob_stream: streams.some(item => item.name === '#Blob'),
+      guid_stream: streams.some(item => item.name === '#GUID'),
+      user_strings_stream: streams.some(item => item.name === '#US'),
+    },
+    flags: {
+      il_only: Boolean(flags & 0x00000001),
+      requires_32_bit: Boolean(flags & 0x00000002),
+      il_library: Boolean(flags & 0x00000004),
+      strong_name_signed: Boolean(flags & 0x00000008),
+      native_entry_point: Boolean(flags & 0x00000010),
+      track_debug_data: Boolean(flags & 0x00010000),
+      unknown_bits: flags & ~0x0001001f,
+    },
+    entry_point: { token: entry_point_token, native: Boolean(flags & 0x10) },
+    native_header_present: reader.u32(offset + 64, true, 'CLR native header RVA') !== 0,
+    limitations: [
+      'Reports CLR header and metadata stream layout only; it does not decode metadata tables, IL method bodies, signatures, resources or PDB symbols.',
+      'No assembly code is loaded or executed, and no decompilation is performed.',
+    ],
+  };
+}
+
 export function parse_pe(buffer, options = {}) {
   const reader = new BinaryReader(buffer, { label: 'PE image' });
   if (reader.ascii(0, 2, 'DOS signature') !== 'MZ') {
@@ -485,6 +603,7 @@ export function parse_pe(buffer, options = {}) {
   const delay_import_result = parse_delay_imports(reader, directory_entries[13], map_rva, is_64_bit, image_base, options);
   const relocation_result = parse_base_relocations(reader, directory_entries[5], map_rva, options);
   const certificate_result = parse_certificates(reader, directory_entries[4], buffer, options);
+  const clr_runtime = parse_clr_runtime(reader, directory_entries[14], map_rva, options);
 
   return {
     format: 'PE',
@@ -529,6 +648,7 @@ export function parse_pe(buffer, options = {}) {
     export_metadata: export_result.metadata ?? null,
     resources: resource_result.entries,
     resource_directory_count: resource_result.directory_count,
+    clr_runtime,
     certificates: certificate_result.certificates,
     certificate_table_range_valid: certificate_result.range_valid,
     notes: [
