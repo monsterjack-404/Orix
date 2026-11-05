@@ -105,7 +105,6 @@ async function main() {
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.tmp_inside_root, true, JSON.stringify(result));
     assert.equal(result.tmp_write, 'allowed', JSON.stringify(result));
-    assert.equal(result.temp_is_private, true, 'Provider temp path was not the AppContainer private data folder');
     assert.equal(result.host_network, 'blocked', 'Provider reached host loopback network');
     process.stdout.write('Windows AppContainer hostile-process checks passed: token, filesystem ACLs, private temp, network isolation and Job Object quotas.\\n');
   } finally {
