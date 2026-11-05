@@ -2,7 +2,7 @@
 
 This file is the status ledger for product claims. It is deliberately conservative. “Implemented” means the current main-branch source and tests contain a working vertical slice; it does not mean the domain is complete. “Partial” means a useful slice exists with material scope limitations. “Planned” means the capability is not operational in the current repository.
 
-**Baseline:** ORIX 0.5.0, feature branch `feat/ubifs-master-node-parser`, reviewed 2026-11-05.  
+**Baseline:** ORIX 0.5.0, feature branch `feat/ubi-volume-table-parser`, reviewed 2026-11-05.  
 **Authority:** source + tests + current CI, not the project vision or README aspiration.
 
 ## Status vocabulary
@@ -169,7 +169,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Browser observations | Planned | No live browser provider | Disposable Playwright/CDP session and local fixture corpus |
 | HAR network analysis | Implemented | Bounded offline HAR 1.2 metadata parser, CLI/API/MCP, evidence IDs and SHA-256 | Broader validation, corpus, normalized browser/proxy input |
 | PCAP / PCAPNG | Partial | Classic PCAP 2.4 plus bounded PCAPNG section/block/interface/packet metadata, timestamp options and safe secret-block inventory; endpoint/port metadata from supported link types | IPv6 extension traversal, reassembly, checksum validation, application protocols, payload export and live capture remain unsupported |
-| Firmware and filesystems | Partial | UBI EC/VID header metadata, UBIFS superblock and master-node metadata, cramfs superblock/root-inode metadata, SquashFS v4.0 superblock metadata plus raw CPIO newc/CRC-newc and USTAR/PAX/GNU TAR metadata parsers with bounded file ranges, checksum validation and path-safety inventory; GZIP wrappers validate CRC/ISIZE and can parse nested CPIO/TAR; no extraction | SquashFS metadata decompression/inode traversal, cramfs directory/block decoding, UBI volume-table and UBIFS index/journal/LPT/orphan and inode/data-node decoding, ext, boot images and device-tree parsers |
+| Firmware and filesystems | Partial | UBI EC/VID and layout-volume table metadata, UBIFS superblock and master-node metadata, cramfs superblock/root-inode metadata, SquashFS v4.0 superblock metadata plus raw CPIO newc/CRC-newc and USTAR/PAX/GNU TAR metadata parsers with bounded file ranges, checksum validation and path-safety inventory; GZIP wrappers validate CRC/ISIZE and can parse nested CPIO/TAR; no extraction | SquashFS metadata decompression/inode traversal, cramfs directory/block decoding, UBI fastmap/attach semantics and UBIFS index/journal/LPT/orphan and inode/data-node decoding, ext, boot images and device-tree parsers |
 | Evidence investigation workflows | Partial | Reports, ledger and report comparison | Case store, finding lifecycle, evidence graph and case bundles |
 | Recorded behavior replay | Planned | No event trace or replay runtime | Versioned trace schema and deterministic test-environment replay |
 | AI / RL environments | Planned | No environment adapter/training integration | Allowlisted observation/action API and replay/permission gates |
