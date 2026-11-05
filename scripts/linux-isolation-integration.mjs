@@ -89,6 +89,9 @@ async function main() {
     if (rootMissing.length) await writeFile(path.join(cgroupRoot, 'cgroup.subtree_control'), rootMissing.map(item => '+' + item).join(' '));
     await mkdir(cgroupParent);
     cgroupParentCreated = true;
+    assert.equal((await readFile(path.join(cgroupParent, 'cgroup.type'), 'utf8')).trim(), 'domain');
+    assert.match(await readFile(path.join(cgroupParent, 'cgroup.events'), 'utf8'), /populated 0/);
+    assert.equal((await readFile(path.join(cgroupParent, 'cgroup.procs'), 'utf8')).trim(), '');
     await writeFile(path.join(cgroupParent, 'cgroup.subtree_control'), '+cpu +memory +pids');
     await writeFile(hostSecret, hostSecretValue, { mode: 0o600 });
 

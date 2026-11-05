@@ -114,14 +114,37 @@ async function prepare_provider_cgroup(parentValue) {
   }
   const parent = await realpath(parentValue);
   const mountInfo = await readFile('/proc/self/mountinfo', 'utf8');
-  const cgroupMounts = mountInfo.split('\n').filter(line => line.split(' - ')[1]?.split(' ')[0] === 'cgroup2');
-  const isMountRoot = cgroupMounts.some(line => {
-    const fields = line.split(' - ')[0].split(' ');
-    const mountPoint = fields[4]?.replace(/\\([0-7]{3})/g, (_, octal) => String.fromCharCode(Number.parseInt(octal, 8)));
-    return mountPoint && path.resolve(mountPoint) === parent;
-  });
-  if (isMountRoot) {
-    isolation_error('ORIX_PROVIDER_CGROUP_INVALID', 'The cgroup-v2 mount root is not an acceptable delegated parent; use a dedicated delegated subdirectory');
+  const cgroupMountPoints = mountInfo.split('\n')
+    .filter(line => line.split(' - ')[1]?.split(' ')[0] === 'cgroup2')
+    .map(line => {
+      const fields = line.split(' - ')[0].split(' ');
+      const mountPoint = fields[4]?.replace(/\\([0-7]{3})/g, (_, octal) => String.fromCharCode(Number.parseInt(octal, 8)));
+      return mountPoint ? path.resolve(mountPoint) : null;
+    })
+    .filter(Boolean);
+  const containingMount = cgroupMountPoints
+    .filter(mountPoint => within(mountPoint, parent))
+    .sort((left, right) => right.length - left.length)[0];
+  if (!containingMount) {
+    isolation_error('ORIX_PROVIDER_CGROUP_NOT_CGROUP2',
+      'The delegated parent is not located on a mounted cgroup-v2 filesystem', { parent });
+  }
+  if (containingMount === parent) {
+    isolation_error('ORIX_PROVIDER_CGROUP_INVALID',
+      'The cgroup-v2 mount root is not an acceptable delegated parent; use a dedicated delegated subdirectory');
+  }
+  const type = await read_control(parent, 'cgroup.type');
+  if (type[0] !== 'domain') {
+    isolation_error('ORIX_PROVIDER_CGROUP_INVALID', 'Delegated cgroup parent must be a domain cgroup', { type: type.join(' ') });
+  }
+  const parentEvents = (await readFile(path.join(parent, 'cgroup.events'), 'utf8')).trim();
+  const parentProcesses = (await readFile(path.join(parent, 'cgroup.procs'), 'utf8')).trim();
+  if (!/^populated 0$/m.test(parentEvents) || parentProcesses !== '') {
+    isolation_error('ORIX_PROVIDER_CGROUP_PARENT_BUSY',
+      'Delegated cgroup parent must be empty before ORIX creates a child cgroup', {
+        populated: !/^populated 0$/m.test(parentEvents),
+        has_processes: parentProcesses !== '',
+      });
   }
   const controllers = await read_control(parent, 'cgroup.controllers');
   const enabled = await read_control(parent, 'cgroup.subtree_control');
