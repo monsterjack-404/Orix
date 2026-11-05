@@ -4,7 +4,7 @@ import { OrixError } from '../core/errors.mjs';
 
 const SUPERBLOCK_SIZE = 76;
 const MAGIC_LE = 0x28cd3d45;
-const MAGIC_BE = 0x453dcd28;
+const MAGIC_BE = 0x28cd3d45;
 const DEFAULT_MAX_INPUT = 128 * 1024 * 1024;
 const FLAGS = Object.freeze([
   [0x0001, 'fsid_version_2'], [0x0002, 'sorted_directories'],
