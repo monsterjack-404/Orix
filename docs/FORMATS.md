@@ -75,13 +75,13 @@ The parser reads bounded RFC 1952 members using raw DEFLATE, validates optional 
 
 ### UBIFS
 
-The parsers recognize the little-endian UBIFS node magic. The superblock parser validates one 4096-byte superblock node: common-header fields, node type, group type, node length, CRC-32 over bytes 8 through the declared node end, reserved padding, key format, filesystem flags, minimum I/O size, LEB geometry/counts, journal/LPT/orphan layout counts, fanout, format version, compression identifier, UUID and authentication metadata presence. An explicit aligned offset can select a superblock node inside a supplied buffer. HMACs and hashes are only inventoried, not verified. Master nodes, index trees, journal, LPT, orphan records, inode/directory/data nodes and file payloads are not decoded.
+The parsers recognize the little-endian UBIFS node magic. The superblock parser validates one 4096-byte superblock node: common-header fields, node type, group type, node length, CRC-32 over bytes 8 through the declared node end, reserved padding, key format, filesystem flags, minimum I/O size, LEB geometry/counts, journal/LPT/orphan layout counts, fanout, format version, compression identifier, UUID and authentication metadata presence. An explicit aligned offset can select a superblock node inside a supplied buffer. HMACs and hashes are only inventoried, not verified. Master-node records are decoded by a separate bounded parser; duplicate-master selection, index trees, journal, LPT, orphan records, inode/directory/data nodes and file payloads are not traversed.
 
 The master-node parser validates one fixed 512-byte master node, decodes committed root-index and journal/LPT references, commit/sequence ordering, space counters and optional cross-checks against caller-supplied superblock geometry. It inventories root-index/LPT hashes and HMAC presence without verifying them. It does not select between the duplicate master nodes stored on flash or perform recovery.
 
 ### UBI
 
-The parser validates the 64-byte UBI erase-counter (EC) header and, when present at its declared offset, the 64-byte volume-identifier (VID) header. It checks big-endian fields, supported header version, EC/VID header CRCs, volume type and geometry offsets. Multi-PEB inventory is performed only when the caller supplies an explicit physical eraseblock size; no geometry is guessed. The parser does not decode layout-volume table records, fastmap payloads, UBIFS nodes or volume data.
+The parser validates the 64-byte UBI erase-counter (EC) header and, when present at its declared offset, the 64-byte volume-identifier (VID) header. It checks big-endian fields, supported header version, EC/VID header CRCs, volume type and geometry offsets. Multi-PEB inventory is performed only when the caller supplies an explicit physical eraseblock size; no geometry is guessed. The parser does not decode layout-volume table records, fastmap payloads, additional UBIFS nodes or volume data.
 
 ### cramfs
 
