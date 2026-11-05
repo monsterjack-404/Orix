@@ -4,6 +4,7 @@ export { scan_directory } from './analyzer/scan.mjs';
 export { scan_project, render_project_markdown } from './project/intelligence.mjs';
 export { analyze_javascript_source } from './project/javascript.mjs';
 export { analyze_electron_project } from './project/electron.mjs';
+export { analyze_website_project } from './project/website.mjs';
 export { evaluate_indicators } from './analyzer/indicators.mjs';
 export { walk_directory } from './analyzer/walk.mjs';
 export { detect_format, list_supported_formats, analyze_known_format, parse_pe, parse_elf, parse_macho, parse_macho_fat, parse_wasm, parse_zip, parse_pdf, parse_png, parse_apk, list_format_capabilities } from './formats/index.mjs';
