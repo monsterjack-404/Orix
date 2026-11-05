@@ -395,10 +395,13 @@ namespace OrixWindowsSandbox {
     public static void Cleanup(string root, string profileName) {
       IntPtr sid = IntPtr.Zero;
       try {
+        Console.Error.WriteLine("ORIX_CLEANUP:BEGIN");
         int hr = DeriveAppContainerSidFromAppContainerName(profileName, out sid);
-        if (hr != 0) return;
+        if (hr != 0) { Console.Error.WriteLine("ORIX_CLEANUP:NO_PROFILE:" + hr); return; }
+        Console.Error.WriteLine("ORIX_CLEANUP:SID_DERIVED");
         SecurityIdentifier identity = new SecurityIdentifier(sid);
         if (Directory.Exists(root)) PurgeTree(root, identity);
+        Console.Error.WriteLine("ORIX_CLEANUP:ROOT_ACL_PURGED");
         IntPtr appPathPointer = IntPtr.Zero;
         int pathResult = GetAppContainerFolderPath(sid, out appPathPointer);
         if (pathResult == 0 && appPathPointer != IntPtr.Zero) {
@@ -408,7 +411,9 @@ namespace OrixWindowsSandbox {
           if (!String.IsNullOrEmpty(appFolder) && Directory.Exists(appFolder))
             DeleteTreeNoFollow(appFolder);
         }
+        Console.Error.WriteLine("ORIX_CLEANUP:APP_FOLDER_PURGED");
         int deleteResult = DeleteAppContainerProfile(profileName);
+        Console.Error.WriteLine("ORIX_CLEANUP:PROFILE_DELETED");
         if (deleteResult != 0 && unchecked((uint)deleteResult) != 0x80070002)
           Marshal.ThrowExceptionForHR(deleteResult);
       } finally {
