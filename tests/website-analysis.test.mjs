@@ -150,7 +150,7 @@ test('website script graph detects encoded/backslash path escapes and redacts no
 });
 
 
-test('website script graph enforces aggregate import, token and symbol budgets across files', () => {
+test('website script graph enforces aggregate import budgets across files', () => {
   const html = [
     '<html><body>',
     '<script>import "./one.js"; import "./two.js";</script>',
