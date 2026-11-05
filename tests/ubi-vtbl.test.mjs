@@ -68,7 +68,7 @@ test('UBI decodes duplicate layout volume-table copies and active records', () =
 
 test('UBI volume-table decoding requires explicit PEB geometry and layout PEBs', () => {
   assert.throws(() => parse_ubi(layoutImage(), { decode_volume_table: true }), TypeError);
-  assert.throws(() => parse_ubi(image({ pebSize: PEB_SIZE }), { peb_size: PEB_SIZE, decode_volume_table: true }), e => e.code === 'ORIX_UBI_LAYOUT_VOLUME_MISSING');
+  const nonLayout = layoutPeb(0, table()); nonLayout.writeUInt32BE(3, 72); nonLayout.writeUInt32BE(crc32(nonLayout.subarray(64, 124)), 124);\n  assert.throws(() => parse_ubi(nonLayout, { peb_size: PEB_SIZE, decode_volume_table: true }), e => e.code === 'ORIX_UBI_LAYOUT_VOLUME_MISSING');
 });
 
 test('UBI volume-table decoder rejects bad record CRC and invalid layout-volume VID metadata', () => {
