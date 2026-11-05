@@ -112,7 +112,7 @@ function parse_volume_table_copy(buffer, candidate, peb_size, total_pebs) {
       records.push({ volume_id: id, status: 'empty', crc_valid: true, stored_crc, calculated_crc });
       continue;
     }
-    if (reserved_pebs > total_pebs || alignment === 0 || alignment > leb_size || data_pad >= alignment || name_length === 0 ||
+    if (alignment === 0 || alignment > leb_size || data_pad >= alignment || name_length === 0 ||
         data_pad !== (leb_size % alignment) || ![1, 2].includes(volume_type_id) ||
         update_marker > 1 || name_length > 127) {
       reject('ORIX_UBI_VTBL_INVALID_RECORD', 'UBI volume-table record fields are outside supported bounds', {
