@@ -39,6 +39,8 @@ test('capability inventory labels important missing domains instead of claiming 
   assert.equal(status('ai-agent-workflows'), 'planned');
   assert.equal(status('dependency-vulnerability-audit'), 'partial');
   assert.equal(status('android-apk-analysis'), 'partial');
+  assert.equal(status('dotnet-analysis'), 'partial');
+  assert.equal(status('website-structure-analysis'), 'partial');
   assert.equal(status('android-device-observation'), 'planned');
   assert.equal(report.interfaces.find(item => item.id === 'desktop').status, 'planned');
   assert.ok(report.global_boundaries.length >= 3);
