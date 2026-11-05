@@ -6,11 +6,62 @@ using System.Linq;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
+using System.Web.Script.Serialization;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 
 namespace OrixWindowsSandbox {
   public static class Launcher {
+    public static int Main(string[] args) {
+      string root = null;
+      string profileName = null;
+      try {
+        if (args == null || args.Length != 2 || (args[0] != "run" && args[0] != "cleanup"))
+          throw new ArgumentException("Expected mode and config path");
+        JavaScriptSerializer serializer = new JavaScriptSerializer();
+        Dictionary<string, object> config =
+          serializer.Deserialize<Dictionary<string, object>>(File.ReadAllText(args[1]));
+        root = Convert.ToString(config["sandboxRoot"]);
+        profileName = Convert.ToString(config["profileName"]);
+        string logPath = Convert.ToString(config["logPath"]);
+        Environment.SetEnvironmentVariable("ORIX_WINDOWS_LOG", logPath);
+        if (args[0] == "cleanup") {
+          Cleanup(root, profileName);
+          return 0;
+        }
+        string executable = Convert.ToString(config["executable"]);
+        string cwd = Convert.ToString(config["cwd"]);
+        IEnumerable rawArgs = (IEnumerable)config["args"];
+        string[] providerArgs = rawArgs.Cast<object>().Select(item => Convert.ToString(item)).ToArray();
+        Dictionary<string, object> rawEnvironment = (Dictionary<string, object>)config["environment"];
+        Dictionary<string, string> providerEnvironment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (KeyValuePair<string, object> item in rawEnvironment)
+          providerEnvironment[item.Key] = Convert.ToString(item.Value);
+        int exitCode = 125;
+        try {
+          exitCode = Run(executable, providerArgs, cwd, root, profileName, providerEnvironment);
+        } catch (Exception error) {
+          Console.Error.WriteLine("ORIX_WINDOWS_ISOLATION_ERROR=" + error.Message);
+        }
+        try {
+          Cleanup(root, profileName);
+        } catch (Exception cleanupError) {
+          Console.Error.WriteLine("ORIX_WINDOWS_CLEANUP_ERROR=" + cleanupError.Message);
+          return 125;
+        }
+        return exitCode;
+      } catch (Exception error) {
+        Console.Error.WriteLine("ORIX_WINDOWS_ISOLATION_ERROR=" + error.Message);
+        if (!String.IsNullOrEmpty(root) && !String.IsNullOrEmpty(profileName)) {
+          try { Cleanup(root, profileName); }
+          catch (Exception cleanupError) {
+            Console.Error.WriteLine("ORIX_WINDOWS_CLEANUP_ERROR=" + cleanupError.Message);
+          }
+        }
+        return 125;
+      }
+    }
+
     const uint CREATE_SUSPENDED = 0x00000004;
     const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
     const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
