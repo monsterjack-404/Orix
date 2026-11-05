@@ -106,12 +106,15 @@ test('case bundles export and import reports and event history without embedding
   const bundle = path.join(root, 'portable-case');
   const exported = await export_case_bundle(root, created.case.id, bundle);
   assert.equal(exported.signed, false);
-  const imported = await import_case_bundle(root, bundle);
-  assert.equal(imported.case_id, created.case.id);
-  assert.equal(imported.events, (await get_case(root, created.case.id)).timeline.length);
-  assert.equal(imported.source_artifacts_embedded, false);
-  assert.equal((await verify_case(root, created.case.id)).valid, true);
-  await assert.rejects(import_case_bundle(root, bundle), error => error.code === 'ORIX_CASE_ALREADY_EXISTS');
+  const import_root = await mkdtemp(path.join(os.tmpdir(), 'orix-cases-roundtrip-'));
+  try {
+    const imported = await import_case_bundle(import_root, bundle);
+    assert.equal(imported.case_id, created.case.id);
+    assert.equal(imported.events, (await get_case(import_root, created.case.id)).timeline.length);
+    assert.equal(imported.source_artifacts_embedded, false);
+    assert.equal((await verify_case(import_root, created.case.id)).valid, true);
+    await assert.rejects(import_case_bundle(import_root, bundle), error => error.code === 'ORIX_CASE_ALREADY_EXISTS');
+  } finally { await rm(import_root, { recursive: true, force: true }); }
 });
 
 test('case bundle import rejects modified members and leaves no partial case', async t => {

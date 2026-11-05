@@ -35,7 +35,7 @@ test('MCP case workspace access remains confined to configured roots', async () 
   const allowed = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-root-'));
   const denied = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-outside-'));
   try {
-    await assert.rejects(call_orix_tool('orix.case.create', { workspace: denied, title: 'Denied' }, { roots: [allowed] }), /ORIX_MCP_PATH_OUTSIDE_WORKSPACE/);
+    await assert.rejects(call_orix_tool('orix.case.create', { workspace: denied, title: 'Denied' }, { roots: [allowed] }), error => error.code === 'ORIX_MCP_PATH_OUTSIDE_WORKSPACE');
   } finally {
     await rm(allowed, { recursive: true, force: true });
     await rm(denied, { recursive: true, force: true });
