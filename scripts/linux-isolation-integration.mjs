@@ -107,14 +107,15 @@ async function main() {
     });
     assert.equal(execution.ok, true, execution.stderr || 'Sandboxed provider failed');
     const result = JSON.parse(execution.stdout);
-    assert.notEqual(result.namespace_pid, result.host_pid, 'Provider PID was not remapped into a private PID namespace');\n    assert.equal(result.max_user_namespaces, '1', 'Provider can still create nested user namespaces');
+    assert.notEqual(result.namespace_pid, result.host_pid, 'Provider PID was not remapped into a private PID namespace');
+    assert.equal(result.max_user_namespaces, '1', 'Provider can still create nested user namespaces');
     assert.equal(result.namespace_parent_pid, 1, 'Provider is not contained under the private PID namespace init process');
     assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.tmp_write, 'allowed', 'Ephemeral /tmp should remain writable');
     assert.equal(result.host_network, 'blocked', 'Provider reached the host loopback network');
     assert.equal(await readFile(hostSecret, 'utf8'), hostSecretValue, 'Host secret changed unexpectedly');
-    process.stdout.write('Linux Bubblewrap hostile-process checks passed: host file denied, rootfs read-only, private /tmp writable, host loopback unreachable.\n');
+    process.stdout.write('Linux Bubblewrap hostile-process checks passed: host file denied, rootfs read-only, private /tmp writable, host loopback unreachable, nested user namespaces disabled.\n');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await rm(hostSecret, { force: true });
