@@ -128,7 +128,7 @@ async function main() {
         socket.setTimeout(700, () => { socket.destroy(); resolve('blocked'); });
         socket.once('error', () => resolve('blocked'));
       });
-      await new Promise(resolve => setTimeout(resolve, 1800));
+      await new Promise(resolve => setTimeout(resolve, 2500));
       process.stdout.write(JSON.stringify(result));
     `;
 
@@ -146,20 +146,28 @@ async function main() {
     });
     let providerCgroup = null;
     let observed = null;
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
       const entries = await child_cgroup_directories(cgroupParent);
       if (entries.length) {
-        providerCgroup = path.join(cgroupParent, entries[0]);
-        observed = {
-          memory: (await readFile(path.join(providerCgroup, 'memory.max'), 'utf8')).trim(),
-          swap: (await readFile(path.join(providerCgroup, 'memory.swap.max'), 'utf8')).trim(),
-          oom_group: (await readFile(path.join(providerCgroup, 'memory.oom.group'), 'utf8')).trim(),
-          pids: (await readFile(path.join(providerCgroup, 'pids.max'), 'utf8')).trim(),
-          cpu: (await readFile(path.join(providerCgroup, 'cpu.max'), 'utf8')).trim(),
-          processes: (await readFile(path.join(providerCgroup, 'cgroup.procs'), 'utf8')).trim(),
-          events: (await readFile(path.join(providerCgroup, 'cgroup.events'), 'utf8')).trim(),
-        };
-        break;
+        const candidate = path.join(cgroupParent, entries[0]);
+        try {
+          const snapshot = {
+            memory: (await readFile(path.join(candidate, 'memory.max'), 'utf8')).trim(),
+            swap: (await readFile(path.join(candidate, 'memory.swap.max'), 'utf8')).trim(),
+            oom_group: (await readFile(path.join(candidate, 'memory.oom.group'), 'utf8')).trim(),
+            pids: (await readFile(path.join(candidate, 'pids.max'), 'utf8')).trim(),
+            cpu: (await readFile(path.join(candidate, 'cpu.max'), 'utf8')).trim(),
+            processes: (await readFile(path.join(candidate, 'cgroup.procs'), 'utf8')).trim(),
+            events: (await readFile(path.join(candidate, 'cgroup.events'), 'utf8')).trim(),
+          };
+          if (snapshot.processes && /populated 1/.test(snapshot.events)) {
+            providerCgroup = candidate;
+            observed = snapshot;
+            break;
+          }
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
       }
       await new Promise(resolve => setTimeout(resolve, 20));
     }
