@@ -10,6 +10,7 @@ const DEFAULTS = Object.freeze({
   max_refs_per_page: 2000,
   max_findings: 500,
   max_script_files: 500,
+  max_script_depth: 8,
   max_script_bytes: 2 * 1024 * 1024,
   max_total_script_bytes: 16 * 1024 * 1024,
   max_script_tokens: 50000,
@@ -254,22 +255,26 @@ export function analyze_website_project(raw_files, options = {}) {
     if (findings.length >= limits.max_findings) { findings_truncated = true; return; }
     findings.push({ rule_id, severity, confidence, file: page, line, label, evidence });
   };
-  const analyze_script = (script_source, source_id, line_offset = 0) => {
+  const analyze_script = (script_source, source_id, line_offset = 0, depth = 0) => {
     if (script_cache.has(source_id)) return script_cache.get(source_id);
     const bytes = Buffer.byteLength(script_source, 'utf8');
-    if (script_files.length >= limits.max_script_files || bytes > limits.max_script_bytes || bytes > limits.max_total_script_bytes - script_bytes_analyzed) {
+    if (depth > limits.max_script_depth || script_files.length >= limits.max_script_files || bytes > limits.max_script_bytes || bytes > limits.max_total_script_bytes - script_bytes_analyzed) {
       script_analysis_truncated = true;
-      const skipped = { source: source_id, status: bytes > limits.max_script_bytes ? 'file-size-limit' : 'analysis-budget-limit', bytes };
+      const reason = depth > limits.max_script_depth ? 'depth-limit' : bytes > limits.max_script_bytes ? 'file-size-limit' : 'analysis-budget-limit';
+      const skipped = { source: source_id, status: reason, bytes };
       script_cache.set(source_id, skipped);
       return skipped;
     }
+    const result = { source: source_id, status: 'analyzing', bytes, imports: [], symbols: [], coverage: null };
+    script_cache.set(source_id, result);
+    script_files.push(result);
+    script_bytes_analyzed += bytes;
     const parsed = analyze_javascript_source(script_source, {
       max_source_chars: limits.max_script_bytes,
       max_tokens: limits.max_script_tokens,
       max_imports: limits.max_script_imports,
       max_symbols: limits.max_script_symbols,
     });
-    script_bytes_analyzed += bytes;
     const imports = parsed.imports.map(item => {
       const safe = sanitize_module_specifier(item.specifier);
       const resolution = resolve_local_module(item.specifier, source_id.split('#inline-script-')[0], known_paths);
@@ -281,22 +286,22 @@ export function analyze_website_project(raw_files, options = {}) {
       }
       const edge = { from: source_id, to: resolution.path, specifier: safe.value, redacted: safe.redacted, kind: item.kind, resolution: resolution.kind, line, confidence: item.confidence };
       script_import_graph.push(edge);
+      if (resolution.kind === 'resolved-local') {
+        const dependency = files_by_path.get(resolution.path);
+        if (dependency && typeof dependency.text === 'string' && /\.(?:[cm]?js|jsx|tsx?|mts|cts)$/i.test(resolution.path)) {
+          analyze_script(dependency.text, resolution.path, 0, depth + 1);
+        }
+      }
       return edge;
     });
     const symbols = parsed.symbols.map(item => ({ ...item, line: item.line + line_offset }));
     script_imports_seen += imports.length;
     script_symbols_seen += symbols.length;
     if (parsed.coverage.token_limit_reached || parsed.coverage.imports_truncated || parsed.coverage.symbols_truncated) script_analysis_truncated = true;
-    const result = {
-      source: source_id,
-      status: 'analyzed',
-      bytes,
-      imports,
-      symbols,
-      coverage: parsed.coverage,
-    };
-    script_files.push(result);
-    script_cache.set(source_id, result);
+    result.status = 'analyzed';
+    result.imports = imports;
+    result.symbols = symbols;
+    result.coverage = parsed.coverage;
     return result;
   };
   const pages_to_analyze = html_files.slice(0, limits.max_pages);
