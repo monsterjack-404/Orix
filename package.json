@@ -18,6 +18,7 @@
     "./project": "./src/project/intelligence.mjs",
     "./project/javascript": "./src/project/javascript.mjs",
     "./project/electron": "./src/project/electron.mjs",
+    "./project/website": "./src/project/website.mjs",
     "./formats/apk": "./src/formats/apk.mjs",
     "./formats/pdf": "./src/formats/pdf.mjs",
     "./formats/wasm": "./src/formats/wasm.mjs",
