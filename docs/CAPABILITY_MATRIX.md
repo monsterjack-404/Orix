@@ -120,7 +120,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Persistent database | Partial | Local event-sourced JSONL case store with immutable event history; no SQLite database | SQLite adapter, migrations, cross-case search and multi-user storage |
 | Content-addressed artifact store | Planned | Hashes in reports, no managed object store | Deduplication, retention and verification |
 | Immutable analysis runs | Partial | Case records store report files, tool/version, options digest, coverage and report SHA-256 | Provider invocation expansion, cross-case indexing and schema migrations |
-| Case management | Planned | No persistent case workspace | Cases, annotations, ownership and export |
+| Case management | Partial | Local event-sourced case workspace with UUID cases, notes, finding lifecycle, case-local relationships, timeline and unsigned bundle export/import | Bookmarks/tags, cross-case ownership/search, multi-user collaboration and browser case UI |
 | Evidence search | Planned | No persisted cross-case search | Indexed structured search |
 | Portable case bundles | Planned | Individual report and ledger exports | Signed manifest and independent verifier |
 

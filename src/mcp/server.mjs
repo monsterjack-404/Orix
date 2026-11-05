@@ -220,7 +220,8 @@ export const ORIX_MCP_TOOLS = Object.freeze([
     inputSchema: { type: 'object', properties: { workspace: { type: 'string', minLength: 1 }, case_id: { type: 'string', minLength: 36, maxLength: 36 }, action: { type: 'string', enum: ['export','import'] }, path: { type: 'string', minLength: 1 } }, required: ['workspace','action','path'], additionalProperties: false },
   },
 ]);
-\nfunction is_request_id(value) {
+
+function is_request_id(value) {
   return typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value));
 }
 
