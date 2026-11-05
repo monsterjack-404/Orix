@@ -48,7 +48,8 @@
     "./network/har": "./src/network/har.mjs",
     "./formats/pcap": "./src/formats/pcap.mjs",
     "./formats/pcapng": "./src/formats/pcapng.mjs",
-    "./formats/squashfs": "./src/formats/squashfs.mjs"
+    "./formats/squashfs": "./src/formats/squashfs.mjs",
+    "./formats/cramfs": "./src/formats/cramfs.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
