@@ -195,12 +195,18 @@ test('PCAPNG rejects packets with unknown interfaces, invalid options and malfor
 test('PCAPNG enforces packet, byte, block, interface and secret ceilings', () => {
   const packet = ethernet_ipv4_tcp();
   const one_packet = Buffer.concat([section(), interface_block(), enhanced_packet(true, packet)]);
-  assert.throws(() => parse_pcapng(one_packet, { max_packets: 1 }), error => error.code === 'ORIX_PCAPNG_PACKET_LIMIT' || error.code === 'ORIX_PCAPNG_BLOCK_LIMIT');
+  const two_packets = Buffer.concat([one_packet, enhanced_packet(true, packet, { high: 2, low: 3 })]);
+  const two_interfaces = Buffer.concat([section(), interface_block(), interface_block(true, { link_type: 101 })]);
+  assert.throws(() => parse_pcapng(two_packets, { max_packets: 1 }), error => error.code === 'ORIX_PCAPNG_PACKET_LIMIT');
   assert.throws(() => parse_pcapng(one_packet, { max_total_packet_bytes: 8 }), error => error.code === 'ORIX_PCAPNG_TOTAL_BYTE_LIMIT');
   assert.throws(() => parse_pcapng(one_packet, { max_packet_bytes: 8 }), error => error.code === 'ORIX_PCAPNG_PACKET_SIZE_LIMIT');
   assert.throws(() => parse_pcapng(one_packet, { max_blocks: 1 }), error => error.code === 'ORIX_PCAPNG_BLOCK_LIMIT');
-  assert.throws(() => parse_pcapng(one_packet, { max_interfaces: 1 }), error => error.code === 'ORIX_PCAPNG_INTERFACE_LIMIT' || error.code === 'ORIX_PCAPNG_BLOCK_LIMIT');
+  assert.throws(() => parse_pcapng(two_interfaces, { max_interfaces: 1 }), error => error.code === 'ORIX_PCAPNG_INTERFACE_LIMIT');
   assert.throws(() => parse_pcapng(one_packet, null), /PCAPNG options must be an object/);
+  const secret = Buffer.alloc(16);
+  write32(secret, 0, 1, true);
+  write32(secret, 4, 8, true);
+  assert.throws(() => parse_pcapng(Buffer.concat([section(), block(10, Buffer.concat([secret, Buffer.alloc(8), end_options()]))]), { max_secret_bytes: 4 }), error => error.code === 'ORIX_PCAPNG_SECRET_LIMIT');
 });
 
 test('PCAPNG is registered for inspection, package subpath and public API', async () => {
