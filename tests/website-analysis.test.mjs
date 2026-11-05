@@ -73,6 +73,11 @@ test('website analysis marks page, tag and finding limits as incomplete', () => 
   assert.equal(report.coverage.complete, false);
   assert.equal(report.coverage.truncated, true);
   assert.ok(report.coverage.truncated_pages >= 1);
+  const attribute_limited = analyze_website_project([
+    { path: 'attrs.html', text: '<html first="1" second="2"></html>', size_bytes: 35 },
+  ], { max_attributes_per_page: 1 });
+  assert.equal(attribute_limited.coverage.complete, false);
+  assert.equal(attribute_limited.pages[0].coverage.truncated, true);
 });
 
 test('website analysis reports no detection for projects without HTML pages', () => {
