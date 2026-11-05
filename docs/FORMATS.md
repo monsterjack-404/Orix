@@ -73,6 +73,10 @@ The parser reads Section Header Blocks with per-section byte order, validates bl
 
 The parser reads bounded RFC 1952 members using raw DEFLATE, validates optional extra/name/comment framing, reserved flags, optional header CRC16, trailer CRC32 and ISIZE, and supports concatenated members. Decompressed output is capped per member and across the stream, hashed with SHA-256 and not written to disk. If the combined output begins with CPIO newc/CRC-newc, the bounded CPIO parser is applied; other nested signatures are identified only. Trailing bytes after the last complete member are reported and make the stream incomplete.
 
+### UBIFS
+
+The parser recognizes the little-endian UBIFS node magic and validates one 4096-byte superblock node: common-header fields, node type, group type, node length, CRC-32 over bytes 8 through the declared node end, reserved padding, key format, filesystem flags, minimum I/O size, LEB geometry/counts, journal/LPT/orphan layout counts, fanout, format version, compression identifier, UUID and authentication metadata presence. An explicit aligned offset can select a superblock node inside a supplied buffer. HMACs and hashes are only inventoried, not verified. Master nodes, index trees, journal, LPT, orphan records, inode/directory/data nodes and file payloads are not decoded.
+
 ### UBI
 
 The parser validates the 64-byte UBI erase-counter (EC) header and, when present at its declared offset, the 64-byte volume-identifier (VID) header. It checks big-endian fields, supported header version, EC/VID header CRCs, volume type and geometry offsets. Multi-PEB inventory is performed only when the caller supplies an explicit physical eraseblock size; no geometry is guessed. The parser does not decode layout-volume table records, fastmap payloads, UBIFS nodes or volume data.
