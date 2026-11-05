@@ -115,7 +115,7 @@ export function build_capability_report({
       { id: 'browser-observation', status: 'planned', boundary: 'No Playwright/CDP live browser observation provider is shipped.' },
       { id: 'network-har-analysis', status: 'implemented', boundary: 'Offline HAR 1.2 metadata analysis with bounded entries; payloads and header/query values are excluded, and captured traffic is not independently verified.' },
       { id: 'pcap-network-analysis', status: 'planned', boundary: 'No PCAP/PCAPNG parser or live packet capture is shipped.' },
-      { id: 'firmware-analysis', status: 'planned', boundary: 'No firmware container/filesystem parser or recursive extraction workflow is shipped.' },
+      { id: 'firmware-analysis', status: 'partial', boundary: 'Bounded raw CPIO newc/CRC-newc metadata inventory, CRC-newc byte-sum verification and path-safety reporting are available; no extraction, compressed wrapper or general filesystem parser.' },
       { id: 'evidence-investigation-workflows', status: 'partial', boundary: 'Artifact evidence, hash-chained ledger and report comparison exist; no persistent case database or cross-case evidence graph.' },
       { id: 'recorded-behavior-replay', status: 'planned', boundary: 'No normalized behavior trace or deterministic replay engine is shipped.' },
       { id: 'ai-rl-environments', status: 'planned', boundary: 'No Gymnasium-compatible environment adapter or RL training runtime is shipped.' },
