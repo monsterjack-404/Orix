@@ -35,9 +35,6 @@ jobs:
         run: npm run check
       - name: Run tests
         run: npm test
-      - name: Run Windows AppContainer hostile-process isolation checks
-        if: runner.os == 'Windows'
-        run: node scripts/windows-isolation-integration.mjs
       - name: Generate coverage summary
         if: matrix.node-version == 22
         run: npm run test:coverage
@@ -96,3 +93,6 @@ jobs:
         run: npm run check
       - name: Run tests
         run: npm test
+      - name: Run Windows AppContainer hostile-process isolation checks
+        if: runner.os == 'Windows'
+        run: node scripts/windows-isolation-integration.mjs
