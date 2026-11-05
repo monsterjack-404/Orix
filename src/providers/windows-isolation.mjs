@@ -103,10 +103,9 @@ export async function prepare_windows_provider_isolation({
       'Windows AppContainer isolation is only available on Windows', { platform: process.platform });
   }
   const root = await validate_directory(sandbox_root, 'sandbox_root');
-  const scratch = await validate_directory(path.join(root, 'tmp'), 'sandbox_root/tmp');
   const work = await validate_directory(cwd, 'provider working directory');
   const provider = await realpath(executable);
-  if (!within(root, provider) || !within(root, work) || !within(root, scratch)) {
+  if (!within(root, provider) || !within(root, work)) {
     isolation_error('ORIX_PROVIDER_SANDBOX_PATH_DENIED',
       'Windows provider executable, working directory and scratch directory must be inside sandbox_root');
   }
@@ -128,7 +127,6 @@ export async function prepare_windows_provider_isolation({
     args,
     cwd: work,
     sandboxRoot: root,
-    scratch,
     profileName,
     environment: providerEnvironment,
   };

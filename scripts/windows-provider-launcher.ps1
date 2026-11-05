@@ -22,7 +22,6 @@ try {
     [string[]]$config.args,
     [string]$config.cwd,
     [string]$config.sandboxRoot,
-    [string]$config.scratch,
     [string]$config.profileName,
     $environment
   )

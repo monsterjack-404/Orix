@@ -96,6 +96,8 @@ namespace OrixWindowsSandbox {
     static extern int DeriveAppContainerSidFromAppContainerName(string name, out IntPtr appContainerSid);
     [DllImport("userenv.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
     static extern int DeleteAppContainerProfile(string name);
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
+    static extern int GetAppContainerFolderPath(IntPtr appContainerSid, out IntPtr path);
     [DllImport("advapi32.dll", SetLastError = true)]
     static extern IntPtr FreeSid(IntPtr sid);
 
@@ -232,6 +234,25 @@ namespace OrixWindowsSandbox {
       return pointer;
     }
 
+    static string CreatePrivateTemp(IntPtr sid, IDictionary environment) {
+      IntPtr pathPointer = IntPtr.Zero;
+      int hr = GetAppContainerFolderPath(sid, out pathPointer);
+      if (hr != 0) Marshal.ThrowExceptionForHR(hr);
+      string appFolder;
+      try { appFolder = Marshal.PtrToStringUni(pathPointer); }
+      finally { if (pathPointer != IntPtr.Zero) Marshal.FreeCoTaskMem(pathPointer); }
+      if (String.IsNullOrEmpty(appFolder)) throw new InvalidOperationException("Windows returned an empty AppContainer data path");
+      string temp = Path.Combine(appFolder, "Temp");
+      Directory.CreateDirectory(temp);
+      environment["TEMP"] = temp;
+      environment["TMP"] = temp;
+      environment["HOME"] = appFolder;
+      environment["USERPROFILE"] = appFolder;
+      environment["LOCALAPPDATA"] = appFolder;
+      environment["APPDATA"] = appFolder;
+      return temp;
+    }
+
     static void ConfigureJob(IntPtr job) {
       JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
       limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE |
@@ -256,7 +277,7 @@ namespace OrixWindowsSandbox {
       } finally { Marshal.FreeHGlobal(buffer); }
     }
 
-    public static int Run(string executable, string[] arguments, string cwd, string root, string scratch,
+    public static int Run(string executable, string[] arguments, string cwd, string root,
       string profileName, IDictionary environment) {
       IntPtr sid = IntPtr.Zero, job = IntPtr.Zero, attributeList = IntPtr.Zero;
       IntPtr securityCaps = IntPtr.Zero, handleList = IntPtr.Zero, environmentBlock = IntPtr.Zero;
@@ -270,7 +291,7 @@ namespace OrixWindowsSandbox {
         sid = CreateProfile(profileName);
         SecurityIdentifier identity = new SecurityIdentifier(sid);
         GrantTree(root, identity, FileSystemRights.ReadAndExecute, true);
-        GrantTree(scratch, identity, FileSystemRights.Modify, true);
+        CreatePrivateTemp(sid, environment);
 
         job = CreateJobObject(IntPtr.Zero, null);
         if (job == IntPtr.Zero) throw Win32("Create provider Job Object");
