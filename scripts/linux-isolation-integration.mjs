@@ -217,7 +217,8 @@ async function main() {
     const memoryCurrent = Number((await readFile(path.join(providerCgroup, 'memory.current'), 'utf8')).trim());
     await new Promise(resolve => setTimeout(resolve, 800));
     const cpuStat = await readFile(path.join(providerCgroup, 'cpu.stat'), 'utf8');
-    const throttledPeriods = Number(cpuStat.match(/^nr_throttled (\\d+)$/m)?.[1] || 0);
+    const throttledPeriods = Number(cpuStat.match(/^nr_throttled (\d+)$/m)?.[1] || 0);
+    process.stdout.write('CPU quota probe: ' + JSON.stringify({ throttledPeriods, cpuStat }));
     const execution = await executionPromise;
     assert.ok(observed, 'Live cgroup state was not captured');
     assert.equal(observed.memory, '536870912');
