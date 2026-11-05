@@ -22,6 +22,7 @@
     "./formats/apk": "./src/formats/apk.mjs",
     "./formats/cpio": "./src/formats/cpio.mjs",
     "./formats/gzip": "./src/formats/gzip.mjs",
+    "./formats/tar": "./src/formats/tar.mjs",
     "./formats/pdf": "./src/formats/pdf.mjs",
     "./formats/wasm": "./src/formats/wasm.mjs",
     "./reports/sarif": "./src/reports/sarif.mjs",

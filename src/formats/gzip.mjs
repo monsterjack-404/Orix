@@ -4,6 +4,7 @@ import { inflateRawSync } from 'node:zlib';
 import { BinaryReader } from '../core/binary-reader.mjs';
 import { OrixError } from '../core/errors.mjs';
 import { parse_cpio } from './cpio.mjs';
+import { parse_tar } from './tar.mjs';
 import { detect_format } from './registry.mjs';
 
 const DEFAULTS = Object.freeze({
@@ -148,6 +149,14 @@ export function parse_gzip(buffer, options = {}) {
       nested_parser_status = 'rejected';
       nested_parser_error = { code: error.code ?? 'ORIX_CPIO_ERROR', message: error.message };
     }
+  } else if (detection.format === 'TAR') {
+    try {
+      nested = parse_tar(output, options.tar_options ?? {});
+      nested_parser_status = 'parsed';
+    } catch (error) {
+      nested_parser_status = 'rejected';
+      nested_parser_error = { code: error.code ?? 'ORIX_TAR_ERROR', message: error.message };
+    }
   }
   return {
     format: 'GZIP',
@@ -169,7 +178,7 @@ export function parse_gzip(buffer, options = {}) {
       'GZIP members are decompressed in memory under strict input, member, header and aggregate output ceilings; files are never extracted.',
       'Only DEFLATE method 8 is supported. Header CRC16, member CRC32 and ISIZE are validated when present or required by the format.',
       'Optional filename/comment values and extra-field contents are not retained; only presence and bounded extra-field length are reported.',
-      'Only an immediately detected CPIO newc payload receives nested structural parsing; other decompressed formats are identified but not recursively analyzed.',
+      'Immediately detected CPIO newc and USTAR-compatible TAR payloads receive bounded nested structural parsing; other decompressed formats are identified but not recursively analyzed.',
       'Trailing bytes after the last complete member are reported and make the stream incomplete.',
     ],
   };

@@ -237,3 +237,51 @@ export function create_dex_class_fixture(descriptor = 'Lcom/example/App;') {
   buffer.writeUInt8(0, string_data_offset + 1 + text.length);
   return finalize_dex_integrity(buffer);
 }
+
+function write_tar_octal(buffer, offset, length, value) {
+  const text = value.toString(8).padStart(length - 1, '0') + '\0';
+  buffer.write(text, offset, length, 'ascii');
+}
+
+export function create_tar_fixture(entries = []) {
+  const blocks = [];
+  for (const entry of entries) {
+    const payload = Buffer.from(entry.contents ?? '');
+    const header = Buffer.alloc(512);
+    header.write(entry.name ?? 'file', 0, 100, 'utf8');
+    write_tar_octal(header, 100, 8, entry.mode ?? 0o100644);
+    write_tar_octal(header, 108, 8, entry.uid ?? 1000);
+    write_tar_octal(header, 116, 8, entry.gid ?? 1000);
+    write_tar_octal(header, 124, 12, entry.size_override ?? payload.length);
+    write_tar_octal(header, 136, 12, entry.mtime ?? 1);
+    header.fill(0x20, 148, 156);
+    header.write(entry.typeflag ?? '0', 156, 1, 'ascii');
+    if (entry.linkname) header.write(entry.linkname, 157, 100, 'utf8');
+    header.write('ustar\0', 257, 6, 'binary');
+    header.write('00', 263, 2, 'ascii');
+    header.write('root', 265, 32, 'ascii');
+    header.write('root', 297, 32, 'ascii');
+    write_tar_octal(header, 329, 8, entry.devmajor ?? 0);
+    write_tar_octal(header, 337, 8, entry.devminor ?? 0);
+    if (entry.prefix) header.write(entry.prefix, 345, 155, 'utf8');
+    let checksum = 0;
+    for (const byte of header) checksum += byte;
+    header.write(checksum.toString(8).padStart(6, '0') + '\0 ', 148, 8, 'ascii');
+    blocks.push(header);
+    blocks.push(payload);
+    const padding = (512 - (payload.length % 512)) % 512;
+    if (padding) blocks.push(Buffer.alloc(padding));
+  }
+  blocks.push(Buffer.alloc(1024));
+  return Buffer.concat(blocks);
+}
+
+export function create_pax_record(key, value) {
+  const body = Buffer.from(key + '=' + value + '\n', 'utf8');
+  let length = body.length + 2;
+  while (true) {
+    const next = body.length + String(length).length + 1;
+    if (next === length) return Buffer.concat([Buffer.from(String(length) + ' ', 'ascii'), body]);
+    length = next;
+  }
+}
