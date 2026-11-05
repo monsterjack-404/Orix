@@ -3,8 +3,8 @@
 function matches_ustar(buffer) {
   if (buffer.length < 512) return false;
   const magic = buffer.toString('ascii', 257, 263);
-  if (magic !== 'ustar\\0' && magic !== 'ustar ') return false;
-  const raw = buffer.toString('ascii', 148, 156).replace(/\\0.*$/s, '').trim();
+  if (magic !== 'ustar\0' && magic !== 'ustar ') return false;
+  const raw = buffer.toString('ascii', 148, 156).replace(/\0.*$/s, '').trim();
   if (!/^[0-7]+$/.test(raw)) return false;
   const expected = Number.parseInt(raw, 8);
   let unsigned = 0;
@@ -33,7 +33,7 @@ const SIGNATURES = [
   { format: 'PDF', description: 'Portable Document Format', matches: b => b.length >= 5 && b.subarray(0, 5).toString('ascii') === '%PDF-' },
   { format: 'PNG', description: 'Portable Network Graphics', matches: b => b.length >= 8 && b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) },
   { format: 'JPEG', description: 'JPEG image', matches: b => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
-  { format: 'SQLite', description: 'SQLite database', matches: b => b.length >= 16 && b.subarray(0, 16).toString('ascii') === 'SQLite format 3\\0' },
+  { format: 'SQLite', description: 'SQLite database', matches: b => b.length >= 16 && b.subarray(0, 16).toString('ascii') === 'SQLite format 3\0' },
   { format: 'GZIP', description: 'GZIP compressed stream', matches: b => b.length >= 2 && b[0] === 0x1f && b[1] === 0x8b },
   { format: 'CPIO newc', description: 'CPIO newc or CRC-newc archive', matches: b => b.length >= 6 && ['070701', '070702'].includes(b.subarray(0, 6).toString('ascii')) },
   { format: 'TAR', description: 'USTAR-compatible archive', matches: matches_ustar },
