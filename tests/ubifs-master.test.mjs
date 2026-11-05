@@ -89,7 +89,7 @@ test('UBIFS master parser rejects bad magic, type, length, padding and CRC', () 
   assert.throws(() => parse_ubifs_master(crc), e => e.code === 'ORIX_UBIFS_MASTER_CRC_MISMATCH');
 });
 
-test('UBIFS master parser validates commit order, offsets and geometry', () => {
+test('UBIFS master parser validates commit order, offsets and geometry', () => {\n  const badLeb = master(); badLeb.writeUInt32LE(99, 48); badLeb.writeUInt32LE(crc32(badLeb.subarray(8)), 4);\n  assert.throws(() => parse_ubifs_master(badLeb), e => e.code === 'ORIX_UBIFS_MASTER_LEB_BOUNDS');
   const commit = master(); commit.writeBigUInt64LE(100n, 32); commit.writeUInt32LE(crc32(commit.subarray(8)), 4);
   assert.throws(() => parse_ubifs_master(commit), e => e.code === 'ORIX_UBIFS_MASTER_COMMIT_SEQUENCE');
   const root = master(); root.writeUInt32LE(1, 52); root.writeUInt32LE(crc32(root.subarray(8)), 4);
