@@ -220,6 +220,8 @@ async function main() {
     const throttledPeriods = Number(cpuStat.match(/^nr_throttled (\d+)$/m)?.[1] || 0);
     process.stdout.write('CPU quota probe: ' + JSON.stringify({ throttledPeriods, cpuStat }));
     const execution = await executionPromise;
+    assert.equal(execution.ok, true, execution.stderr || 'Sandboxed provider failed');
+    const result = JSON.parse(execution.stdout);
     assert.ok(observed, 'Live cgroup state was not captured');
     assert.equal(observed.memory, '536870912');
     assert.equal(observed.swap, '0');
@@ -233,8 +235,6 @@ async function main() {
     assert.ok(result.memory_probe_ok, 'Bounded memory probe did not complete');
     assert.ok(result.pids_limit_hits > 0, 'pids.max did not reject excess process creation');
     assert.deepEqual(await child_cgroup_directories(cgroupParent), [], 'Provider cgroup was not cleaned up after exit');
-    assert.equal(execution.ok, true, execution.stderr || 'Sandboxed provider failed');
-    const result = JSON.parse(execution.stdout);
     assert.notEqual(result.namespace_pid, result.host_pid, 'Provider PID was not remapped into a private PID namespace');
     assert.equal(result.namespace_parent_pid, 1, 'Provider is not contained under the private PID namespace init process');
     assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
