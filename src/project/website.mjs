@@ -151,10 +151,11 @@ function tokenize_html(source, limits) {
     }
     if (!tag_closed) break;
     if (name === 'script' || name === 'style') {
-      const lower = source.toLowerCase();
-      const close_at = lower.indexOf('</' + name, cursor);
-      if (close_at < 0) break;
-      cursor = close_at;
+      const close_pattern = new RegExp('</' + name + '(?=[\\s/>])', 'ig');
+      close_pattern.lastIndex = cursor;
+      const close_match = close_pattern.exec(source);
+      if (!close_match) break;
+      cursor = close_match.index;
     }
   }
   return { tags, attributes_seen, truncated, line_count: starts.length };
@@ -289,11 +290,11 @@ export function analyze_website_project(raw_files, options = {}) {
         const method = (attr(tag, 'method') ?? 'get').toLowerCase();
         const info = add_reference(null, 'form', action, tag.line, 'action');
         if (info.kind === 'external' && info.insecure) add_finding(item.path, 'ORIX_WEB_INSECURE_FORM_ACTION', 'high', 'high', tag.line, 'Form submits to an external HTTP endpoint', { origin: info.origin, method });
-        page.forms.push({ method: ['get', 'post', 'dialog'].includes(method) ? method : 'other', action: info.kind === 'external' ? { kind: 'external', origin: info.origin } : info.kind === 'local' ? { kind: 'local', path: info.path } : { kind: info.kind } });
+        if (page.forms.length < limits.max_refs_per_page) page.forms.push({ method: ['get', 'post', 'dialog'].includes(method) ? method : 'other', action: info.kind === 'external' ? { kind: 'external', origin: info.origin } : info.kind === 'local' ? { kind: 'local', path: info.path } : { kind: info.kind } });
       }
       if (tag.name === 'iframe') {
         const info = add_reference(null, 'iframe', attr(tag, 'src'), tag.line, 'src');
-        if (attr(tag, 'src')) page.iframes.push({ sandboxed: attr(tag, 'sandbox') !== null, reference: info.kind });
+        if (attr(tag, 'src') && page.iframes.length < limits.max_refs_per_page) page.iframes.push({ sandboxed: attr(tag, 'sandbox') !== null, reference: info.kind });
       }
       if (tag.name === 'img' || tag.name === 'source') {
         page.images += tag.name === 'img' ? 1 : 0;
@@ -337,7 +338,7 @@ export function analyze_website_project(raw_files, options = {}) {
     limitations: [
       'This is offline lexical HTML analysis, not a standards-complete HTML5 parser or browser DOM.',
       'Scripts, stylesheets, templates and embedded documents are never executed or fetched.',
-      'URL references are normalized locally; no DNS, HTTP, TLS or origin reachability checks are performed.',
+      'URL references are normalized locally against the source path; base-element browser resolution is recorded but not applied, and no DNS, HTTP, TLS or origin reachability checks are performed.',
       'Security findings are review leads, not exploitability or compliance verdicts.',
       'JavaScript source analysis remains a separate bounded tokenizer and is not connected to browser runtime behavior.',
     ],
