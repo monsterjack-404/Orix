@@ -87,7 +87,7 @@ export function parse_cramfs(buffer, options = {}) {
     byte_order: little_endian ? 'little-endian' : 'big-endian',
     superblock: {
       magic_bytes, declared_size, input_bytes: buffer.length,
-      flags: { value: flags_value, enabled: enabled_flags, unknown_bits: flags_value & ~known_flags },
+      flags: { value: flags_value, enabled: enabled_flags, unknown_bits: (flags_value & ~known_flags) >>> 0 },
       future, signature, crc, edition, block_count, file_count, name,
     },
     root_inode: {
