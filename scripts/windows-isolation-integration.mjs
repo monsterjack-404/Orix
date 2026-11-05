@@ -58,6 +58,7 @@ async function main() {
       catch (error) { result.host_file = error.code || 'blocked'; }
       try { fs.writeFileSync(path.join(process.cwd(), 'host-write-probe'), 'escape'); result.root_write = 'writable'; }
       catch (error) { result.root_write = error.code || 'blocked'; }
+      result.temp_dir = os.tmpdir(); result.temp_env = process.env.TEMP; result.tmp_env = process.env.TMP; result.temp_exists = fs.existsSync(os.tmpdir());
       try { fs.writeFileSync(path.join(os.tmpdir(), 'provider-write-probe'), 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
       result.tmp_inside_root = path.resolve(os.tmpdir()) === path.resolve(${JSON.stringify(path.join(root, 'tmp'))});
@@ -102,7 +103,8 @@ async function main() {
     const result = JSON.parse(execution.stdout);
     assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
-    assert.equal(result.tmp_write, 'allowed', 'Private AppContainer temp storage should remain writable');
+    assert.equal(result.tmp_inside_root, true, JSON.stringify(result));
+    assert.equal(result.tmp_write, 'allowed', JSON.stringify(result));
     assert.equal(result.temp_is_private, true, 'Provider temp path was not the AppContainer private data folder');
     assert.equal(result.host_network, 'blocked', 'Provider reached host loopback network');
     process.stdout.write('Windows AppContainer hostile-process checks passed: token, filesystem ACLs, private temp, network isolation and Job Object quotas.\\n');
