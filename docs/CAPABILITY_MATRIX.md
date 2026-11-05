@@ -2,7 +2,7 @@
 
 This file is the status ledger for product claims. It is deliberately conservative. “Implemented” means the current main-branch source and tests contain a working vertical slice; it does not mean the domain is complete. “Partial” means a useful slice exists with material scope limitations. “Planned” means the capability is not operational in the current repository.
 
-**Baseline:** ORIX 0.5.0, main branch, reviewed 2026-11-05.  
+**Baseline:** ORIX 0.5.0, feature branch `feat/cramfs-metadata-parser`, reviewed 2026-11-05.  
 **Authority:** source + tests + current CI, not the project vision or README aspiration.
 
 ## Status vocabulary
@@ -44,7 +44,8 @@ This file is the status ledger for product claims. It is deliberately conservati
 | PNG | Partial | Bounded chunk structure, IHDR, ordering, palette/transparency constraints and CRC budget | IDAT decompression, scanline and pixel decoding, color management |
 | JPEG | Signature only | SOI recognition | Marker/segment parser |
 | SQLite | Signature only | Database signature recognition | Page/schema/WAL parser |
-| cramfs | Partial | Superblock and root-inode validation, endian detection and bounded image/root offsets; no directory traversal or block decompression | Directory entries, inode graph, compressed block decoding, extraction and reconstruction |\n| SquashFS | Partial | SquashFS v4.0 superblock, endian, block geometry, compression/flags and bounded top-level table offsets; no table decompression or inode traversal | Metadata block decoding, inode/directory semantics, fragments, xattrs and file extraction |
+| cramfs | Partial | Superblock and root-inode validation, endian detection and bounded image/root offsets; no directory traversal or block decompression | Directory entries, inode graph, compressed block decoding, extraction and reconstruction |
+| SquashFS | Partial | SquashFS v4.0 superblock, endian, block geometry, compression/flags and bounded top-level table offsets; no table decompression or inode traversal | Metadata block decoding, inode/directory semantics, fragments, xattrs and file extraction |
 | GZIP | Partial | Bounded DEFLATE member decompression, optional header CRC16, trailer CRC32/ISIZE validation, concatenated members and nested CPIO/TAR parsing | Other compression methods and arbitrary nested-format recursion |
 | Parser dispatch | Implemented | Parsed/rejected/not-supported status | Capability details and parser version metadata |
 | Binary reader | Implemented | Bounds-checked reads and safe ranges | Continue fuzz/differential testing |
