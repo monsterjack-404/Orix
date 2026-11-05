@@ -132,3 +132,11 @@ test('website analysis bounds linked JavaScript analysis and reports incomplete 
   assert.equal(report.coverage.complete, false);
   assert.equal(report.coverage.truncated, true);
 });
+
+test('website script graph detects encoded/backslash path escapes and redacts non-HTTP URL data', () => {
+  const html = '<script type="module">import "../%2e%2e/private.js"; import "file:///home/user/private.js";</script>';
+  const report = analyze_website_project([{ path: 'pages/index.html', text: html, size_bytes: html.length }]);
+  assert.ok(report.findings.some(item => item.rule_id === 'ORIX_WEB_SCRIPT_IMPORT_PATH_ESCAPE'));
+  assert.equal(JSON.stringify(report).includes('/home/user/private.js'), false);
+  assert.equal(JSON.stringify(report).includes('file:///'), false);
+});
