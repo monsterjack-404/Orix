@@ -79,9 +79,9 @@ Bubblewrap 0.8.0 or later's `--disable-userns` and
 `--assert-userns-disabled` controls so the provider cannot create nested user
 namespaces to rearrange mount isolation. Older versions reject the required
 flags and therefore fail closed before provider launch.
-The Linux hostile-process integration test checks the exposed
-`user.max_user_namespaces` setting in addition to filesystem and network
-boundaries. The provider executable and its
+The Linux hostile-process integration test attempts to create a nested user
+namespace from inside the provider and requires that attempt to fail, in
+addition to checking filesystem and network boundaries. The provider executable and its
 working directory must resolve inside that root. The host project, home
 directories, and credentials are not bind-mounted into the provider namespace.
 The rootfs must be a deliberately provisioned minimal runtime containing the
