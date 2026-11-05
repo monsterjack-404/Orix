@@ -185,21 +185,6 @@ namespace OrixWindowsSandbox {
       }
     }
 
-    static void DeleteTreeNoFollow(string path) {
-      if (!File.Exists(path) && !Directory.Exists(path)) return;
-      FileAttributes attributes = File.GetAttributes(path);
-      bool directory = (attributes & FileAttributes.Directory) != 0;
-      bool reparse = (attributes & FileAttributes.ReparsePoint) != 0;
-      if (directory && !reparse) {
-        foreach (string child in Directory.EnumerateFileSystemEntries(path)) DeleteTreeNoFollow(child);
-        Directory.Delete(path, false);
-      } else if (directory) {
-        Directory.Delete(path, false);
-      } else {
-        File.Delete(path);
-      }
-    }
-
     static void PurgeTree(string path, SecurityIdentifier sid) {
       if (!File.Exists(path) && !Directory.Exists(path)) return;
       FileAttributes attributes = File.GetAttributes(path);
@@ -397,23 +382,16 @@ namespace OrixWindowsSandbox {
       try {
         Console.Error.WriteLine("ORIX_CLEANUP:BEGIN");
         int hr = DeriveAppContainerSidFromAppContainerName(profileName, out sid);
-        if (hr != 0) { Console.Error.WriteLine("ORIX_CLEANUP:NO_PROFILE:" + hr); return; }
+        if (hr != 0) {
+          Console.Error.WriteLine("ORIX_CLEANUP:NO_PROFILE:" + hr);
+          return;
+        }
         Console.Error.WriteLine("ORIX_CLEANUP:SID_DERIVED");
         SecurityIdentifier identity = new SecurityIdentifier(sid);
         if (Directory.Exists(root)) PurgeTree(root, identity);
         Console.Error.WriteLine("ORIX_CLEANUP:ROOT_ACL_PURGED");
-        IntPtr appPathPointer = IntPtr.Zero;
-        int pathResult = GetAppContainerFolderPath(sid, out appPathPointer);
-        if (pathResult == 0 && appPathPointer != IntPtr.Zero) {
-          string appFolder;
-          try { appFolder = Marshal.PtrToStringUni(appPathPointer); }
-          finally { Marshal.FreeCoTaskMem(appPathPointer); }
-          if (!String.IsNullOrEmpty(appFolder) && Directory.Exists(appFolder))
-            DeleteTreeNoFollow(appFolder);
-        }
-        Console.Error.WriteLine("ORIX_CLEANUP:APP_FOLDER_PURGED");
         int deleteResult = DeleteAppContainerProfile(profileName);
-        Console.Error.WriteLine("ORIX_CLEANUP:PROFILE_DELETED");
+        Console.Error.WriteLine("ORIX_CLEANUP:PROFILE_DELETE_HR:" + deleteResult);
         if (deleteResult != 0 && unchecked((uint)deleteResult) != 0x80070002)
           Marshal.ThrowExceptionForHR(deleteResult);
       } finally {

@@ -77,11 +77,11 @@ function run_powershell(executable, script, mode, config_path, cwd, environment)
       settled = true;
       child.kill();
       reject(new OrixError('ORIX_PROVIDER_WINDOWS_CLEANUP_TIMEOUT',
-        'Windows AppContainer cleanup helper exceeded its 15-second limit', {
+        'Windows AppContainer cleanup helper exceeded its 30-second limit', {
           details: { stderr: stderr.slice(0, 8192) },
           recoverable: true,
         }));
-    }, 15_000);
+    }, 30_000);
     child.once('error', error => {
       if (settled) return;
       settled = true;
