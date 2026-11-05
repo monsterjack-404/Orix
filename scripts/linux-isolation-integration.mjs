@@ -73,9 +73,9 @@ async function main() {
     const port = server.address().port;
 
     const probe = `
-      const fs = require('node:fs');
-      const net = require('node:net');
-      const result = {};
+      import fs from 'node:fs';
+      import net from 'node:net';
+      const result = { namespace_pid: process.pid };
       try { fs.readFileSync(${JSON.stringify(hostSecret)}, 'utf8'); result.host_file = 'readable'; }
       catch (error) { result.host_file = error.code || 'blocked'; }
       try { fs.writeFileSync('/work/host-write-probe', 'escape'); result.root_write = 'writable'; }
@@ -98,12 +98,13 @@ async function main() {
       cwd: path.join(root, 'work'),
       sandbox_root: root,
       isolation: 'required',
-      args: ['-e', probe],
+      args: ['--input-type=module', '-e', probe],
       timeout_ms: 8_000,
       max_output_bytes: 4_096,
     });
     assert.equal(execution.ok, true, execution.stderr || 'Sandboxed provider failed');
     const result = JSON.parse(execution.stdout);
+    assert.equal(result.namespace_pid, 1, 'Provider did not enter a private PID namespace');
     assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.tmp_write, 'allowed', 'Ephemeral /tmp should remain writable');
