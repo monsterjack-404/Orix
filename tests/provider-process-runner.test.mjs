@@ -379,7 +379,9 @@ test('required provider isolation fails closed when no sandbox root is supplied'
       args: [],
       isolation: 'required',
     }),
-    /sandbox_root must be an absolute filesystem path/,
+    error => process.platform === 'linux'
+      ? /sandbox_root must be an absolute filesystem path/.test(error.message)
+      : error.code === 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
   );
 });
 
@@ -408,7 +410,9 @@ test('required provider isolation refuses executable and cwd paths outside its r
         isolation: 'required',
         sandbox_root: root,
       }),
-      error => error.code === 'ORIX_PROVIDER_SANDBOX_PATH_DENIED',
+      error => process.platform === 'linux'
+        ? error.code === 'ORIX_PROVIDER_SANDBOX_PATH_DENIED'
+        : error.code === 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
     );
   });
 });

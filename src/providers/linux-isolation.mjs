@@ -2,7 +2,7 @@
 // provider-visible filesystem; it is mounted read-only except for an ephemeral /tmp.
 // No host home, project tree, credentials, or network namespace is exposed by default.
 
-import { access, lstat, realpath, stat } from 'node:fs/promises';
+import { access, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { OrixError } from '../core/errors.mjs';
 
