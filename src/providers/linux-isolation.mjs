@@ -90,7 +90,16 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
   const bwrapArgs = [
     '--die-with-parent',
     '--new-session',
-    '--unshare-all',
+    // Require the user namespace rather than silently accepting a weaker setup.
+    '--unshare-user',
+    '--unshare-ipc',
+    '--unshare-pid',
+    '--unshare-net',
+    '--unshare-uts',
+    '--unshare-cgroup-try',
+    // Prevent provider-created nested user namespaces from rearranging mounts.
+    '--disable-userns',
+    '--assert-userns-disabled',
     '--ro-bind', root, '/',
     '--proc', '/proc',
     '--dev', '/dev',
