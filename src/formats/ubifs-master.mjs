@@ -116,7 +116,7 @@ export function parse_ubifs_master(buffer, options = {}) {
         lpt_offs >= geometry.leb_size || nhead_offs > geometry.leb_size || ltab_offs >= geometry.leb_size) {
       reject('ORIX_UBIFS_MASTER_OFFSET_RANGE', 'Master offsets or LPT references exceed superblock geometry', { root_offs, root_len, ihead_offs, lpt_lnum, lpt_offs, nhead_lnum, nhead_offs, ltab_lnum, ltab_offs, leb_size: geometry.leb_size });
     }
-    if ((flags_value & 2) && (!inLpt(lsave_lnum) || lsave_offs > geometry.leb_size)) reject('ORIX_UBIFS_MASTER_LSAVE_RANGE', 'Big-LPT save-table reference exceeds LPT geometry', { lsave_lnum, lsave_offs });
+    const superblock_flags = typeof geometry.flags === 'number' ? geometry.flags : (geometry.flags?.value ?? 0);\n    if ((superblock_flags & 2) && (!inLpt(lsave_lnum) || lsave_offs > geometry.leb_size)) reject('ORIX_UBIFS_MASTER_LSAVE_RANGE', 'Big-LPT save-table reference exceeds LPT geometry', { lsave_lnum, lsave_offs });
     if (total_free + total_dirty + total_used > main_bytes || total_dead > total_free + total_dirty ||
         total_dark > total_free + total_dirty || empty_lebs > main_lebs - 2 || index_lebs > main_lebs - 1 ||
         total_dead + total_dark + total_used + index_size > main_bytes) {
