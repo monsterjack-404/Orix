@@ -23,6 +23,12 @@ node src/cli.mjs project ./my-repository --format cyclonedx --out ./sbom.cdx.jso
 - README, license, CI, tests, package-manager and container signals.
 - Redacted findings for selected credential-shaped patterns.
 
+## Electron static triage
+
+Project scans inspect JavaScript and TypeScript source for Electron module imports and literal `webPreferences` settings. The current rules flag enabled renderer Node integration, disabled context isolation, disabled sandboxing, disabled web security, insecure content allowance and the deprecated remote module setting. Each finding includes a source file and line number.
+
+This is bounded lexical triage, not a complete JavaScript parser or Electron runtime model. Only direct literal boolean properties inside a `webPreferences` object are inspected; nested properties and computed values are not interpreted. Comments, ordinary strings, regular-expression bodies and template literal bodies are treated as opaque. Each source file is capped at 100,000 tokens, and the report records how many files hit that cap in `electron.analysis_truncated_files`. Process roles inferred from file names are candidates only. Findings require manual review and are not exploitability verdicts.
+
 ## Lockfile analysis
 
 The lockfile reader currently supports:

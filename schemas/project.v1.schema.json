@@ -48,7 +48,13 @@
         "dependency_edges",
         "lockfile_edges",
         "git_present"
-      ]
+      ],
+      "properties": {
+        "electron_findings": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     },
     "detection": {
       "type": "object",
@@ -88,13 +94,33 @@
         "properties": {
           "javascript_analysis": {
             "type": "object",
-            "required": ["tokens", "token_limit_reached", "imports_truncated", "symbols_truncated", "limitations"],
+            "required": [
+              "tokens",
+              "token_limit_reached",
+              "imports_truncated",
+              "symbols_truncated",
+              "limitations"
+            ],
             "properties": {
-              "tokens": { "type": "integer", "minimum": 0 },
-              "token_limit_reached": { "type": "boolean" },
-              "imports_truncated": { "type": "boolean" },
-              "symbols_truncated": { "type": "boolean" },
-              "limitations": { "type": "array", "items": { "type": "string" } }
+              "tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "token_limit_reached": {
+                "type": "boolean"
+              },
+              "imports_truncated": {
+                "type": "boolean"
+              },
+              "symbols_truncated": {
+                "type": "boolean"
+              },
+              "limitations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           }
         }
@@ -256,6 +282,56 @@
         "head_commit",
         "warnings"
       ]
+    },
+    "electron": {
+      "type": "object",
+      "required": [
+        "detected",
+        "confidence",
+        "evidence",
+        "electron_source_files",
+        "process_roles",
+        "findings",
+        "analysis_truncated_files",
+        "limitations"
+      ],
+      "properties": {
+        "detected": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "enum": [
+            "strong-project-metadata",
+            "heuristic-source-signal",
+            "not-detected"
+          ]
+        },
+        "evidence": {
+          "type": "array"
+        },
+        "electron_source_files": {
+          "type": "array"
+        },
+        "process_roles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "findings": {
+          "type": "array"
+        },
+        "analysis_truncated_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "additionalProperties": true

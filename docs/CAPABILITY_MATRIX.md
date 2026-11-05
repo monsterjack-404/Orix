@@ -157,6 +157,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Native decompilation | Planned | No decompiler adapter; Rizin imports only | Provider-neutral function/xref/disassembly/decompiler contract |
 | JavaScript / Electron | Partial | Source inventory and regex import/symbol candidates | AST analysis and Electron main/preload/renderer/IPC model |
 | .NET / CLR / IL | Planned | C# source and NuGet inventory only | PE/CLI metadata, IL, PDB and reviewed decompiler provider |
+| Electron configuration triage | Partial | Detects Electron project metadata and literal unsafe `webPreferences` settings with file/line evidence; no AST or runtime proof | AST-aware main/preload/renderer/IPC model and disposable browser observation |
 | Android APK / manifest / DEX | Partial | APK detection from validated ZIP central directory, bounded stored/raw-DEFLATE entry reads, binary/plain XML manifest metadata, DEX header/table and class descriptor inventory, native ABI library inventory | DEX instruction/method analysis, resources and intent-filter resolution, APK signing verification, runtime/device observations |
 | Android App Bundle (AAB) | Planned | No AAB bundle-module or bundle-metadata parser | Bundle manifest/resource inspection and split-APK relationship analysis |
 | Android device observations | Planned | No ADB/emulator/Frida provider | Explicit device approval, scope, capture budgets and cleanup |
