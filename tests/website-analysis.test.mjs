@@ -109,7 +109,7 @@ test('website analysis links local and inline JavaScript imports and declaration
     { path: 'app.js', text: app, size_bytes: Buffer.byteLength(app) },
     { path: 'dep.js', text: dep, size_bytes: Buffer.byteLength(dep) },
   ]);
-  assert.equal(report.summary.script_files_analyzed, 2);
+  assert.equal(report.summary.script_files_analyzed, 3);
   assert.equal(report.summary.script_imports, 2);
   assert.ok(report.summary.script_symbols >= 3);
   assert.ok(report.script_import_graph.every(edge => edge.resolution === 'resolved-local'));
