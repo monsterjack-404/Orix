@@ -94,10 +94,11 @@ function run_powershell(executable, script, mode, config_path, log_path, cwd, en
           recoverable: true,
         }));
     });
-    child.once('close', (code, signal) => {
+    child.once('exit', (code, signal) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      child.stderr.destroy();
       if (code === 0) resolve();
       else reject(new OrixError('ORIX_PROVIDER_WINDOWS_LAUNCHER_FAILED',
         'Windows AppContainer helper exited without completing its operation', {

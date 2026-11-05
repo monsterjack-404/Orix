@@ -14,6 +14,7 @@ try {
   [IO.File]::AppendAllText($env:ORIX_WINDOWS_LOG, [DateTime]::UtcNow.ToString('o') + ' PS:TYPE_LOADED' + [Environment]::NewLine)
   if ($Mode -eq 'cleanup') {
     [OrixWindowsSandbox.Launcher]::Cleanup([string]$config.sandboxRoot, [string]$config.profileName)
+    [IO.File]::AppendAllText($env:ORIX_WINDOWS_LOG, [DateTime]::UtcNow.ToString('o') + ' PS:BEFORE_EXIT' + [Environment]::NewLine)
     exit 0
   }
   $environment = @{}

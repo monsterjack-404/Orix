@@ -419,6 +419,7 @@ namespace OrixWindowsSandbox {
           Marshal.ThrowExceptionForHR(deleteResult);
       } finally {
         if (sid != IntPtr.Zero) FreeSid(sid);
+        Log("CLEANUP:SID_FREED");
       }
     }
   }
