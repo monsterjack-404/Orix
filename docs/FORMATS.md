@@ -12,6 +12,7 @@ ORIX distinguishes **signature recognition**, **structural parsing**, **semantic
 | Universal Mach-O | Yes | Yes | FAT/FAT64 architecture tables, bounded non-overlapping slices and per-slice thin parsing | Complete architecture-specific semantic analysis |
 | WebAssembly | Yes | Yes | Version, bounded section framing/order, strict UTF-8 names, types, imports, exports, function/type indices, start function, code-body ranges and standard name-section maps | Instruction decoding, stack/type validation, control-flow analysis, global initializers, full table/memory/data/element semantics, DWARF and decompilation |
 | ZIP | Yes | Yes | EOCD, ZIP64 EOCD/locator, central directory, ZIP64 per-entry sizes/offsets, path/symlink flags, local data ranges and encryption metadata | Multi-disk archives, bounded decompression/extraction and CRC verification |
+| Android APK (ZIP subtype) | Yes (validated ZIP + AndroidManifest.xml) | Yes | Bounded manifest XML metadata (binary XML and plain XML), DEX header/table validation and class descriptors, native ABI library inventory; stored and raw-DEFLATE entry reads | DEX instruction/method decoding, resource/intent-filter resolution, signing-block and certificate verification, runtime behavior |
 | PDF | Yes | Yes | PDF 1.x header, classic xref tables, trailer metadata, incremental /Prev chain, indirect-object framing, encryption and active-content lexical triage | Xref-stream entries, object streams, filters/decompression, page-tree semantics, attachment extraction and digital-signature verification |
 | PNG | Yes | Yes | Signature, IHDR fields, chunk boundaries/order, PLTE-before-tRNS ordering, bit-depth-bounded grayscale/truecolor tRNS samples, IDAT sequence, IEND and bounded CRC validation | IDAT inflation, scanline/pixel decoding, color management and full ancillary-chunk semantics |
 | JPEG | Yes | No | JPEG SOI marker | Marker/segment parser and metadata |
@@ -82,3 +83,9 @@ Format parsers return structural facts. The separate indicator engine evaluates 
 ## Future format selection
 
 New formats should be prioritized by user demand, ecosystem impact, available authoritative specifications, fixture quality, independent validation tools and safe parser boundaries. Candidate areas include Android APK/DEX, additional executable formats, container/image metadata and common database formats. Recognition may be added before parsing only when the CLI and reports clearly label it signature-only.
+
+### Android APK and DEX
+
+APK analysis is selected only after the ZIP central directory has been structurally parsed and an exact `AndroidManifest.xml` entry is present. The parser reads only that manifest and `classes*.dex` entries, under per-entry and aggregate decompression ceilings. It supports stored and raw-DEFLATE entries; verifies decompressed entry CRC32 plus local-header name, flags, method and (when no data descriptor is present) CRC/size metadata; and rejects unsupported compression methods, encrypted entries, unsafe paths, symlinks, invalid local ranges and size mismatches.
+
+Binary Android XML string pools and start-element attributes are decoded with bounded chunk, string and attribute counts. Plain XML manifests receive conservative metadata extraction. DEX support validates the header, version, file size, endian tag and bounded identifier/class tables, then reports class descriptors and access flags. It does not decode method bodies, instructions, annotations or control flow. APK signing metadata is inventoried but signatures are not verified. No inspected code is executed.

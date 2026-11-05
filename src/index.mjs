@@ -5,7 +5,7 @@ export { scan_project, render_project_markdown } from './project/intelligence.mj
 export { analyze_javascript_source } from './project/javascript.mjs';
 export { evaluate_indicators } from './analyzer/indicators.mjs';
 export { walk_directory } from './analyzer/walk.mjs';
-export { detect_format, list_supported_formats, analyze_known_format, parse_pe, parse_elf, parse_macho, parse_macho_fat, parse_wasm, parse_zip, parse_pdf, parse_png, list_format_capabilities } from './formats/index.mjs';
+export { detect_format, list_supported_formats, analyze_known_format, parse_pe, parse_elf, parse_macho, parse_macho_fat, parse_wasm, parse_zip, parse_pdf, parse_png, parse_apk, list_format_capabilities } from './formats/index.mjs';
 export { calculate_entropy } from './core/entropy.mjs';
 export { extract_strings } from './core/strings.mjs';
 export { hash_buffer } from './core/hash.mjs';

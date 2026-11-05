@@ -121,3 +121,103 @@ export function create_pdf_fixture() {
   xref.push('trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n' + xref_offset + '\n%%EOF\n');
   return Buffer.from(body + xref.join(''), 'latin1');
 }
+
+function fixture_crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+export function create_zip_entries(entries) {
+  const records = entries.map(entry => { const raw = Buffer.from(entry.contents); const method = entry.method ?? 0; return { name: Buffer.from(entry.name, 'utf8'), raw, payload: method === 8 ? deflateRawSync(raw) : raw, method, crc: fixture_crc32(raw) }; });
+  const local_parts = [];
+  const central_parts = [];
+  let offset = 0;
+  for (const record of records) {
+    const local = Buffer.alloc(30 + record.name.length + record.payload.length);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(record.method, 8);
+    local.writeUInt32LE(record.crc, 14);
+    local.writeUInt32LE(record.payload.length, 18);
+    local.writeUInt32LE(record.raw.length, 22);
+    local.writeUInt16LE(record.name.length, 26);
+    local.writeUInt16LE(0, 28);
+    record.name.copy(local, 30);
+    record.payload.copy(local, 30 + record.name.length);
+    local_parts.push(local);
+    const central = Buffer.alloc(46 + record.name.length);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(0x0314, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(record.method, 10);
+    central.writeUInt32LE(record.crc, 16);
+    central.writeUInt32LE(record.payload.length, 20);
+    central.writeUInt32LE(record.raw.length, 24);
+    central.writeUInt16LE(record.name.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    record.name.copy(central, 46);
+    central_parts.push(central);
+    offset += local.length;
+  }
+  const central_bytes = Buffer.concat(central_parts);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(records.length, 8);
+  eocd.writeUInt16LE(records.length, 10);
+  eocd.writeUInt32LE(central_bytes.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  eocd.writeUInt16LE(0, 20);
+  return Buffer.concat([...local_parts, central_bytes, eocd]);
+}
+
+export function create_minimal_dex_fixture() {
+  const buffer = Buffer.alloc(0x70);
+  buffer.write('dex\n039\0', 0, 'binary');
+  buffer.writeUInt32LE(buffer.length, 0x20);
+  buffer.writeUInt32LE(0x70, 0x24);
+  buffer.writeUInt32LE(0x12345678, 0x28);
+  return buffer;
+}
+
+
+export function create_dex_class_fixture(descriptor = 'Lcom/example/App;') {
+  const text = Buffer.from(descriptor, 'utf8');
+  const string_data_offset = 0x98;
+  const buffer = Buffer.alloc(string_data_offset + 1 + text.length + 1);
+  buffer.write('dex\n039\0', 0, 'binary');
+  buffer.writeUInt32LE(buffer.length, 0x20);
+  buffer.writeUInt32LE(0x70, 0x24);
+  buffer.writeUInt32LE(0x12345678, 0x28);
+  buffer.writeUInt32LE(1, 0x38);
+  buffer.writeUInt32LE(0x70, 0x3c);
+  buffer.writeUInt32LE(1, 0x40);
+  buffer.writeUInt32LE(0x74, 0x44);
+  buffer.writeUInt32LE(1, 0x60);
+  buffer.writeUInt32LE(0x78, 0x64);
+  buffer.writeUInt32LE(string_data_offset, 0x70);
+  buffer.writeUInt32LE(0, 0x74);
+  buffer.writeUInt32LE(0, 0x78);
+  buffer.writeUInt32LE(1, 0x7c);
+  buffer.writeUInt32LE(0xffffffff, 0x80);
+  buffer.writeUInt32LE(0, 0x84);
+  buffer.writeUInt32LE(0xffffffff, 0x88);
+  buffer.writeUInt32LE(0, 0x8c);
+  buffer.writeUInt32LE(0, 0x90);
+  buffer.writeUInt32LE(0, 0x94);
+  buffer.writeUInt8(text.length, string_data_offset);
+  text.copy(buffer, string_data_offset + 1);
+  buffer.writeUInt8(0, string_data_offset + 1 + text.length);
+  return buffer;
+}
