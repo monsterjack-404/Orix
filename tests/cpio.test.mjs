@@ -37,7 +37,7 @@ test('CPIO newc parser inventories entry metadata and detects unsafe or duplicat
   assert.equal(report.complete, true);
   assert.equal(report.trailer_found, true);
   assert.equal(report.summary.entries, 5);
-  assert.equal(report.summary.regular_files, 3);
+  assert.equal(report.summary.regular_files, 4);
   assert.equal(report.summary.directories, 1);
   assert.equal(report.summary.unsafe_paths, 1);
   assert.equal(report.summary.duplicate_paths, 1);
@@ -72,7 +72,7 @@ test('CPIO parser rejects invalid filename terminators and truncated entry data'
 });
 
 test('CPIO parser reports a missing trailer as incomplete and enforces limits', () => {
-  const archive = cpio_archive([cpio_entry('file', Buffer.from('data'))], '070701', false);
+  const archive = cpio_archive([cpio_entry('file', Buffer.from('data')), cpio_entry('second', Buffer.from('x'), { ino: 2 })], '070701', false);
   assert.equal(parse_cpio(archive).complete, false);
   assert.throws(() => parse_cpio(archive, { max_entries: 1 }), error => error.code === 'ORIX_CPIO_ENTRY_COUNT_LIMIT');
   assert.throws(() => parse_cpio(archive, { max_entry_bytes: 2 }), error => error.code === 'ORIX_CPIO_ENTRY_LIMIT');
