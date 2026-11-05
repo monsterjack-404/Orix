@@ -166,7 +166,7 @@ test('PCAPNG preserves unknown block metadata without interpreting block payload
   const unknown = block(0x12345678, Buffer.from([1,2,3,4]));
   const report = parse_pcapng(Buffer.concat([section(), unknown]));
   assert.equal(report.summary.unsupported_blocks, 1);
-  assert.equal(report.blocks[0].supported, false);
+  assert.equal(report.blocks[1].supported, false);
 });
 
 test('PCAPNG rejects bad byte-order magic, block lengths and trailing-length mismatches', () => {
