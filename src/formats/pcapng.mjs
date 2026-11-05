@@ -92,6 +92,12 @@ function option_u32(map, code, little, label) {
   if (value.length !== 4) invalid('ORIX_PCAPNG_BAD_OPTION_LENGTH', 'PCAPNG ' + label + ' option must be four bytes', { code, length: value.length });
   return little ? value.readUInt32LE(0) : value.readUInt32BE(0);
 }
+function option_u64(map, code, little, label) {
+  const value = map.get(code);
+  if (!value) return null;
+  if (value.length !== 8) invalid('ORIX_PCAPNG_BAD_OPTION_LENGTH', 'PCAPNG ' + label + ' option must be eight bytes', { code, length: value.length });
+  return (little ? value.readBigUInt64LE(0) : value.readBigUInt64BE(0)).toString();
+}
 function option_i64(map, code, little, label) {
   const value = map.get(code);
   if (!value) return null;
@@ -111,7 +117,7 @@ function parse_interface_options(options, little, limits) {
     name,
     description,
     os,
-    speed: option_i64(map, 8, little, 'interface speed'),
+    speed: option_u64(map, 8, little, 'interface speed'),
     timestamp_resolution: resolution,
     timezone_seconds: timezone === null ? null : (timezone | 0),
     timestamp_offset_seconds: option_i64(map, 14, little, 'interface timestamp offset'),
@@ -200,6 +206,7 @@ export function parse_pcapng(buffer, options = {}) {
     if (type === SHB) {
       if (length < 28) invalid('ORIX_PCAPNG_BAD_SECTION_HEADER', 'PCAPNG Section Header Block is shorter than its fixed fields', { offset: cursor, length });
       section_index += 1;
+      summary.section_index = section_index;
       current_interfaces = [];
       const major = u16(buffer, cursor + 12, little, 'section major version');
       const minor = u16(buffer, cursor + 14, little, 'section minor version');
