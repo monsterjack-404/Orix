@@ -87,7 +87,7 @@ export async function inspect_file(file_path, options = {}) {
     const preview_length = Math.min(bytes.length, limits.max_hex_preview_bytes);
     const evidence = [
       create_evidence({ kind: 'file-hash', summary: 'SHA-256 calculated from the complete file contents', source: absolute_path, confidence: 'observed', details: { algorithm: 'sha256', value: sha256, bytes_hashed: opened.size } }),
-      create_evidence({ kind: 'format-detection', summary: `${analyzed.detection.format} selected by leading-byte signature`, source: absolute_path, offset: 0, length: Math.min(16, bytes.length), confidence: analyzed.detection.confidence === 'signature' ? 'observed' : 'heuristic', details: { format: analyzed.detection.format, parser_status: analyzed.parser_status } }),
+      create_evidence({ kind: 'format-detection', summary: analyzed.detection.confidence === 'structural' ? `${analyzed.detection.format} selected by validated container structure` : `${analyzed.detection.format} selected by leading-byte signature`, source: absolute_path, offset: 0, length: Math.min(16, bytes.length), confidence: analyzed.detection.confidence === 'signature' ? 'observed' : analyzed.detection.confidence === 'structural' ? 'derived' : 'heuristic', details: { format: analyzed.detection.format, parser_status: analyzed.parser_status, detection_confidence: analyzed.detection.confidence } }),
     ];
     if (analyzed.parser_status === 'parsed') {
       evidence.push(create_evidence({ kind: 'format-structure', summary: `${analyzed.detection.format} header structures parsed with bounds checks`, source: absolute_path, offset: 0, length: bytes.length, confidence: 'derived', details: { top_level_keys: Object.keys(analyzed.parsed) } }));

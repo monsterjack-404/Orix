@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { inspect_file } from '../src/core/inspect.mjs';
+import { create_zip_entries } from './helpers.mjs';
 
 test('inspection hashes the complete file while parsing a bounded prefix', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-inspect-'));
@@ -36,6 +37,23 @@ test('empty files produce an explicit unknown-format report', async () => {
     assert.equal(result.integrity.digest, createHash('sha256').update(Buffer.alloc(0)).digest('hex'));
     assert.equal(result.metrics.hex_preview, '');
     assert.equal(result.metrics.entropy.sample_size, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('inspection labels APK detection as structural evidence rather than a leading signature', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-apk-'));
+  const file_path = path.join(directory, 'sample.apk');
+  const apk = create_zip_entries([{ name: 'AndroidManifest.xml', contents: Buffer.from('<manifest package="com.example.evidence"/>') }]);
+  try {
+    await writeFile(file_path, apk);
+    const result = await inspect_file(file_path);
+    const detection = result.evidence.find(item => item.kind === 'format-detection');
+    assert.equal(result.detection.format, 'Android APK');
+    assert.equal(detection.confidence, 'derived');
+    assert.equal(detection.details.detection_confidence, 'structural');
+    assert.match(detection.summary, /validated container structure/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
