@@ -33,6 +33,10 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | `orix.ledger.verify` | `path` | Evidence-ledger chain verification |
 | `orix.ledger.list` | `path` | Verified evidence-ledger records |
 | `orix.ledger.append` | `path`, event `type`, JSON object `payload` | Workspace-confined append receipt for the hash-chained ledger |
+| `orix.case.create` | `workspace`, `title`, optional `description` | Create a persistent local case without copying sample bytes |
+| `orix.case.get` | `workspace`, `action` (`list`, `show`, `verify`), optional `case_id` | List/retrieve cases or verify their event chains |
+| `orix.case.mutate` | `workspace`, `case_id`, action-specific fields | Add artifact references, analysis reports, findings, notes, relationships and lifecycle transitions |
+| `orix.case.exchange` | `workspace`, `action` (`export`, `import`), `path`, optional `case_id` | Export/import unsigned portable case directories after digest and event-chain checks |
 
 The server advertises only its implemented `tools` capability; resource and prompt catalogs are not exposed. Each stdio connection enforces the MCP lifecycle: only `ping` is accepted before initialization, tool requests remain blocked until the client sends `notifications/initialized`, and duplicate initialization is rejected. It negotiates the requested protocol version when it supports it and otherwise reports its supported version (`2025-03-26`). Initialize requests require `protocolVersion`, `capabilities` and `clientInfo.name/version`. JSON-RPC request IDs are restricted to strings or finite numbers; malformed request envelopes and malformed `tools/call` parameters receive protocol-level errors. Valid notifications never receive responses. Batches are processed sequentially with a 100-message ceiling; notification replies are omitted, empty batches are rejected, and `initialize` is rejected inside a batch. Each stdio server instance also limits tool execution to 60 calls per 60-second window by default; `start_mcp_server({ max_tool_calls_per_minute })` can set a value from 1 to 10,000. Protocol pings and tool discovery are not counted against this limit.
 
@@ -40,11 +44,11 @@ The `orix.capabilities` tool derives its format list from the live parser regist
 
 Every tool validates its input server-side against the same schema advertised by `tools/list`. Output is capped at 2 MiB per tool response; reduce scan limits if a result exceeds the cap.
 
-Tool definitions also publish MCP safety annotations: inspection, inventory, comparison and ledger-read tools are marked read-only and idempotent; `orix.ledger.append` is marked as a state-changing, non-idempotent operation. These annotations are client-facing hints, not an authorization boundary. Workspace confinement and server-side validation remain authoritative.
+Tool definitions also publish MCP safety annotations. Inspection, inventory, comparison, case reads and ledger reads are marked read-only; case creation/mutation/exchange and ledger append are state-changing operations. These annotations are client-facing hints, not an authorization boundary. Workspace confinement and server-side validation remain authoritative.
 
 ## Security boundary
 
-- Analysis tools are static and read-only; HAR analysis reads a user-supplied local capture and never replays network requests or exports payload/header/query values. The explicit `orix.ledger.append` tool is the only ORIX-managed data mutation and is confined to workspace ledger files. The Rizin tool is marked as an external-process operation: it starts the user-selected executable with fixed arguments, which has the same OS permissions as the account and is not sandboxed. Use only trusted Rizin/plugin installations. The inspected target file and project code are not executed.
+- Static analysis tools do not execute target code. Case creation, case mutations and bundle exchange are explicit workspace-confined writes; HAR analysis remains offline and does not replay requests or export payload/header/query values. The Rizin tool is marked as an external-process operation: it starts the user-selected executable with fixed arguments, which has the same OS permissions as the account and is not sandboxed. Use only trusted Rizin/plugin installations. The inspected target file and project code are not executed.
 - No shell command-string, arbitrary command-argument, remote URL or network-request tool is exposed. `orix.rizin_functions` is the explicit exception that launches a user-selected Rizin executable with fixed adapter arguments; it is not a sandbox and has the same OS permissions as its account.
 - Symlinks are not followed by the underlying scanners.
 - Existing parser, traversal and file-size limits remain active.

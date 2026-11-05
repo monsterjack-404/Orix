@@ -10,6 +10,38 @@ import { PassThrough } from 'node:stream';
 import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool, start_mcp_server } from '../src/mcp/server.mjs';
 import { append_ledger } from '../src/evidence/ledger.mjs';
 
+test('MCP case tools create, mutate, verify, export and import a workspace-confined case', async t => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-'));
+  const imported_workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-import-'));
+  t.after(async () => { await rm(workspace, { recursive: true, force: true }); await rm(imported_workspace, { recursive: true, force: true }); });
+  const created = await call_orix_tool('orix.case.create', { workspace, title: 'MCP case', description: 'Workspace test' }, { roots: [workspace] });
+  assert.equal(created.schema_version, 'orix.case.v1');
+  const note = await call_orix_tool('orix.case.mutate', { workspace, case_id: created.case.id, action: 'add_note', text: 'Review the sample' }, { roots: [workspace] });
+  assert.ok(note.note.note_id);
+  const shown = await call_orix_tool('orix.case.get', { workspace, case_id: created.case.id, action: 'show' }, { roots: [workspace] });
+  assert.equal(shown.notes.length, 1);
+  const verified = await call_orix_tool('orix.case.get', { workspace, case_id: created.case.id, action: 'verify' }, { roots: [workspace] });
+  assert.equal(verified.valid, true);
+  const bundle = path.join(workspace, 'case-bundle');
+  const exported = await call_orix_tool('orix.case.exchange', { workspace, case_id: created.case.id, action: 'export', path: bundle }, { roots: [workspace] });
+  assert.equal(exported.signed, false);
+  const imported = await call_orix_tool('orix.case.exchange', { workspace: imported_workspace, action: 'import', path: bundle }, { roots: [workspace, imported_workspace] });
+  assert.equal(imported.case_id, created.case.id);
+  const listed = await call_orix_tool('orix.case.get', { workspace: imported_workspace, action: 'list' }, { roots: [workspace, imported_workspace] });
+  assert.equal(listed.cases.length, 1);
+});
+
+test('MCP case workspace access remains confined to configured roots', async () => {
+  const allowed = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-root-'));
+  const denied = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-outside-'));
+  try {
+    await assert.rejects(call_orix_tool('orix.case.create', { workspace: denied, title: 'Denied' }, { roots: [allowed] }), /ORIX_MCP_PATH_OUTSIDE_WORKSPACE/);
+  } finally {
+    await rm(allowed, { recursive: true, force: true });
+    await rm(denied, { recursive: true, force: true });
+  }
+});
+
 test('MCP initialize negotiates protocol and advertises tool capability', async () => {
   const response = await handle_mcp_message({
     jsonrpc: '2.0', id: 1, method: 'initialize',
@@ -71,6 +103,9 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_har'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.capabilities'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.ledger.verify'));
+  assert.ok(response.result.tools.some(tool => tool.name === 'orix.case.create'));
+  assert.ok(response.result.tools.some(tool => tool.name === 'orix.case.mutate'));
+  assert.ok(response.result.tools.some(tool => tool.name === 'orix.case.exchange'));
   for (const tool of response.result.tools) {
     assert.ok(tool.annotations, tool.name + ' must advertise safety annotations');
     assert.equal(tool.annotations.openWorldHint, false);

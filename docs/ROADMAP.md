@@ -96,13 +96,19 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 ## 0.6 — Evidence Store and Workspaces
 
-- SQLite-backed local artifact and evidence store.
-- Content-addressed artifact identity and immutable analysis runs.
-- Search, comparison, annotations and exportable case bundles.
-- Schema migrations, recovery and database integrity checks.
-- Workspace-level access and retention controls.
+**Status: local event-sourced case workflow vertical slice implemented; database and multi-user workspace remain planned.**
 
-**Exit criteria:** interrupted writes recover safely; evidence can be exported and validated without the database.
+- [x] Local case creation/list/read with UUID identity and append-only hash-chained event history.
+- [x] Workspace-confined artifact references with SHA-256 identity; source samples are not copied by default.
+- [x] Stored analysis reports with schema, tool, options digest, coverage and limitations.
+- [x] Finding records, evidence IDs, lifecycle transitions, analyst notes, typed relationships and case timeline.
+- [x] Portable directory bundle export/import with member hashes and event-chain verification; bundles are explicitly unsigned.
+- [ ] SQLite-backed adapter after the Node.js support baseline is deliberately revised or an optional adapter is selected.
+- [ ] Cross-case search/graph, content-addressed sample storage, schema migrations, recovery, access controls and retention policy.
+
+**Runtime decision:** Node.js 20.11 remains supported. The built-in node:sqlite module was introduced in Node.js 22.5 and is experimental in the Node.js 22 line; requiring it would break the current runtime contract. The first case store therefore uses Node built-ins and the existing portable event ledger.
+
+**Exit criteria:** interrupted writes recover safely; event history and bundles verify independently; no sample bytes are copied without explicit opt-in.
 
 ## 0.7 — Agent and MCP Interface
 

@@ -117,9 +117,9 @@ This file is the status ledger for product claims. It is deliberately conservati
 | In-memory evidence records | Implemented | Observation, provenance, offsets and confidence | Stable cross-run IDs and lineage |
 | Hash-chained JSONL ledger | Implemented | Append, lock, verify and list | Independent signed checkpoints and portability |
 | Tamper-proof ledger | Not implemented | Hash chain is tamper-evident, not tamper-proof | External checkpoint/signature/trusted timestamp options |
-| Persistent database | Planned | No SQLite or other case database | Storage engine decision compatible with Node 20/22 |
+| Persistent database | Partial | Local event-sourced JSONL case store with immutable event history; no SQLite database | SQLite adapter, migrations, cross-case search and multi-user storage |
 | Content-addressed artifact store | Planned | Hashes in reports, no managed object store | Deduplication, retention and verification |
-| Immutable analysis runs | Partial | Reports record run metadata; no case database | Durable run entities and schema migrations |
+| Immutable analysis runs | Partial | Case records store report files, tool/version, options digest, coverage and report SHA-256 | Provider invocation expansion, cross-case indexing and schema migrations |
 | Case management | Planned | No persistent case workspace | Cases, annotations, ownership and export |
 | Evidence search | Planned | No persisted cross-case search | Indexed structured search |
 | Portable case bundles | Planned | Individual report and ledger exports | Signed manifest and independent verifier |
@@ -170,7 +170,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | HAR network analysis | Implemented | Bounded offline HAR 1.2 metadata parser, CLI/API/MCP, evidence IDs and SHA-256 | Broader validation, corpus, normalized browser/proxy input |
 | PCAP / PCAPNG | Partial | Classic PCAP 2.4 plus bounded PCAPNG section/block/interface/packet metadata, timestamp options and safe secret-block inventory; endpoint/port metadata from supported link types | IPv6 extension traversal, reassembly, checksum validation, application protocols, payload export and live capture remain unsupported |
 | Firmware and filesystems | Partial | UBI EC/VID and layout-volume table metadata, UBIFS superblock and master-node metadata, cramfs superblock/root-inode metadata, SquashFS v4.0 superblock metadata plus raw CPIO newc/CRC-newc and USTAR/PAX/GNU TAR metadata parsers with bounded file ranges, checksum validation and path-safety inventory; GZIP wrappers validate CRC/ISIZE and can parse nested CPIO/TAR; no extraction | SquashFS metadata decompression/inode traversal, cramfs directory/block decoding, UBI fastmap/attach semantics and UBIFS index/journal/LPT/orphan and inode/data-node decoding, ext, boot images and device-tree parsers |
-| Evidence investigation workflows | Partial | Reports, ledger and report comparison | Case store, finding lifecycle, evidence graph and case bundles |
+| Evidence investigation workflows | Partial | Local event-sourced cases, SHA-256 ledger, artifact references, analysis reports, finding lifecycle, notes, typed case-local relationships, timeline and portable unsigned bundle import/export | Cross-case graph/search, embedded content-addressed samples, signatures/trusted timestamps, retention controls, multi-user access control and browser case workspace |
 | Recorded behavior replay | Planned | No event trace or replay runtime | Versioned trace schema and deterministic test-environment replay |
 | AI / RL environments | Planned | No environment adapter/training integration | Allowlisted observation/action API and replay/permission gates |
 

@@ -18,6 +18,7 @@ export { render_json } from './reports/json.mjs';
 export { render_inspection_markdown, render_scan_markdown } from './reports/markdown.mjs';
 export { render_sarif } from './reports/sarif.mjs';
 export { append_ledger, list_ledger, verify_ledger } from './evidence/ledger.mjs';
+export { create_case, list_cases, get_case, verify_case, add_case_artifact, record_case_analysis, add_case_finding, change_case_finding_status, add_case_note, add_case_relationship, change_case_status, export_case_bundle, import_case_bundle } from './cases/store.mjs';
 
 export { compare_reports } from './analyzer/compare.mjs';
 export { render_comparison_markdown } from './reports/comparison.mjs';

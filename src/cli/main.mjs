@@ -16,6 +16,7 @@ import { render_inspection_markdown, render_scan_markdown } from '../reports/mar
 import { render_sarif } from '../reports/sarif.mjs';
 import { normalize_error } from '../core/errors.mjs';
 import { append_ledger, list_ledger, verify_ledger } from '../evidence/ledger.mjs';
+import { create_case, list_cases, get_case, verify_case, add_case_artifact, record_case_analysis, add_case_finding, change_case_finding_status, add_case_note, add_case_relationship, change_case_status, export_case_bundle, import_case_bundle } from '../cases/store.mjs';
 import { compare_reports } from '../analyzer/compare.mjs';
 import { render_comparison_markdown } from '../reports/comparison.mjs';
 import { read_json_report } from '../core/read-report.mjs';
@@ -44,6 +45,7 @@ function validate_command_flags(command, flags) {
     formats: ['format', 'out'],
     capabilities: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
+    case: ['format', 'out', 'case_operation', 'case_args'],
     providers: ['format', 'out', 'provider_executable', 'provider_executable_args', 'timeout_ms', 'max_output_bytes', 'max_imports', 'max_functions', 'rizin_address', 'max_instructions', 'rizin_decompile'],
     audit: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'osv_lookup', 'max_osv_packages', 'max_osv_advisories', 'max_osv_response_bytes', 'timeout_ms'],
     har: ['format', 'out', 'max_har_entries', 'max_har_hosts'],
@@ -58,6 +60,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
   validate_command_flags(parsed.command, parsed.flags);
   if(parsed.flags.format==='mermaid'&&parsed.command!=='architecture')throw new Error('Mermaid output is only supported by the architecture command');
   if(parsed.command==='ledger'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('ledger output currently supports JSON only');
+  if(parsed.command==='case'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('case output currently supports JSON only');
   if(parsed.command==='providers'&&parsed.provider_action==='list'&&parsed.flags.format&&parsed.flags.format!=='json')throw new Error('providers list output currently supports JSON only');
   if(parsed.command==='providers'&&parsed.provider_action==='imports'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('provider import output supports JSON or Markdown only');
   if(parsed.command==='providers'&&parsed.provider_action==='functions'&&parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('provider function output supports JSON or Markdown only');
@@ -136,6 +139,30 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
       await write_or_print(output,parsed.flags.out);
       return 0;
     }
+  }
+  if(parsed.command==='case'){
+    const operation=parsed.flags.case_operation;
+    const args=parsed.flags.case_args;
+    const counts={create:[2,3],list:[1,1],show:[2,2],verify:[2,2],'add-artifact':[3,3],analysis:[3,5],finding:[7,9],'finding-status':[4,5],note:[3,3],relationship:[7,8],status:[3,4],export:[3,3],import:[2,2]};
+    const [minimum,maximum]=counts[operation];
+    if(args.length<minimum||args.length>maximum)throw new Error('case '+operation+' received '+args.length+' arguments; expected '+minimum+'–'+maximum);
+    const [workspace,case_id,...rest]=args;
+    let result;
+    if(operation==='create') result=await create_case(workspace,{title:args[1],description:args[2]??''});
+    else if(operation==='list') result=await list_cases(workspace);
+    else if(operation==='show') result=await get_case(workspace,case_id);
+    else if(operation==='verify') result=await verify_case(workspace,case_id);
+    else if(operation==='add-artifact') result=await add_case_artifact(workspace,case_id,rest[0]);
+    else if(operation==='analysis') result=await record_case_analysis(workspace,case_id,{report:await read_json_report(rest[0]),tool:rest[1]??'orix',tool_version:rest[2]??null});
+    else if(operation==='finding') result=await add_case_finding(workspace,case_id,{rule_id:rest[0],title:rest[1],summary:rest[2],severity:rest[3],confidence:rest[4],artifact_id:rest[5]??null,run_id:rest[6]??null});
+    else if(operation==='finding-status') result=await change_case_finding_status(workspace,case_id,rest[0],rest[1],rest[2]??'');
+    else if(operation==='note') result=await add_case_note(workspace,case_id,rest[0]);
+    else if(operation==='relationship') result=await add_case_relationship(workspace,case_id,{from_type:rest[0],from_id:rest[1],to_type:rest[2],to_id:rest[3],relation:rest[4],confidence:rest[5]??'derived'});
+    else if(operation==='status') result=await change_case_status(workspace,case_id,rest[0],rest[1]??'');
+    else if(operation==='export') result=await export_case_bundle(workspace,case_id,rest[0]);
+    else result=await import_case_bundle(workspace,case_id);
+    await write_or_print(render_json(result),parsed.flags.out);
+    return 0;
   }
   if(parsed.command==='ledger'){
     const result=parsed.flags.ledger_operation==='verify'

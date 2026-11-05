@@ -4,7 +4,7 @@ This document describes the 0.5.x implementation and the constraints new modules
 
 ## 1. Runtime boundaries
 
-ORIX currently runs as a Node.js command-line application and a small programmatic library. The current release is a local-first Node.js CLI/library with an append-only, hash-chained JSONL evidence ledger. It still has no daemon, remote service, plugin loader or relational database; a loopback-only browser report viewer is provided for saved reports. Those boundaries must not be implied by package names or roadmap documents.
+ORIX currently runs as a Node.js command-line application and a small programmatic library. It includes an append-only, hash-chained JSONL evidence ledger and a local event-sourced case store with portable unsigned bundles. It still has no daemon, remote service, plugin loader, relational database or multi-user case service; a loopback-only browser report viewer is provided for saved reports. Those boundaries must not be implied by package names or roadmap documents.
 
 The public call graph is:
 
@@ -23,7 +23,7 @@ src/cli.mjs
             ├─ src/analyzer/walk.mjs
             └─ src/analyzer/compare.mjs
 
-src/core/evidence-ledger.mjs owns persistent ledger integrity; src/evidence/ledger.mjs exposes the CLI-facing record adapter.
+src/core/evidence-ledger.mjs owns persistent ledger integrity; src/evidence/ledger.mjs exposes the CLI-facing record adapter. src/cases/store.mjs reconstructs local case state from verified ledger events and stores bounded analysis reports; it does not embed source samples.
 
 src/index.mjs exposes the supported programmatic surface, including SARIF and Rizin Markdown rendering, report comparison, provider execution and MCP server entry points. The dedicated `src/mcp.mjs` executable provides a JSON-RPC stdio transport. `src/evidence/ledger.mjs` owns the optional append-only hash-chained evidence journal.
 ```
@@ -50,6 +50,7 @@ These features do not constitute a plugin loader, installer, automatic provider 
 | `core/evidence` | In-memory evidence identity, provenance, confidence labels and details | User-facing verdicts |
 | `core/evidence-ledger` | Canonical JSON records, bounded reads, writer lock, append-only writes, SHA-256 chain validation | Parser interpretation, automatic tamper repair or external timestamp claims |
 | `evidence/ledger` | CLI-facing event adapter and normalized receipt/list/verify reports | Reimplementing the ledger format or hash algorithm |
+| `cases/store` | Event-sourced case state, artifact references, report receipts, finding lifecycle, notes, relationships and bundle verification | Sample execution, implicit artifact copying, digital-signature claims or cross-case access control |
 | `reports/*` | JSON and Markdown rendering | New analysis or silent data loss |
 | `cli/*` | Arguments, command routing, output destination selection | Parser implementation |
 
@@ -110,7 +111,7 @@ Evidence is emitted with:
 - one of `observed`, `derived` or `heuristic` confidence;
 - structured details containing the source values needed to inspect the result.
 
-The model is intended to evolve into persisted, cross-tool evidence without coupling parsers to a database. Future identifiers should be stable across process restarts, and evidence should gain artifact identity, tool version and parent-evidence references before cross-session reuse.
+The in-memory helper remains useful inside individual reports. Persistent case evidence uses case-scoped UUIDs and artifact/run references from the event store; the case store preserves provenance without coupling format parsers to storage.
 
 ## 9. Directory scanning
 
@@ -146,7 +147,7 @@ The ledger is tamper-evident, not tamper-proof. A local administrator can replac
 
 `src/mcp/server.mjs` owns JSON-RPC framing, the advertised tool catalog, argument contracts, resource ceilings and dispatch into existing analysis modules. `src/mcp/security.mjs` confines file and directory paths to configured workspace roots and performs bounded no-follow report reads. `src/mcp.mjs` is the stdio executable. The default root is the process working directory; `ORIX_MCP_ROOTS` supplies an explicit platform-delimited allowlist.
 
-The canonical evidence ledger implementation lives in `src/core/evidence-ledger.mjs`; `src/evidence/ledger.mjs` is a compatibility facade used by the CLI and MCP. The MCP adapter does not fork a second parser implementation. It reuses `inspect_file`, `scan_directory`, `scan_project`, `compare_reports` and the evidence ledger. Responses have a 2 MiB ceiling; incoming lines have a 4 MiB ceiling. The current implementation exposes tools only; HTTP transport, prompt/resource subscriptions, remote authentication and a hosted service are not implemented.
+The canonical evidence ledger implementation lives in `src/core/evidence-ledger.mjs`; `src/evidence/ledger.mjs` is a compatibility facade used by the CLI and MCP. `src/cases/store.mjs` is the shared local case service used by CLI, programmatic API and MCP. The MCP adapter does not fork a second parser implementation. It reuses `inspect_file`, `scan_directory`, `scan_project`, `compare_reports`, the evidence ledger and case service. Responses have a 2 MiB ceiling; incoming lines have a 4 MiB ceiling. The current implementation exposes tools only; HTTP transport, prompt/resource subscriptions, remote authentication and a hosted service are not implemented.
 
 
 ## 14. Local browser report explorer

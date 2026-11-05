@@ -33,10 +33,10 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | PCAPNG parser | Section/block framing, per-section byte order, interface options, enhanced/simple packet metadata, timestamp resolution, name-resolution counts, interface statistics and safe decryption-secret inventory | No IPv6 extension traversal, reassembly, checksum verification, application protocols, payload export or replay; secret contents are never exposed |
 | Static metrics | Shannon entropy, ASCII/UTF-16LE string extraction and bounded hex preview | Metrics are descriptive, not malware verdicts |
 | Static indicators | Explainable rules for PE writable/executable sections, invalid ranges, ZIP unsafe entries, encryption flags, high entropy, selected API-name strings, PDF active-content/embedded-content/encryption markers, parser rejection and acquisition instability | Heuristics are review leads, not malware classifications or proof of execution |
-| Evidence model | Stable report evidence plus append-only SHA-256 chained JSONL ledger, verify/list commands and append receipts | Not a signature, trusted timestamp or external transparency log |
+| Evidence and case workflows | Stable report evidence, append-only SHA-256 event ledger, persistent local cases, content-addressed artifact references, analysis report records, finding lifecycle, notes, typed relationships, timeline, verification and portable case bundles | Bundles are unsigned and do not embed source samples; no cross-case graph, multi-user database, trusted timestamp or signature |
 | Directory scan | Deterministic traversal, ignored build/dependency folders, no symlink following, bounded concurrency | No distributed scanning or filesystem watcher |
 | Dependency vulnerability audit | Explicit opt-in OSV lookup for exact lockfile-resolved versions, bounded batch pagination, advisory details and partial-coverage reporting | No offline advisory cache, local affected-range engine, reachability proof or exploitability verdict |
-| MCP integration | Local stdio JSON-RPC server with ten typed tools, including bounded project architecture analysis, inspect, scan, project, formats, comparison and evidence-ledger operations | No HTTP listener, remote auth, resource subscription or prompt catalog |
+| MCP integration | Local stdio JSON-RPC server with typed tools for inspect, scan, project, architecture, HAR, case management, report comparison, formats, capabilities and evidence-ledger operations | No HTTP listener, remote auth, resource subscription or prompt catalog |
 | Provider integrations | Declarative manifests, immutable registry, bounded shell-free process runner, Rizin version doctor, snapshot-isolated import adapter, function inventory, address-scoped instruction disassembly and optional rz-ghidra pseudocode, provider discovery/list CLI and JSON/Markdown reports | No bundled decompiler plugin or automatic plugin installer, OS sandbox, dynamic execution provider, installer, daemon or automatic provider discovery |
 | Offline website analysis | Bounded offline HTML inventory, linked/inline JavaScript static imports and declaration candidates, depth/file/byte-capped local module graph, stylesheet/link/form/iframe metadata and review findings | No standards-complete DOM, CSS/source maps, script execution, network fetching or live browser observation |
 | Electron static triage | Detects Electron package/source signals and reports literal risky `webPreferences` settings with file/line evidence during `project` scans | Heuristic only; no AST/data-flow analysis, runtime observation or exploitability verdict |
@@ -136,6 +136,22 @@ npm run web
 node src/cli.mjs inspect ./sample.exe --ledger ./.orix/evidence.jsonl
 node src/cli.mjs ledger verify ./.orix/evidence.jsonl
 ```
+
+## Evidence-first investigation cases
+
+Create a durable case, attach workspace-local artifacts by SHA-256 reference, record analysis reports, manage finding states, add analyst notes and export a verifiable portable case directory:
+
+```bash
+node src/cli.mjs case create ./workspace "Sample investigation" "Authorized offline review"
+node src/cli.mjs case list ./workspace
+node src/cli.mjs case add-artifact ./workspace <case-uuid> ./workspace/sample.exe
+node src/cli.mjs case analysis ./workspace <case-uuid> ./workspace/report.json orix 0.5.0
+node src/cli.mjs case note ./workspace <case-uuid> "Needs manual confirmation"
+node src/cli.mjs case verify ./workspace <case-uuid>
+node src/cli.mjs case export ./workspace <case-uuid> ./case-bundle
+```
+
+Cases use an append-only event history. Analysis reports are stored inside the case; original sample bytes are not copied. Portable bundles are unsigned and require the original referenced artifacts to remain available for re-analysis. See [Investigation Cases](docs/CASES.md) for the storage contract, lifecycle, API and limits.
 
 ## HAR network investigation
 

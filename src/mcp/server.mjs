@@ -1,5 +1,6 @@
 // JavaScript, src/mcp/server.mjs, Node.js 20+, bounded static-analysis Model Context Protocol stdio server.
 
+import path from 'node:path';
 import { inspect_file } from '../core/inspect.mjs';
 import { analyze_har_file } from '../network/har.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
@@ -8,6 +9,7 @@ import { analyze_project_architecture } from '../project/architecture.mjs';
 import { list_format_capabilities } from '../formats/index.mjs';
 import { build_capability_report } from '../capabilities/registry.mjs';
 import { verify_ledger, list_ledger, append_ledger } from '../evidence/ledger.mjs';
+import { create_case, list_cases, get_case, verify_case, add_case_artifact, record_case_analysis, add_case_finding, change_case_finding_status, add_case_note, add_case_relationship, change_case_status, export_case_bundle, import_case_bundle } from '../cases/store.mjs';
 import { compare_reports } from '../analyzer/compare.mjs';
 import { analyze_rizin_functions } from '../providers/rizin.mjs';
 import { normalize_error } from '../core/errors.mjs';
@@ -193,9 +195,32 @@ export const ORIX_MCP_TOOLS = Object.freeze([
       additionalProperties: false,
     },
   },
+  {
+    name: 'orix.case.create',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    description: 'Create a persistent local investigation case with an append-only hash-chained event history. Source artifact bytes are not copied.',
+    inputSchema: { type: 'object', properties: { workspace: { type: 'string', minLength: 1 }, title: { type: 'string', minLength: 1, maxLength: 200 }, description: { type: 'string', maxLength: 4000 } }, required: ['workspace','title'], additionalProperties: false },
+  },
+  {
+    name: 'orix.case.get',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    description: 'List, retrieve or verify local cases. Case reads reconstruct and validate the append-only event chain.',
+    inputSchema: { type: 'object', properties: { workspace: { type: 'string', minLength: 1 }, action: { type: 'string', enum: ['list','show','verify'] }, case_id: { type: 'string', minLength: 36, maxLength: 36 }, max_cases: integer('Maximum cases listed.', 1000, 1) }, required: ['workspace','action'], additionalProperties: false },
+  },
+  {
+    name: 'orix.case.mutate',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    description: 'Append a bounded case mutation: register artifact, record analysis, add finding/note/relationship, or change case/finding lifecycle state.',
+    inputSchema: { type: 'object', properties: { workspace: { type: 'string', minLength: 1 }, case_id: { type: 'string', minLength: 36, maxLength: 36 }, action: { type: 'string', enum: ['add_artifact','record_analysis','add_finding','add_note','relationship','finding_status','status'] }, path: { type: 'string', minLength: 1 }, report_path: { type: 'string', minLength: 1 }, tool: { type: 'string', maxLength: 100 }, tool_version: { type: 'string', maxLength: 100 }, rule_id: { type: 'string', maxLength: 160 }, title: { type: 'string', maxLength: 300 }, summary: { type: 'string', maxLength: 2000 }, severity: { type: 'string', enum: ['critical','high','medium','low','info','unknown'] }, confidence: { type: 'string', enum: ['observed','derived','heuristic','unknown'] }, artifact_id: { type: 'string', maxLength: 100 }, run_id: { type: 'string', minLength: 36, maxLength: 36 }, text: { type: 'string', maxLength: 5000 }, finding_id: { type: 'string', minLength: 36, maxLength: 36 }, status: { type: 'string', enum: ['open','in_review','closed','triaged','confirmed','false_positive','accepted_risk','resolved'] }, reason: { type: 'string', maxLength: 1000 }, from_type: { type: 'string', maxLength: 20 }, from_id: { type: 'string', maxLength: 200 }, to_type: { type: 'string', maxLength: 20 }, to_id: { type: 'string', maxLength: 200 }, relation: { type: 'string', maxLength: 80 } }, required: ['workspace','case_id','action'], additionalProperties: false },
+  },
+  {
+    name: 'orix.case.exchange',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    description: 'Export or import a portable case directory after validating member digests and the event chain. Bundles are unsigned and do not embed source samples.',
+    inputSchema: { type: 'object', properties: { workspace: { type: 'string', minLength: 1 }, case_id: { type: 'string', minLength: 36, maxLength: 36 }, action: { type: 'string', enum: ['export','import'] }, path: { type: 'string', minLength: 1 } }, required: ['workspace','action','path'], additionalProperties: false },
+  },
 ]);
-
-function is_request_id(value) {
+\nfunction is_request_id(value) {
   return typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value));
 }
 
@@ -287,6 +312,47 @@ export async function call_orix_tool(name, args = {}, options = {}) {
   validate_arguments(name, args);
   const roots = options.roots ?? configured_workspace_roots(options.environment);
   switch (name) {
+    case 'orix.case.create': {
+      const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
+      return create_case(workspace.path, { title: args.title, description: args.description ?? '' });
+    }
+    case 'orix.case.get': {
+      const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
+      if (!['list', 'show', 'verify'].includes(args.action)) throw new TypeError('Case get action must be list, show or verify');
+      if (args.action === 'list') return list_cases(workspace.path, { max_cases: args.max_cases });
+      if (!args.case_id) throw new TypeError('Case show and verify require case_id');
+      if (args.action === 'show') return get_case(workspace.path, args.case_id);
+      return verify_case(workspace.path, args.case_id);
+    }
+    case 'orix.case.mutate': {
+      if (!['add_artifact','record_analysis','add_finding','add_note','relationship','finding_status','status'].includes(args.action)) throw new TypeError('Unsupported case mutation action');
+      const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
+      if (args.action === 'add_artifact') {
+        const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
+        return add_case_artifact(workspace.path, args.case_id, target.path);
+      }
+      if (args.action === 'record_analysis') {
+        const target = await resolve_workspace_path(args.report_path, roots, { kind: 'file' });
+        const report = await read_workspace_json(target.path, roots, { max_bytes: 2 * 1024 * 1024 });
+        return record_case_analysis(workspace.path, args.case_id, { report, tool: args.tool ?? 'orix', tool_version: args.tool_version ?? null });
+      }
+      if (args.action === 'add_finding') return add_case_finding(workspace.path, args.case_id, args);
+      if (args.action === 'add_note') return add_case_note(workspace.path, args.case_id, args.text);
+      if (args.action === 'finding_status') return change_case_finding_status(workspace.path, args.case_id, args.finding_id, args.status, args.reason ?? '');
+      if (args.action === 'status') return change_case_status(workspace.path, args.case_id, args.status, args.reason ?? '');
+      return add_case_relationship(workspace.path, args.case_id, args);
+    }
+    case 'orix.case.exchange': {
+      if (!['export','import'].includes(args.action)) throw new TypeError('Case exchange action must be export or import');
+      if (args.action === 'export' && !args.case_id) throw new TypeError('Case export requires case_id');
+      const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
+      if (args.action === 'export') {
+        const parent = await resolve_workspace_path(path.dirname(path.resolve(args.path)), roots, { kind: 'directory' });
+        return export_case_bundle(workspace.path, args.case_id, path.join(parent.path, path.basename(args.path)));
+      }
+      const bundle = await resolve_workspace_path(args.path, roots, { kind: 'directory' });
+      return import_case_bundle(workspace.path, bundle.path);
+    }
     case 'orix.inspect_file': {
       const limits = {};
       if (args.max_read_mib !== undefined) limits.max_read_bytes = args.max_read_mib * 1024 * 1024;

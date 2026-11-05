@@ -118,6 +118,13 @@ export function parse_arguments(argv) {
       throw new OrixError('ORIX_CLI_PROVIDER_UNKNOWN', 'Unknown provider: ' + result.provider_id, { recoverable: true });
     }
   }
+  if (result.command === 'case') {
+    result.flags.case_operation = result.target;
+    result.flags.case_args = [...result.positionals];
+    result.target = null;
+    result.positionals = [];
+    if (!['create','list','show','verify','add-artifact','analysis','finding','finding-status','note','relationship','status','export','import'].includes(result.flags.case_operation)) throw new OrixError('ORIX_CLI_CASE_OPERATION', 'case requires create, list, show, verify, add-artifact, analysis, finding, finding-status, note, relationship, status, export or import', { recoverable: true });
+  }
   if (result.command === 'ledger') {
     result.flags.ledger_operation = result.target;
     result.flags.ledger_path = result.positionals.shift() ?? null;

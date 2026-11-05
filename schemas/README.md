@@ -16,6 +16,8 @@ The JSON Schema documents in this directory describe the public JSON report cont
 | `vulnerability-audit.v1.schema.json` | Opt-in OSV dependency vulnerability audit | `orix.vulnerability-audit.v1` |
 | `capabilities.v1.schema.json` | Source-backed capability inventory | `orix.capabilities.v1` |
 | `har.v1.schema.json` | Offline HAR 1.2 network investigation | `orix.har.v1` |
+| `case.v1.schema.json` | Reconstructed local investigation case | `orix.case.v1` |
+| `case-bundle.v1.schema.json` | Portable case bundle manifest | `orix.case-bundle.v1` |
 
 The provider manifest describes declared capabilities, execution side effects, resource ceilings and redistribution status. It is metadata only: a valid manifest does not prove a provider is installed, trusted, safe, or authorized to run.
 

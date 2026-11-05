@@ -8,7 +8,7 @@ import { MCP_PROTOCOL_VERSION } from '../src/mcp/server.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = relative => fs.readFile(path.join(root, relative), 'utf8');
-const [package_text, readme, cli, formats, indicators, roadmap, charter, matrix, mcp, indicator_source] = await Promise.all([
+const [package_text, readme, cli, formats, indicators, roadmap, charter, matrix, mcp, indicator_source, cases] = await Promise.all([
   read('package.json'),
   read('README.md'),
   read('docs/CLI.md'),
@@ -19,6 +19,7 @@ const [package_text, readme, cli, formats, indicators, roadmap, charter, matrix,
   read('docs/CAPABILITY_MATRIX.md'),
   read('docs/MCP.md'),
   read('src/analyzer/indicators.mjs'),
+  read('docs/CASES.md'),
 ]);
 const pkg = JSON.parse(package_text);
 const errors = [];
@@ -43,6 +44,10 @@ check('Product charter discoverability', () => {
     'README must link to docs/CAPABILITY_MATRIX.md');
   assert.ok(charter.includes('Definition of done'));
   assert.ok(matrix.includes('Priority order'));
+  assert.ok(readme.includes('docs/CASES.md'));
+  assert.ok(cases.includes('Portable bundles'));
+  assert.ok(cases.includes('Source artifact bytes are intentionally excluded'));
+  assert.ok(roadmap.includes('local event-sourced case workflow vertical slice implemented'));
   assert.ok(roadmap.includes('Quality gates for every milestone'), 'roadmap must retain explicit milestone quality gates');
 });
 check('MCP protocol documentation', () => {

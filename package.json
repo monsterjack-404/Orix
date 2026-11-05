@@ -48,6 +48,7 @@
     "./network/har": "./src/network/har.mjs",
     "./formats/pcap": "./src/formats/pcap.mjs",
     "./formats/pcapng": "./src/formats/pcapng.mjs",
+    "./cases": "./src/cases/store.mjs",
     "./formats/squashfs": "./src/formats/squashfs.mjs",
     "./formats/cramfs": "./src/formats/cramfs.mjs",
     "./formats/ubi": "./src/formats/ubi.mjs",
