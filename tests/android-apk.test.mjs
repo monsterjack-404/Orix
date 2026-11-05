@@ -30,8 +30,8 @@ test('APK parser verifies DEX Adler32 and SHA-1 integrity fields', () => {
 });
 
 test('APK parser reports DEX integrity mismatches without confusing them with publisher trust', () => {
-  const dex = create_minimal_dex_fixture();
-  dex[0x6f] ^= 0x01;
+  const dex = create_dex_class_fixture();
+  dex[0x99] ^= 0x01;
   const parsed = parse_apk(apk_fixture({ dex }));
   assert.equal(parsed.dex[0].integrity.adler32.valid, false);
   assert.equal(parsed.dex[0].integrity.sha1.valid, false);
