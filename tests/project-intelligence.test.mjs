@@ -440,3 +440,24 @@ test('project intelligence inventories declarations and imports across a broad p
   assert.ok(report.graph.edges.some(edge => edge.from === 'ruby/app.rb' && edge.to === 'ruby/worker.rb'));
   assert.equal(report.coverage.complete, true);
 }));
+
+
+test('TypeScript type-only imports and exported declaration metadata are preserved', async () => with_project(async root => {
+  await mkdir(path.join(root, 'src'), { recursive: true });
+  await writeFile(path.join(root, 'src', 'types.ts'), 'export interface User { id: string; }\\n');
+  await writeFile(path.join(root, 'src', 'index.ts'), [
+    "import type { User } from './types';",
+    "export type { User as PublicUser } from './types';",
+    'export interface UserShape { id: string; }',
+    'export declare const API_VERSION: string;',
+    'export class InternalHelper {}',
+  ].join('\\n'));
+  const report = await scan_project(root);
+  const source = report.files.find(file => file.path === 'src/index.ts');
+  assert.ok(source);
+  assert.deepEqual(source.imports.map(item => item.kind).sort(), ['type-import', 'type-re-export']);
+  assert.ok(source.imports.every(item => item.resolved_path === 'src/types.ts'));
+  assert.equal(source.symbols.find(item => item.name === 'UserShape')?.exported, true);
+  assert.equal(source.symbols.find(item => item.name === 'API_VERSION')?.exported, true);
+  assert.equal(source.symbols.find(item => item.name === 'InternalHelper')?.exported, true);
+}));
