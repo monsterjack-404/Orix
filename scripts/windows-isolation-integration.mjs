@@ -62,11 +62,18 @@ async function main() {
       catch (error) { result.tmp_write = error.code || 'blocked'; }
       result.temp_is_private = os.tmpdir().toLowerCase().includes('packages');
       result.host_network = await new Promise(resolve => {
-        const socket = net.createConnection({ host: '127.0.0.1', port: ${port} }, () => {
-          socket.destroy(); resolve('connected');
-        });
-        socket.setTimeout(1000, () => { socket.destroy(); resolve('blocked'); });
-        socket.once('error', () => resolve('blocked'));
+        const socket = net.createConnection({ host: '127.0.0.1', port: ${port} });
+        let settled = false;
+        const finish = value => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          socket.destroy();
+          resolve(value);
+        };
+        const timer = setTimeout(() => finish('blocked'), 1000);
+        socket.once('connect', () => finish('connected'));
+        socket.once('error', () => finish('blocked'));
       });
       process.stdout.write(JSON.stringify(result));
     `;
@@ -82,7 +89,14 @@ async function main() {
       timeout_ms: 12_000,
       max_output_bytes: 4_096,
     });
-    assert.equal(execution.ok, true, execution.stderr || 'AppContainer provider failed');
+    assert.equal(execution.ok, true, JSON.stringify({
+      duration_ms: execution.duration_ms,
+      exit_code: execution.exit_code,
+      signal: execution.signal,
+      termination_reason: execution.termination_reason,
+      stdout: execution.stdout,
+      stderr: execution.stderr,
+    }));
     assert.match(execution.stderr, /ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64/,
       'AppContainer token and Job Object limits were not confirmed by the native launcher');
     const result = JSON.parse(execution.stdout);

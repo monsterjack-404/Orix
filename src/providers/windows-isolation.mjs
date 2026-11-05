@@ -72,9 +72,20 @@ function run_powershell(executable, script, mode, config_path, cwd, environment)
     child.stderr.on('data', chunk => {
       if (stderr.length < 8192) stderr += chunk.toString('utf8').slice(0, 8192 - stderr.length);
     });
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      reject(new OrixError('ORIX_PROVIDER_WINDOWS_CLEANUP_TIMEOUT',
+        'Windows AppContainer cleanup helper exceeded its 15-second limit', {
+          details: { stderr: stderr.slice(0, 8192) },
+          recoverable: true,
+        }));
+    }, 15_000);
     child.once('error', error => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       reject(new OrixError('ORIX_PROVIDER_WINDOWS_LAUNCHER_FAILED',
         'Windows AppContainer helper could not be started', {
           details: { reason: error.code ?? error.name ?? 'spawn-error' },
@@ -85,6 +96,7 @@ function run_powershell(executable, script, mode, config_path, cwd, environment)
     child.once('close', (code, signal) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       if (code === 0) resolve();
       else reject(new OrixError('ORIX_PROVIDER_WINDOWS_LAUNCHER_FAILED',
         'Windows AppContainer helper exited without completing its operation', {
