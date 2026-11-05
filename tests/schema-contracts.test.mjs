@@ -42,7 +42,12 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.equal(schemas[4].additionalProperties, false);
   assert.equal(schemas[5].properties.schema_version.const, 'orix.project.v1');
   assert.ok(schemas[5].required.includes('lockfiles'));
+  assert.equal(schemas[5].required.includes('electron'), false);
   assert.ok(schemas[5].properties.summary.required.includes('locked_packages'));
+  assert.ok(schemas[5].properties.electron.required.includes('detected'));
+  assert.ok(schemas[5].properties.electron.required.includes('limitations'));
+  assert.ok(schemas[5].properties.electron.required.includes('analysis_truncated_files'));
+  assert.equal(schemas[5].properties.electron.properties.analysis_truncated_files.minimum, 0);
   assert.equal(schemas[6].properties.contract_version.const, 'orix.provider.v1');
   assert.equal(schemas[6].additionalProperties, false);
   assert.ok(schemas[6].properties.execution.required.includes('requires_authorization'));
