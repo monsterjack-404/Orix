@@ -61,6 +61,10 @@ The parser indexes PNG chunks without inflating or decoding image pixels. It val
 
 The parser locates the end-of-central-directory record within a bounded trailing window. ZIP64 locators, end records and per-entry extra fields are decoded with safe-integer and central-directory checks. It reports names, compression methods, encryption flags, size ratios, local-header/data range status and suspicious paths. It does not extract, decompress, decrypt or recompute CRC values. Do not treat archive metadata as proof of what an extracting application will do.
 
+### PCAPNG
+
+The parser reads Section Header Blocks with per-section byte order, validates block lengths and trailing-length copies, resets interface indexes at section boundaries, and indexes Interface Description, Enhanced Packet, obsolete Packet, Simple Packet, Name Resolution, Interface Statistics and Decryption Secrets blocks under input, block, interface, packet, option and secret-metadata ceilings. Interface timestamp resolution and offsets are retained; packet payload bytes and decryption secret contents are never returned. Supported link-layer frames reuse the bounded classic-PCAP network metadata decoder for IPv4/IPv6 endpoints and immediate TCP/UDP ports. Name-resolution values are counted but not retained. Unknown blocks are length-validated and inventoried without interpreting their payloads. IPv6 extension traversal, reassembly, checksum validation, application protocols, payload export and replay remain unsupported.
+
 ### GZIP
 
 The parser reads bounded RFC 1952 members using raw DEFLATE, validates optional extra/name/comment framing, reserved flags, optional header CRC16, trailer CRC32 and ISIZE, and supports concatenated members. Decompressed output is capped per member and across the stream, hashed with SHA-256 and not written to disk. If the combined output begins with CPIO newc/CRC-newc, the bounded CPIO parser is applied; other nested signatures are identified only. Trailing bytes after the last complete member are reported and make the stream incomplete.
