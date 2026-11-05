@@ -18,6 +18,7 @@ function matches_ustar(buffer) {
 }
 
 const SIGNATURES = [
+  { format: 'SquashFS', description: 'SquashFS compressed read-only filesystem', matches: b => b.length >= 4 && ['hsqs','sqsh'].includes(b.subarray(0, 4).toString('ascii')) },
   { format: 'ELF', description: 'Executable and Linkable Format', matches: b => b.length >= 4 && b.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46])) },
   { format: 'PE', description: 'Portable Executable / COFF', matches: b => b.length >= 2 && b[0] === 0x4d && b[1] === 0x5a },
   { format: 'Mach-O', description: 'Mach object or executable', matches: b => b.length >= 4 && ['feedface','cefaedfe','feedfacf','cffaedfe'].includes(b.subarray(0, 4).toString('hex')) },
