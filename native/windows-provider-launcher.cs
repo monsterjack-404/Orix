@@ -185,6 +185,21 @@ namespace OrixWindowsSandbox {
       }
     }
 
+    static void DeleteTreeNoFollow(string path) {
+      if (!File.Exists(path) && !Directory.Exists(path)) return;
+      FileAttributes attributes = File.GetAttributes(path);
+      bool directory = (attributes & FileAttributes.Directory) != 0;
+      bool reparse = (attributes & FileAttributes.ReparsePoint) != 0;
+      if (directory && !reparse) {
+        foreach (string child in Directory.EnumerateFileSystemEntries(path)) DeleteTreeNoFollow(child);
+        Directory.Delete(path, false);
+      } else if (directory) {
+        Directory.Delete(path, false);
+      } else {
+        File.Delete(path);
+      }
+    }
+
     static void PurgeTree(string path, SecurityIdentifier sid) {
       if (!File.Exists(path) && !Directory.Exists(path)) return;
       FileAttributes attributes = File.GetAttributes(path);
@@ -352,8 +367,12 @@ namespace OrixWindowsSandbox {
         if (!GetExitCodeProcess(processInfo.hProcess, out exitCode)) throw Win32("Read provider exit code");
 
         // The provider's descendants stay in the job. Terminate any that outlive the main process.
-        if (!TerminateJobObject(job, exitCode)) throw Win32("Terminate remaining provider descendants");
-        if (WaitForSingleObject(job, 5000) != 0) throw new TimeoutException("Provider Job Object did not become empty");
+        uint jobWait = WaitForSingleObject(job, 100);
+        if (jobWait == 258) {
+          if (!TerminateJobObject(job, exitCode)) throw Win32("Terminate remaining provider descendants");
+          jobWait = WaitForSingleObject(job, 5000);
+        }
+        if (jobWait != 0) throw new TimeoutException("Provider Job Object did not become empty");
         return unchecked((int)exitCode);
       } finally {
         if (processCreated && processInfo.hProcess != IntPtr.Zero) {
@@ -387,7 +406,7 @@ namespace OrixWindowsSandbox {
           try { appFolder = Marshal.PtrToStringUni(appPathPointer); }
           finally { Marshal.FreeCoTaskMem(appPathPointer); }
           if (!String.IsNullOrEmpty(appFolder) && Directory.Exists(appFolder))
-            Directory.Delete(appFolder, true);
+            DeleteTreeNoFollow(appFolder);
         }
         int deleteResult = DeleteAppContainerProfile(profileName);
         if (deleteResult != 0 && unchecked((uint)deleteResult) != 0x80070002)
