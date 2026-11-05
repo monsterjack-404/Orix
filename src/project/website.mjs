@@ -137,7 +137,7 @@ function tokenize_html(source, limits) {
         }
       }
       attributes_seen += 1;
-      if (attrs.length < limits.max_attributes_per_page) attrs.push({ name: attr_name, value: value.slice(0, 4096) });
+      if (attributes_seen <= limits.max_attributes_per_page) attrs.push({ name: attr_name, value: value.slice(0, 4096) });
       else {
         truncated = true;
         break;
@@ -170,18 +170,18 @@ function url_info(value, page_path, known_paths) {
   if (/^javascript\s*:/i.test(raw)) return { kind: 'javascript' };
   if (/^(?:data|blob):/i.test(raw)) return { kind: 'embedded' };
   let parsed;
-  try {
-    parsed = new URL(raw, 'https://orix.invalid/' + page_path.replace(/^\/+/, ''));
-  } catch {
-    return { kind: 'invalid' };
-  }
+  try { parsed = new URL(raw, 'https://orix.invalid/' + page_path.replace(/^\/+/, '')); }
+  catch { return { kind: 'invalid' }; }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return { kind: 'other-scheme' };
   if (parsed.origin !== 'https://orix.invalid') return { kind: 'external', origin: parsed.origin, insecure: parsed.protocol === 'http:' };
-  let decoded = parsed.pathname;
-  try { decoded = decodeURIComponent(decoded); } catch { return { kind: 'invalid' }; }
-  const normalized = path.posix.normalize(decoded.replace(/^\/+/, ''));
+  let pathname = raw.split(/[?#]/, 1)[0].replace(/\\/g, '/');
+  try { pathname = decodeURIComponent(pathname); } catch { return { kind: 'invalid' }; }
+  const combined = pathname.startsWith('/')
+    ? pathname.replace(/^\/+/, '')
+    : path.posix.join(path.posix.dirname(page_path), pathname || path.posix.basename(page_path));
+  const normalized = path.posix.normalize(combined);
   if (normalized === '..' || normalized.startsWith('../')) return { kind: 'path-escape' };
-  return { kind: 'local', path: normalized, exists: known_paths.has(normalized) };
+  return { kind: 'local', path: normalized === '.' ? page_path : normalized, exists: known_paths.has(normalized === '.' ? page_path : normalized) };
 }
 
 function safe_label(value, maximum = 160) {
@@ -194,11 +194,12 @@ export function analyze_website_project(raw_files, options = {}) {
   const known_paths = new Set(raw_files.filter(item => item && typeof item.path === 'string').map(item => item.path));
   const html_files = raw_files.filter(item => item && typeof item.path === 'string' && typeof item.text === 'string' && /\.(?:html?|xhtml)$/i.test(item.path)).sort((a, b) => a.path.localeCompare(b.path));
   const findings = [];
+  let findings_truncated = false;
   const pages = [];
   let truncated_pages = 0;
   let references_seen = 0;
   const add_finding = (page, rule_id, severity, confidence, line, label, evidence = {}) => {
-    if (findings.length >= limits.max_findings) return;
+    if (findings.length >= limits.max_findings) { findings_truncated = true; return; }
     findings.push({ rule_id, severity, confidence, file: page, line, label, evidence });
   };
   const pages_to_analyze = html_files.slice(0, limits.max_pages);
@@ -210,7 +211,6 @@ export function analyze_website_project(raw_files, options = {}) {
       continue;
     }
     const parsed = tokenize_html(source, limits);
-    if (parsed.truncated) truncated_pages += 1;
     const page = {
       path: item.path,
       title: safe_label(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(source)?.[1]?.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), 256),
@@ -226,6 +226,7 @@ export function analyze_website_project(raw_files, options = {}) {
     };
     let refs_for_page = 0;
     const add_reference = (collection, kind, value, line, attribute_name) => {
+      if (value === null || value === undefined || value === '') return { kind: 'ignored' };
       if (refs_for_page >= limits.max_refs_per_page) {
         page.coverage.truncated = true;
         return { kind: 'limit' };
@@ -256,7 +257,10 @@ export function analyze_website_project(raw_files, options = {}) {
         if (name === 'viewport') page.metadata.viewport = safe_label(attr(tag, 'content'), 256);
         if (equiv === 'content-security-policy') page.metadata.content_security_policy = true;
       }
-      if (tag.name === 'base') page.metadata.base_href = safe_label(attr(tag, 'href'), 256);
+      if (tag.name === 'base') {
+        const base_info = url_info(attr(tag, 'href'), item.path, known_paths);
+        page.metadata.base_href = base_info.kind === 'external' ? { kind: 'external', origin: base_info.origin } : base_info.kind === 'local' ? { kind: 'local', path: base_info.path } : { kind: base_info.kind };
+      }
       if (tag.name === 'script') {
         const src = attr(tag, 'src');
         if (src) {
@@ -287,13 +291,16 @@ export function analyze_website_project(raw_files, options = {}) {
         page.forms.push({ method: ['get', 'post', 'dialog'].includes(method) ? method : 'other', action: info.kind === 'external' ? { kind: 'external', origin: info.origin } : info.kind === 'local' ? { kind: 'local', path: info.path } : { kind: info.kind } });
       }
       if (tag.name === 'iframe') {
-        const info = add_reference(page.iframes, 'iframe', attr(tag, 'src'), tag.line, 'src');
+        const info = add_reference(null, 'iframe', attr(tag, 'src'), tag.line, 'src');
         if (attr(tag, 'src')) page.iframes.push({ sandboxed: attr(tag, 'sandbox') !== null, reference: info.kind });
       }
       if (tag.name === 'img' || tag.name === 'source') {
         page.images += tag.name === 'img' ? 1 : 0;
         add_reference(null, tag.name, attr(tag, 'src'), tag.line, 'src');
-        if (attr(tag, 'srcset')) add_reference(null, tag.name, attr(tag, 'srcset'), tag.line, 'srcset');
+        if (attr(tag, 'srcset')) {
+          const first_candidate = attr(tag, 'srcset').split(',')[0].trim().split(/\\s+/)[0];
+          add_reference(null, tag.name, first_candidate, tag.line, 'srcset');
+        }
       }
       for (const attribute of tag.attrs) {
         if (/^on[a-z]{2,}$/i.test(attribute.name)) add_finding(item.path, 'ORIX_WEB_INLINE_EVENT_HANDLER', 'low', 'high', tag.line, 'Inline event handler attribute is present', { element: tag.name, attribute: attribute.name });
@@ -302,7 +309,6 @@ export function analyze_website_project(raw_files, options = {}) {
     if (page.coverage.truncated) truncated_pages += 1;
     pages.push(page);
   }
-  const findings_limited = findings.length >= limits.max_findings;
   findings.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.rule_id.localeCompare(b.rule_id));
   return {
     detected: html_files.length > 0,
@@ -317,13 +323,13 @@ export function analyze_website_project(raw_files, options = {}) {
       iframes: pages.reduce((sum, page) => sum + page.iframes.length, 0),
       references_seen,
       findings: findings.length,
-      findings_truncated: findings_limited,
+      findings_truncated,
     },
     pages,
     findings,
     coverage: {
-      complete: truncated_pages === 0 && !findings_limited,
-      truncated: truncated_pages > 0 || findings_limited,
+      complete: truncated_pages === 0 && !findings_truncated,
+      truncated: truncated_pages > 0 || findings_truncated,
       truncated_pages,
       limits,
     },
