@@ -16,6 +16,9 @@ const DEFAULTS = Object.freeze({
   max_script_tokens: 50000,
   max_script_imports: 1000,
   max_script_symbols: 1000,
+  max_total_script_tokens: 250000,
+  max_total_script_imports: 5000,
+  max_total_script_symbols: 5000,
 });
 
 function limits_for(options) {
@@ -250,6 +253,7 @@ export function analyze_website_project(raw_files, options = {}) {
   const script_import_graph = [];
   const script_cache = new Map();
   let script_bytes_analyzed = 0;
+  let script_tokens_seen = 0;
   let script_imports_seen = 0;
   let script_symbols_seen = 0;
   let script_analysis_truncated = false;
@@ -262,9 +266,16 @@ export function analyze_website_project(raw_files, options = {}) {
   const analyze_script = (script_source, source_id, line_offset = 0, depth = 0) => {
     if (script_cache.has(source_id)) return script_cache.get(source_id);
     const bytes = Buffer.byteLength(script_source, 'utf8');
-    if (depth > limits.max_script_depth || script_files.length >= limits.max_script_files || bytes > limits.max_script_bytes || bytes > limits.max_total_script_bytes - script_bytes_analyzed) {
+    const remaining_tokens = limits.max_total_script_tokens - script_tokens_seen;
+    const remaining_imports = limits.max_total_script_imports - script_imports_seen;
+    const remaining_symbols = limits.max_total_script_symbols - script_symbols_seen;
+    if (depth > limits.max_script_depth || script_files.length >= limits.max_script_files || bytes > limits.max_script_bytes || bytes > limits.max_total_script_bytes - script_bytes_analyzed || remaining_tokens < 1 || remaining_imports < 1 || remaining_symbols < 1) {
       script_analysis_truncated = true;
-      const reason = depth > limits.max_script_depth ? 'depth-limit' : bytes > limits.max_script_bytes ? 'file-size-limit' : 'analysis-budget-limit';
+      const reason = depth > limits.max_script_depth ? 'depth-limit'
+        : script_files.length >= limits.max_script_files ? 'file-count-limit'
+          : bytes > limits.max_script_bytes ? 'file-size-limit'
+            : bytes > limits.max_total_script_bytes - script_bytes_analyzed ? 'aggregate-byte-limit'
+              : 'aggregate-analysis-budget-limit';
       const skipped = { source: source_id, status: reason, bytes };
       script_cache.set(source_id, skipped);
       return skipped;
@@ -275,10 +286,13 @@ export function analyze_website_project(raw_files, options = {}) {
     script_bytes_analyzed += bytes;
     const parsed = analyze_javascript_source(script_source, {
       max_source_chars: limits.max_script_bytes,
-      max_tokens: limits.max_script_tokens,
-      max_imports: limits.max_script_imports,
-      max_symbols: limits.max_script_symbols,
+      max_tokens: Math.min(limits.max_script_tokens, remaining_tokens),
+      max_imports: Math.min(limits.max_script_imports, remaining_imports),
+      max_symbols: Math.min(limits.max_script_symbols, remaining_symbols),
     });
+    script_tokens_seen += parsed.coverage.tokens;
+    script_imports_seen += parsed.imports.length;
+    script_symbols_seen += parsed.symbols.length;
     const imports = parsed.imports.map(item => {
       const safe = sanitize_module_specifier(item.specifier);
       const resolution = resolve_local_module(item.specifier, source_id.split('#inline-script-')[0], known_paths);
@@ -299,8 +313,6 @@ export function analyze_website_project(raw_files, options = {}) {
       return edge;
     });
     const symbols = parsed.symbols.map(item => ({ ...item, line: item.line + line_offset }));
-    script_imports_seen += imports.length;
-    script_symbols_seen += symbols.length;
     if (parsed.coverage.token_limit_reached || parsed.coverage.imports_truncated || parsed.coverage.symbols_truncated) script_analysis_truncated = true;
     result.status = 'analyzed';
     result.imports = imports;
@@ -439,6 +451,7 @@ export function analyze_website_project(raw_files, options = {}) {
       pages_analyzed: pages.length,
       script_references: pages.reduce((sum, page) => sum + page.scripts.external, 0),
       script_files_analyzed: script_files.length,
+      script_tokens_analyzed: script_tokens_seen,
       script_imports: script_imports_seen,
       script_symbols: script_symbols_seen,
       script_analysis_truncated: script_analysis_truncated,
@@ -460,6 +473,9 @@ export function analyze_website_project(raw_files, options = {}) {
       truncated_pages,
       script_analysis_truncated,
       script_bytes_analyzed,
+      script_tokens_analyzed: script_tokens_seen,
+      script_imports_analyzed: script_imports_seen,
+      script_symbols_analyzed: script_symbols_seen,
       limits,
     },
     limitations: [
