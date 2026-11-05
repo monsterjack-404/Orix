@@ -212,7 +212,7 @@ function collect_symbols(tokens, maximum) {
   const symbols = [];
   const seen = new Set();
   let truncated = false;
-  const declarations = new Set(['function', 'class', 'interface', 'type', 'enum']);
+  const declarations = new Set(['function', 'class', 'interface', 'type', 'enum', 'namespace']);
   for (let index = 0; index < tokens.length && !truncated; index += 1) {
     const token = tokens[index];
     if (token.type !== 'identifier') continue;

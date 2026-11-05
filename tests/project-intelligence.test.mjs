@@ -379,3 +379,64 @@ test('project intelligence integrates offline website structure and findings', a
   assert.ok(report.findings.some(item => item.rule_id === 'ORIX_WEB_JAVASCRIPT_URL'));
   assert.match(render_project_markdown(report), /Website pages/);
 }));
+
+test('project intelligence inventories declarations and imports across a broad polyglot repository', async () => with_project(async root => {
+  const fixtures = {
+    'web/main.ts': "import type { Config } from './types';\nexport interface AppConfig {}\nexport type Mode = 'fast' | 'safe';\n",
+    'web/types.ts': "export type Config = { enabled: boolean };\n",
+    'python/app.py': "import os\nfrom .helpers import normalize\nclass Worker:\n    def run(self):\n        return normalize(os.getcwd())\n",
+    'python/helpers.py': "def normalize(value):\n    return value.strip()\n",
+    'go/app.go': 'package app\nimport "fmt"\ntype Service struct {}\nfunc Start() { fmt.Println("ok") }\n',
+    'rust/lib.rs': 'use std::fmt;\npub struct Engine;\npub fn start() {}\n',
+    'native/main.cpp': '#include <iostream>\n#include "./helpers.hpp"\nclass Engine {};\nvoid launch() {}\n',
+    'native/helpers.hpp': 'struct Helper {};\n',
+    'native/c_main.c': '#include "./helpers.h"\nstruct Record { int id; };\nint main(void) { return 0; }\n',
+    'native/helpers.h': 'typedef struct Helper { int value; } Helper;\n',
+    'objc/App.mm': '#import <Foundation/Foundation.h>\n@interface Bridge : NSObject\n@end\n',
+    'jvm/Main.java': 'import java.util.List;\npublic class Main {}\n',
+    'jvm/App.kt': 'import kotlin.collections.List\nclass App\n',
+    'dotnet/Program.cs': 'using System.Collections.Generic;\npublic class Runner {}\n',
+    'apple/App.swift': 'import Foundation\nstruct App {}\nfunc launch() {}\n',
+    'php/index.php': 'use App\\Service;\nrequire "./Service.php";\nclass Controller {}\nfunction handle() {}\n',
+    'php/Service.php': '<?php class Service {}',
+    'ruby/app.rb': "require 'json'\nrequire_relative './worker'\nclass Worker\n  def run\n  end\nend\n",
+    'ruby/worker.rb': 'class WorkerHelper; end\n',
+    'scripts/build.sh': 'source ./helpers.sh\nfunction deploy() { :; }\n',
+    'scripts/helpers.sh': 'function prepare() { :; }\n',
+    'db/schema.sql': 'CREATE TABLE users (id INTEGER);\nCREATE OR REPLACE VIEW active_users AS SELECT * FROM users;\n',
+    'dart/main.dart': "import './models.dart';\nclass Runner {}\n",
+    'dart/models.dart': 'class Model {}\n',
+    'scala/App.scala': 'import scala.collection.mutable\nobject App {}\n',
+    'lua/init.lua': "local json = require('json')\nfunction boot() end\n",
+    'perl/script.pl': 'sub main { return 1; }\n',
+    'r/analysis.R': 'fit <- function(x) { x }\n',
+    'elixir/lib.ex': 'defmodule Demo do\n  def run, do: :ok\nend\n',
+    'haskell/Main.hs': 'module Main where\nmain :: IO ()\nmain = pure ()\n',
+    'clojure/core.clj': '(ns demo.core)\n(defn start [] :ok)\n',
+    'fsharp/Library.fs': 'module Library\nlet run value = value\n',
+    'powershell/build.ps1': 'function Invoke-Build { Write-Output "ok" }\n',
+    'vb/Program.vb': 'Public Class Program\nEnd Class\n',
+    'objc/App.m': '#import <Foundation/Foundation.h>\n@interface App : NSObject\n@end\n',
+  };
+  for (const [file, content] of Object.entries(fixtures)) {
+    await mkdir(path.dirname(path.join(root, file)), { recursive: true });
+    await writeFile(path.join(root, file), content);
+  }
+  const report = await scan_project(root);
+  const expected = ['TypeScript','Python','Go','Rust','C++','C','Java','Kotlin','C#','Swift','PHP','Ruby','Shell','SQL','Dart','Scala','Lua','Perl','R','Elixir','Haskell','Clojure','F#','PowerShell','Visual Basic','Objective-C','Objective-C++'];
+  for (const language of expected) assert.ok(report.summary.languages[language] >= 1, 'missing language: ' + language);
+  assert.ok(report.summary.source_symbols >= 25);
+  assert.ok(report.summary.source_import_edges >= 6);
+  assert.ok(report.files.find(file => file.path === 'web/main.ts').symbols.some(symbol => symbol.name === 'AppConfig'));
+  assert.ok(report.files.find(file => file.path === 'python/app.py').symbols.some(symbol => symbol.name === 'Worker'));
+  assert.ok(report.files.find(file => file.path === 'dotnet/Program.cs').symbols.some(symbol => symbol.name === 'Runner'));
+  assert.ok(report.files.find(file => file.path === 'db/schema.sql').symbols.some(symbol => symbol.name === 'users'));
+  assert.ok(report.graph.edges.some(edge => edge.from === 'web/main.ts' && edge.to === 'web/types.ts'));
+  assert.ok(report.graph.edges.some(edge => edge.from === 'python/app.py' && edge.to === 'python/helpers.py'));
+  assert.ok(report.graph.edges.some(edge => edge.from === 'dart/main.dart' && edge.to === 'dart/models.dart'));
+  assert.ok(report.graph.edges.some(edge => edge.from === 'native/main.cpp' && edge.to === 'native/helpers.hpp'));
+  assert.ok(report.graph.edges.some(edge => edge.from === 'native/c_main.c' && edge.to === 'native/helpers.h'));
+  assert.ok(report.graph.edges.some(edge => edge.from === 'php/index.php' && edge.to === 'php/Service.php'));
+  assert.ok(report.graph.edges.some(edge => edge.from === 'ruby/app.rb' && edge.to === 'ruby/worker.rb'));
+  assert.equal(report.coverage.complete, true);
+}));

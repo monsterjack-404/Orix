@@ -60,11 +60,11 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Capability | Status | Current evidence / boundary | Completion direction |
 |---|---|---|---|
 | Bounded project traversal | Implemented | Deterministic sorted walk, no symlink traversal, limits | Incremental indexing and explicit ignore policy |
-| Language classification | Partial | Extension-based inventory for many languages | Content-aware and parser-backed detection |
+| Language classification | Partial | Extension-based inventory across 25+ languages, including TypeScript, Python, Go, Rust, C/C++, Java, Kotlin, C#, Swift, PHP, Ruby, Dart, Scala, scripting and functional languages | Content-aware and parser-backed detection |
 | Manifest inventory | Partial | Selected npm, Python, Cargo, Go, Composer, Maven, NuGet and Ruby manifests | Broader ecosystem coverage and schema validation |
 | Lockfile readers | Partial | npm, Yarn, pnpm, Cargo, Composer, Poetry, uv, Pipenv, Go sum, Ruby, NuGet and Gradle | More versions/edge cases and compatibility corpora |
 | Dependency graph | Partial | Resolved package/root edges where lockfiles expose them | Workspace resolution and graph confidence |
-| Source import extraction | Partial | Bounded JS/TS tokenizer for static imports, re-exports, require and dynamic-import literals; conservative patterns for other languages | Full ECMAScript/TypeScript AST, scopes, type/data-flow and compiler-backed resolution |
+| Source import extraction | Partial | Bounded JavaScript/TypeScript tokenizer plus syntax-pattern imports for 25+ languages; best-effort local relative-import graph | Compiler ASTs, semantic resolution, scopes, type/data-flow and dynamic/runtime loading |
 | Symbol candidates | Partial | Syntax-pattern extraction | Compiler-backed symbols and cross-reference index |
 | Local import resolution | Partial | Conservative relative path candidates | Language-aware module resolution |
 | Git metadata | Partial | HEAD, loose/packed refs, tags, sanitized remotes and verified loose HEAD commit identity | Packed object and commit history indexing |
@@ -159,7 +159,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 |---|---|---|---|
 | Native binary structural analysis | Partial | PE, ELF, Mach-O and WebAssembly parsers | Complete format semantics and address model |
 | Native decompilation | Planned | No decompiler adapter; Rizin imports only | Provider-neutral function/xref/disassembly/decompiler contract |
-| JavaScript / Electron | Partial | Source inventory and regex import/symbol candidates | AST analysis and Electron main/preload/renderer/IPC model |
+| JavaScript / Electron | Partial | Dedicated bounded JavaScript/TypeScript tokenizer, static import/re-export and declaration candidates; polyglot source import/symbol inventory for 25+ languages | Full ECMAScript/TypeScript AST and type/data-flow; Electron main/preload/renderer/IPC model |
 | .NET / CLR / IL | Partial | Bounded CLI header, runtime flags, entry-point token and metadata stream inventory | Metadata tables, IL bodies/instructions, PDB/debug data, decompilation and Authenticode trust verification |
 | Electron configuration triage | Partial | Detects Electron project metadata and literal unsafe `webPreferences` settings with file/line evidence; no AST or runtime proof | AST-aware main/preload/renderer/IPC model and disposable browser observation |
 | Android APK / manifest / DEX | Partial | APK detection from validated ZIP central directory, bounded stored/raw-DEFLATE entry reads, binary/plain XML manifest metadata, DEX header/table and class descriptor inventory, DEX Adler32/SHA-1 integrity checks, native ABI library inventory | DEX instruction/method analysis, resources and intent-filter resolution, APK signing verification, runtime/device observations |
