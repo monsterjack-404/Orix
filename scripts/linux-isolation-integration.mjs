@@ -33,18 +33,24 @@ async function make_minimal_rootfs(root) {
   for (const directory of ['proc', 'dev', 'tmp', 'work', 'usr/bin']) {
     await mkdir(path.join(root, directory), { recursive: true });
   }
-  const executable = process.execPath;
-  const dependencies = execFileSync('ldd', [executable], { encoding: 'utf8' });
-  const paths = new Set([executable]);
-  for (const line of dependencies.split('\n')) {
-    const match = line.match(/(?:=>\s*)?(\/\S+)\s+\(/);
-    if (match) paths.add(match[1]);
+  const executables = [
+    { source: process.execPath, target: path.join(root, 'usr/bin/node') },
+    { source: '/usr/bin/unshare', target: path.join(root, 'usr/bin/unshare') },
+  ];
+  const paths = new Set();
+  for (const item of executables) {
+    paths.add(item.source);
+    const dependencies = execFileSync('ldd', [item.source], { encoding: 'utf8' });
+    for (const line of dependencies.split('\n')) {
+      const match = line.match(/(?:=>\s*)?(\/\S+)\s+\(/);
+      if (match) paths.add(match[1]);
+    }
+    await copyFile(item.source, item.target);
+    await chmod(item.target, 0o755);
   }
-  const nodePath = path.join(root, 'usr/bin/node');
-  await copyFile(executable, nodePath);
-  await chmod(nodePath, 0o755);
+  const nodePath = executables[0].target;
   for (const source of paths) {
-    if (source === executable) continue;
+    if (executables.some(item => item.source === source)) continue;
     const destination = path.join(root, source.slice(1));
     await mkdir(path.dirname(destination), { recursive: true });
     await copyFile(source, destination);
@@ -75,9 +81,10 @@ async function main() {
     const probe = `
       import fs from 'node:fs';
       import net from 'node:net';
+      import { spawnSync } from 'node:child_process';
       const result = { namespace_pid: process.pid, namespace_parent_pid: process.ppid, host_pid: Number(process.env.ORIX_HOST_PID) };
-      try { result.max_user_namespaces = fs.readFileSync('/proc/sys/user/max_user_namespaces', 'utf8').trim(); }
-      catch { result.max_user_namespaces = 'unavailable'; }
+      const nested_userns = spawnSync('/usr/bin/unshare', ['--user', '--map-root-user', '/usr/bin/node', '-e', 'process.exit(0)'], { encoding: 'utf8', timeout: 1500 });
+      result.nested_userns = nested_userns.error?.code === 'ENOENT' ? 'probe-missing' : nested_userns.status === 0 ? 'allowed' : 'blocked';
       try { fs.readFileSync(${JSON.stringify(hostSecret)}, 'utf8'); result.host_file = 'readable'; }
       catch (error) { result.host_file = error.code || 'blocked'; }
       try { fs.writeFileSync('/work/host-write-probe', 'escape'); result.root_write = 'writable'; }
@@ -108,7 +115,7 @@ async function main() {
     assert.equal(execution.ok, true, execution.stderr || 'Sandboxed provider failed');
     const result = JSON.parse(execution.stdout);
     assert.notEqual(result.namespace_pid, result.host_pid, 'Provider PID was not remapped into a private PID namespace');
-    assert.equal(result.max_user_namespaces, '1', 'Provider can still create nested user namespaces');
+    assert.equal(result.nested_userns, 'blocked', 'Provider can still create nested user namespaces');
     assert.equal(result.namespace_parent_pid, 1, 'Provider is not contained under the private PID namespace init process');
     assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
