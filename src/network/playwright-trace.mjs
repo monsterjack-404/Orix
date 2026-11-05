@@ -188,11 +188,7 @@ function normalized_resource_type(value) {
   return typeof value === 'string' && /^[a-z][a-z0-9_-]{0,39}$/i.test(value) ? value.toLowerCase() : 'unknown';
 }
 function normalized_mime_type(value) {
-  return typeof value === 'string' && /^[a-z0-9!#function normalize_action_label(value) {
-  return typeof value === 'string' && IDENTIFIER.test(value) ? value : 'other';
-}^_.+-]{1,64}\/[a-z0-9!#function normalize_action_label(value) {
-  return typeof value === 'string' && IDENTIFIER.test(value) ? value : 'other';
-}^_.+-]{1,64}$/i.test(value)
+  return typeof value === 'string' && /^[a-z0-9!#$&^_.+-]{1,64}\/[a-z0-9!#$&^_.+-]{1,64}$/i.test(value)
     ? value.toLowerCase()
     : null;
 }
