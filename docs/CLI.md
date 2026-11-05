@@ -12,6 +12,23 @@ node src/cli.mjs ledger list ./.orix/evidence.jsonl
 node src/cli.mjs capabilities --json
 ```
 
+### Investigation cases
+
+```bash
+node src/cli.mjs case create ./workspace "Sample investigation" "Authorized offline review"
+node src/cli.mjs case list ./workspace
+node src/cli.mjs case add-artifact ./workspace <case-uuid> ./workspace/sample.exe
+node src/cli.mjs case analysis ./workspace <case-uuid> ./workspace/report.json orix 0.5.0
+node src/cli.mjs case finding ./workspace <case-uuid> ORIX_RULE "Review candidate" "Evidence summary" medium observed
+node src/cli.mjs case note ./workspace <case-uuid> "Needs manual confirmation"
+node src/cli.mjs case finding-status ./workspace <case-uuid> <finding-uuid> triaged "Review started"
+node src/cli.mjs case verify ./workspace <case-uuid>
+node src/cli.mjs case export ./workspace <case-uuid> ./case-bundle
+node src/cli.mjs case import ./workspace ./case-bundle
+```
+
+Case operations use a workspace-local append-only event history. Original artifact bytes are not copied; reports are stored with SHA-256 receipts. Portable bundles are unsigned. See [Investigation Cases](CASES.md) for the complete contract and boundaries.
+
 ### Capability inventory
 
 ```bash

@@ -196,11 +196,12 @@ This backlog turns the product charter into reviewable engineering work. It is i
 
 ## 5. Durable evidence and cases
 
-### G5.1 — SQLite case store
-- Add a database abstraction and schema migrations.
-- Store artifact identities, analysis runs, findings, evidence, provider invocations, annotations and case relationships.
-- Use transactions, foreign keys, integrity checks and crash-recovery tests.
-- Acceptance: export remains usable without database; migrations tested from every released schema.
+### G5.1 — Persistent case store
+- [x] Add a Node.js 20-compatible event-sourced local case store backed by the existing append-only SHA-256 JSONL ledger.
+- [x] Reconstruct case state from validated events; store artifact references, immutable analysis reports, findings, evidence IDs, notes, relationships and lifecycle transitions.
+- [x] Add case listing, retrieval and event/report integrity verification.
+- [ ] Add a SQLite adapter and schema migrations when the runtime baseline or optional-adapter policy supports it; Node.js node:sqlite is not available in Node 20 and remains experimental in Node 22.
+- Acceptance: export remains independently verifiable without a database; migrations tested before any database adapter is marked implemented.
 
 ### G5.2 — Content-addressed artifact storage
 - Deduplicate by algorithm+digest; avoid storing samples unless user explicitly opts in.
@@ -209,13 +210,15 @@ This backlog turns the product charter into reviewable engineering work. It is i
 - Acceptance: no accidental sample upload; store integrity verifiable.
 
 ### G5.3 — Case bundles and signing
-- Portable export/import with manifest, schemas, reports, evidence and checksums.
-- Optional signature and trusted timestamp integration must identify trust roots and verification status.
+- [x] Portable directory export/import with a manifest, event ledger, analysis reports, per-member SHA-256, case head hash and event count.
+- [x] Import validates member paths, sizes, hashes, report digests and the full event chain before creating a case; existing IDs are never overwritten.
+- [ ] Optional signature and trusted timestamp integration must identify trust roots and verification status; current bundles are explicitly unsigned.
 - Acceptance: tamper tests detect modified, missing, reordered and substituted members.
 
 ### G5.4 — Analyst workflow
-- Add notes, bookmarks, tags, evidence pinning, case timeline and review status.
-- Keep analyst assertions distinct from machine observations.
+- [x] Add append-only analyst notes, case/finding lifecycle states, typed case-local relationships and a sequence/timestamp/hash timeline.
+- [ ] Add bookmarks, tags, richer evidence pinning and case UI after the case contracts stabilize.
+- [x] Keep analyst notes and lifecycle changes as separate events from machine findings.
 - Acceptance: every edit is attributable and exportable.
 
 ## 6. AI and workflow orchestration
