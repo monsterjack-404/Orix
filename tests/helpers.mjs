@@ -1,4 +1,5 @@
 // JavaScript, tests/helpers.mjs, Node.js 20+, deterministic binary fixture builders.
+import { deflateRawSync } from 'node:zlib';
 
 export function create_pe_fixture({ is_64 = false } = {}) {
   const optional_size = is_64 ? 240 : 224;
