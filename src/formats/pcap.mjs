@@ -39,7 +39,7 @@ function parse_transport(bytes, offset, available, protocol, fragmented) {
   return { protocol: protocol === 6 ? 'TCP' : protocol === 17 ? 'UDP' : 'other', source_port, destination_port };
 }
 
-function parse_network(bytes, offset, link_type) {
+export function parse_network_metadata(bytes, offset, link_type) {
   let ether_type = null;
   let ip_offset = offset;
   if (link_type === 1) {
@@ -162,7 +162,7 @@ export function parse_pcap(buffer, options = {}) {
     if (captured_length > buffer.length - data_offset) invalid('ORIX_PCAP_TRUNCATED_PACKET_DATA', 'PCAP packet data is shorter than its captured length', { packet_index: packets.length, captured_length });
     if (captured_bytes_total + captured_length > max_total_packet_bytes) invalid('ORIX_PCAP_TOTAL_BYTE_LIMIT', 'PCAP captured packet bytes exceed configured aggregate limit', { max_total_packet_bytes });
     const packet_data = buffer.subarray(data_offset, data_offset + captured_length);
-    const network = parse_network(packet_data, 0, link_type);
+    const network = parse_network_metadata(packet_data, 0, link_type);
     const protocol = network.transport?.protocol ?? network.protocol ?? 'other';
     protocol_counts[protocol] = (protocol_counts[protocol] ?? 0) + 1;
     packets.push({
@@ -193,7 +193,7 @@ export function parse_pcap(buffer, options = {}) {
     summary: { protocols: protocol_counts, captured_truncated_packets: packets.filter(packet => packet.capture_truncated).length },
     packets,
     notes: [
-      'Classic PCAP record metadata only; PCAPNG is not supported.',
+      'Classic PCAP 2.4 record metadata only; PCAPNG is handled by the separate bounded PCAPNG parser.',
       'Legacy DLT_RAW (12) and LINKTYPE_RAW (101) are accepted for raw-IP captures.',
       'Packet payload bytes are not returned, decoded, exported or replayed.',
       'IPv4/IPv6 endpoint and TCP/UDP port fields are best-effort metadata, not full protocol dissection.',
