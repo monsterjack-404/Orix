@@ -12,6 +12,7 @@ const SIGNATURES = [
   { format: 'JPEG', description: 'JPEG image', matches: b => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
   { format: 'SQLite', description: 'SQLite database', matches: b => b.length >= 16 && b.subarray(0, 16).toString('ascii') === 'SQLite format 3\0' },
   { format: 'GZIP', description: 'GZIP compressed stream', matches: b => b.length >= 2 && b[0] === 0x1f && b[1] === 0x8b },
+  { format: 'CPIO newc', description: 'CPIO newc or CRC-newc archive', matches: b => b.length >= 6 && ['070701', '070702'].includes(b.subarray(0, 6).toString('ascii')) },
 ];
 
 export function detect_format(buffer) {
