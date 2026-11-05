@@ -76,7 +76,8 @@ async function main() {
       import fs from 'node:fs';
       import net from 'node:net';
       const result = { namespace_pid: process.pid, namespace_parent_pid: process.ppid, host_pid: Number(process.env.ORIX_HOST_PID) };
-      try { result.max_user_namespaces = fs.readFileSync('/proc/sys/user/max_user_namespaces', 'utf8').trim(); }\n      catch { result.max_user_namespaces = 'unavailable'; }
+      try { result.max_user_namespaces = fs.readFileSync('/proc/sys/user/max_user_namespaces', 'utf8').trim(); }
+      catch { result.max_user_namespaces = 'unavailable'; }
       try { fs.readFileSync(${JSON.stringify(hostSecret)}, 'utf8'); result.host_file = 'readable'; }
       catch (error) { result.host_file = error.code || 'blocked'; }
       try { fs.writeFileSync('/work/host-write-probe', 'escape'); result.root_write = 'writable'; }
