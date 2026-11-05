@@ -102,6 +102,10 @@ export async function prepare_windows_provider_isolation({
     isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
       'Windows AppContainer isolation is only available on Windows', { platform: process.platform });
   }
+  if (typeof sandbox_root !== 'string' || !path.isAbsolute(sandbox_root)) {
+    isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+      'Windows AppContainer isolation requires an explicit absolute sandbox_root');
+  }
   const root = await validate_directory(sandbox_root, 'sandbox_root');
   const work = await validate_directory(cwd, 'provider working directory');
   const provider = await realpath(executable);
