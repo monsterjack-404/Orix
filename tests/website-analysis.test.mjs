@@ -42,7 +42,7 @@ test('website analysis inventories page structure and reports bounded review lea
   assert.ok(report.findings.some(item => item.rule_id === 'ORIX_WEB_INLINE_EVENT_HANDLER'));
   assert.ok(report.findings.some(item => item.rule_id === 'ORIX_WEB_EXTERNAL_SCRIPT_NO_INTEGRITY'));
   const external_script = report.pages[0].scripts.references.find(item => item.kind === 'external');
-  assert.deepEqual(external_script, { kind: 'external', origin: 'https://cdn.example.test', line: 5 });
+  assert.deepEqual(external_script, { kind: 'external', origin: 'https://cdn.example.test', line: 6 });
   assert.equal(JSON.stringify(report).includes('token=secret'), false);
   assert.equal(report.coverage.complete, true);
 });
