@@ -18,6 +18,7 @@ function matches_ustar(buffer) {
 }
 
 const SIGNATURES = [
+  { format: 'UBI', description: 'Unsorted Block Images flash volume container', matches: b => b.length >= 4 && b.subarray(0,4).toString('ascii') === 'UBI#' },
   { format: 'cramfs', description: 'Compressed ROM filesystem', matches: b => b.length >= 4 && (b.subarray(0,4).toString('hex') === '453dcd28' || b.subarray(0,4).toString('hex') === '28cd3d45') },
   { format: 'SquashFS', description: 'SquashFS compressed read-only filesystem', matches: b => b.length >= 4 && ['hsqs','sqsh'].includes(b.subarray(0, 4).toString('ascii')) },
   { format: 'ELF', description: 'Executable and Linkable Format', matches: b => b.length >= 4 && b.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46])) },
