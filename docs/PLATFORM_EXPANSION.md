@@ -25,7 +25,7 @@
 | Android | Partial | Bounded APK ZIP entry reads with CRC32 validation, binary/plain XML manifest metadata, DEX header/link/data/table validation, class descriptors, native ABI and signer-entry inventory | DEX bytecode/methods, resources.arsc, intent filters, cryptographic signer verification, AAB and device/runtime observations |
 | Website and browser | Partial / planned | Offline HTML structure, script/style/link/form/iframe inventory and heuristic review findings; offline HAR 1.2 analysis | Standards-complete DOM/CSS/source-map analysis, live browser observation, console/network trace and screenshots |
 | Network traces | Partial | Offline HAR 1.2 metadata analysis; no PCAP/PCAPNG parser or live packet capture |
-| Firmware | Partial | Bounded raw CPIO newc/CRC-newc archive metadata parser, path-safety and duplicate inventory, CRC-newc checksum verification; no extraction | TAR/GZIP wrappers, SquashFS, cramfs, ext, UBI/UBIFS, boot images, device-tree blobs and filesystem semantics |
+| Firmware | Partial | Bounded raw CPIO newc/CRC-newc metadata parser plus GZIP member decompression, CRC/ISIZE verification and nested CPIO analysis; no filesystem extraction | TAR/GZIP wrappers, SquashFS, cramfs, ext, UBI/UBIFS, boot images, device-tree blobs and filesystem semantics |
 | Evidence and workflows | Partial | Reports, evidence records, JSONL hash chain, comparisons and MCP/CLI; no relational case store or cross-case evidence graph |
 | AI/RL environments | Planned | No behavior-recording format, replay engine, environment adapter or RL training runtime |
 

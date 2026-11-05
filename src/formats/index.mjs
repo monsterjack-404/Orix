@@ -10,9 +10,10 @@ import { parse_pdf } from './pdf.mjs';
 import { parse_png } from './png.mjs';
 import { parse_apk } from './apk.mjs';
 import { parse_cpio } from './cpio.mjs';
+import { parse_gzip } from './gzip.mjs';
 
 const PARSERS = new Map([
-  ['PE', parse_pe], ['ELF', parse_elf], ['Mach-O', parse_macho], ['Mach-O Universal', parse_macho_fat], ['WebAssembly', parse_wasm], ['ZIP', parse_zip], ['PDF', parse_pdf], ['PNG', parse_png], ['CPIO newc', parse_cpio],
+  ['PE', parse_pe], ['ELF', parse_elf], ['Mach-O', parse_macho], ['Mach-O Universal', parse_macho_fat], ['WebAssembly', parse_wasm], ['ZIP', parse_zip], ['PDF', parse_pdf], ['PNG', parse_png], ['CPIO newc', parse_cpio], ['GZIP', parse_gzip],
 ]);
 
 export function analyze_known_format(buffer, options = {}) {
@@ -54,3 +55,4 @@ export { parse_pdf } from './pdf.mjs';
 export { parse_png } from './png.mjs';
 export { parse_apk } from './apk.mjs';
 export { parse_cpio } from './cpio.mjs';
+export { parse_gzip } from './gzip.mjs';
