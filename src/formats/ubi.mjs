@@ -210,6 +210,8 @@ export function parse_ubi(buffer, options = {}) {
   if (!Buffer.isBuffer(buffer)) throw new TypeError('parse_ubi requires a Buffer');
   const max_input_bytes = options.max_input_bytes ?? DEFAULT_MAX_INPUT;
   const peb_size = options.peb_size ?? null;
+  const decode_vtbl = options.decode_volume_table === true;
+  if (decode_vtbl && peb_size === null) throw new TypeError('decode_volume_table requires an explicit peb_size');
   if (!Number.isSafeInteger(max_input_bytes) || max_input_bytes < HEADER_SIZE || max_input_bytes > DEFAULT_MAX_INPUT) {
     throw new TypeError('max_input_bytes must be an integer between 64 and ' + DEFAULT_MAX_INPUT);
   }
@@ -231,6 +233,7 @@ export function parse_ubi(buffer, options = {}) {
   const peb_records = [];
   let erased_pebs = 0;
   let missing_ec_headers = 0;
+  const layout_volume_candidates = [];
   if (peb_size !== null) {
     const peb_count = buffer.length / peb_size;
     if (peb_count > 65536) reject('ORIX_UBI_PEB_LIMIT', 'UBI image exceeds the configured PEB scan ceiling', { peb_count, limit: 65536 });
@@ -243,26 +246,35 @@ export function parse_ubi(buffer, options = {}) {
       const ec = parse_ec(reader, base, peb_size);
       if (ec.vid_hdr_offset + HEADER_SIZE > peb_size) reject('ORIX_UBI_VID_OFFSET_RANGE', 'VID header exceeds physical eraseblock bounds', { physical_eraseblock: index, vid_hdr_offset: ec.vid_hdr_offset, peb_size });
       const vid = parse_vid(reader, base + ec.vid_hdr_offset);
-      peb_records.push({ physical_eraseblock: index, status: 'valid-ec-header', erase_counter: ec.erase_counter, image_seq: ec.image_seq, vid });
+      peb_records.push({ physical_eraseblock: index, status: 'valid-ec-header', erase_counter: ec.erase_counter, image_seq: ec.image_seq, data_offset: ec.data_offset, vid_hdr_offset: ec.vid_hdr_offset, vid });
+      if (vid?.volume_id === LAYOUT_VOLUME_ID) {
+        if (vid.volume_type !== 'dynamic' || vid.compatibility !== 5 || vid.data_pad !== 0 || vid.logical_eraseblock > 1) {
+          reject('ORIX_UBI_INVALID_LAYOUT_VOLUME', 'UBI internal layout-volume VID metadata is inconsistent', { physical_eraseblock: index, vid });
+        }
+        layout_volume_candidates.push({ physical_eraseblock: index, logical_eraseblock: vid.logical_eraseblock, data_offset: ec.data_offset, base });
+      }
     }
   }
+  const volume_table = decode_vtbl ? decode_volume_table(buffer, layout_volume_candidates, peb_size) : null;
   return {
     format: 'UBI',
-    variant: 'erase-counter-and-volume-identifier-headers',
-    analysis_scope: peb_size === null ? 'first-peb-headers-only' : 'bounded-peb-header-scan',
+    variant: decode_vtbl ? 'ec-vid-and-volume-table' : 'erase-counter-and-volume-identifier-headers',
+    analysis_scope: peb_size === null ? 'first-peb-headers-only' : (decode_vtbl ? 'bounded-peb-and-volume-table-analysis' : 'bounded-peb-header-scan'),
     geometry: { physical_eraseblock_size: peb_size, image_bytes: buffer.length, physical_eraseblock_count: peb_size === null ? null : buffer.length / peb_size },
     first_peb: { erase_counter_header: first_ec, volume_identifier_header: first_vid },
     scan: peb_size === null ? null : { scanned_pebs: buffer.length / peb_size, erased_pebs, missing_ec_headers, physical_eraseblocks: peb_records },
+    volume_table,
     validation: {
       first_ec_header_crc_valid: true,
       first_vid_header_crc_valid: first_vid === null ? null : first_vid.crc_valid,
       all_scanned_ec_header_crcs_valid: true,
-      volume_table_decoded: false,
+      volume_table_decoded: volume_table !== null,
+      volume_table_copies_identical: volume_table?.copies_identical ?? null,
       ubifs_nodes_decoded: false,
       payloads_decompressed: false,
     },
     limitations: [
-      'Only UBI EC and VID headers are decoded; layout-volume records and volume-table CRCs are not parsed.',
+      decode_vtbl ? 'Volume-table records are decoded from available layout-volume copies; physical PEB mapping and attach/recovery selection are not performed.' : 'Only UBI EC and VID headers are decoded; layout-volume records and volume-table CRCs are not parsed.',
       'UBIFS superblocks, index nodes, journal, data nodes and filesystem trees are not decoded.',
       'No flash geometry is inferred; multi-PEB scanning requires an explicit peb_size.',
       'No payload is decompressed, extracted, written or executed.',
