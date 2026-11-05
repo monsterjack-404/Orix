@@ -148,3 +148,21 @@ test('website script graph detects encoded/backslash path escapes and redacts no
   assert.equal(JSON.stringify(report).includes('/home/user/private.js'), false);
   assert.equal(JSON.stringify(report).includes('file:///'), false);
 });
+
+
+test('website script graph enforces aggregate import, token and symbol budgets across files', () => {
+  const html = [
+    '<html><body>',
+    '<script>import "./one.js"; import "./two.js";</script>',
+    '<script>import "./three.js"; import "./four.js";</script>',
+    '</body></html>',
+  ].join('\\n');
+  const report = analyze_website_project([
+    { path: 'index.html', text: html, size_bytes: Buffer.byteLength(html) },
+  ], { max_total_script_imports: 2 });
+  assert.equal(report.summary.script_imports, 2);
+  assert.equal(report.coverage.script_imports_analyzed, 2);
+  assert.equal(report.summary.script_analysis_truncated, true);
+  assert.equal(report.coverage.complete, false);
+  assert.ok(report.pages[0].scripts.analysis.some(item => item.status === 'aggregate-analysis-budget-limit'));
+});
