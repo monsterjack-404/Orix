@@ -374,7 +374,7 @@ export async function run_static_provider(options) {
       sandbox_root: descriptors.sandbox_root?.value,
       sandbox_cgroup_parent: descriptors.sandbox_cgroup_parent?.value,
       args: launch_args,
-      env,
+      env: minimal_environment(env),
     });
     launch_executable = prepared.executable;
     launch_args = prepared.args;
