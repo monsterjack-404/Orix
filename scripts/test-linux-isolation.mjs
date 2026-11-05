@@ -37,7 +37,7 @@ async function make_minimal_rootfs(root) {
   const dependencies = execFileSync('ldd', [executable], { encoding: 'utf8' });
   const paths = new Set([executable]);
   for (const line of dependencies.split('\n')) {
-    const match = line.match(/(?:=>\\s*)?(\\/\\S+)\\s+\\(/);
+    const match = line.match(/(?:=>\s*)?(\/\S+)\s+\(/);
     if (match) paths.add(match[1]);
   }
   const nodePath = path.join(root, 'usr/bin/node');
