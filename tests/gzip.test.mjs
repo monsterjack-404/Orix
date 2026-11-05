@@ -108,7 +108,7 @@ test('GZIP parser rejects data CRC, ISIZE and optional header CRC mismatches', (
   assert.throws(() => parse_gzip(gzip_member(Buffer.from('crc'), { bad_crc: true })), error => error.code === 'ORIX_GZIP_DATA_CRC_MISMATCH');
   assert.throws(() => parse_gzip(gzip_member(Buffer.from('size'), { bad_size: true })), error => error.code === 'ORIX_GZIP_SIZE_MISMATCH');
   const bad_header = gzip_member(Buffer.from('header'), { header_crc: true });
-  bad_header[bad_header.length - 10] ^= 1;
+  bad_header[10] ^= 1;
   assert.throws(() => parse_gzip(bad_header), error => error.code === 'ORIX_GZIP_HEADER_CRC_MISMATCH');
 });
 
