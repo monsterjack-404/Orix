@@ -44,7 +44,8 @@ This file is the status ledger for product claims. It is deliberately conservati
 | PNG | Partial | Bounded chunk structure, IHDR, ordering, palette/transparency constraints and CRC budget | IDAT decompression, scanline and pixel decoding, color management |
 | JPEG | Signature only | SOI recognition | Marker/segment parser |
 | SQLite | Signature only | Database signature recognition | Page/schema/WAL parser |
-| UBI | Partial | EC/VID header parsing, header CRC validation and optional explicit-geometry PEB inventory; no volume-table/UBIFS decoding | Layout-volume records, fastmap, UBIFS node and volume payload decoding |\n| cramfs | Partial | Superblock and root-inode validation, endian detection and bounded image/root offsets; no directory traversal or block decompression | Directory entries, inode graph, compressed block decoding, extraction and reconstruction |
+| UBI | Partial | EC/VID header parsing, header CRC validation and optional explicit-geometry PEB inventory; no volume-table/UBIFS decoding | Layout-volume records, fastmap, UBIFS node and volume payload decoding |
+| cramfs | Partial | Superblock and root-inode validation, endian detection and bounded image/root offsets; no directory traversal or block decompression | Directory entries, inode graph, compressed block decoding, extraction and reconstruction |
 | SquashFS | Partial | SquashFS v4.0 superblock, endian, block geometry, compression/flags and bounded top-level table offsets; no table decompression or inode traversal | Metadata block decoding, inode/directory semantics, fragments, xattrs and file extraction |
 | GZIP | Partial | Bounded DEFLATE member decompression, optional header CRC16, trailer CRC32/ISIZE validation, concatenated members and nested CPIO/TAR parsing | Other compression methods and arbitrary nested-format recursion |
 | Parser dispatch | Implemented | Parsed/rejected/not-supported status | Capability details and parser version metadata |
