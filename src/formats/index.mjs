@@ -15,9 +15,10 @@ import { parse_tar } from './tar.mjs';
 import { parse_pcap } from './pcap.mjs';
 import { parse_pcapng } from './pcapng.mjs';
 import { parse_squashfs } from './squashfs.mjs';
+import { parse_cramfs } from './cramfs.mjs';
 
 const PARSERS = new Map([
-  ['PE', parse_pe], ['ELF', parse_elf], ['Mach-O', parse_macho], ['Mach-O Universal', parse_macho_fat], ['WebAssembly', parse_wasm], ['ZIP', parse_zip], ['PDF', parse_pdf], ['PNG', parse_png], ['CPIO newc', parse_cpio], ['GZIP', parse_gzip], ['PCAP', parse_pcap], ['PCAPNG', parse_pcapng], ['TAR', parse_tar], ['SquashFS', parse_squashfs],
+  ['PE', parse_pe], ['ELF', parse_elf], ['Mach-O', parse_macho], ['Mach-O Universal', parse_macho_fat], ['WebAssembly', parse_wasm], ['ZIP', parse_zip], ['PDF', parse_pdf], ['PNG', parse_png], ['CPIO newc', parse_cpio], ['GZIP', parse_gzip], ['PCAP', parse_pcap], ['PCAPNG', parse_pcapng], ['TAR', parse_tar], ['SquashFS', parse_squashfs], ['cramfs', parse_cramfs],
 ]);
 
 export function analyze_known_format(buffer, options = {}) {
@@ -64,3 +65,4 @@ export { parse_tar } from './tar.mjs';
 export { parse_pcap } from './pcap.mjs';
 export { parse_pcapng } from './pcapng.mjs';
 export { parse_squashfs } from './squashfs.mjs';
+export { parse_cramfs } from './cramfs.mjs';
