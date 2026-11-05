@@ -93,3 +93,64 @@ test('website analysis rejects invalid limits before processing input', () => {
   assert.throws(() => analyze_website_project([], { max_pages: 0 }), /max_pages must be a positive integer/);
   assert.throws(() => analyze_website_project([], { max_tags_per_page: 20001 }), /max_tags_per_page must be a positive integer/);
 });
+
+test('website analysis links local and inline JavaScript imports and declaration candidates', () => {
+  const html = [
+    '<html><head><script type="module" src="./app.js?cache=private"></script></head>',
+    '<body><script>',
+    "import { helper } from './dep.js?token=inline-secret';",
+    'export function inlineBoot() { return helper(); }',
+    '</script></body></html>',
+  ].join('\n');
+  const app = "import { helper } from './dep.js?token=source-secret';\nexport function boot() { return helper(); }";
+  const dep = 'export const helper = () => 1;';
+  const report = analyze_website_project([
+    { path: 'index.html', text: html, size_bytes: Buffer.byteLength(html) },
+    { path: 'app.js', text: app, size_bytes: Buffer.byteLength(app) },
+    { path: 'dep.js', text: dep, size_bytes: Buffer.byteLength(dep) },
+  ]);
+  assert.equal(report.summary.script_files_analyzed, 3);
+  assert.equal(report.summary.script_imports, 2);
+  assert.ok(report.summary.script_symbols >= 3);
+  assert.ok(report.script_import_graph.every(edge => edge.resolution === 'resolved-local'));
+  assert.ok(report.script_import_graph.every(edge => edge.to === 'dep.js'));
+  assert.ok(report.script_import_graph.every(edge => edge.redacted));
+  assert.ok(report.script_files.some(file => file.source === 'index.html#inline-script-1'));
+  assert.equal(JSON.stringify(report).includes('source-secret'), false);
+  assert.equal(JSON.stringify(report).includes('inline-secret'), false);
+});
+
+test('website analysis bounds linked JavaScript analysis and reports incomplete coverage', () => {
+  const html = '<html><script src="./app.js"></script><script>export const inlineValue = 1;</script></html>';
+  const app = 'export function boot() { return 1; }';
+  const report = analyze_website_project([
+    { path: 'index.html', text: html, size_bytes: html.length },
+    { path: 'app.js', text: app, size_bytes: app.length },
+  ], { max_script_files: 1 });
+  assert.equal(report.summary.script_files_analyzed, 1);
+  assert.equal(report.summary.script_analysis_truncated, true);
+  assert.equal(report.coverage.complete, false);
+  assert.equal(report.coverage.truncated, true);
+});
+
+test('website script graph detects encoded/backslash path escapes and redacts non-HTTP URL data', () => {
+  const html = '<script type="module">import "../%2e%2e/private.js"; import "file:///home/user/private.js";</script>';
+  const report = analyze_website_project([{ path: 'pages/index.html', text: html, size_bytes: html.length }]);
+  assert.ok(report.findings.some(item => item.rule_id === 'ORIX_WEB_SCRIPT_IMPORT_PATH_ESCAPE'));
+  assert.equal(JSON.stringify(report).includes('/home/user/private.js'), false);
+  assert.equal(JSON.stringify(report).includes('file:///'), false);
+});
+
+
+
+test('website script graph enforces aggregate import and symbol budgets across files', () => {
+  const html = '<html><script type="module">import "./a.js"; import "./b.js"; export const first = 1; export const second = 2;</script></html>';
+  const report = analyze_website_project([{ path: 'index.html', text: html, size_bytes: html.length }], {
+    max_total_script_imports: 1,
+    max_total_script_symbols: 1,
+  });
+  assert.equal(report.summary.script_imports, 1);
+  assert.equal(report.summary.script_symbols, 1);
+  assert.equal(report.summary.script_analysis_truncated, true);
+  assert.equal(report.coverage.complete, false);
+});
