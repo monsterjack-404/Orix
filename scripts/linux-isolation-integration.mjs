@@ -1,7 +1,7 @@
 // Linux Bubblewrap hostile-process integration gate. Run only on Linux with Bubblewrap and util-linux.
 import assert from 'node:assert/strict';
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, rmdir, writeFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -47,11 +47,14 @@ async function make_minimal_rootfs(root) {
     await mkdir(path.join(root, directory), { recursive: true });
   }
   const executable = process.execPath;
-  const dependencies = execFileSync('ldd', [executable], { encoding: 'utf8' });
-  const paths = new Set([executable]);
-  for (const line of dependencies.split('\n')) {
-    const match = line.match(/(?:=>\s*)?(\/\S+)\s+\(/);
-    if (match) paths.add(match[1]);
+  const sleepExecutable = '/usr/bin/sleep';
+  const paths = new Set([executable, sleepExecutable]);
+  for (const binary of [executable, sleepExecutable]) {
+    const dependencies = execFileSync('ldd', [binary], { encoding: 'utf8' });
+    for (const line of dependencies.split('\n')) {
+      const match = line.match(/(?:=>\s*)?(\/\S+)\s+\(/);
+      if (match) paths.add(match[1]);
+    }
   }
   const nodePath = path.join(root, 'usr/bin/node');
   await copyFile(executable, nodePath);
@@ -105,6 +108,7 @@ async function main() {
     const probe = `
       import fs from 'node:fs';
       import net from 'node:net';
+      import { spawn } from 'node:child_process';
       const result = { namespace_pid: process.pid, namespace_parent_pid: process.ppid, host_pid: Number(process.env.ORIX_HOST_PID) };
       try { fs.readFileSync(${JSON.stringify(hostSecret)}, 'utf8'); result.host_file = 'readable'; }
       catch (error) { result.host_file = error.code || 'blocked'; }
@@ -112,6 +116,40 @@ async function main() {
       catch (error) { result.root_write = error.code || 'blocked'; }
       try { fs.writeFileSync('/tmp/provider-write-probe', 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
+      const memoryChild = spawn(process.execPath, ['-e', 'const block = Buffer.alloc(300 * 1024 * 1024, 0x5a); setTimeout(() => process.exit(block[0] === 0x5a ? 0 : 1), 2500)'], { stdio: 'ignore' });
+      const memoryDone = new Promise(resolve => {
+        memoryChild.once('error', error => resolve({ code: null, error: error.code || 'spawn-failed' }));
+        memoryChild.once('close', (code, signal) => resolve({ code, signal }));
+      });
+      const cpuStart = Date.now();
+      let cpuIterations = 0;
+      while (Date.now() - cpuStart < 1200) cpuIterations += 1;
+      result.cpu_probe = cpuIterations > 0;
+      const sleepChildren = [];
+      const sleepCompletions = [];
+      let pidsLimitHits = 0;
+      for (let index = 0; index < 100; index += 1) {
+        try {
+          const child = spawn('/usr/bin/sleep', ['5'], { stdio: 'ignore' });
+          sleepChildren.push(child);
+          sleepCompletions.push(new Promise(resolve => {
+            child.once('error', error => {
+              if (error.code === 'EAGAIN') pidsLimitHits += 1;
+              resolve();
+            });
+            child.once('close', () => resolve());
+          }));
+        } catch (error) {
+          if (error.code === 'EAGAIN') pidsLimitHits += 1;
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+      for (const child of sleepChildren) if (child.pid) child.kill('SIGKILL');
+      await Promise.all(sleepCompletions);
+      result.pids_limit_hits = pidsLimitHits;
+      const memoryOutcome = await memoryDone;
+      result.memory_probe_ok = memoryOutcome.code === 0;
+      result.memory_probe_error = memoryOutcome.error || null;
       const limits = fs.readFileSync('/proc/self/limits', 'utf8');
       const limit = label => {
         const line = limits.split('\\n').find(item => item.startsWith(label));
@@ -131,7 +169,7 @@ async function main() {
         socket.setTimeout(700, () => { socket.destroy(); resolve('blocked'); });
         socket.once('error', () => resolve('blocked'));
       });
-      await new Promise(resolve => setTimeout(resolve, 2500));
+      await new Promise(resolve => setTimeout(resolve, 1200));
       process.stdout.write(JSON.stringify(result));
     `;
 
@@ -174,6 +212,11 @@ async function main() {
       }
       await new Promise(resolve => setTimeout(resolve, 20));
     }
+    await new Promise(resolve => setTimeout(resolve, 900));
+    const memoryCurrent = Number((await readFile(path.join(providerCgroup, 'memory.current'), 'utf8')).trim());
+    await new Promise(resolve => setTimeout(resolve, 800));
+    const cpuStat = await readFile(path.join(providerCgroup, 'cpu.stat'), 'utf8');
+    const throttledPeriods = Number(cpuStat.match(/^nr_throttled (\\d+)$/m)?.[1] || 0);
     const execution = await executionPromise;
     assert.ok(providerCgroup, 'Provider cgroup was not created');
     assert.equal(observed.memory, '536870912');
@@ -183,6 +226,10 @@ async function main() {
     assert.equal(observed.cpu, '50000 100000');
     assert.match(observed.processes, /[1-9][0-9]*/);
     assert.match(observed.events, /populated 1/);
+    assert.ok(memoryCurrent > 250 * 1024 * 1024, 'Provider memory allocation was not accounted by the cgroup');
+    assert.ok(throttledPeriods > 0, 'CPU quota did not throttle the busy provider');
+    assert.ok(result.memory_probe_ok, 'Bounded memory probe did not complete');
+    assert.ok(result.pids_limit_hits > 0, 'pids.max did not reject excess process creation');
     assert.deepEqual(await child_cgroup_directories(cgroupParent), [], 'Provider cgroup was not cleaned up after exit');
     assert.equal(execution.ok, true, execution.stderr || 'Sandboxed provider failed');
     const result = JSON.parse(execution.stdout);
