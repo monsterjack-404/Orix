@@ -59,12 +59,12 @@ test('UBI rejects inconsistent offsets, unsupported versions and bad VID CRC', (
   assert.throws(() => parse_ubi(offsets), e => e.code === 'ORIX_UBI_INVALID_OFFSETS');
   const version = image(); version[4] = 2; version.writeUInt32BE(crc32(version.subarray(0, 60)), 60);
   assert.throws(() => parse_ubi(version), e => e.code === 'ORIX_UBI_UNSUPPORTED_VERSION');
-  const vid = image(); vid[70] = 2;
+  const vid = image(); vid[72] ^= 1;
   assert.throws(() => parse_ubi(vid), e => e.code === 'ORIX_UBI_VID_CRC_MISMATCH');
 });
 
 test('UBI enforces explicit PEB geometry and bounded input', () => {
-  assert.throws(() => parse_ubi(image(), { peb_size: 1024 }), TypeError);
+  assert.throws(() => parse_ubi(image(), { peb_size: 1000 }), TypeError);
   assert.throws(() => parse_ubi(image(), { max_input_bytes: 64 }), e => e.code === 'ORIX_UBI_INPUT_LIMIT');
   const result = analyze_known_format(image());
   assert.equal(result.detection.format, 'UBI');
