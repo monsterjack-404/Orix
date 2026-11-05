@@ -64,7 +64,7 @@ test('CPIO parser rejects unsupported magic and malformed hexadecimal fields', (
 
 test('CPIO parser rejects invalid filename terminators and truncated entry data', () => {
   const bad_name = cpio_archive([cpio_entry('file', Buffer.from('x'))]);
-  const name_size = Number.parseInt(bad_name.toString('ascii', 6 + 94, 6 + 102), 16);
+  const name_size = Number.parseInt(bad_name.toString('ascii', 94, 102), 16);
   bad_name[110 + name_size - 1] = 0x41;
   assert.throws(() => parse_cpio(bad_name), error => error.code === 'ORIX_CPIO_BAD_NAME_TERMINATOR');
   const truncated = cpio_archive([cpio_entry('file', Buffer.from('long-data'))]).subarray(0, 120);
