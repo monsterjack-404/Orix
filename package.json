@@ -51,7 +51,8 @@
     "./formats/squashfs": "./src/formats/squashfs.mjs",
     "./formats/cramfs": "./src/formats/cramfs.mjs",
     "./formats/ubi": "./src/formats/ubi.mjs",
-    "./formats/ubifs": "./src/formats/ubifs.mjs"
+    "./formats/ubifs": "./src/formats/ubifs.mjs",
+    "./formats/ubifs-master": "./src/formats/ubifs-master.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
