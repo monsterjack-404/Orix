@@ -369,3 +369,46 @@ test('static provider runner rejects NUL bytes in executable and working-directo
     /cwd must be an absolute filesystem path/,
   );
 });
+
+
+test('required provider isolation fails closed when no sandbox root is supplied', async () => {
+  await assert.rejects(
+    run_static_provider({
+      manifest: manifest(),
+      executable: await node_executable(),
+      args: [],
+      isolation: 'required',
+    }),
+    /sandbox_root must be an absolute filesystem path/,
+  );
+});
+
+test('provider isolation rejects unknown isolation modes before launch', async () => {
+  await assert.rejects(
+    run_static_provider({
+      manifest: manifest(),
+      executable: await node_executable(),
+      args: [],
+      isolation: 'best-effort',
+    }),
+    /isolation must be either none or required/,
+  );
+});
+
+test('required provider isolation refuses executable and cwd paths outside its rootfs', async () => {
+  await with_directory(async root => {
+    const fs = await import('node:fs/promises');
+    for (const name of ['proc', 'dev', 'tmp']) await fs.mkdir(path.join(root, name));
+    const executable = await node_executable();
+    await assert.rejects(
+      run_static_provider({
+        manifest: manifest(),
+        executable,
+        args: [],
+        isolation: 'required',
+        sandbox_root: root,
+      }),
+      error => error.code === 'ORIX_PROVIDER_SANDBOX_PATH_DENIED',
+    );
+  });
+});

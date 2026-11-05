@@ -66,3 +66,24 @@ Please use GitHub's private vulnerability reporting or Security Advisories for s
 The provider runner compares the canonical executable with an explicit allowlist (or uses the selected executable as its single-entry default) and validates the working directory against explicit canonical roots (or the exact cwd as its default). It rejects final symlink paths and malformed/accessor-backed allowlist arrays. The child does not inherit the full parent environment; explicit values reject PATH/search and runtime-loader variables such as NODE_OPTIONS, LD_PRELOAD, DYLD_INSERT_LIBRARIES, PYTHONPATH and RUBYOPT.
 
 These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. Windows currently terminates only the direct child.
+
+
+## Enforced provider isolation (Linux implementation gate)
+
+The provider runner accepts `isolation: "required"` only when an explicit Linux
+sandbox root is supplied. The current Linux adapter uses Bubblewrap with an
+unshared network namespace, a PID/IPC/UTS/user namespace set, a read-only
+sandbox-root mount, fresh ephemeral `/tmp`, a private `/proc` and minimal
+`/dev`, and an explicit working directory. The provider executable and its
+working directory must resolve inside that root. The host project, home
+directories, and credentials are not bind-mounted into the provider namespace.
+The rootfs must be a deliberately provisioned minimal runtime containing the
+provider and its runtime dependencies; it must contain real `/proc`, `/dev`,
+and `/tmp` mount-point directories.
+
+This is an opt-in Linux backend, not a claim of complete cross-platform
+isolation. It does not yet impose cgroup CPU/memory/PID quotas, and it does not
+provide macOS or Windows enforcement. Those controls remain explicit delivery
+gates. If Bubblewrap or a valid rootfs is unavailable, required isolation fails
+before provider launch. Omitting `isolation: "required"` preserves the legacy
+process-control behavior and must not be described as sandboxed.
