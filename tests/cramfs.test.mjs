@@ -15,7 +15,7 @@ function fixture({ little = true, size = 4096, flags = 0x0002, rootMode = 0x41ed
   b.write('test-root', 48, 'ascii');
   w16(64, rootMode); w16(66, 0);
   w32(68, (0 << 24) | 0);
-  w32(72, rootOffset >>> 2);
+  w32(72, (rootOffset >>> 2) << 6);
   return b;
 }
 
