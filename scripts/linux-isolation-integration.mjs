@@ -213,12 +213,13 @@ async function main() {
       await new Promise(resolve => setTimeout(resolve, 20));
     }
     await new Promise(resolve => setTimeout(resolve, 900));
+    assert.ok(providerCgroup, 'Provider cgroup was not created');
     const memoryCurrent = Number((await readFile(path.join(providerCgroup, 'memory.current'), 'utf8')).trim());
     await new Promise(resolve => setTimeout(resolve, 800));
     const cpuStat = await readFile(path.join(providerCgroup, 'cpu.stat'), 'utf8');
     const throttledPeriods = Number(cpuStat.match(/^nr_throttled (\\d+)$/m)?.[1] || 0);
     const execution = await executionPromise;
-    assert.ok(providerCgroup, 'Provider cgroup was not created');
+    assert.ok(observed, 'Live cgroup state was not captured');
     assert.equal(observed.memory, '536870912');
     assert.equal(observed.swap, '0');
     assert.equal(observed.oom_group, '1');
