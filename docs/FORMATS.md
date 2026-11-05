@@ -60,7 +60,7 @@ The parser locates the end-of-central-directory record within a bounded trailing
 
 ### CPIO newc
 
-The parser supports raw `070701` newc and `070702` CRC-newc streams. It validates the fixed 110-byte header, hexadecimal fields, UTF-8 NUL-terminated names, four-byte alignment, declared file ranges, entry/name/aggregate byte ceilings and the trailer marker. CRC-newc entries are verified using the format byte-sum. Absolute paths, drive-prefixed names, backslash paths and parent-directory segments are marked unsafe; duplicate names are reported. The parser never extracts or executes entries. Trailing bytes after the first trailer are reported, not interpreted as a second archive.
+The parser supports raw `070701` newc and `070702` CRC-newc streams. It validates the fixed 110-byte header, hexadecimal fields, NUL-terminated names (non-UTF-8 names are retained as unsafe inventory records), four-byte alignment, declared file ranges, entry/name/aggregate byte ceilings and the trailer marker. CRC-newc entries are verified using the format byte-sum. Absolute paths, drive-prefixed names, backslash paths and parent-directory segments are marked unsafe; duplicate names are reported. The parser never extracts or executes entries. Trailing bytes after the first trailer are reported, not interpreted as a second archive.
 
 ### PDF
 
