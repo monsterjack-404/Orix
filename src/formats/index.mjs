@@ -18,6 +18,7 @@ import { parse_squashfs } from './squashfs.mjs';
 import { parse_cramfs } from './cramfs.mjs';
 import { parse_ubi } from './ubi.mjs';
 import { parse_ubifs } from './ubifs.mjs';
+import { parse_ubifs_master } from './ubifs-master.mjs';
 
 const PARSERS = new Map([
   ['PE', parse_pe], ['ELF', parse_elf], ['Mach-O', parse_macho], ['Mach-O Universal', parse_macho_fat], ['WebAssembly', parse_wasm], ['ZIP', parse_zip], ['PDF', parse_pdf], ['PNG', parse_png], ['CPIO newc', parse_cpio], ['GZIP', parse_gzip], ['PCAP', parse_pcap], ['PCAPNG', parse_pcapng], ['TAR', parse_tar], ['SquashFS', parse_squashfs], ['cramfs', parse_cramfs], ['UBI', parse_ubi], ['UBIFS', parse_ubifs],
@@ -29,6 +30,10 @@ export function analyze_known_format(buffer, options = {}) {
   const parser = PARSERS.get(detection.format);
   if (!parser) return { detection, parsed: null, parser_status: 'not-supported' };
   try {
+    if (detection.format === 'UBIFS') {
+      const selected_parser = buffer[(options.offset ?? 0) + 20] === 7 ? parse_ubifs_master : parser;
+      return { detection, parsed: selected_parser(buffer, options), parser_status: 'parsed' };
+    }
     if (detection.format === 'ZIP') {
       const archive = parser(buffer, options);
       if (archive.entries.some(entry => entry.name === 'AndroidManifest.xml')) {
@@ -70,3 +75,4 @@ export { parse_squashfs } from './squashfs.mjs';
 export { parse_cramfs } from './cramfs.mjs';
 export { parse_ubi } from './ubi.mjs';
 export { parse_ubifs } from './ubifs.mjs';
+export { parse_ubifs_master } from './ubifs-master.mjs';
