@@ -193,12 +193,16 @@ function collect_imports(tokens, maximum) {
       truncated = add_import(imports, tokens[index + 1], 'side-effect-import', token, maximum) || truncated;
       continue;
     }
+    const type_only = tokens[index + 1]?.value === 'type';
     const start_line = token.line;
     for (let offset = 1; offset <= 100 && index + offset < tokens.length; offset += 1) {
       const current = tokens[index + offset];
       if (current.value === ';') break;
       if (current.value === 'from' && tokens[index + offset + 1]?.type === 'string') {
-        truncated = add_import(imports, tokens[index + offset + 1], token.value === 'import' ? 'import' : 're-export', token, maximum) || truncated;
+        const kind = type_only
+          ? (token.value === 'import' ? 'type-import' : 'type-re-export')
+          : (token.value === 'import' ? 'import' : 're-export');
+        truncated = add_import(imports, tokens[index + offset + 1], kind, token, maximum) || truncated;
         break;
       }
       if (offset > 1 && current.line > start_line && current.type === 'identifier' &&
@@ -206,6 +210,16 @@ function collect_imports(tokens, maximum) {
     }
   }
   return { imports, truncated };
+}
+
+function declaration_is_exported(tokens, index) {
+  for (let cursor = index - 1; cursor >= 0 && index - cursor <= 10; cursor -= 1) {
+    const token = tokens[cursor];
+    if (token.value === 'export') return true;
+    if (token.value === ';' || token.value === '{' || token.value === '}') break;
+    if (tokens[index].line - token.line > 3) break;
+  }
+  return false;
 }
 
 function collect_symbols(tokens, maximum) {
@@ -229,7 +243,7 @@ function collect_symbols(tokens, maximum) {
     if (seen.has(key)) continue;
     seen.add(key);
     if (symbols.length >= maximum) { truncated = true; continue; }
-    symbols.push({ name: name.value, kind, line: token.line, confidence: 'declaration-token' });
+    symbols.push({ name: name.value, kind, line: token.line, exported: declaration_is_exported(tokens, index), confidence: 'declaration-token' });
   }
   return { symbols, truncated };
 }
