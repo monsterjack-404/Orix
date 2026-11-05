@@ -320,7 +320,8 @@ namespace OrixWindowsSandbox {
       string temp = Path.Combine(root, "tmp");
       if (!Directory.Exists(temp)) throw new DirectoryNotFoundException("sandbox_root/tmp is required for provider scratch writes");
       DirectorySecurity security = Directory.GetAccessControl(temp, AccessControlSections.Access);
-      security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.Modify,
+      SecurityIdentifier identity = new SecurityIdentifier(sid);
+      security.AddAccessRule(new FileSystemAccessRule(identity, FileSystemRights.Modify,
         InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
         PropagationFlags.None, AccessControlType.Allow));
       Directory.SetAccessControl(temp, security);
