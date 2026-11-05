@@ -130,6 +130,7 @@ function packet_options(options, little) {
   return { flags, drop_count: drop_count ? (little ? drop_count.readBigUInt64LE(0) : drop_count.readBigUInt64BE(0)).toString() : null, option_count: options.length };
 }
 function packet_record(buffer, packet_offset, captured_length, original_length, interface_info, limits, state, timestamp, options = null) {
+  if (state.packet_count >= limits.max_packets) invalid('ORIX_PCAPNG_PACKET_LIMIT', 'PCAPNG packet count exceeds configured limit', { max_packets: limits.max_packets });
   if (captured_length > limits.max_packet_bytes) invalid('ORIX_PCAPNG_PACKET_SIZE_LIMIT', 'PCAPNG captured packet exceeds configured packet-size limit', { captured_length, limit: limits.max_packet_bytes });
   if (original_length < captured_length) invalid('ORIX_PCAPNG_INVALID_PACKET_LENGTH', 'Original packet length is smaller than captured packet length', { captured_length, original_length });
   if (interface_info.snap_length > 0 && captured_length > interface_info.snap_length) invalid('ORIX_PCAPNG_SNAPLEN_EXCEEDED', 'Captured packet exceeds its interface snapshot length', { captured_length, snap_length: interface_info.snap_length, interface_id: interface_info.id });
@@ -217,10 +218,9 @@ export function parse_pcapng(buffer, options = {}) {
       const info = { id: current_interfaces.length, section_index, link_type, link_type_name: LINK_TYPES.get(link_type) ?? 'unknown', snap_length, ...metadata };
       current_interfaces.push(info);
       interfaces.push(info);
-      if (current_interfaces.length > limits.max_interfaces) invalid('ORIX_PCAPNG_INTERFACE_LIMIT', 'PCAPNG interface count exceeds configured limit', { limit: limits.max_interfaces, section_index });
+      if (interfaces.length > limits.max_interfaces) invalid('ORIX_PCAPNG_INTERFACE_LIMIT', 'PCAPNG interface count exceeds configured limit', { limit: limits.max_interfaces, section_index });
       summary = { ...summary, interface_id: info.id, link_type, snap_length, option_count: interface_options.length };
     } else if (type === 6 || type === 2) {
-      const fixed = type === 6 ? 20 : 20;
       if (length < 32) invalid('ORIX_PCAPNG_BAD_PACKET_BLOCK', 'PCAPNG packet block is shorter than fixed fields', { offset: cursor, type, length });
       const interface_id = type === 6 ? u32(buffer, cursor + 8, little, 'enhanced packet interface id') : u16(buffer, cursor + 8, little, 'packet interface id');
       const interface_info = current_interfaces[interface_id];
