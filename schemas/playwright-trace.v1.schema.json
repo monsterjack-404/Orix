@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orix.dev/schemas/playwright-trace.v1.schema.json",
+  "title": "ORIX Playwright Trace Investigation",
+  "type": "object",
+  "required": ["schema_version", "source", "trace", "summary", "coverage", "actions", "requests", "methods", "statuses", "resource_types", "media", "findings", "privacy", "limitations", "warnings", "integrity"],
+  "properties": {
+    "schema_version": { "const": "orix.playwright-trace.v1" },
+    "source": {
+      "type": "object",
+      "required": ["format", "trace_member", "archive_entries", "bytes"],
+      "properties": {
+        "format": { "const": "Playwright trace archive" },
+        "trace_member": { "const": "trace.trace" },
+        "archive_entries": { "type": "integer", "minimum": 1 },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string" },
+        "path": { "type": "string" },
+        "modified_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "trace": {
+      "type": "object",
+      "required": ["version", "origin"],
+      "properties": {
+        "version": { "type": "integer", "enum": [8, 9] },
+        "browser": { "type": ["string", "null"] },
+        "playwright_version": { "type": ["string", "null"] },
+        "platform": { "type": ["string", "null"] },
+        "origin": { "type": ["string", "null"], "enum": ["library", "testRunner", null] }
+      },
+      "additionalProperties": false
+    },
+    "summary": { "type": "object" },
+    "coverage": {
+      "type": "object",
+      "required": ["complete", "truncated", "omitted_events", "omitted_actions", "omitted_requests"],
+      "properties": {
+        "complete": { "type": "boolean" }, "truncated": { "type": "boolean" },
+        "omitted_events": { "type": "integer", "minimum": 0 },
+        "omitted_actions": { "type": "integer", "minimum": 0 },
+        "omitted_requests": { "type": "integer", "minimum": 0 },
+        "max_events": { "type": "integer", "minimum": 1 },
+        "max_actions": { "type": "integer", "minimum": 1 },
+        "max_requests": { "type": "integer", "minimum": 1 },
+        "max_pages": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "class", "method", "start_time_ms", "end_time_ms", "duration_ms", "outcome"],
+        "properties": {
+          "id": { "type": "string" }, "class": { "type": "string" }, "method": { "type": "string" },
+          "start_time_ms": { "type": "number", "minimum": 0 },
+          "end_time_ms": { "type": ["number", "null"], "minimum": 0 },
+          "duration_ms": { "type": ["number", "null"], "minimum": 0 },
+          "outcome": { "enum": ["success", "failed", "incomplete"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "method", "origin", "path", "scheme", "redacted", "status", "mime_type", "resource_type", "duration_ms", "request_body_bytes", "response_body_bytes", "failed", "timing_ms"],
+        "properties": {
+          "id": { "type": "string" }, "method": { "type": "string" },
+          "origin": { "type": ["string", "null"] }, "path": { "type": ["string", "null"] },
+          "scheme": { "type": ["string", "null"] }, "redacted": { "type": "boolean" },
+          "status": { "type": ["integer", "null"], "minimum": 0, "maximum": 599 },
+          "mime_type": { "type": ["string", "null"] }, "resource_type": { "type": "string" },
+          "duration_ms": { "type": ["number", "null"], "minimum": 0 },
+          "request_body_bytes": { "type": "integer", "minimum": 0 },
+          "response_body_bytes": { "type": "integer", "minimum": 0 },
+          "failed": { "type": "boolean" }, "timing_ms": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "methods": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 } },
+    "statuses": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 } },
+    "resource_types": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 } },
+    "media": { "type": "object" },
+    "findings": { "type": "array", "items": { "type": "object" } },
+    "privacy": {
+      "type": "object",
+      "required": ["action_parameters_included", "action_titles_included", "input_values_included", "console_text_included", "request_headers_included", "cookie_values_included", "query_values_included", "request_bodies_included", "response_bodies_included", "dom_snapshots_included", "screenshot_bytes_included", "resource_files_extracted", "note"],
+      "properties": {
+        "action_parameters_included": { "const": false }, "action_titles_included": { "const": false },
+        "input_values_included": { "const": false }, "console_text_included": { "const": false },
+        "request_headers_included": { "const": false }, "cookie_values_included": { "const": false },
+        "query_values_included": { "const": false }, "request_bodies_included": { "const": false },
+        "response_bodies_included": { "const": false }, "dom_snapshots_included": { "const": false },
+        "screenshot_bytes_included": { "const": false }, "resource_files_extracted": { "const": false },
+        "note": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "integrity": {
+      "type": "object",
+      "required": ["algorithm", "digest", "bytes"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "stable_during_read": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

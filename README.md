@@ -42,6 +42,7 @@ This repository contains working source code, bounded parsers, a usable CLI, pro
 | Electron static triage | Detects Electron package/source signals and reports literal risky `webPreferences` settings with file/line evidence during `project` scans | Heuristic only; no AST/data-flow analysis, runtime observation or exploitability verdict |
 | Android APK | ZIP-container recognition via AndroidManifest.xml, bounded binary/plain XML manifest metadata, DEX header/table and class descriptor inventory, native ABI library inventory | No signing-block or certificate verification, DEX instruction/method analysis, resource resolution or runtime observation |
 | HAR network analysis | Offline HAR 1.2 request inventory, host/status/timing summaries, review findings and SHA-256 evidence; bodies and secret header/query values are excluded | Does not capture live traffic, validate TLS certificates or prove that a capture is authentic |
+| Playwright trace analysis | Offline trace ZIP v8/v9 ingestion with bounded action timeline, network status/timing, console counts, page/media presence and SHA-256 provenance | No live browser provider, page replay, DOM/media export or authentication of trace origin |
 | Firmware archive metadata | Raw CPIO newc/CRC-newc and USTAR/PAX/GNU TAR metadata inventory; GZIP wrapper decompression with CRC/ISIZE validation and nested CPIO/TAR recognition | No extraction, filesystem reconstruction, sparse map decoding or device installation |
 | Firmware filesystem metadata | UBI EC/VID, bounded PEB inventory and opt-in layout-volume table record decoding; UBIFS superblock/master-node metadata; SquashFS v4.0 superblock/table offsets; cramfs superblock/root inode | No UBI attach/fastmap semantics, UBIFS index/journal/LPT traversal, file extraction, full payload decoding or mounting |
 
@@ -163,6 +164,17 @@ node src/cli.mjs har ./capture.har --json --max-har-entries 20000 --max-har-host
 ```
 
 The analyzer records a SHA-256 digest, bounded request metadata, host/method/status summaries, timing totals and evidence-linked review findings. It does not export request or response bodies, header values, cookie values or query parameter values. Shared operating-system temporary-directory paths are rejected; copy captures into a private workspace before analysis. URL paths and server IP addresses can still be sensitive; review reports before sharing. HAR observations describe the supplied capture, not independently verified live traffic. The same analyzer is available as the public API and the workspace-confined `orix.analyze_har` MCP tool.
+
+## Playwright trace investigation
+
+Import a previously recorded Playwright trace ZIP without starting a browser, executing a page, replaying requests or extracting archive resources:
+
+~~~sh
+node src/cli.mjs trace ./trace.zip
+node src/cli.mjs trace ./trace.zip --json --max-trace-events 50000
+~~~
+
+The importer supports trace event formats v8 and v9, validates ZIP local-header metadata, member bounds and CRC32, and emits a bounded action/network/console timeline. Selectors, typed input, console text, headers/cookies, query values, request/response payloads, DOM/ARIA content and screenshot/video bytes are deliberately excluded. Unsupported trace versions are rejected rather than guessed. This is an offline recorded-evidence importer, not a live Playwright/CDP observation provider or deterministic replay engine. The public API and workspace-confined MCP tool use the same parser. See docs/CLI.md and docs/MCP.md.
 
 See [Platform Expansion](docs/PLATFORM_EXPANSION.md) for the engineering plan covering Android, Electron/JavaScript, .NET, decompilation, firmware, browser observations and replayable AI/RL environments.
 

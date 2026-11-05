@@ -116,6 +116,7 @@ This roadmap is a sequence of testable product capabilities, not a promise that 
 
 - [x] JSON-RPC stdio server with MCP 2025-03-26 initialize, ping, tools/list and tools/call.
 - [x] Workspace-confined artifact, directory, project, format, comparison and evidence-ledger tools.
+- [x] Workspace-confined offline Playwright trace ZIP v8/v9 import with bounded action/network/console metadata and redacted report contract.
 - [x] Tool argument contracts, path checks, no-follow report reads and input/output byte budgets.
 - [x] Protocol-version negotiation, JSON-RPC batch handling, request/parameter validation, per-connection call limits and initialize/initialized lifecycle enforcement.
 - [x] Source-backed capability inventory exposed through CLI, programmatic API and a read-only MCP tool.

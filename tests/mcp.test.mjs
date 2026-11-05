@@ -56,6 +56,17 @@ test('MCP initialize negotiates protocol and advertises tool capability', async 
   assert.equal(response.result.serverInfo.name, 'orix');
 });
 
+test('MCP Playwright trace tool validates bounded metadata-only limits', async () => {
+  const tool = ORIX_MCP_TOOLS.find(item => item.name === 'orix.analyze_playwright_trace');
+  assert.ok(tool);
+  assert.equal(tool.annotations.readOnlyHint, true);
+  assert.equal(tool.annotations.idempotentHint, true);
+  await assert.rejects(
+    call_orix_tool('orix.analyze_playwright_trace', { path: '/not-used/trace.zip', max_events: 50001 }),
+    /max_events must be an integer between 1 and 50000/,
+  );
+});
+
 test('MCP initialization negotiates the server-supported version when the client requests an unknown version', async () => {
   const response = await handle_mcp_message({
     jsonrpc: '2.0',
@@ -101,6 +112,8 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.rizin_functions'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_architecture'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_har'));
+  assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_playwright_trace'));
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.analyze_playwright_trace').annotations.readOnlyHint, true);
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.capabilities'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.ledger.verify'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.case.create'));

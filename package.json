@@ -46,6 +46,7 @@
     "./formats/png": "./src/formats/png.mjs",
     "./capabilities": "./src/capabilities/registry.mjs",
     "./network/har": "./src/network/har.mjs",
+    "./network/playwright-trace": "./src/network/playwright-trace.mjs",
     "./formats/pcap": "./src/formats/pcap.mjs",
     "./formats/pcapng": "./src/formats/pcapng.mjs",
     "./cases": "./src/cases/store.mjs",

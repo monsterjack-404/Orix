@@ -20,6 +20,7 @@ const schema_paths = [
   new URL('../schemas/capabilities.v1.schema.json', import.meta.url),
   new URL('../schemas/har.v1.schema.json', import.meta.url),
   new URL('../schemas/rizin-functions.v1.schema.json', import.meta.url),
+  new URL('../schemas/playwright-trace.v1.schema.json', import.meta.url),
   new URL('../schemas/case.v1.schema.json', import.meta.url),
   new URL('../schemas/case-bundle.v1.schema.json', import.meta.url),
 ];
@@ -83,6 +84,12 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.ok(schemas[11].required.includes('formats'));
   assert.ok(schemas[11].required.includes('global_boundaries'));
   assert.equal(schemas[13].properties.schema_version.const, 'orix.har.v1');
+  const playwrightTrace = schemas.find(schema => schema.properties.schema_version?.const === 'orix.playwright-trace.v1');
+  assert.equal(playwrightTrace.properties.trace.properties.version.enum.includes(8), true);
+  assert.equal(playwrightTrace.properties.trace.properties.version.enum.includes(9), true);
+  assert.equal(playwrightTrace.properties.privacy.properties.request_bodies_included.const, false);
+  assert.equal(playwrightTrace.properties.privacy.properties.dom_snapshots_included.const, false);
+
   assert.ok(schemas[13].required.includes('integrity'));
   assert.ok(schemas[13].required.includes('privacy'));
   assert.ok(schemas[13].properties.coverage.required.includes('hosts_complete'));
