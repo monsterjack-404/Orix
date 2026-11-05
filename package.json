@@ -47,7 +47,8 @@
     "./capabilities": "./src/capabilities/registry.mjs",
     "./network/har": "./src/network/har.mjs",
     "./formats/pcap": "./src/formats/pcap.mjs",
-    "./formats/pcapng": "./src/formats/pcapng.mjs"
+    "./formats/pcapng": "./src/formats/pcapng.mjs",
+    "./formats/squashfs": "./src/formats/squashfs.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
