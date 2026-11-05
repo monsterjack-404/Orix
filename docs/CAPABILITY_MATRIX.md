@@ -35,7 +35,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Safe regular-file intake | Implemented | Symlink rejection, regular-file checks, bounded reads | Stronger platform-specific race tests |
 | Full-file SHA-256 | Implemented | Streaming hash with bounded buffer and size ceiling | Acquisition provenance and optional signed receipts |
 | Signature registry | Implemented | ELF, PE/MZ, Mach-O, universal Mach-O, WASM, PDF, PNG, JPEG, SQLite, GZIP, ZIP | Extend with fixtures and confidence semantics |
-| PE parser | Partial | PE32/PE32+, sections, imports, delay imports, exports, resources, relocation records, WIN_CERTIFICATE framing | CLR metadata, relocation application, Authenticode verification, debug data |
+| PE parser | Partial | PE32/PE32+, sections, imports, delay imports, exports, resources, relocation records, WIN_CERTIFICATE framing, bounded CLR header and metadata stream inventory | CLR metadata tables/IL decoding, decompilation, relocation application, Authenticode verification, debug data |
 | ELF parser | Partial | ELF32/64, program/section metadata, dynamic tags, symbols, REL/RELA, GNU versions and GNU hash tables | Extended numbering, relocation semantics, DWARF, architecture-specific naming |
 | Mach-O parser | Partial | Thin/FAT/FAT64, segments, sections, symbols, indirect symbols, CodeDirectory metadata | Chained fixups, Objective-C metadata, signature verification |
 | WebAssembly parser | Partial | Bounded section framing, types, imports, exports, references, code-body ranges and name section | Instruction decoding, validation, control flow, debug info and component model |
@@ -156,7 +156,7 @@ This file is the status ledger for product claims. It is deliberately conservati
 | Native binary structural analysis | Partial | PE, ELF, Mach-O and WebAssembly parsers | Complete format semantics and address model |
 | Native decompilation | Planned | No decompiler adapter; Rizin imports only | Provider-neutral function/xref/disassembly/decompiler contract |
 | JavaScript / Electron | Partial | Source inventory and regex import/symbol candidates | AST analysis and Electron main/preload/renderer/IPC model |
-| .NET / CLR / IL | Planned | C# source and NuGet inventory only | PE/CLI metadata, IL, PDB and reviewed decompiler provider |
+| .NET / CLR / IL | Partial | Bounded CLI header, runtime flags, entry-point token and metadata stream inventory | Metadata tables, IL bodies/instructions, PDB/debug data, decompilation and Authenticode trust verification |
 | Electron configuration triage | Partial | Detects Electron project metadata and literal unsafe `webPreferences` settings with file/line evidence; no AST or runtime proof | AST-aware main/preload/renderer/IPC model and disposable browser observation |
 | Android APK / manifest / DEX | Partial | APK detection from validated ZIP central directory, bounded stored/raw-DEFLATE entry reads, binary/plain XML manifest metadata, DEX header/table and class descriptor inventory, native ABI library inventory | DEX instruction/method analysis, resources and intent-filter resolution, APK signing verification, runtime/device observations |
 | Android App Bundle (AAB) | Planned | No AAB bundle-module or bundle-metadata parser | Bundle manifest/resource inspection and split-APK relationship analysis |

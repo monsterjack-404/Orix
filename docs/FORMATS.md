@@ -29,6 +29,8 @@ The parser supports PE32 and PE32+ optional-header layouts. It retains raw machi
 
 The import directory is decoded into DLL names and name/ordinal thunks. Delay imports support RVA-based and safely convertible VA-based descriptors, including name/ordinal thunks and termination state. Base-relocation blocks and records include HIGHLOW, HIGHADJ and DIR64 metadata; relocations are not applied. Exports include names, ordinals, RVAs and forwarder strings. Resource directories are traversed with depth, entry and UTF-16 name limits. Resource data is reported by RVA and file range without extraction. The security directory is treated as a file offset and WIN_CERTIFICATE framing is decoded.
 
+The CLR runtime directory is inspected as a bounded IMAGE_COR20_HEADER and BSJB metadata root. ORIX reports runtime version, metadata version, stream names/ranges, selected CLR flags and entry-point token. Stream ranges must remain inside the declared metadata root. This is a CLR assembly indicator and metadata-layout inventory only: metadata tables, signatures, method bodies, IL instructions, resources and PDB symbols are not decoded, and no decompilation or execution occurs.
+
 Certificate framing is not Authenticode verification. The parser does not calculate the Authenticode digest, validate CMS signatures, construct certificate chains or apply a trust policy.
 
 ### ELF
