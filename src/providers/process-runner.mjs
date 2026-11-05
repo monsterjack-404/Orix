@@ -3,6 +3,7 @@
 import { constants as FS_CONSTANTS } from 'node:fs';
 import { access, lstat, realpath, stat } from 'node:fs/promises';
 import { prepare_linux_provider_isolation } from './linux-isolation.mjs';
+import { prepare_windows_provider_isolation } from './windows-isolation.mjs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { OrixError } from '../core/errors.mjs';
@@ -353,8 +354,21 @@ export async function run_static_provider(options) {
   let launch_cwd = cwd;
   let launch_env = minimal_environment(env);
   let isolation_cleanup = null;
+  let isolation_cleanup_on_terminate = true;
   if (isolation === 'required') {
-    const prepared = await prepare_linux_provider_isolation({
+    const prepare = process.platform === 'linux'
+      ? prepare_linux_provider_isolation
+      : process.platform === 'win32'
+        ? prepare_windows_provider_isolation
+        : null;
+    if (!prepare) {
+      runner_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+        'Required provider isolation has no enforced backend for this operating system', {
+          provider_id: manifest.id,
+          platform: process.platform,
+        });
+    }
+    const prepared = await prepare({
       executable,
       cwd,
       sandbox_root: descriptors.sandbox_root?.value,
@@ -367,6 +381,7 @@ export async function run_static_provider(options) {
     launch_cwd = prepared.cwd;
     launch_env = prepared.env;
     isolation_cleanup = prepared.cleanup;
+    isolation_cleanup_on_terminate = prepared.cleanup_on_terminate !== false;
   }
 
   const started_at = new Date().toISOString();
@@ -420,7 +435,7 @@ export async function run_static_provider(options) {
       if (termination_started || !child || settled) return;
       termination_started = true;
       signal_process(child, detached, 'SIGTERM');
-      if (isolation_cleanup) {
+      if (isolation_cleanup && isolation_cleanup_on_terminate) {
         isolation_cleanup().catch(error => { isolation_cleanup_error = error; });
       }
       kill_timer = setTimeout(() => signal_process(child, detached, 'SIGKILL'), limits.kill_grace_ms);
