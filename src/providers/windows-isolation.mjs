@@ -1,6 +1,6 @@
 // Windows provider isolation through AppContainer and Job Objects.
 import { constants as FS_CONSTANTS } from 'node:fs';
-import { access, lstat, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -54,7 +54,7 @@ async function resolve_powershell(environment) {
   }
 }
 
-function run_powershell(executable, script, mode, config_path, cwd, environment) {
+function run_powershell(executable, script, mode, config_path, log_path, cwd, environment) {
   return new Promise((resolve, reject) => {
     let stderr = '';
     let settled = false;
@@ -130,6 +130,7 @@ export async function prepare_windows_provider_isolation({
   const script = fileURLToPath(new URL('../../scripts/windows-provider-launcher.ps1', import.meta.url));
   const temporary = await mkdtemp(path.join(tmpdir(), 'orix-provider-win-'));
   const configPath = path.join(temporary, 'provider.json');
+  const logPath = path.join(temporary, 'provider.log');
   const profileName = 'ORIX-' + randomUUID().replaceAll('-', '');
   const providerEnvironment = {
     ...env,
@@ -142,6 +143,7 @@ export async function prepare_windows_provider_isolation({
     cwd: work,
     sandboxRoot: root,
     profileName,
+    logPath,
     environment: providerEnvironment,
   };
 
@@ -159,7 +161,7 @@ export async function prepare_windows_provider_isolation({
   const cleanup = () => {
     if (cleanupPromise) return cleanupPromise;
     cleanupPromise = (async () => {
-      await run_powershell(powershell, script, 'cleanup', configPath, temporary, env);
+      await run_powershell(powershell, script, 'cleanup', configPath, logPath, temporary, env);
       await rm(temporary, { recursive: true, force: true });
     })().catch(error => {
       cleanupPromise = null;

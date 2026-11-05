@@ -4,11 +4,14 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 try {
+  $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
+  $env:ORIX_WINDOWS_LOG = [string]$config.logPath
+  [IO.File]::AppendAllText($env:ORIX_WINDOWS_LOG, [DateTime]::UtcNow.ToString('o') + ' PS:START:' + $Mode + [Environment]::NewLine)
   $sourcePath = Join-Path $PSScriptRoot '..\native\windows-provider-launcher.cs'
   [Console]::Error.WriteLine('ORIX_CLEANUP:PS_START:' + $Mode)
   Add-Type -Path $sourcePath
   [Console]::Error.WriteLine('ORIX_CLEANUP:TYPE_LOADED')
-  $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
+  [IO.File]::AppendAllText($env:ORIX_WINDOWS_LOG, [DateTime]::UtcNow.ToString('o') + ' PS:TYPE_LOADED' + [Environment]::NewLine)
   if ($Mode -eq 'cleanup') {
     [OrixWindowsSandbox.Launcher]::Cleanup([string]$config.sandboxRoot, [string]$config.profileName)
     exit 0

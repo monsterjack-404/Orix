@@ -141,6 +141,14 @@ namespace OrixWindowsSandbox {
     static extern bool GetTokenInformation(IntPtr token, int tokenInformationClass, IntPtr information,
       int informationLength, out int returnLength);
 
+    static void Log(string message) {
+      try {
+        string logPath = Environment.GetEnvironmentVariable("ORIX_WINDOWS_LOG");
+        if (!String.IsNullOrEmpty(logPath))
+          File.AppendAllText(logPath, DateTime.UtcNow.ToString("o") + " " + message + Environment.NewLine);
+      } catch { }
+    }
+
     static Exception Win32(string operation) {
       return new Win32Exception(Marshal.GetLastWin32Error(), operation);
     }
@@ -285,17 +293,22 @@ namespace OrixWindowsSandbox {
       PROCESS_INFORMATION processInfo = new PROCESS_INFORMATION();
       bool processCreated = false;
       try {
+        Log("RUN:BEGIN");
         if (!Directory.Exists(root) || !Directory.Exists(cwd))
           throw new DirectoryNotFoundException("Provider rootfs or working directory is missing");
         ValidateTree(root);
         sid = CreateProfile(profileName);
+        Log("RUN:PROFILE_CREATED");
         SecurityIdentifier identity = new SecurityIdentifier(sid);
         GrantTree(root, identity, FileSystemRights.ReadAndExecute, true);
+        Log("RUN:ROOT_ACL_GRANTED");
         CreatePrivateTemp(sid, environment);
+        Log("RUN:PRIVATE_TEMP_READY");
 
         job = CreateJobObject(IntPtr.Zero, null);
         if (job == IntPtr.Zero) throw Win32("Create provider Job Object");
         ConfigureJob(job);
+        Log("RUN:JOB_LIMITS_CONFIGURED");
 
         SECURITY_CAPABILITIES capabilities = new SECURITY_CAPABILITIES();
         capabilities.AppContainerSid = sid;
@@ -337,7 +350,9 @@ namespace OrixWindowsSandbox {
           CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
           environmentBlock, cwd, ref startup, out processInfo)) throw Win32("Create AppContainer provider process");
         processCreated = true;
+        Log("RUN:PROCESS_CREATED_SUSPENDED");
         if (!AssignProcessToJobObject(job, processInfo.hProcess)) throw Win32("Assign provider to Job Object");
+        Log("RUN:PROCESS_ASSIGNED_TO_JOB");
 
         if (!OpenProcessToken(processInfo.hProcess, 0x0008, out token)) throw Win32("Open provider process token");
         tokenInfo = Marshal.AllocHGlobal(sizeof(int));
@@ -346,8 +361,11 @@ namespace OrixWindowsSandbox {
         if (Marshal.ReadInt32(tokenInfo) != 1) throw new InvalidOperationException("Windows did not create the provider inside an AppContainer");
 
         Console.Error.WriteLine("ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64");
+        Log("RUN:APP_CONTAINER_VERIFIED");
         if (ResumeThread(processInfo.hThread) == 0xFFFFFFFF) throw Win32("Resume AppContainer provider");
+        Log("RUN:PROCESS_RESUMED");
         if (WaitForSingleObject(processInfo.hProcess, 0xFFFFFFFF) != 0) throw Win32("Wait for AppContainer provider");
+        Log("RUN:PROCESS_EXITED");
         uint exitCode;
         if (!GetExitCodeProcess(processInfo.hProcess, out exitCode)) throw Win32("Read provider exit code");
 
@@ -358,6 +376,7 @@ namespace OrixWindowsSandbox {
           jobWait = WaitForSingleObject(job, 5000);
         }
         if (jobWait != 0) throw new TimeoutException("Provider Job Object did not become empty");
+        Log("RUN:JOB_EMPTY");
         return unchecked((int)exitCode);
       } finally {
         if (processCreated && processInfo.hProcess != IntPtr.Zero) {
@@ -381,17 +400,21 @@ namespace OrixWindowsSandbox {
       IntPtr sid = IntPtr.Zero;
       try {
         Console.Error.WriteLine("ORIX_CLEANUP:BEGIN");
+        Log("CLEANUP:BEGIN");
         int hr = DeriveAppContainerSidFromAppContainerName(profileName, out sid);
         if (hr != 0) {
           Console.Error.WriteLine("ORIX_CLEANUP:NO_PROFILE:" + hr);
           return;
         }
         Console.Error.WriteLine("ORIX_CLEANUP:SID_DERIVED");
+        Log("CLEANUP:SID_DERIVED");
         SecurityIdentifier identity = new SecurityIdentifier(sid);
         if (Directory.Exists(root)) PurgeTree(root, identity);
         Console.Error.WriteLine("ORIX_CLEANUP:ROOT_ACL_PURGED");
+        Log("CLEANUP:ROOT_ACL_PURGED");
         int deleteResult = DeleteAppContainerProfile(profileName);
         Console.Error.WriteLine("ORIX_CLEANUP:PROFILE_DELETE_HR:" + deleteResult);
+        Log("CLEANUP:PROFILE_DELETE_HR:" + deleteResult);
         if (deleteResult != 0 && unchecked((uint)deleteResult) != 0x80070002)
           Marshal.ThrowExceptionForHR(deleteResult);
       } finally {
