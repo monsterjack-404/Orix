@@ -180,6 +180,17 @@ async function main() {
     await rm(base, { recursive: true, force: true });
     if (cgroupParentCreated) {
       await writeFile(path.join(cgroupParent, 'cgroup.subtree_control'), '-cpu -memory -pids');
+      const parentState = {
+        children: await readdir(cgroupParent),
+        processes: (await readFile(path.join(cgroupParent, 'cgroup.procs'), 'utf8')).trim(),
+        events: (await readFile(path.join(cgroupParent, 'cgroup.events'), 'utf8')).trim(),
+        controllers: (await readFile(path.join(cgroupParent, 'cgroup.subtree_control'), 'utf8')).trim(),
+      };
+      process.stdout.write('Delegated cgroup cleanup state: ' + JSON.stringify(parentState) + '\\n');
+      assert.deepEqual(parentState.children, [], 'Delegated cgroup parent still contains child cgroups');
+      assert.equal(parentState.processes, '', 'Delegated cgroup parent still contains processes');
+      assert.match(parentState.events, /populated 0/);
+      assert.equal(parentState.controllers, '', 'Delegated cgroup controllers were not disabled');
       await rmdir(cgroupParent);
     }
   }
