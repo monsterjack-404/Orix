@@ -1,5 +1,6 @@
 // JavaScript, src/project/website.mjs, Node.js 20+, bounded offline HTML structure and security triage.
 import path from 'node:path';
+import { analyze_javascript_source } from './javascript.mjs';
 
 const DEFAULTS = Object.freeze({
   max_pages: 500,
@@ -8,6 +9,15 @@ const DEFAULTS = Object.freeze({
   max_attributes_per_page: 100000,
   max_refs_per_page: 2000,
   max_findings: 500,
+  max_script_files: 500,
+  max_script_depth: 8,
+  max_script_bytes: 2 * 1024 * 1024,
+  max_total_script_bytes: 16 * 1024 * 1024,
+  max_script_tokens: 50000,
+  max_script_imports: 1000,
+  max_script_symbols: 1000,
+  max_total_script_imports: 10000,
+  max_total_script_symbols: 10000,
 });
 
 function limits_for(options) {
@@ -144,17 +154,22 @@ function tokenize_html(source, limits) {
         break;
       }
     }
-    tags.push({ name, closing: false, attrs, offset: opening, line: line_for(starts, opening) });
+    const tag_record = { name, closing: false, attrs, offset: opening, line: line_for(starts, opening) };
+    tags.push(tag_record);
     if (tags.length >= limits.max_tags_per_page) {
       truncated = true;
       break;
     }
     if (!tag_closed) break;
     if (name === 'script' || name === 'style') {
+      const content_start = cursor;
       const close_pattern = new RegExp('</' + name + '(?=[\\s/>])', 'ig');
       close_pattern.lastIndex = cursor;
       const close_match = close_pattern.exec(source);
       if (!close_match) break;
+      tag_record.content_start = content_start;
+      tag_record.content_end = close_match.index;
+      tag_record.content_line = line_for(starts, content_start);
       cursor = close_match.index;
     }
   }
@@ -190,19 +205,116 @@ function safe_label(value, maximum = 160) {
   return String(value ?? '').replace(/[\r\n\t]+/g, ' ').replace(/[<>]/g, '').slice(0, maximum);
 }
 
+
+function sanitize_module_specifier(value) {
+  const raw = String(value ?? '').trim();
+  if (/^(?:file|data|blob):/i.test(raw)) return { value: '[' + raw.split(':', 1)[0].toLowerCase() + '-url]', redacted: true };
+  if (/^(?:https?:)?\/\//i.test(raw)) {
+    try {
+      const parsed = new URL(raw.startsWith('//') ? 'https:' + raw : raw);
+      return { value: parsed.origin + parsed.pathname, redacted: Boolean(parsed.search || parsed.hash || parsed.username || parsed.password) };
+    } catch {
+      return { value: '[invalid-external-reference]', redacted: true };
+    }
+  }
+  const value_without_query = raw.split(/[?#]/, 1)[0];
+  return { value: value_without_query.slice(0, 2048), redacted: value_without_query !== raw || value_without_query.length > 2048 };
+}
+
+function resolve_local_module(specifier, from_path, known_paths) {
+  let raw = String(specifier ?? '').split(/[?#]/, 1)[0];
+  try { raw = decodeURIComponent(raw); } catch { return { kind: 'invalid-local-reference', path: null }; }
+  raw = raw.replace(/\\/g, '/');
+  if (/^(?:https?:)?\/\//i.test(raw)) return { kind: 'external-url', path: null };
+  if (!raw.startsWith('./') && !raw.startsWith('../') && !raw.startsWith('/')) return { kind: 'package-or-nonlocal', path: null };
+  let candidate = raw.startsWith('/') ? raw.replace(/^\/+/, '') : path.posix.join(path.posix.dirname(from_path), raw);
+  candidate = path.posix.normalize(candidate);
+  if (candidate === '..' || candidate.startsWith('../')) return { kind: 'path-escape', path: null };
+  const candidates = [candidate];
+  if (!path.posix.extname(candidate)) {
+    for (const extension of ['.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.mts', '.cts']) candidates.push(candidate + extension);
+    for (const extension of ['index.js', 'index.mjs', 'index.ts', 'index.tsx']) candidates.push(path.posix.join(candidate, extension));
+  }
+  const resolved = candidates.find(item => known_paths.has(item));
+  return resolved ? { kind: 'resolved-local', path: resolved } : { kind: 'unresolved-local', path: null };
+}
+
 export function analyze_website_project(raw_files, options = {}) {
   if (!Array.isArray(raw_files)) throw new TypeError('analyze_website_project requires an array of project file records');
   const limits = limits_for(options);
   const known_paths = new Set(raw_files.filter(item => item && typeof item.path === 'string').map(item => item.path));
+  const files_by_path = new Map(raw_files.filter(item => item && typeof item.path === 'string').map(item => [item.path, item]));
   const html_files = raw_files.filter(item => item && typeof item.path === 'string' && typeof item.text === 'string' && /\.(?:html?|xhtml)$/i.test(item.path)).sort((a, b) => a.path.localeCompare(b.path));
   const findings = [];
   let findings_truncated = false;
   const pages = [];
+  const script_files = [];
+  const script_import_graph = [];
+  const script_cache = new Map();
+  let script_bytes_analyzed = 0;
+  let script_imports_seen = 0;
+  let script_symbols_seen = 0;
+  let script_analysis_truncated = false;
   let truncated_pages = 0;
   let references_seen = 0;
   const add_finding = (page, rule_id, severity, confidence, line, label, evidence = {}) => {
     if (findings.length >= limits.max_findings) { findings_truncated = true; return; }
     findings.push({ rule_id, severity, confidence, file: page, line, label, evidence });
+  };
+  const analyze_script = (script_source, source_id, line_offset = 0, depth = 0) => {
+    if (script_cache.has(source_id)) return script_cache.get(source_id);
+    const bytes = Buffer.byteLength(script_source, 'utf8');
+    if (depth > limits.max_script_depth || script_files.length >= limits.max_script_files || bytes > limits.max_script_bytes || bytes > limits.max_total_script_bytes - script_bytes_analyzed) {
+      script_analysis_truncated = true;
+      const reason = depth > limits.max_script_depth ? 'depth-limit' : bytes > limits.max_script_bytes ? 'file-size-limit' : 'analysis-budget-limit';
+      const skipped = { source: source_id, status: reason, bytes };
+      script_cache.set(source_id, skipped);
+      return skipped;
+    }
+    const result = { source: source_id, status: 'analyzing', bytes, imports: [], symbols: [], coverage: null };
+    script_cache.set(source_id, result);
+    script_files.push(result);
+    script_bytes_analyzed += bytes;
+    const parsed = analyze_javascript_source(script_source, {
+      max_source_chars: limits.max_script_bytes,
+      max_tokens: limits.max_script_tokens,
+      max_imports: limits.max_script_imports,
+      max_symbols: limits.max_script_symbols,
+    });
+    const remaining_imports = Math.max(0, limits.max_total_script_imports - script_imports_seen);
+    const import_candidates = parsed.imports.slice(0, remaining_imports);
+    if (import_candidates.length < parsed.imports.length) script_analysis_truncated = true;
+    script_imports_seen += import_candidates.length;
+    const imports = import_candidates.map(item => {
+      const safe = sanitize_module_specifier(item.specifier);
+      const resolution = resolve_local_module(item.specifier, source_id.split('#inline-script-')[0], known_paths);
+      const line = item.line + line_offset;
+      if (resolution.kind === 'path-escape') {
+        add_finding(source_id.split('#inline-script-')[0], 'ORIX_WEB_SCRIPT_IMPORT_PATH_ESCAPE', 'medium', 'medium', line, 'JavaScript module import escapes the project root', { source: source_id, specifier: safe.value });
+      } else if (resolution.kind === 'unresolved-local') {
+        add_finding(source_id.split('#inline-script-')[0], 'ORIX_WEB_UNRESOLVED_LOCAL_IMPORT', 'low', 'medium', line, 'Local JavaScript module reference does not match an inventoried file', { source: source_id, specifier: safe.value });
+      }
+      const edge = { from: source_id, to: resolution.path, specifier: safe.value, redacted: safe.redacted, kind: item.kind, resolution: resolution.kind, line, confidence: item.confidence };
+      script_import_graph.push(edge);
+      if (resolution.kind === 'resolved-local') {
+        const dependency = files_by_path.get(resolution.path);
+        if (dependency && typeof dependency.text === 'string' && /\.(?:[cm]?js|jsx|tsx?|mts|cts)$/i.test(resolution.path)) {
+          analyze_script(dependency.text, resolution.path, 0, depth + 1);
+        }
+      }
+      return edge;
+    });
+    const remaining_symbols = Math.max(0, limits.max_total_script_symbols - script_symbols_seen);
+    const symbol_candidates = parsed.symbols.slice(0, remaining_symbols);
+    if (symbol_candidates.length < parsed.symbols.length) script_analysis_truncated = true;
+    script_symbols_seen += symbol_candidates.length;
+    const symbols = symbol_candidates.map(item => ({ ...item, line: item.line + line_offset }));
+    if (parsed.coverage.token_limit_reached || parsed.coverage.imports_truncated || parsed.coverage.symbols_truncated) script_analysis_truncated = true;
+    result.status = 'analyzed';
+    result.imports = imports;
+    result.symbols = symbols;
+    result.coverage = parsed.coverage;
+    return result;
   };
   const pages_to_analyze = html_files.slice(0, limits.max_pages);
   if (html_files.length > pages_to_analyze.length) truncated_pages += html_files.length - pages_to_analyze.length;
@@ -217,7 +329,7 @@ export function analyze_website_project(raw_files, options = {}) {
       path: item.path,
       title: safe_label(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(source)?.[1]?.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), 256),
       language: null,
-      scripts: { external: 0, inline: 0, modules: 0, references: [] },
+      scripts: { external: 0, inline: 0, modules: 0, references: [], analysis: [] },
       stylesheets: { count: 0, references: [] },
       links: { internal: 0, external: 0, references: [] },
       forms: [],
@@ -265,12 +377,27 @@ export function analyze_website_project(raw_files, options = {}) {
       }
       if (tag.name === 'script') {
         const src = attr(tag, 'src');
+        const script_type = (attr(tag, 'type') ?? '').toLowerCase().split(';')[0].trim();
+        const javascript_type = !script_type || script_type === 'module' || ['text/javascript', 'application/javascript', 'text/ecmascript', 'application/ecmascript'].includes(script_type);
         if (src) {
           page.scripts.external += 1;
           const info = add_reference(page.scripts.references, 'script', src, tag.line, 'src');
           if (info.kind === 'external' && !attr(tag, 'integrity')) add_finding(item.path, 'ORIX_WEB_EXTERNAL_SCRIPT_NO_INTEGRITY', 'low', 'medium', tag.line, 'External script has no integrity attribute', { origin: info.origin });
-        } else page.scripts.inline += 1;
-        if ((attr(tag, 'type') ?? '').toLowerCase() === 'module') page.scripts.modules += 1;
+          if (info.kind === 'local' && info.exists && javascript_type) {
+            const script_file = files_by_path.get(info.path);
+            if (script_file && typeof script_file.text === 'string') {
+              page.scripts.analysis.push(analyze_script(script_file.text, info.path));
+            } else page.scripts.analysis.push({ source: info.path, status: 'source-not-available' });
+          }
+        } else {
+          page.scripts.inline += 1;
+          if (javascript_type && Number.isSafeInteger(tag.content_start) && Number.isSafeInteger(tag.content_end)) {
+            const inline_index = page.scripts.inline;
+            const inline_source = source.slice(tag.content_start, tag.content_end);
+            page.scripts.analysis.push(analyze_script(inline_source, item.path + '#inline-script-' + inline_index, tag.content_line - 1));
+          }
+        }
+        if (script_type === 'module') page.scripts.modules += 1;
       }
       if (tag.name === 'link' && (attr(tag, 'rel') ?? '').toLowerCase().split(/\s+/).includes('stylesheet')) {
         page.stylesheets.count += 1;
@@ -319,6 +446,10 @@ export function analyze_website_project(raw_files, options = {}) {
       pages_seen: html_files.length,
       pages_analyzed: pages.length,
       script_references: pages.reduce((sum, page) => sum + page.scripts.external, 0),
+      script_files_analyzed: script_files.length,
+      script_imports: script_imports_seen,
+      script_symbols: script_symbols_seen,
+      script_analysis_truncated: script_analysis_truncated,
       inline_scripts: pages.reduce((sum, page) => sum + page.scripts.inline, 0),
       stylesheets: pages.reduce((sum, page) => sum + page.stylesheets.count, 0),
       forms: pages.reduce((sum, page) => sum + page.forms.length, 0),
@@ -328,11 +459,15 @@ export function analyze_website_project(raw_files, options = {}) {
       findings_truncated,
     },
     pages,
+    script_files,
+    script_import_graph,
     findings,
     coverage: {
-      complete: truncated_pages === 0 && !findings_truncated,
-      truncated: truncated_pages > 0 || findings_truncated,
+      complete: truncated_pages === 0 && !findings_truncated && !script_analysis_truncated,
+      truncated: truncated_pages > 0 || findings_truncated || script_analysis_truncated,
       truncated_pages,
+      script_analysis_truncated,
+      script_bytes_analyzed,
       limits,
     },
     limitations: [
@@ -340,7 +475,7 @@ export function analyze_website_project(raw_files, options = {}) {
       'Scripts, stylesheets, templates and embedded documents are never executed or fetched.',
       'URL references are normalized locally against the source path; base-element browser resolution is recorded but not applied, and no DNS, HTTP, TLS or origin reachability checks are performed.',
       'Security findings are review leads, not exploitability or compliance verdicts.',
-      'JavaScript source analysis remains a separate bounded tokenizer and is not connected to browser runtime behavior.',
+      'Linked local JavaScript and inline script bodies receive bounded lexical import/symbol analysis only; source is never executed and browser runtime behavior is not observed.',
     ],
   };
 }
