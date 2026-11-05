@@ -177,7 +177,7 @@ function url_info(value, page_path, known_paths) {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return { kind: 'other-scheme' };
   if (parsed.origin !== 'https://orix.invalid') return { kind: 'external', origin: parsed.origin, insecure: parsed.protocol === 'http:' };
   let pathname = raw.split(/[?#]/, 1)[0].replace(/\\/g, '/');
-  try { pathname = decodeURIComponent(pathname); } catch { return { kind: 'invalid' }; }
+  try { pathname = decodeURIComponent(pathname).replace(/\\/g, '/'); } catch { return { kind: 'invalid' }; }
   const combined = pathname.startsWith('/')
     ? pathname.replace(/^\/+/, '')
     : path.posix.join(path.posix.dirname(page_path), pathname || path.posix.basename(page_path));
