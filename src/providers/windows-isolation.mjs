@@ -72,13 +72,14 @@ function run_powershell(executable, script, mode, config_path, log_path, cwd, en
     child.stderr.on('data', chunk => {
       if (stderr.length < 8192) stderr += chunk.toString('utf8').slice(0, 8192 - stderr.length);
     });
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       if (settled) return;
       settled = true;
       child.kill();
+      const helper_log = await readFile(log_path, 'utf8').catch(() => '');
       reject(new OrixError('ORIX_PROVIDER_WINDOWS_CLEANUP_TIMEOUT',
         'Windows AppContainer cleanup helper exceeded its 30-second limit', {
-          details: { stderr: stderr.slice(0, 8192) },
+          details: { stderr: stderr.slice(0, 8192), helper_log: helper_log.slice(-8192) },
           recoverable: true,
         }));
     }, 30_000);
