@@ -1,11 +1,24 @@
 // Linux Bubblewrap hostile-process integration gate. Run only on Linux with Bubblewrap and util-linux.
 import assert from 'node:assert/strict';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, rmdir, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, rmdir, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
+
+async function child_cgroup_directories(parent) {
+  const entries = await readdir(parent);
+  const directories = [];
+  for (const name of entries) {
+    try {
+      if ((await lstat(path.join(parent, name))).isDirectory()) directories.push(name);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  return directories;
+}
 
 function manifest() {
   return {
@@ -134,7 +147,7 @@ async function main() {
     let providerCgroup = null;
     let observed = null;
     for (let attempt = 0; attempt < 100; attempt += 1) {
-      const entries = await readdir(cgroupParent);
+      const entries = await child_cgroup_directories(cgroupParent);
       if (entries.length) {
         providerCgroup = path.join(cgroupParent, entries[0]);
         observed = {
@@ -159,7 +172,7 @@ async function main() {
     assert.equal(observed.cpu, '50000 100000');
     assert.match(observed.processes, /[1-9][0-9]*/);
     assert.match(observed.events, /populated 1/);
-    assert.deepEqual(await readdir(cgroupParent), [], 'Provider cgroup was not cleaned up after exit');
+    assert.deepEqual(await child_cgroup_directories(cgroupParent), [], 'Provider cgroup was not cleaned up after exit');
     assert.equal(execution.ok, true, execution.stderr || 'Sandboxed provider failed');
     const result = JSON.parse(execution.stdout);
     assert.notEqual(result.namespace_pid, result.host_pid, 'Provider PID was not remapped into a private PID namespace');
@@ -180,14 +193,15 @@ async function main() {
     await rm(base, { recursive: true, force: true });
     if (cgroupParentCreated) {
       await writeFile(path.join(cgroupParent, 'cgroup.subtree_control'), '-cpu -memory -pids');
+      const remainingChildren = await child_cgroup_directories(cgroupParent);
       const parentState = {
-        children: await readdir(cgroupParent),
+        child_cgroups: remainingChildren,
         processes: (await readFile(path.join(cgroupParent, 'cgroup.procs'), 'utf8')).trim(),
         events: (await readFile(path.join(cgroupParent, 'cgroup.events'), 'utf8')).trim(),
         controllers: (await readFile(path.join(cgroupParent, 'cgroup.subtree_control'), 'utf8')).trim(),
       };
       process.stdout.write('Delegated cgroup cleanup state: ' + JSON.stringify(parentState) + '\\n');
-      assert.deepEqual(parentState.children, [], 'Delegated cgroup parent still contains child cgroups');
+      assert.deepEqual(parentState.child_cgroups, [], 'Delegated cgroup parent still contains child cgroups');
       assert.equal(parentState.processes, '', 'Delegated cgroup parent still contains processes');
       assert.match(parentState.events, /populated 0/);
       assert.equal(parentState.controllers, '', 'Delegated cgroup controllers were not disabled');
