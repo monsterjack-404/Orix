@@ -380,6 +380,15 @@ namespace OrixWindowsSandbox {
         if (hr != 0) return;
         SecurityIdentifier identity = new SecurityIdentifier(sid);
         if (Directory.Exists(root)) PurgeTree(root, identity);
+        IntPtr appPathPointer = IntPtr.Zero;
+        int pathResult = GetAppContainerFolderPath(sid, out appPathPointer);
+        if (pathResult == 0 && appPathPointer != IntPtr.Zero) {
+          string appFolder;
+          try { appFolder = Marshal.PtrToStringUni(appPathPointer); }
+          finally { Marshal.FreeCoTaskMem(appPathPointer); }
+          if (!String.IsNullOrEmpty(appFolder) && Directory.Exists(appFolder))
+            Directory.Delete(appFolder, true);
+        }
         int deleteResult = DeleteAppContainerProfile(profileName);
         if (deleteResult != 0 && unchecked((uint)deleteResult) != 0x80070002)
           Marshal.ThrowExceptionForHR(deleteResult);
