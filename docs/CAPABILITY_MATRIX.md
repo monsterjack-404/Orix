@@ -2,7 +2,7 @@
 
 This file is the status ledger for product claims. It is deliberately conservative. “Implemented” means the current main-branch source and tests contain a working vertical slice; it does not mean the domain is complete. “Partial” means a useful slice exists with material scope limitations. “Planned” means the capability is not operational in the current repository.
 
-**Baseline:** ORIX 0.5.0, feature branch `feat/squashfs-metadata-parser`, reviewed 2026-11-05.  
+**Baseline:** ORIX 0.5.0, main branch, reviewed 2026-11-05.  
 **Authority:** source + tests + current CI, not the project vision or README aspiration.
 
 ## Status vocabulary
