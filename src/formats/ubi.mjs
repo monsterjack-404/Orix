@@ -102,8 +102,9 @@ export function parse_ubi(buffer, options = {}) {
     if (peb_count > 65536) reject('ORIX_UBI_PEB_LIMIT', 'UBI image exceeds the configured PEB scan ceiling', { peb_count, limit: 65536 });
     for (let index = 0; index < peb_count; index += 1) {
       const base = index * peb_size;
+      const is_erased = buffer.subarray(base, base + 4).every(byte => byte === 0xff);
+      if (is_erased) { erased_pebs += 1; continue; }
       const magic = reader.ascii(base, 4, 'PEB magic');
-      if (magic === '\xff\xff\xff\xff') { erased_pebs += 1; continue; }
       if (magic !== EC_MAGIC) { missing_ec_headers += 1; peb_records.push({ physical_eraseblock: index, status: 'unrecognized-header', magic }); continue; }
       const ec = parse_ec(reader, base, peb_size);
       if (ec.vid_hdr_offset + HEADER_SIZE > peb_size) reject('ORIX_UBI_VID_OFFSET_RANGE', 'VID header exceeds physical eraseblock bounds', { physical_eraseblock: index, vid_hdr_offset: ec.vid_hdr_offset, peb_size });
