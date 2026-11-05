@@ -36,7 +36,7 @@ async function validate_directory(value, label) {
 }
 
 async function resolve_powershell(environment) {
-  const systemRoot = environment.SystemRoot ?? environment.WINDIR;
+  const systemRoot = environment.SystemRoot ?? environment.WINDIR ?? process.env.SystemRoot ?? process.env.WINDIR;
   if (typeof systemRoot !== 'string' || !path.isAbsolute(systemRoot)) {
     isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'Windows SystemRoot is missing from the safe provider environment');
   }
