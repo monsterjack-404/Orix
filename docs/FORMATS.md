@@ -18,6 +18,7 @@ ORIX distinguishes **signature recognition**, **structural parsing**, **semantic
 | JPEG | Yes | No | JPEG SOI marker | Marker/segment parser and metadata |
 | SQLite | Yes | No | Sixteen-byte database signature | Page layout, schema, WAL and freelist parsing |
 | GZIP | Yes | No | GZIP magic | Header flags, bounded decompression and trailer validation |
+| CPIO newc | Yes | Yes | 070701 and 070702 headers, bounded entry/name/data ranges, file types, path safety, duplicate inventory, trailer detection and CRC-newc byte-sum verification | Extraction, gzip/compressed wrappers, concatenated archives, filesystem semantics and symlink/hardlink resolution |
 
 The registry recognizes PE from the MZ prefix as a candidate. A DOS executable without a PE signature is therefore reported as a PE candidate and rejected by the PE parser. This is intentional candidate recognition, not proof of PE structure.
 
@@ -56,6 +57,10 @@ The parser indexes PNG chunks without inflating or decoding image pixels. It val
 ### ZIP
 
 The parser locates the end-of-central-directory record within a bounded trailing window. ZIP64 locators, end records and per-entry extra fields are decoded with safe-integer and central-directory checks. It reports names, compression methods, encryption flags, size ratios, local-header/data range status and suspicious paths. It does not extract, decompress, decrypt or recompute CRC values. Do not treat archive metadata as proof of what an extracting application will do.
+
+### CPIO newc
+
+The parser supports raw `070701` newc and `070702` CRC-newc streams. It validates the fixed 110-byte header, hexadecimal fields, NUL-terminated names (non-UTF-8 names are retained as unsafe inventory records), four-byte alignment, declared file ranges, entry/name/aggregate byte ceilings and the trailer marker. CRC-newc entries are verified using the format byte-sum. Absolute paths, drive-prefixed names, backslash paths and parent-directory segments are marked unsafe; duplicate names are reported. The parser never extracts or executes entries. Trailing bytes after the first trailer are reported, not interpreted as a second archive.
 
 ### PDF
 
