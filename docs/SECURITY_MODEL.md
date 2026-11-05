@@ -75,8 +75,10 @@ sandbox root is supplied. The current Linux adapter uses Bubblewrap with an
 unshared network namespace, explicitly required user/PID/IPC/UTS namespaces,
 a read-only sandbox-root mount, fresh ephemeral `/tmp`, a private `/proc` and
 minimal `/dev`, and an explicit working directory. The backend also applies
-Bubblewrap's `--disable-userns` and `--assert-userns-disabled` controls so the
-provider cannot create nested user namespaces to rearrange mount isolation.
+Bubblewrap 0.8.0 or later's `--disable-userns` and
+`--assert-userns-disabled` controls so the provider cannot create nested user
+namespaces to rearrange mount isolation. Older versions reject the required
+flags and therefore fail closed before provider launch.
 The Linux hostile-process integration test checks the exposed
 `user.max_user_namespaces` setting in addition to filesystem and network
 boundaries. The provider executable and its
