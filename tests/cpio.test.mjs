@@ -86,3 +86,8 @@ test('format dispatcher recognizes and parses CPIO newc', () => {
   assert.equal(result.parser_status, 'parsed');
   assert.equal(result.parsed.summary.entries, 1);
 });
+
+test('CPIO parser is exported through the package subpath', async () => {
+  const public_api = await import('@orix/cli/formats/cpio');
+  assert.equal(typeof public_api.parse_cpio, 'function');
+});
