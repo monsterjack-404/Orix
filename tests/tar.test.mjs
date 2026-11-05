@@ -102,6 +102,8 @@ test('TAR parser is selected by format dispatch and package subpath', async () =
   assert.equal(result.parser_status, 'parsed');
   const api = await import('@orix/cli/formats/tar');
   assert.equal(typeof api.parse_tar, 'function');
+  const root_api = await import('../src/index.mjs');
+  assert.equal(typeof root_api.parse_tar, 'function');
 });
 
 test('GZIP parser identifies and structurally parses a nested USTAR archive', () => {
