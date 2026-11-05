@@ -18,6 +18,7 @@ function matches_ustar(buffer) {
 }
 
 const SIGNATURES = [
+  { format: 'UBIFS', description: 'Unsorted Block Image Filesystem superblock node', matches: b => b.length >= 4 && b[0] === 0x31 && b[1] === 0x18 && b[2] === 0x10 && b[3] === 0x06 },
   { format: 'UBI', description: 'Unsorted Block Images flash volume container', matches: b => b.length >= 4 && b.subarray(0,4).toString('ascii') === 'UBI#' },
   { format: 'cramfs', description: 'Compressed ROM filesystem', matches: b => b.length >= 4 && (b.subarray(0,4).toString('hex') === '453dcd28' || b.subarray(0,4).toString('hex') === '28cd3d45') },
   { format: 'SquashFS', description: 'SquashFS compressed read-only filesystem', matches: b => b.length >= 4 && ['hsqs','sqsh'].includes(b.subarray(0, 4).toString('ascii')) },
