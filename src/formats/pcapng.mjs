@@ -230,6 +230,7 @@ export function parse_pcapng(buffer, options = {}) {
     } else if (type === 6 || type === 2) {
       if (length < 32) invalid('ORIX_PCAPNG_BAD_PACKET_BLOCK', 'PCAPNG packet block is shorter than fixed fields', { offset: cursor, type, length });
       const interface_id = type === 6 ? u32(buffer, cursor + 8, little, 'enhanced packet interface id') : u16(buffer, cursor + 8, little, 'packet interface id');
+      const obsolete_drops_count = type === 2 ? u16(buffer, cursor + 10, little, 'obsolete packet drops count') : null;
       const interface_info = current_interfaces[interface_id];
       if (!interface_info) invalid('ORIX_PCAPNG_UNKNOWN_INTERFACE', 'PCAPNG packet references an unknown interface', { offset: cursor, interface_id, section_index });
       const timestamp_high = type === 6 ? u32(buffer, cursor + 12, little, 'packet timestamp high') : u32(buffer, cursor + 12, little, 'packet timestamp high');
@@ -241,11 +242,13 @@ export function parse_pcapng(buffer, options = {}) {
       const option_offset = data_offset + padded_length;
       if (option_offset > block_end - 4) invalid('ORIX_PCAPNG_PACKET_RANGE', 'PCAPNG packet data or padding exceeds block bounds', { offset: cursor, captured_length, padded_length });
       const packet_opts = parse_options(buffer, option_offset, block_end - 4, little, limits);
+      const parsed_packet_options = packet_options(packet_opts, little);
+      if (type === 2) parsed_packet_options.obsolete_drops_count = obsolete_drops_count;
       const packet = packet_record(buffer, data_offset, captured_length, original_length, interface_info, limits, state, {
         ticks: parse_timestamp(timestamp_high, timestamp_low),
         resolution: interface_info.timestamp_resolution,
         offset_seconds: interface_info.timestamp_offset_seconds ?? '0',
-      }, packet_options(packet_opts, little));
+      }, parsed_packet_options);
       packets.push(packet);
       summary = { ...summary, interface_id, captured_length, original_length, packet_index: packet.index };
     } else if (type === 3) {
