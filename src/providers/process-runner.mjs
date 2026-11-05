@@ -425,6 +425,7 @@ export async function run_static_provider(options) {
           provider_id: manifest.id,
           executable,
           reason: error?.code ?? error?.name ?? 'spawn-error',
+          diagnostic: error?.details ?? null,
         },
         cause: error,
         recoverable: true,
