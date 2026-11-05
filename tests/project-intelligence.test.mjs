@@ -450,7 +450,7 @@ test('TypeScript type-only imports and exported declaration metadata are preserv
     "export type { User as PublicUser } from './types';",
     'export interface UserShape { id: string; }',
     'export declare const API_VERSION: string;',
-    'export class InternalHelper {}',
+    'class InternalHelper {}',
   ].join('\\n'));
   const report = await scan_project(root);
   const source = report.files.find(file => file.path === 'src/index.ts');
@@ -459,5 +459,5 @@ test('TypeScript type-only imports and exported declaration metadata are preserv
   assert.ok(source.imports.every(item => item.resolved_path === 'src/types.ts'));
   assert.equal(source.symbols.find(item => item.name === 'UserShape')?.exported, true);
   assert.equal(source.symbols.find(item => item.name === 'API_VERSION')?.exported, true);
-  assert.equal(source.symbols.find(item => item.name === 'InternalHelper')?.exported, true);
+  assert.equal(source.symbols.find(item => item.name === 'InternalHelper')?.exported, false);
 }));
