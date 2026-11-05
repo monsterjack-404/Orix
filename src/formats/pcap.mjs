@@ -193,7 +193,7 @@ export function parse_pcap(buffer, options = {}) {
     summary: { protocols: protocol_counts, captured_truncated_packets: packets.filter(packet => packet.capture_truncated).length },
     packets,
     notes: [
-      'Classic PCAP record metadata only; PCAPNG is not supported.',
+      'Classic PCAP 2.4 record metadata only; PCAPNG is handled by the separate bounded PCAPNG parser.',
       'Legacy DLT_RAW (12) and LINKTYPE_RAW (101) are accepted for raw-IP captures.',
       'Packet payload bytes are not returned, decoded, exported or replayed.',
       'IPv4/IPv6 endpoint and TCP/UDP port fields are best-effort metadata, not full protocol dissection.',
