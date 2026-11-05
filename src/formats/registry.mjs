@@ -3,8 +3,8 @@
 function matches_ustar(buffer) {
   if (buffer.length < 512) return false;
   const magic = buffer.toString('ascii', 257, 263);
-  if (magic !== 'ustar\0' && magic !== 'ustar ') return false;
-  const raw = buffer.toString('ascii', 148, 156).replace(/\0.*$/s, '').trim();
+  if (magic !== 'ustar\\0' && magic !== 'ustar ') return false;
+  const raw = buffer.toString('ascii', 148, 156).replace(/\\0.*$/s, '').trim();
   if (!/^[0-7]+$/.test(raw)) return false;
   const expected = Number.parseInt(raw, 8);
   let unsigned = 0;
@@ -18,6 +18,7 @@ function matches_ustar(buffer) {
 }
 
 const SIGNATURES = [
+  { format: 'UBIFS', description: 'Unsorted Block Image Filesystem superblock node', matches: b => b.length >= 4 && b[0] === 0x31 && b[1] === 0x18 && b[2] === 0x10 && b[3] === 0x06 },
   { format: 'UBI', description: 'Unsorted Block Images flash volume container', matches: b => b.length >= 4 && b.subarray(0,4).toString('ascii') === 'UBI#' },
   { format: 'cramfs', description: 'Compressed ROM filesystem', matches: b => b.length >= 4 && (b.subarray(0,4).toString('hex') === '453dcd28' || b.subarray(0,4).toString('hex') === '28cd3d45') },
   { format: 'SquashFS', description: 'SquashFS compressed read-only filesystem', matches: b => b.length >= 4 && ['hsqs','sqsh'].includes(b.subarray(0, 4).toString('ascii')) },
@@ -32,7 +33,7 @@ const SIGNATURES = [
   { format: 'PDF', description: 'Portable Document Format', matches: b => b.length >= 5 && b.subarray(0, 5).toString('ascii') === '%PDF-' },
   { format: 'PNG', description: 'Portable Network Graphics', matches: b => b.length >= 8 && b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) },
   { format: 'JPEG', description: 'JPEG image', matches: b => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
-  { format: 'SQLite', description: 'SQLite database', matches: b => b.length >= 16 && b.subarray(0, 16).toString('ascii') === 'SQLite format 3\0' },
+  { format: 'SQLite', description: 'SQLite database', matches: b => b.length >= 16 && b.subarray(0, 16).toString('ascii') === 'SQLite format 3\\0' },
   { format: 'GZIP', description: 'GZIP compressed stream', matches: b => b.length >= 2 && b[0] === 0x1f && b[1] === 0x8b },
   { format: 'CPIO newc', description: 'CPIO newc or CRC-newc archive', matches: b => b.length >= 6 && ['070701', '070702'].includes(b.subarray(0, 6).toString('ascii')) },
   { format: 'TAR', description: 'USTAR-compatible archive', matches: matches_ustar },
