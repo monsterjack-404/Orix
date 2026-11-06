@@ -163,6 +163,8 @@ Implement as a separate follow-up after the Linux Bubblewrap stack is merged in 
 
 Until then, ORIX must continue to describe its current Linux provider backend as Bubblewrap namespace/filesystem isolation with bounded process execution—not as CPU, memory, or process-count isolated.
 
+The delegated parent and its `supervisor/` child must be owned by the ORIX service effective UID and must not be group- or other-writable. The read-only preflight reports and enforces these conservative ownership/mode-bit checks, and also confirms that `cgroup.events` is present alongside `cgroup.kill`. This is not a full host trust proof: operators still control delegation, account membership, mount configuration, and any external policy beyond the mode-bit checks.
+
 ## Read-only deployment preflight (diagnostic only)
 
 The follow-up `scripts/linux-cgroup-v2-preflight.mjs` command inspects the host's unified cgroup v2 mount, current process membership, and an optional administrator-configured `ORIX_CGROUP_PARENT`. It reports whether the expected empty-parent / sibling-supervisor layout and required controllers appear to be present.
