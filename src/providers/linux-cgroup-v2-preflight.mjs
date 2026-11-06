@@ -90,11 +90,24 @@ async function read_control_text(file) {
   }
 }
 
-async function is_regular_control_file(file) {
-  let info;
-  try { info = await lstat(file); }
+async function can_open_control_file(file, access_mode) {
+  let before;
+  try { before = await lstat(file); }
   catch { return false; }
-  return !info.isSymbolicLink() && info.isFile();
+  if (before.isSymbolicLink() || !before.isFile()) return false;
+
+  const nofollow = FS_CONSTANTS.O_NOFOLLOW ?? 0;
+  const nonblocking = FS_CONSTANTS.O_NONBLOCK ?? 0;
+  let handle;
+  try {
+    handle = await open(file, access_mode | nofollow | nonblocking);
+    const opened = await handle.stat();
+    return opened.isFile() && opened.dev === before.dev && opened.ino === before.ino;
+  } catch {
+    return false;
+  } finally {
+    await handle?.close().catch(() => {});
+  }
 }
 
 async function no_symlink_components(target, boundary) {
@@ -332,11 +345,9 @@ export async function inspect_linux_cgroup_v2(options = {}) {
     parent.writable = parent.access_credentials_match &&
       await access(configured_parent, FS_CONSTANTS.W_OK | FS_CONSTANTS.X_OK).then(() => true, () => false);
     parent.cgroup_events_available = parent.access_credentials_match &&
-      await is_regular_control_file(path.join(configured_parent, 'cgroup.events')) &&
-      await access(path.join(configured_parent, 'cgroup.events'), FS_CONSTANTS.R_OK).then(() => true, () => false);
+      await can_open_control_file(path.join(configured_parent, 'cgroup.events'), FS_CONSTANTS.O_RDONLY);
     parent.cgroup_kill_available = parent.access_credentials_match &&
-      await is_regular_control_file(path.join(configured_parent, 'cgroup.kill')) &&
-      await access(path.join(configured_parent, 'cgroup.kill'), FS_CONSTANTS.W_OK).then(() => true, () => false);
+      await can_open_control_file(path.join(configured_parent, 'cgroup.kill'), FS_CONSTANTS.O_WRONLY);
   } catch (error) {
     report.reason = 'delegated-parent-inspection-failed:' + (error.code ?? error.name ?? 'unknown');
     return Object.freeze(report);
