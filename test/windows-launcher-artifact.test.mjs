@@ -58,3 +58,8 @@ test('Windows launcher artifact verifier rejects a CLR directory extending past 
   truncatedDirectory.writeUInt32LE(0x201, 0x84 + 20 + 96 + (14 * 8) + 4);
   assert.throws(() => inspectWindowsLauncher(truncatedDirectory), /CLR directory extends beyond section raw data/);
 });
+test('Windows launcher artifact verifier rejects CLR directories extending past section raw data', () => {
+  const malformed = makeAnyCpuPe();
+  malformed.writeUInt32LE(0x201, 0x80 + 24 + 96 + (14 * 8) + 4);
+  assert.throws(() => inspectWindowsLauncher(malformed), /CLR directory extends beyond section raw data/);
+});
