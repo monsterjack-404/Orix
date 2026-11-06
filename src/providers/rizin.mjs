@@ -88,7 +88,7 @@ async function file_snapshot(input_path, maximum_bytes) {
   return { canonical_path, info };
 }
 
-async function create_snapshot_directory(prefix, options) {
+export async function create_rizin_snapshot_directory(prefix, options) {
   let parent_directory = tmpdir();
   const isolation = options.isolation;
   const sandbox_root = options.sandbox_root;
@@ -282,10 +282,10 @@ export async function analyze_rizin_imports(options = {}) {
   }
   // Analyze a private copy so the external tool never receives the caller's original path.
   // The copy is private to this process, read-only by default, and checked before and after use.
-  const snapshot_directory = await create_snapshot_directory('.orix-rizin-', {
-      isolation: descriptors.isolation?.value,
-      sandbox_root: descriptors.sandbox_root?.value,
-    });
+  const snapshot_directory = await create_rizin_snapshot_directory('.orix-rizin-', {
+    isolation: descriptors.isolation?.value,
+    sandbox_root: descriptors.sandbox_root?.value,
+  });
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
@@ -595,10 +595,10 @@ export async function analyze_rizin_functions(options = {}) {
     });
   }
 
-  const snapshot_directory = await create_snapshot_directory('.orix-rizin-functions-', {
-      isolation: descriptors.isolation?.value,
-      sandbox_root: descriptors.sandbox_root?.value,
-    });
+  const snapshot_directory = await create_rizin_snapshot_directory('.orix-rizin-functions-', {
+    isolation: descriptors.isolation?.value,
+    sandbox_root: descriptors.sandbox_root?.value,
+  });
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
