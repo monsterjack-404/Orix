@@ -571,6 +571,25 @@ test('MCP confines artifact access to configured roots and rejects symlinks', as
   }
 });
 
+test('MCP rejects hard-linked files to prevent workspace aliases to external file content', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-root-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-outside-'));
+  try {
+    const external = path.join(outside, 'external.bin');
+    const alias = path.join(root, 'external-alias.bin');
+    const { link } = await import('node:fs/promises');
+    await writeFile(external, 'outside workspace content');
+    await link(external, alias);
+    await assert.rejects(
+      call_orix_tool('orix.inspect_file', { path: alias }, { roots: [root] }),
+      error => error.code === 'ORIX_MCP_HARDLINK_REJECTED',
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
 test('MCP rejects intermediate directory symlinks even when they resolve inside the workspace', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-intermediate-link-'));
   try {
