@@ -68,7 +68,7 @@ namespace OrixWindowsSandbox {
     const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
     const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
     const uint STARTF_USESTDHANDLES = 0x00000100;
-    const uint HANDLE_FLAG_INHERIT = 0x00000001;
+    const uint DUPLICATE_SAME_ACCESS = 0x00000002;
     const uint JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x00000008;
     const uint JOB_OBJECT_LIMIT_JOB_MEMORY = 0x00000200;
     const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
@@ -175,7 +175,10 @@ namespace OrixWindowsSandbox {
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern IntPtr GetStdHandle(int handle);
     [DllImport("kernel32.dll", SetLastError = true)]
-    static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
+    static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool DuplicateHandle(IntPtr sourceProcess, IntPtr sourceHandle, IntPtr targetProcess,
+      out IntPtr targetHandle, uint desiredAccess, bool inheritHandle, uint options);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool InitializeProcThreadAttributeList(IntPtr list, int count, int flags, ref IntPtr size);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -205,6 +208,21 @@ namespace OrixWindowsSandbox {
 
     static Exception Win32(string operation) {
       return new Win32Exception(Marshal.GetLastWin32Error(), operation);
+    }
+
+    // Duplicate stdio handles for the child; never mutate the host's original
+    // handle-table entries while preparing CreateProcess.
+    static IntPtr DuplicateStandardHandle(IntPtr sourceHandle, string label, IList<IntPtr> ownedHandles) {
+      if (sourceHandle == IntPtr.Zero || sourceHandle == INVALID_HANDLE_VALUE)
+        throw new InvalidOperationException("The host " + label + " standard handle is unavailable");
+      IntPtr duplicate;
+      IntPtr process = GetCurrentProcess();
+      if (!DuplicateHandle(process, sourceHandle, process, out duplicate, 0, true, DUPLICATE_SAME_ACCESS))
+        throw Win32("Duplicate host " + label + " standard handle");
+      if (duplicate == IntPtr.Zero || duplicate == INVALID_HANDLE_VALUE)
+        throw new InvalidOperationException("Windows returned an invalid duplicate for the " + label + " standard handle");
+      ownedHandles.Add(duplicate);
+      return duplicate;
     }
 
     static IntPtr CreateProfile(string name) {
@@ -541,6 +559,7 @@ namespace OrixWindowsSandbox {
       IntPtr securityCaps = IntPtr.Zero, handleList = IntPtr.Zero, environmentBlock = IntPtr.Zero;
       IntPtr token = IntPtr.Zero, tokenInfo = IntPtr.Zero;
       PROCESS_INFORMATION processInfo = new PROCESS_INFORMATION();
+      List<IntPtr> inheritedStandardHandles = new List<IntPtr>();
       bool processCreated = false;
       try {
         Log("RUN:BEGIN");
@@ -566,15 +585,14 @@ namespace OrixWindowsSandbox {
         securityCaps = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(SECURITY_CAPABILITIES)));
         Marshal.StructureToPtr(capabilities, securityCaps, false);
 
-        IntPtr stdin = GetStdHandle(-10), stdout = GetStdHandle(-11), stderr = GetStdHandle(-12);
-        foreach (IntPtr handle in new IntPtr[] { stdin, stdout, stderr }) {
-          if (handle != IntPtr.Zero && handle != INVALID_HANDLE_VALUE)
-            SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-        }
-        handleList = Marshal.AllocHGlobal(IntPtr.Size * 3);
-        Marshal.WriteIntPtr(handleList, 0, stdin);
-        Marshal.WriteIntPtr(handleList, IntPtr.Size, stdout);
-        Marshal.WriteIntPtr(handleList, IntPtr.Size * 2, stderr);
+        // Duplicate stdio handles as inheritable child-only handles. The
+        // original helper handles remain untouched.
+        IntPtr stdin = DuplicateStandardHandle(GetStdHandle(-10), "stdin", inheritedStandardHandles);
+        IntPtr stdout = DuplicateStandardHandle(GetStdHandle(-11), "stdout", inheritedStandardHandles);
+        IntPtr stderr = DuplicateStandardHandle(GetStdHandle(-12), "stderr", inheritedStandardHandles);
+        handleList = Marshal.AllocHGlobal(IntPtr.Size * inheritedStandardHandles.Count);
+        for (int index = 0; index < inheritedStandardHandles.Count; index++)
+          Marshal.WriteIntPtr(handleList, IntPtr.Size * index, inheritedStandardHandles[index]);
 
         IntPtr attributeSize = IntPtr.Zero;
         InitializeProcThreadAttributeList(IntPtr.Zero, 2, 0, ref attributeSize);
@@ -638,6 +656,10 @@ namespace OrixWindowsSandbox {
         if (token != IntPtr.Zero) CloseHandle(token);
         if (processInfo.hThread != IntPtr.Zero) CloseHandle(processInfo.hThread);
         if (processInfo.hProcess != IntPtr.Zero) CloseHandle(processInfo.hProcess);
+        foreach (IntPtr inheritedHandle in inheritedStandardHandles) {
+          if (inheritedHandle != IntPtr.Zero && inheritedHandle != INVALID_HANDLE_VALUE)
+            CloseHandle(inheritedHandle);
+        }
         if (job != IntPtr.Zero) CloseHandle(job);
         if (attributeList != IntPtr.Zero) DeleteProcThreadAttributeList(attributeList);
         if (securityCaps != IntPtr.Zero) Marshal.FreeHGlobal(securityCaps);

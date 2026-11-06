@@ -58,6 +58,16 @@ async function main() {
     'Cleanup must not silently report success for an arbitrary SID lookup failure');
 
 
+  assert.match(launcherSource, /DuplicateHandle[\\s\\S]*?DUPLICATE_SAME_ACCESS/,
+    'Native helper must duplicate standard handles instead of changing the host handle table');
+  assert.match(launcherSource, /DuplicateStandardHandle\\(GetStdHandle\\(-10\\), "stdin"[\\s\\S]*?DuplicateStandardHandle\\(GetStdHandle\\(-11\\), "stdout"[\\s\\S]*?DuplicateStandardHandle\\(GetStdHandle\\(-12\\), "stderr"/,
+    'The child must receive dedicated duplicates of stdin, stdout and stderr');
+  assert.match(launcherSource, /PROC_THREAD_ATTRIBUTE_HANDLE_LIST/,
+    'The child handle inheritance must remain restricted to the explicit standard-handle list');
+  assert.doesNotMatch(launcherSource, /SetHandleInformation\\s*\\(/,
+    'The helper must not alter inheritance flags on the host process standard handles');
+  assert.match(launcherSource, /foreach \\(IntPtr inheritedHandle in inheritedStandardHandles\\)[\\s\\S]*?CloseHandle\\(inheritedHandle\\)/,
+    'The helper must close its temporary standard-handle duplicates during teardown');
   assert.doesNotMatch(launcherSource, /Environment\.GetEnvironmentVariable\("SystemRoot"\)/,
     'Native helper must not resolve icacls.exe from inherited SystemRoot');
   const isolationSource = await readFile(new URL('../src/providers/windows-isolation.mjs', import.meta.url), 'utf8');
