@@ -109,10 +109,15 @@ against privileged host administrators or kernel vulnerabilities.
 ## Windows AppContainer + Job Object
 
 The Windows backend creates a unique AppContainer profile with no network
-capabilities. It grants the package SID read/execute access to the explicit
-provider rootfs and confines writable scratch to `rootfs/tmp`, including the
-package-specific `Packages/<profile>/AC/Temp` location used by Windows
-temporary-file APIs. The native launcher creates the provider suspended,
+capabilities. Before profile creation, the native launcher walks the canonical
+rootfs and its ancestors, rejects reparse points, requires each owner to be the
+service identity, LocalSystem, local Administrators or TrustedInstaller, and
+rejects write-capable ACL grants to other principals. This is a conservative
+ACL preflight, not a defense against privileged host administrators or a
+subsequent trusted-host ACL/mount change. It grants the package SID
+read/execute access to the explicit provider rootfs and confines writable
+scratch to `rootfs/tmp`, including the package-specific
+`Packages/<profile>/AC/Temp` location used by Windows temporary-file APIs. The native launcher creates the provider suspended,
 assigns it to a Job Object before resume, verifies the process token is an
 AppContainer token, and configures a 50% CPU hard cap, 512 MiB aggregate job
 memory limit, 64 active processes and kill-on-job-close. It terminates and

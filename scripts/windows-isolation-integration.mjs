@@ -1,6 +1,7 @@
 // Windows AppContainer + Job Object hostile-process integration gate.
 import assert from 'node:assert/strict';
 import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -38,6 +39,34 @@ async function main() {
   try {
     await mkdir(path.join(root, 'work'), { recursive: true });
     await mkdir(path.join(root, 'tmp'), { recursive: true });
+
+    // An ACL that lets every local principal modify the provider rootfs must
+    // be rejected by the native launcher before the AppContainer is created.
+    const unsafeRoot = path.join(base, 'unsafe-rootfs');
+    await mkdir(path.join(unsafeRoot, 'work'), { recursive: true });
+    await mkdir(path.join(unsafeRoot, 'tmp'), { recursive: true });
+    await copyFile(process.execPath, path.join(unsafeRoot, 'node.exe'));
+    const systemRoot = process.env.SystemRoot || process.env.WINDIR;
+    assert.ok(systemRoot, 'Windows SystemRoot is required for the trusted ACL test helper');
+    execFileSync(path.join(systemRoot, 'System32', 'icacls.exe'), [
+      unsafeRoot, '/grant', '*S-1-1-0:(OI)(CI)M',
+    ], { encoding: 'utf8', windowsHide: true });
+    const unsafeExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: path.join(unsafeRoot, 'node.exe'),
+      cwd: path.join(unsafeRoot, 'work'),
+      sandbox_root: unsafeRoot,
+      isolation: 'required',
+      env: {},
+      args: ['-e', 'process.stdout.write("must-not-run")'],
+      timeout_ms: 12_000,
+      max_output_bytes: 4_096,
+    });
+    assert.equal(unsafeExecution.ok, false, 'Windows isolation must reject an untrusted writable rootfs ACL');
+    assert.match(unsafeExecution.stderr, /ORIX_WINDOWS_ROOTFS_UNTRUSTED/,
+      'Native launcher did not report the rejected untrusted rootfs ACL');
+    assert.equal(unsafeExecution.stdout, '', 'Provider executed despite the untrusted rootfs ACL');
+
     await copyFile(process.execPath, path.join(root, 'node.exe'));
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
 
