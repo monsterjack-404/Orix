@@ -57,13 +57,18 @@ function u64_safe(buffer, offset, end) {
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) fail('ORIX_TRACE_ZIP64_RANGE', 'ZIP64 data descriptor exceeds safe integer precision', { offset });
   return Number(value);
 }
+const CRC32_TABLE = new Uint32Array(256);
+for (let index = 0; index < CRC32_TABLE.length; index += 1) {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = (value >>> 1) ^ ((value & 1) ? 0xedb88320 : 0);
+  }
+  CRC32_TABLE[index] = value >>> 0;
+}
 function crc32(buffer) {
   let value = 0xffffffff;
   for (const byte of buffer) {
-    value ^= byte;
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = (value >>> 1) ^ ((value & 1) ? 0xedb88320 : 0);
-    }
+    value = (value >>> 8) ^ CRC32_TABLE[(value ^ byte) & 0xff];
   }
   return (value ^ 0xffffffff) >>> 0;
 }
