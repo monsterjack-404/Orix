@@ -107,7 +107,7 @@ async function verify_control_file(leaf_fd_path, name) {
   return file_path;
 }
 
-async function write_control_value(leaf_fd_path, name, value) {
+async function write_control_value(leaf_fd_path, name, value, test_adapter = null) {
   const file_path = await verify_control_file(leaf_fd_path, name);
   const handle = await open(file_path, WRITE_FLAGS);
   try {
@@ -121,6 +121,9 @@ async function write_control_value(leaf_fd_path, name, value) {
   } finally {
     await handle.close();
   }
+  if (test_adapter?.after_control_write) {
+    await test_adapter.after_control_write({ leaf_fd_path, name, value: String(value) });
+  }
   if (name !== 'cgroup.kill') {
     const actual = await read_text(file_path);
     if (actual !== String(value)) {
@@ -128,9 +131,6 @@ async function write_control_value(leaf_fd_path, name, value) {
         file: name, expected: String(value), actual,
       });
     }
-  }
-  if (test_adapter?.after_control_write) {
-    await test_adapter.after_control_write({ leaf_fd_path, name, value: String(value) });
   }
 }
 
@@ -300,7 +300,7 @@ export async function create_linux_provider_cgroup(options = {}, test_adapter = 
     }
 
     for (const [name, value] of Object.entries(serialized)) {
-      await write_control_value(leaf_fd_path, name, value);
+      await write_control_value(leaf_fd_path, name, value, test_adapter);
     }
     const procs_path = await verify_control_file(leaf_fd_path, 'cgroup.procs');
     attach_fd = openSync(procs_path, WRITE_FLAGS);
@@ -309,7 +309,7 @@ export async function create_linux_provider_cgroup(options = {}, test_adapter = 
       if (teardown_promise) return teardown_promise;
       const pending = (async () => {
         close_attach_fd();
-        await write_control_value(leaf_fd_path, 'cgroup.kill', '1');
+        await write_control_value(leaf_fd_path, 'cgroup.kill', '1', test_adapter);
         await wait_for_empty(leaf_fd_path, cleanup_timeout_ms);
         if (leaf_handle) {
           await leaf_handle.close();
