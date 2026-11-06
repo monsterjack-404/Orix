@@ -48,11 +48,11 @@ async function copy_node_runtime(root) {
   const dependencies = execFileSync('/usr/bin/otool', ['-L', process.execPath], { encoding: 'utf8' });
   const bundledLibraries = new Set(await readdir(lib));
   for (const line of dependencies.split('\n').slice(1)) {
-    const dependency = line.trim().split(/\s+/).split(/\\s+/)[0];
+    const dependency = line.trim().split(/\s+/)[0];
     if (dependency.startsWith('@rpath/')) {
       const libraryName = path.basename(dependency);
       assert.equal(bundledLibraries.has(libraryName), true,
-        'Missing Node runtime library in rootfs/lib: ' + libraryName + '\\n' + dependencies);
+        'Missing Node runtime library in rootfs/lib: ' + libraryName + '\n' + dependencies);
     }
   }
   return destination;
