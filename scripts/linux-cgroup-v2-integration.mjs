@@ -281,9 +281,13 @@ async function main() {
     assert.deepEqual(result.rlimits.core_bytes, ['0', '0']);
     assert.deepEqual(result.rlimits.file_size_bytes, ['67108864', '67108864']);
     assert.deepEqual(result.rlimits.open_files, ['256', '256']);
-    const runCgroup = latest?.cgroup ?? await find_provider_cgroup(delegated.parent);
-    assert.ok(runCgroup, 'Run cgroup path was not observed');
-    await assert.rejects(readFile(path.join(runCgroup, 'cgroup.events'), 'utf8'), error => error.code === 'ENOENT');
+    assert.equal(execution.isolation_cleanup.complete, true);
+    assert.equal(execution.isolation_cleanup.failed, false);
+    assert.equal(execution.isolation_cleanup.report.removed, true);
+    assert.ok(Number(execution.isolation_cleanup.report.cpu_stat.match(/^nr_throttled (\\d+)$/m)?.[1] || 0) > 0,
+      'Final cgroup cpu.stat did not record quota throttling');
+    assert.ok(Number(execution.isolation_cleanup.report.pids_events.match(/^max (\\d+)$/m)?.[1] || 0) > 0,
+      'Final cgroup pids.events did not record pids.max enforcement');
     for (const pid of sleepPids) {
       const command = await readFile('/proc/' + pid + '/cmdline', 'utf8').catch(error => {
         if (error.code === 'ENOENT') return '';
@@ -311,32 +315,17 @@ async function main() {
       timeout_ms: 8_000,
       max_output_bytes: 4_096,
     });
-    let oomObserved = false;
-    let oomRunCgroup = null;
     let oomDone = false;
     let oomExecution;
     oomPromise.then(value => { oomExecution = value; oomDone = true; }, error => { oomExecution = error; oomDone = true; });
-    for (let attempt = 0; attempt < 250 && !oomDone; attempt += 1) {
-      try {
-        const candidate = await find_provider_cgroup(delegated.parent);
-        if (candidate) {
-          oomRunCgroup = candidate;
-          const events = await read_control(path.join(candidate, 'memory.events'));
-          const count = Number(events.match(/^oom_kill (\\d+)$/m)?.[1] || 0);
-          if (count > 0) oomObserved = true;
-        }
-      } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
-      }
-      await delay(20);
-    }
     if (!oomDone) oomExecution = await oomPromise;
     else if (oomExecution instanceof Error) throw oomExecution;
-    else oomExecution = await oomPromise;
     assert.equal(oomExecution.ok, false, 'Provider unexpectedly survived an allocation above memory.max');
-    assert.equal(oomObserved, true, 'memory.max did not produce a kernel OOM kill event');
-    assert.ok(oomRunCgroup, 'OOM run cgroup was not observed');
-    await assert.rejects(readFile(path.join(oomRunCgroup, 'cgroup.events'), 'utf8'), error => error.code === 'ENOENT');
+    assert.equal(oomExecution.isolation_cleanup.complete, true);
+    assert.equal(oomExecution.isolation_cleanup.failed, false);
+    assert.equal(oomExecution.isolation_cleanup.report.removed, true);
+    assert.ok(Number(oomExecution.isolation_cleanup.report.memory_events.match(/^oom_kill (\\d+)$/m)?.[1] || 0) > 0,
+      'memory.max did not produce a kernel OOM kill event');
 
     process.stdout.write('Linux cgroup v2 integration passed: FD attach-before-exec, rootfs/network isolation, RLIMITs, cpu.max throttling, memory.max OOM, pids.max rejection, descendant teardown and empty-cgroup removal.\\n');
   } finally {
