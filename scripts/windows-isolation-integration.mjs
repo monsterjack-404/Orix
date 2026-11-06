@@ -95,6 +95,8 @@ async function main() {
         ORIX_HOST_PID: String(process.pid),
         SystemRoot: path.join(base, 'attacker-controlled-system-root'),
         WINDIR: path.join(base, 'attacker-controlled-windir'),
+        TEMP: path.join(base, 'attacker-controlled-temp'),
+        TMP: path.join(base, 'attacker-controlled-tmp'),
       },
       args: ['--input-type=module', '-e', probe],
       timeout_ms: 12_000,
