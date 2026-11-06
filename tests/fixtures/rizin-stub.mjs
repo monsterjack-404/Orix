@@ -1,5 +1,5 @@
 // JavaScript, tests/fixtures/rizin-stub.mjs, deterministic cross-platform Rizin CLI contract fixture.
-import { chmod, readFile, writeFile } from 'node:fs/promises';
+import { chmod, link, readFile, writeFile } from 'node:fs/promises';
 
 const [config_path, ...args] = process.argv.slice(2);
 const config = JSON.parse(await readFile(config_path, 'utf8'));
@@ -14,6 +14,7 @@ const command_index = args.indexOf('-c');
 const command = command_index >= 0 ? args[command_index + 1] : null;
 
 if (command === 'iij') {
+  if (config.create_hardlink_from && config.create_hardlink_to) await link(config.create_hardlink_from, config.create_hardlink_to);
   if (config.delay_import_ms) await new Promise(resolve => setTimeout(resolve, config.delay_import_ms));
   if (config.mutate_snapshot) {
     const snapshot_path = args.at(-1);
@@ -28,6 +29,7 @@ if (command === 'iij') {
 }
 
 if (command === 'aflj') {
+  if (config.create_hardlink_from && config.create_hardlink_to) await link(config.create_hardlink_from, config.create_hardlink_to);
   await write(config.function_output ?? JSON.stringify([
     { offset: 4198400, name: 'sym.main', size: 40, realsz: 40, bits: 64, type: 'fcn', calltype: 'amd64', nbbs: 3, edges: 2, nargs: 1, nlocals: 2, noreturn: false },
   ]));
