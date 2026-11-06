@@ -110,11 +110,15 @@ against privileged host administrators or kernel vulnerabilities.
 
 The Windows backend creates a unique AppContainer profile with no network
 capabilities. Before profile creation, the native launcher walks the canonical
-rootfs and its ancestors, rejects reparse points, requires each owner to be the
-service identity, LocalSystem, local Administrators or TrustedInstaller, and
-rejects write-capable ACL grants to other principals. This is a conservative
-ACL preflight, not a defense against privileged host administrators or a
-subsequent trusted-host ACL/mount change. It grants the package SID
+rootfs and its ancestors, rejects reparse points, and requires each owner to be
+the service identity, LocalSystem, local Administrators or TrustedInstaller.
+The rootfs itself must have no write-capable ACL grant to another principal.
+Ancestors must not grant untrusted principals deletion/replacement, ownership
+or ACL-control rights; ordinary sibling-creation rights on an ancestor are not
+treated as permission to modify an existing rootfs child. Any inherited
+write-capable ACE effective on the rootfs is rejected at the rootfs itself.
+This is a conservative ACL preflight, not a defense against privileged host
+administrators or a subsequent trusted-host ACL/mount change. It grants the package SID
 read/execute access to the explicit provider rootfs and confines writable
 scratch to `rootfs/tmp`, including the package-specific
 `Packages/<profile>/AC/Temp` location used by Windows temporary-file APIs. The native launcher creates the provider suspended,

@@ -243,8 +243,17 @@ namespace OrixWindowsSandbox {
         throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: filesystem root cannot be used as a provider rootfs");
 
       SecurityIdentifier serviceSid = WindowsIdentity.GetCurrent().User;
-      FileSystemRights writeMask = FileSystemRights.Write |
+      // On the rootfs itself, reject every write-capable grant. On parent
+      // directories, reject rights that can delete/replace the rootfs or let an
+      // untrusted principal take ownership/change the ACL. Ordinary create-file
+      // or create-directory rights on a parent cannot modify an existing child;
+      // any inherited grant that reaches the rootfs is checked at the rootfs.
+      FileSystemRights rootfsWriteMask = FileSystemRights.Write |
         FileSystemRights.Delete |
+        FileSystemRights.DeleteSubdirectoriesAndFiles |
+        FileSystemRights.ChangePermissions |
+        FileSystemRights.TakeOwnership;
+      FileSystemRights ancestorDestructiveMask = FileSystemRights.Delete |
         FileSystemRights.DeleteSubdirectoriesAndFiles |
         FileSystemRights.ChangePermissions |
         FileSystemRights.TakeOwnership;
@@ -265,9 +274,13 @@ namespace OrixWindowsSandbox {
           if (rule.AccessControlType != AccessControlType.Allow) continue;
           SecurityIdentifier principal = rule.IdentityReference as SecurityIdentifier;
           if (principal == null || IsTrustedRootPrincipal(principal, serviceSid)) continue;
-          if ((rule.FileSystemRights & writeMask) != 0)
-            throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: an untrusted principal has write-capable access to " +
-              current.FullName + " (" + principal.Value + ")");
+          bool rootfsComponent = String.Equals(current.FullName, fullRoot,
+            StringComparison.OrdinalIgnoreCase);
+          FileSystemRights deniedRights = rootfsComponent ? rootfsWriteMask : ancestorDestructiveMask;
+          if ((rule.FileSystemRights & deniedRights) != 0)
+            throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: an untrusted principal has unsafe access to " +
+              current.FullName + " (" + principal.Value + "; rights=" + rule.FileSystemRights +
+              "; inheritance=" + rule.InheritanceFlags + "; rootfs=" + rootfsComponent + ")");
         }
       }
     }
