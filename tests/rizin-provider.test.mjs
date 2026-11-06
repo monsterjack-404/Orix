@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,15 @@ import { analyze_rizin_imports, analyze_rizin_functions, probe_rizin, RIZIN_PROV
 import { create_rizin_snapshot_directory } from '../src/providers/rizin-snapshot.mjs';
 
 const RIZIN_STUB = fileURLToPath(new URL('./fixtures/rizin-stub.mjs', import.meta.url));
+
+async function create_rootfs(parent, name = 'rootfs') {
+  const root = path.join(parent, name);
+  await mkdir(root);
+  await mkdir(path.join(root, 'proc'));
+  await mkdir(path.join(root, 'dev'));
+  await mkdir(path.join(root, 'tmp'));
+  return root;
+}
 
 async function with_fixture(callback) {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-test-'));
@@ -218,25 +227,21 @@ test('Rizin adapter and doctor reject manifests that exclude the current runtime
 
 
 test('Rizin import adapter forwards the isolation mode to the process runner', async () => {
-  await with_fixture(async ({ input_path, executable, executable_args }) => {
-    await assert.rejects(
-      analyze_rizin_imports({
-        input_path, executable, executable_args, isolation: 'invalid-isolation-mode',
+  await assert.rejects(
+    analyze_rizin_imports({ input_path: '/not/opened/file', executable: '/not/launched/rizin', isolation: 'invalid-isolation-mode' }),
       }),
       /isolation must be either none or required/,
     );
-  });
+  );
 });
 
 test('Rizin function adapter forwards the isolation mode to the process runner', async () => {
-  await with_fixture(async ({ input_path, executable, executable_args }) => {
-    await assert.rejects(
-      analyze_rizin_functions({
-        input_path, executable, executable_args, isolation: 'invalid-isolation-mode',
+  await assert.rejects(
+    analyze_rizin_functions({ input_path: '/not/opened/file', executable: '/not/launched/rizin', isolation: 'invalid-isolation-mode' }),
       }),
       /isolation must be either none or required/,
     );
-  });
+  );
 });
 
 test('Rizin version probe forwards the isolation mode to the process runner', async () => {
@@ -268,8 +273,110 @@ test('Rizin adapter forwards sandbox_root when required isolation is requested',
 
 
 if (process.platform === 'linux') {
+  test('required Rizin snapshot staging rejects a writable rootfs before creating any snapshot', async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), 'orix-rizin-untrusted-root-'));
+    const sandbox_root = await create_rootfs(parent);
+    try {
+      await chmod(sandbox_root, 0o777);
+      const before = (await readdir(sandbox_root)).sort();
+      await assert.rejects(
+        create_rizin_snapshot_directory('.orix-rizin-must-not-exist-', {
+          isolation: 'required',
+          sandbox_root,
+        }),
+        error => error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+      );
+      assert.deepEqual((await readdir(sandbox_root)).sort(), before);
+    } finally {
+      await chmod(sandbox_root, 0o700).catch(() => {});
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  test('required Rizin snapshot staging rejects a writable ancestor before creating a snapshot', async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), 'orix-rizin-untrusted-parent-'));
+    const sandbox_root = await create_rootfs(parent);
+    try {
+      await chmod(parent, 0o777);
+      await assert.rejects(
+        create_rizin_snapshot_directory('.orix-rizin-must-not-exist-', {
+          isolation: 'required',
+          sandbox_root,
+        }),
+        error => error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+      );
+      assert.deepEqual((await readdir(sandbox_root)).sort(), ['dev', 'proc', 'tmp']);
+    } finally {
+      await chmod(parent, 0o700).catch(() => {});
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  test('required Rizin snapshot staging rejects final symlinks with trailing separators', async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), 'orix-rizin-symlink-root-'));
+    const sandbox_root = await create_rootfs(parent);
+    const alias = path.join(parent, 'rootfs-alias');
+    try {
+      await symlink(sandbox_root, alias);
+      await assert.rejects(
+        create_rizin_snapshot_directory('.orix-rizin-must-not-exist-', {
+          isolation: 'required',
+          sandbox_root: alias + path.sep,
+        }),
+        error => error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_INVALID',
+      );
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  test('required Rizin snapshot staging refuses incomplete rootfs mount points', async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), 'orix-rizin-incomplete-root-'));
+    const sandbox_root = path.join(parent, 'rootfs');
+    try {
+      await mkdir(sandbox_root);
+      await mkdir(path.join(sandbox_root, 'dev'));
+      await mkdir(path.join(sandbox_root, 'tmp'));
+      await assert.rejects(
+        create_rizin_snapshot_directory('.orix-rizin-must-not-exist-', {
+          isolation: 'required',
+          sandbox_root,
+        }),
+        error => error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_INVALID',
+      );
+      assert.deepEqual((await readdir(sandbox_root)).sort(), ['dev', 'tmp']);
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  test('required Rizin adapter isolation rejects unsafe snapshot root before copying input', async () => {
+    await with_fixture(async ({ input_path, executable, executable_args, directory }) => {
+      const sandbox_root = await create_rootfs(directory, 'unsafe-provider-root');
+      await chmod(sandbox_root, 0o777);
+      const before = (await readdir(sandbox_root)).sort();
+      await assert.rejects(
+        analyze_rizin_imports({
+          input_path, executable, executable_args,
+          isolation: 'required', sandbox_root,
+        }),
+        error => error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+      );
+      await assert.rejects(
+        analyze_rizin_functions({
+          input_path, executable, executable_args,
+          isolation: 'required', sandbox_root,
+        }),
+        error => error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+      );
+      assert.deepEqual((await readdir(sandbox_root)).sort(), before);
+      await chmod(sandbox_root, 0o700);
+    });
+  });
+
   test('required Linux Rizin isolation stages private snapshots inside sandbox_root, outside the /tmp overlay', async () => {
-    const sandbox_root = await mkdtemp(path.join(tmpdir(), 'orix-rizin-rootfs-'));
+    const parent = await mkdtemp(path.join(tmpdir(), 'orix-rizin-rootfs-'));
+    const sandbox_root = await create_rootfs(parent);
     let snapshot_directory;
     try {
       snapshot_directory = await create_rizin_snapshot_directory('.orix-rizin-test-', {
@@ -280,7 +387,7 @@ if (process.platform === 'linux') {
       assert.notEqual(path.dirname(snapshot_directory), path.join(sandbox_root, 'tmp'));
     } finally {
       if (snapshot_directory) await rm(snapshot_directory, { recursive: true, force: true });
-      await rm(sandbox_root, { recursive: true, force: true });
+      await rm(parent, { recursive: true, force: true });
     }
   });
 }
