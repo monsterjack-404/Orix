@@ -35,6 +35,31 @@ async function resolve_bwrap() {
   );
 }
 
+/**
+ * Check the ownership/mode of one directory in the trusted rootfs path.
+ * Only the rootfs itself must be non-writable by group/other. Ancestors may
+ * use the root-owned sticky-directory exception (for example, /tmp).
+ */
+export function assess_rootfs_directory_permissions(metadata, expected_uid, allow_root_sticky = false) {
+  const valid = metadata !== null && typeof metadata === 'object' &&
+    Number.isSafeInteger(metadata.uid) && Number.isSafeInteger(metadata.mode);
+  const directory = valid && metadata.is_directory === true;
+  const symlink = !valid || metadata.is_symlink === true;
+  const owner_is_trusted = valid && (metadata.uid === 0 || metadata.uid === expected_uid);
+  const group_or_other_writable = !valid || (metadata.mode & 0o022) !== 0;
+  const sticky_root_exception = valid && allow_root_sticky &&
+    metadata.uid === 0 && (metadata.mode & 0o1000) !== 0;
+  const writable_by_untrusted = group_or_other_writable && !sticky_root_exception;
+  return Object.freeze({
+    directory,
+    symlink,
+    owner_is_trusted,
+    group_or_other_writable,
+    sticky_root_exception,
+    trusted: directory && !symlink && owner_is_trusted && !writable_by_untrusted,
+  });
+}
+
 async function validate_rootfs(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
     throw new TypeError('sandbox_root must be an absolute filesystem path');
@@ -50,6 +75,7 @@ async function validate_rootfs(value) {
     isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID', 'Provider sandbox root must be a non-symlink directory');
   }
   const root = await realpath(value);
+  await validate_rootfs_path_trust(root);
   for (const required of ['proc', 'dev', 'tmp']) {
     let entry;
     try { entry = await lstat(path.join(root, required)); }
