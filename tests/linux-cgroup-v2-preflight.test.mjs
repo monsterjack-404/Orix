@@ -232,6 +232,58 @@ test('cgroup path trust accepts only root/service-owned non-writable directories
 });
 
 if (process.platform === 'linux') {
+  test('read-only preflight rejects a group/other-writable mountpoint ancestor', { timeout: 10_000 }, async () => {
+    const fixture = await create_fake_delegated_host({ writable_mountpoint_ancestor: true });
+    try {
+      const report = await inspect_linux_cgroup_v2({
+        proc_root: path.join(fixture.root, 'proc'),
+        parent_path: fixture.parent,
+      });
+      assert.equal(report.ready, false);
+      assert.equal(report.parent.no_symlink_components, true);
+      assert.equal(report.parent.path_components_trusted, false);
+      assert.equal(report.reason, 'configured-parent-has-untrusted-owner-or-writable-path-component');
+    } finally {
+      await chmod(fixture.root, 0o700).catch(() => {});
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test('read-only preflight rejects a symlinked cgroup control file leaf', { timeout: 10_000 }, async () => {
+    const fixture = await create_fake_delegated_host({ control_file_symlink: true });
+    try {
+      const report = await inspect_linux_cgroup_v2({
+        proc_root: path.join(fixture.root, 'proc'),
+        parent_path: fixture.parent,
+      });
+      assert.equal(report.ready, false);
+      assert.equal(report.parent.path_components_trusted, true);
+      assert.match(report.reason, /ORIX_CGROUP_CONTROL_FILE_UNSAFE/);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test('read-only preflight rejects a world-writable supervisor independently of the parent', { timeout: 10_000 }, async () => {
+    const fixture = await create_fake_delegated_host({ supervisor_mode: 0o777 });
+    try {
+      const report = await inspect_linux_cgroup_v2({
+        proc_root: path.join(fixture.root, 'proc'),
+        parent_path: fixture.parent,
+      });
+      assert.equal(report.ready, false);
+      assert.equal(report.parent.path_components_trusted, true);
+      assert.equal(report.parent.owner_matches_process, true);
+      assert.equal(report.parent.not_group_or_other_writable, true);
+      assert.equal(report.parent.supervisor_owner_matches_process, true);
+      assert.equal(report.parent.supervisor_not_group_or_other_writable, false);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+}
+
+if (process.platform === 'linux') {
   test('read-only preflight accepts an owned, non-group-writable delegated parent with required event files', { timeout: 10_000 }, async () => {
     const fixture = await create_fake_delegated_host();
     try {
@@ -260,11 +312,10 @@ if (process.platform === 'linux') {
         parent_path: fixture.parent,
       });
       assert.equal(report.ready, false);
-      assert.equal(report.parent.owner_matches_process, true);
-      assert.equal(report.parent.not_group_or_other_writable, false);
-      assert.equal(report.parent.supervisor_owner_matches_process, true);
-      assert.equal(report.parent.supervisor_not_group_or_other_writable, false);
-      assert.equal(report.reason, 'delegated-parent-does-not-meet-required-layout-and-controller-contract');
+      assert.equal(report.parent.no_symlink_components, true);
+      assert.equal(report.parent.path_components_trusted, false);
+      assert.equal(report.parent.owner_matches_process, false);
+      assert.equal(report.reason, 'configured-parent-has-untrusted-owner-or-writable-path-component');
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
