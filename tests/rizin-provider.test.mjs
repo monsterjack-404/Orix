@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { analyze_rizin_imports, analyze_rizin_functions, probe_rizin, RIZIN_PROVIDER_MANIFEST } from '../src/providers/rizin.mjs';
+import { create_rizin_snapshot_directory } from '../src/providers/rizin-snapshot.mjs';
 
 const RIZIN_STUB = fileURLToPath(new URL('./fixtures/rizin-stub.mjs', import.meta.url));
 
@@ -214,3 +215,72 @@ test('Rizin adapter and doctor reject manifests that exclude the current runtime
     error => error.code === 'ORIX_RIZIN_PLATFORM_UNSUPPORTED',
   );
 });
+
+
+test('Rizin import adapter forwards the isolation mode to the process runner', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args }) => {
+    await assert.rejects(
+      analyze_rizin_imports({
+        input_path, executable, executable_args, isolation: 'invalid-isolation-mode',
+      }),
+      /isolation must be either none or required/,
+    );
+  });
+});
+
+test('Rizin function adapter forwards the isolation mode to the process runner', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args }) => {
+    await assert.rejects(
+      analyze_rizin_functions({
+        input_path, executable, executable_args, isolation: 'invalid-isolation-mode',
+      }),
+      /isolation must be either none or required/,
+    );
+  });
+});
+
+test('Rizin version probe forwards the isolation mode to the process runner', async () => {
+  await with_fixture(async ({ executable, executable_args }) => {
+    await assert.rejects(
+      probe_rizin({ executable, executable_args, isolation: 'invalid-isolation-mode' }),
+      /isolation must be either none or required/,
+    );
+  });
+});
+
+test('Rizin adapter forwards sandbox_root when required isolation is requested', async () => {
+  await with_fixture(async ({ executable, executable_args }) => {
+    const missing_root = path.join(tmpdir(), 'orix-missing-sandbox-root-' + process.pid);
+    const expected_code = process.platform === 'linux'
+      ? 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE'
+      : 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE';
+    await assert.rejects(
+      probe_rizin({
+        executable,
+        executable_args,
+        isolation: 'required',
+        sandbox_root: missing_root,
+      }),
+      error => error.code === expected_code,
+    );
+  });
+});
+
+
+if (process.platform === 'linux') {
+  test('required Linux Rizin isolation stages private snapshots inside sandbox_root, outside the /tmp overlay', async () => {
+    const sandbox_root = await mkdtemp(path.join(tmpdir(), 'orix-rizin-rootfs-'));
+    let snapshot_directory;
+    try {
+      snapshot_directory = await create_rizin_snapshot_directory('.orix-rizin-test-', {
+        isolation: 'required',
+        sandbox_root,
+      });
+      assert.equal(path.dirname(snapshot_directory), sandbox_root);
+      assert.notEqual(path.dirname(snapshot_directory), path.join(sandbox_root, 'tmp'));
+    } finally {
+      if (snapshot_directory) await rm(snapshot_directory, { recursive: true, force: true });
+      await rm(sandbox_root, { recursive: true, force: true });
+    }
+  });
+}

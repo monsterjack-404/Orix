@@ -325,10 +325,6 @@ export async function run_static_provider(options) {
       args.reduce((sum, item) => sum + Buffer.byteLength(item, 'utf8'), 0) > MAX_TOTAL_ARGUMENT_BYTES) {
     throw new TypeError('executable_args and args exceed the combined argument limits');
   }
-  const cwd = await validate_working_directory(
-    cwd_value,
-    descriptors.allowed_working_directories?.value ?? [cwd_value],
-  );
   const env = validate_environment(descriptors.env?.value);
   const limits = validate_runtime_limits(manifest, {
     timeout_ms: descriptors.timeout_ms?.value,
@@ -339,22 +335,31 @@ export async function run_static_provider(options) {
   if (isolation !== 'none' && isolation !== 'required') {
     throw new TypeError('isolation must be either none or required');
   }
+  const allowed_working_directories = descriptors.allowed_working_directories?.value ?? [cwd_value];
+  let cwd;
   let launch_executable = executable;
   let launch_args = [...executable_args, ...args];
-  let launch_cwd = cwd;
+  let launch_cwd;
   let launch_env = minimal_environment(env);
   if (isolation === 'required') {
+    // Validate the rootfs first so an absent/untrusted root reports the real
+    // isolation failure, rather than a secondary cwd lookup failure when cwd
+    // defaults to the not-yet-created rootfs.
     const prepared = await prepare_linux_provider_isolation({
       executable,
-      cwd,
+      cwd: cwd_value,
       sandbox_root: descriptors.sandbox_root?.value,
       args: launch_args,
       env,
     });
+    cwd = await validate_working_directory(cwd_value, allowed_working_directories);
     launch_executable = prepared.executable;
     launch_args = prepared.args;
     launch_cwd = prepared.cwd;
     launch_env = prepared.env;
+  } else {
+    cwd = await validate_working_directory(cwd_value, allowed_working_directories);
+    launch_cwd = cwd;
   }
   const signal = descriptors.signal?.value;
   if (signal !== undefined && !(signal instanceof AbortSignal)) {
