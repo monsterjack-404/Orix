@@ -286,7 +286,7 @@ test('DEX entries are not trusted when the local filename differs from the centr
 
 test('stored DEX entries with mismatched content CRC32 are excluded from metadata parsing', () => {
   const buffer = make_apk();
-  const signature = Buffer.from('dex\\n035\\0', 'ascii');
+  const signature = Buffer.from([0x64, 0x65, 0x78, 0x0a, 0x30, 0x33, 0x35, 0x00]);
   const offset = buffer.indexOf(signature);
   assert.notEqual(offset, -1);
   buffer[offset + 12] ^= 0xff;
