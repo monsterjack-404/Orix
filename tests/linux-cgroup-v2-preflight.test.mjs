@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import {
+  assess_cgroup_directory_permissions,
+  inspect_linux_cgroup_v2,
   map_cgroup_path_to_mount,
   parse_cgroup2_mounts,
   parse_process_cgroup_path,
@@ -56,3 +61,91 @@ test('cgroup parser rejects non-string input', () => {
   assert.throws(() => parse_cgroup2_mounts(null), /must be a string/);
   assert.throws(() => parse_process_cgroup_path(null), /must be a string/);
 });
+
+
+test('cgroup directory permission gate requires effective-UID ownership and no group/other write bits', () => {
+  assert.deepEqual(
+    assess_cgroup_directory_permissions({ uid: 1000, mode: 0o40755 }, 1000),
+    { owner_matches_process: true, not_group_or_other_writable: true },
+  );
+  assert.deepEqual(
+    assess_cgroup_directory_permissions({ uid: 1001, mode: 0o40755 }, 1000),
+    { owner_matches_process: false, not_group_or_other_writable: true },
+  );
+  assert.deepEqual(
+    assess_cgroup_directory_permissions({ uid: 1000, mode: 0o40775 }, 1000),
+    { owner_matches_process: true, not_group_or_other_writable: false },
+  );
+  assert.deepEqual(
+    assess_cgroup_directory_permissions(null, 1000),
+    { owner_matches_process: false, not_group_or_other_writable: false },
+  );
+});
+
+async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode = 0o700 } = {}) {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-cgroup-preflight-'));
+  const mountpoint = path.join(root, 'cgroup2');
+  const parent = path.join(mountpoint, 'tenant');
+  const supervisor = path.join(parent, 'supervisor');
+  const proc_self = path.join(root, 'proc', 'self');
+  await mkdir(supervisor, { recursive: true });
+  await mkdir(proc_self, { recursive: true });
+  await chmod(parent, parent_mode);
+  await chmod(supervisor, supervisor_mode);
+
+  const files = {
+    'cgroup.controllers': 'cpu memory pids\n',
+    'cgroup.subtree_control': '+cpu +memory +pids\n',
+    'cgroup.procs': '',
+    'cgroup.type': 'domain\n',
+    'cgroup.events': 'populated 0\nfrozen 0\n',
+    'cgroup.kill': '',
+  };
+  await Promise.all(Object.entries(files).map(([name, contents]) =>
+    writeFile(path.join(parent, name), contents)));
+  await writeFile(
+    path.join(proc_self, 'mountinfo'),
+    '29 23 0:26 / ' + mountpoint + ' rw,nosuid,nodev - cgroup2 cgroup rw\n',
+  );
+  await writeFile(path.join(proc_self, 'cgroup'), '0::/tenant/supervisor/orix\n');
+  return { root, parent };
+}
+
+if (process.platform === 'linux') {
+  test('read-only preflight accepts an owned, non-group-writable delegated parent with required event files', { timeout: 10_000 }, async () => {
+    const fixture = await create_fake_delegated_host();
+    try {
+      const report = await inspect_linux_cgroup_v2({
+        proc_root: path.join(fixture.root, 'proc'),
+        parent_path: fixture.parent,
+      });
+      assert.equal(report.ready, true, report.reason);
+      assert.equal(report.parent.owner_matches_process, true);
+      assert.equal(report.parent.not_group_or_other_writable, true);
+      assert.equal(report.parent.supervisor_owner_matches_process, true);
+      assert.equal(report.parent.supervisor_not_group_or_other_writable, true);
+      assert.equal(report.parent.cgroup_events_available, true);
+      assert.equal(report.parent.cgroup_kill_available, true);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test('read-only preflight rejects group-writable parent and world-writable supervisor', { timeout: 10_000 }, async () => {
+    const fixture = await create_fake_delegated_host({ parent_mode: 0o770, supervisor_mode: 0o777 });
+    try {
+      const report = await inspect_linux_cgroup_v2({
+        proc_root: path.join(fixture.root, 'proc'),
+        parent_path: fixture.parent,
+      });
+      assert.equal(report.ready, false);
+      assert.equal(report.parent.owner_matches_process, true);
+      assert.equal(report.parent.not_group_or_other_writable, false);
+      assert.equal(report.parent.supervisor_owner_matches_process, true);
+      assert.equal(report.parent.supervisor_not_group_or_other_writable, false);
+      assert.equal(report.reason, 'delegated-parent-does-not-meet-required-layout-and-controller-contract');
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+}
