@@ -231,8 +231,16 @@ async function main() {
   assert.equal(process.platform, 'linux', 'This integration gate must run on Linux');
   const delegated = await create_delegated_parent();
   const previousParent = process.env.ORIX_CGROUP_PARENT;
-  const hostSecret = path.join(os.tmpdir(), 'orix-cgroup-host-secret-' + process.pid);
-  const hostSecretValue = 'host-only-secret-' + process.pid;
+  const hostWorkspace = path.resolve(process.cwd());
+  const tempRoot = path.resolve(os.tmpdir());
+  const workspaceFromTemp = path.relative(tempRoot, hostWorkspace);
+  const workspaceInsideTemp = workspaceFromTemp === '' ||
+    (!path.isAbsolute(workspaceFromTemp) && workspaceFromTemp !== '..' &&
+     !workspaceFromTemp.startsWith('..' + path.sep));
+  assert.equal(workspaceInsideTemp, false,
+    'Host-root sentinel must be outside /tmp because the sandbox deliberately replaces /tmp with a tmpfs');
+  const hostSecret = path.join(hostWorkspace, '.orix-cgroup-host-secret-' + process.pid + '-' + randomUUID());
+  const hostSecretValue = 'host-only-secret-' + process.pid + '-' + randomUUID();
   let base = null;
   let server;
   try {
@@ -242,7 +250,9 @@ async function main() {
     const root = path.join(base, 'rootfs');
     await mkdir(root);
     const nodePath = await make_minimal_rootfs(root);
-    await writeFile(hostSecret, hostSecretValue, { mode: 0o600 });
+    const rootfsMarkerValue = 'rootfs-only-' + process.pid + '-' + randomUUID();
+    await writeFile(path.join(root, 'work', 'orix-rootfs-marker'), rootfsMarkerValue, { flag: 'wx', mode: 0o400 });
+    await writeFile(hostSecret, hostSecretValue, { flag: 'wx', mode: 0o600 });
 
     server = net.createServer();
     await new Promise((resolve, reject) => {
@@ -257,6 +267,8 @@ async function main() {
       import { spawn, spawnSync } from 'node:child_process';
       const marker = ${JSON.stringify(marker)};
       const result = { marker, namespace_pid: process.pid, namespace_parent_pid: process.ppid, host_pid: Number(process.env.ORIX_HOST_PID) };
+      try { result.rootfs_marker = fs.readFileSync('/work/orix-rootfs-marker', 'utf8'); }
+      catch (error) { result.rootfs_marker_error = error.code || 'rootfs-marker-read-failed'; }
       const nested = spawnSync('/usr/bin/unshare', ['--user', '--map-root-user', '/usr/bin/node', '-e', 'process.exit(0)'], { encoding: 'utf8', timeout: 1500 });
       result.nested_userns = nested.error?.code === 'ENOENT' ? 'probe-missing' : nested.status === 0 ? 'allowed' : 'blocked';
       try { fs.readFileSync(${JSON.stringify(hostSecret)}, 'utf8'); result.host_file = 'readable'; }
@@ -347,6 +359,8 @@ async function main() {
     const result = JSON.parse(execution.stdout);
     assert.equal(providerSeen, true, 'Provider process was not observed in its run cgroup before execution completed');
     assert.notEqual(result.namespace_pid, result.host_pid, 'Provider PID was not remapped into a private PID namespace');
+    assert.equal(result.rootfs_marker, rootfsMarkerValue,
+      'Provider did not read the positive marker from the intended minimal rootfs');
     assert.equal(result.memory_probe_ok, true, 'Provider could not complete the bounded memory allocation probe');
     assert.ok(peakMemory > 250 * 1024 * 1024, 'Kernel did not account the provider memory allocation in memory.current');
     assert.ok(throttledPeriods > 0, 'cpu.max did not throttle the busy provider');
@@ -358,7 +372,7 @@ async function main() {
     assert.ok(sleepPids.length > 0, 'Provider descendants were not observed inside the run cgroup');
     assert.equal(result.namespace_parent_pid, 1, 'Provider is not contained under the private PID namespace init process');
     assert.equal(result.nested_userns, 'blocked', 'Provider can still create nested user namespaces');
-    assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
+    assert.notEqual(result.host_file, 'readable', 'Provider read a host-workspace file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.tmp_write, 'allowed', 'Ephemeral /tmp should remain writable');
     assert.equal(result.host_network, 'blocked', 'Provider reached the host loopback network');
