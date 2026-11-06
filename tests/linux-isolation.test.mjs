@@ -39,6 +39,16 @@ test('rootfs trust assessment rejects foreign owners, symlinks, non-directories 
   assert.equal(assess_rootfs_directory_permissions({ ...base, uid: 1000, is_directory: false }, 1000).trusted, false);
 });
 
+test('rootfs trust assessment rejects malformed type flags and out-of-range metadata', () => {
+  const base = { uid: 1000, mode: 0o40755, is_directory: true, is_symlink: false };
+  assert.equal(assess_rootfs_directory_permissions({ ...base, is_directory: 'true' }, 1000).trusted, false);
+  assert.equal(assess_rootfs_directory_permissions({ ...base, is_symlink: 'false' }, 1000).trusted, false);
+  assert.equal(assess_rootfs_directory_permissions({ uid: 1000, mode: 0o40755 }, 1000).trusted, false);
+  assert.equal(assess_rootfs_directory_permissions({ ...base, mode: 0o200000 }, 1000).trusted, false);
+  assert.equal(assess_rootfs_directory_permissions({ ...base, uid: 0x1_0000_0000 }, 1000).trusted, false);
+  assert.equal(assess_rootfs_directory_permissions(base, 0x1_0000_0000).trusted, false);
+});
+
 test('rootfs trust assessment rejects malformed UID and mode metadata', () => {
   const base = { uid: 1000, mode: 0o40755, is_directory: true, is_symlink: false };
   for (const metadata of [
