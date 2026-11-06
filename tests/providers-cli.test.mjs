@@ -256,3 +256,42 @@ test('providers rizin doctor requires an explicit executable and rejects extra p
     error => error.code === 'ORIX_CLI_PROVIDER_ARGUMENTS',
   );
 });
+
+
+test('provider CLI parses and validates explicit Rizin isolation options', () => {
+  const parsed = parse_arguments([
+    'providers', 'rizin', 'imports', './sample.elf',
+    '--executable', '/opt/rizin/bin/rizin',
+    '--isolation', 'required',
+    '--sandbox-root', '/opt/orix/rootfs',
+  ]);
+  assert.equal(parsed.flags.isolation, 'required');
+  assert.equal(parsed.flags.sandbox_root, '/opt/orix/rootfs');
+  assert.throws(
+    () => parse_arguments(['providers', 'rizin', 'doctor', '--isolation', 'unsafe']),
+    error => error.code === 'ORIX_CLI_BAD_ISOLATION',
+  );
+  assert.throws(
+    () => parse_arguments(['providers', 'rizin', 'doctor', '--sandbox-root', '/opt/orix/rootfs']),
+    error => error.code === 'ORIX_CLI_SANDBOX_ROOT_REQUIRES_ISOLATION',
+  );
+});
+
+test('Rizin CLI forwards required isolation and sandbox root to the adapter and fails closed', async () => {
+  await with_fixture(async ({ directory, executable, executable_args }) => {
+    const missing_root = path.join(directory, 'missing-rootfs');
+    const expected_code = process.platform === 'linux'
+      ? 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE'
+      : 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE';
+    await assert.rejects(
+      main([
+        'providers', 'rizin', 'doctor',
+        '--executable', executable,
+        ...executable_args.flatMap(argument => ['--executable-arg', argument]),
+        '--isolation', 'required',
+        '--sandbox-root', missing_root,
+      ]),
+      error => error.code === expected_code,
+    );
+  });
+});
