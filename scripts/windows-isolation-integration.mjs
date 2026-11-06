@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
-import os from 'node:os';
+import os_host from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
 
@@ -62,7 +62,7 @@ async function main() {
   }
   // Store the sentinel in the runner user's private profile, not under
   // Program Files where broad read ACLs may be inherited by AppContainers.
-  const hostSecret = path.join(os.homedir(), 'orix-host-only-secret-' + process.pid + '.txt');
+  const hostSecret = path.join(os_host.homedir(), 'orix-host-only-secret-' + process.pid + '.txt');
   const hostSecretValue = 'host-only-secret-' + process.pid;
   let server;
   try {
