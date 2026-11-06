@@ -114,6 +114,26 @@ async function main() {
 
     const executable = await copy_node_runtime(root);
     const canonicalScratch = await realpath(path.join(root, 'tmp'));
+
+    // A secure root directory is not sufficient if an individual runtime file
+    // is writable by another local principal.
+    const unsafeFile = path.join(root, 'work', 'unsafe-write-probe.txt');
+    await writeFile(unsafeFile, 'untrusted rootfs entry');
+    await chmod(unsafeFile, 0o666);
+    await assert.rejects(
+      prepare_macos_provider_isolation({
+        executable,
+        cwd: path.join(root, 'work'),
+        sandbox_root: root,
+        args: [],
+        env: {},
+      }),
+      error => error.code === 'ORIX_PROVIDER_SANDBOX_PATH_DENIED',
+      'macOS isolation must reject group/other-writable files inside the rootfs',
+    );
+    await chmod(unsafeFile, 0o600);
+    await rm(unsafeFile, { force: true });
+
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
 
     server = net.createServer();
