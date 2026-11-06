@@ -308,7 +308,7 @@ test('DEX entries whose local data overlaps the central directory are not parsed
   buffer.writeUInt16LE(20, fake_local_offset + 4);
   buffer.writeUInt16LE(0, fake_local_offset + 6);
   buffer.writeUInt16LE(0, fake_local_offset + 8);
-  buffer.writeUInt32LE(0, fake_local_offset + 14);
+  buffer.writeUInt32LE(buffer.readUInt32LE(central_entry + 16), fake_local_offset + 14);
   buffer.writeUInt32LE(create_dex_fixture().length, fake_local_offset + 18);
   buffer.writeUInt32LE(create_dex_fixture().length, fake_local_offset + 22);
   buffer.writeUInt16LE(central_name.length, fake_local_offset + 26);
