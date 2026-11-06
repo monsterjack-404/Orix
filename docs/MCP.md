@@ -6,7 +6,7 @@ ORIX includes a dependency-free Model Context Protocol server using the standard
 
 
 
-The `orix.rizin_functions` tool accepts an optional `executable_args` array (up to 16 literal strings) for explicitly selected wrapper executables. Values are prepended to Rizin's argv without shell evaluation and remain subject to the bounded provider process runner. It also accepts `isolation: 'required'` and `sandbox_root` to opt into Linux Bubblewrap namespace/filesystem isolation. The sandbox root must be an existing directory inside a configured MCP workspace root; isolation defaults to `none`.
+The `orix.rizin_functions` tool accepts an optional `executable_args` array (up to 16 literal strings) for explicitly selected wrapper executables. Values are prepended to Rizin's argv without shell evaluation and remain subject to the bounded provider process runner. It also accepts `isolation: 'required'`, `sandbox_root`, and an optional workspace-confined `cwd` (defaults to the sandbox root) to opt into Linux Bubblewrap namespace/filesystem isolation. The sandbox root must be an existing directory inside a configured MCP workspace root; isolation defaults to `none`.
 ## Start
 
 From the repository root:
