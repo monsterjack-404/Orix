@@ -281,6 +281,9 @@ async function main() {
     assert.ok(peakMemory > 250 * 1024 * 1024, 'Kernel did not account the provider memory allocation in memory.current');
     assert.ok(throttledPeriods > 0, 'cpu.max did not throttle the busy provider');
     assert.ok(peakPids >= 32, 'pids.current did not reflect provider-created descendants');
+    assert.ok(peakPids <= 64, 'Observed task count exceeded the configured pids.max ceiling');
+    assert.equal(result.memory_probe_ok, true, 'Provider memory-allocation probe did not complete');
+    assert.equal(result.cpu_probe, true, 'Provider CPU-load probe did not complete');
     assert.ok(result.pids_limit_hits > 0, 'pids.max did not reject excess process creation');
     assert.ok(sleepPids.length > 0, 'Provider descendants were not observed inside the run cgroup');
     assert.equal(result.namespace_parent_pid, 1, 'Provider is not contained under the private PID namespace init process');
