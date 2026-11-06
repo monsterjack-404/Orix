@@ -48,12 +48,17 @@ async function main() {
   const runnerIdentity = execFileSync('whoami.exe', [], { encoding: 'utf8', windowsHide: true }).trim();
   const systemRoot = process.env.SystemRoot || process.env.WINDIR;
   assert.ok(systemRoot, 'Windows SystemRoot is required for the trusted ACL test helper');
-  execFileSync(path.join(systemRoot, 'System32', 'icacls.exe'), [
-    root, '/inheritance:r', '/grant:r',
-    runnerIdentity + ':(OI)(CI)F',
-    '*S-1-5-18:(OI)(CI)F',
-    '*S-1-5-32-544:(OI)(CI)F',
-  ], { encoding: 'utf8', windowsHide: true });
+  // Protect the fixture parent as well as rootfs: the outside-rootfs
+  // secret lives beside rootfs and must not inherit broad BUILTIN\\Users read
+  // access from Program Files.
+  for (const directory of [base, root]) {
+    execFileSync(path.join(systemRoot, 'System32', 'icacls.exe'), [
+      directory, '/inheritance:r', '/grant:r',
+      runnerIdentity + ':(OI)(CI)F',
+      '*S-1-5-18:(OI)(CI)F',
+      '*S-1-5-32-544:(OI)(CI)F',
+    ], { encoding: 'utf8', windowsHide: true });
+  }
   // Store the sentinel in the runner user's private profile, not under
   // Program Files where broad read ACLs may be inherited by AppContainers.
   const hostSecret = path.join(os.homedir(), 'orix-host-only-secret-' + process.pid + '.txt');
