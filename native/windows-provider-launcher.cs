@@ -347,9 +347,16 @@ namespace OrixWindowsSandbox {
     }
 
     static void PurgeTree(string path, SecurityIdentifier sid) {
-      if (!File.Exists(path) && !Directory.Exists(path)) return;
-      FileAttributes attributes = File.GetAttributes(path);
-      if ((attributes & FileAttributes.ReparsePoint) != 0) return;
+      // Inspect the directory entry itself before any existence helper can
+      // follow a reparse target. A provider-controlled junction in scratch
+      // must abort cleanup; silently skipping it and later deleting a child
+      // path would allow that child path to resolve outside the sandbox root.
+      FileAttributes attributes;
+      try { attributes = File.GetAttributes(path); }
+      catch (FileNotFoundException) { return; }
+      catch (DirectoryNotFoundException) { return; }
+      if ((attributes & FileAttributes.ReparsePoint) != 0)
+        throw new InvalidOperationException("ORIX_WINDOWS_CLEANUP_REPARSE_POINT: refusing to traverse cleanup path: " + path);
       bool directory = (attributes & FileAttributes.Directory) != 0;
       if (directory) {
         foreach (string child in Directory.EnumerateFileSystemEntries(path)) PurgeTree(child, sid);
