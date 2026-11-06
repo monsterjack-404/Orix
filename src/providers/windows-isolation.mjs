@@ -131,7 +131,19 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
     const value = process.env[key];
     if (typeof value === 'string' && value.length > 0) providerEnvironment[key] = value;
   }
-  for (const [key, value] of Object.entries(env)) providerEnvironment[key] = value;
+  // Provider overrides must not replace the host's Windows runtime identity.
+  // Windows environment names are case-insensitive, so reject every spelling
+  // of these reserved keys before adding the trusted values below.
+  for (const [key, value] of Object.entries(env)) {
+    const normalizedKey = key.toLowerCase();
+    if (normalizedKey === 'systemroot' || normalizedKey === 'windir') continue;
+    providerEnvironment[key] = value;
+  }
+  const trustedSystemRoot = process.env.SystemRoot ?? process.env.WINDIR;
+  if (typeof trustedSystemRoot === 'string' && trustedSystemRoot.length > 0) {
+    providerEnvironment.SystemRoot = trustedSystemRoot;
+    providerEnvironment.WINDIR = trustedSystemRoot;
+  }
   Object.assign(providerEnvironment, {
     HOME: root,
     USERPROFILE: root,
