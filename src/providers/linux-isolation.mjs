@@ -185,6 +185,16 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
     bwrapArgs.push('--setenv', key, value);
   }
   bwrapArgs.push('--', sandboxExecutable, ...args);
+
+  // Re-check rootfs ownership/modes and every ancestor after preparing argv,
+  // immediately before handing the launch plan back to the process runner.
+  // This narrows (but cannot eliminate) the validation-to-spawn race.
+  const final_root = await validate_rootfs(sandbox_root);
+  if (final_root !== root) {
+    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_CHANGED',
+      'Provider sandbox root identity changed while its launch policy was being prepared');
+  }
+
   return Object.freeze({
     executable: bwrap,
     args: Object.freeze(bwrapArgs),
