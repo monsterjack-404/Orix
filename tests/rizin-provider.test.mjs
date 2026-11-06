@@ -6,7 +6,7 @@ import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { analyze_rizin_imports, analyze_rizin_functions, probe_rizin, RIZIN_PROVIDER_MANIFEST } from '../src/providers/rizin.mjs';
+import { analyze_rizin_imports, analyze_rizin_functions, create_rizin_snapshot_directory, probe_rizin, RIZIN_PROVIDER_MANIFEST } from '../src/providers/rizin.mjs';
 
 const RIZIN_STUB = fileURLToPath(new URL('./fixtures/rizin-stub.mjs', import.meta.url));
 
@@ -264,3 +264,22 @@ test('Rizin adapter forwards sandbox_root when required isolation is requested',
     );
   });
 });
+
+
+if (process.platform === 'linux') {
+  test('required Linux Rizin isolation stages private snapshots inside sandbox_root, outside the /tmp overlay', async () => {
+    const sandbox_root = await mkdtemp(path.join(tmpdir(), 'orix-rizin-rootfs-'));
+    let snapshot_directory;
+    try {
+      snapshot_directory = await create_rizin_snapshot_directory('.orix-rizin-test-', {
+        isolation: 'required',
+        sandbox_root,
+      });
+      assert.equal(path.dirname(snapshot_directory), sandbox_root);
+      assert.notEqual(path.dirname(snapshot_directory), path.join(sandbox_root, 'tmp'));
+    } finally {
+      if (snapshot_directory) await rm(snapshot_directory, { recursive: true, force: true });
+      await rm(sandbox_root, { recursive: true, force: true });
+    }
+  });
+}
