@@ -65,7 +65,7 @@ Please use GitHub's private vulnerability reporting or Security Advisories for s
 
 The provider runner compares the canonical executable with an explicit allowlist (or uses the selected executable as its single-entry default) and validates the working directory against explicit canonical roots (or the exact cwd as its default). It rejects final symlink paths and malformed/accessor-backed allowlist arrays. The child does not inherit the full parent environment; explicit values reject PATH/search and runtime-loader variables such as NODE_OPTIONS, LD_PRELOAD, DYLD_INSERT_LIBRARIES, PYTHONPATH and RUBYOPT.
 
-These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. Windows currently terminates only the direct child.
+These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. In explicitly unsandboxed `isolation: "none"` mode, Windows process teardown can signal only the direct child; the required AppContainer backend instead places the provider in a Job Object before resuming it and applies kill-on-job-close to descendants.
 
 
 ## Enforced provider isolation (Linux implementation gate)
