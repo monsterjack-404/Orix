@@ -12,6 +12,7 @@ const BLOCKED_ENVIRONMENT_KEYS = new Set([
   'PATH', 'PATHEXT', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
   'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'DYLD_FRAMEWORK_PATH',
   'PYTHONPATH', 'PYTHONHOME', 'PERL5OPT', 'RUBYOPT', 'BASH_ENV', 'ENV', 'IFS',
+  'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'COMSPEC',
 ]);
 const MAX_ARGUMENTS = 256;
 const MAX_ARGUMENT_BYTES = 32 * 1024;
@@ -102,13 +103,17 @@ function validate_environment(value) {
     throw new TypeError('env contains too many entries');
   }
   const result = Object.create(null);
+  const normalized_keys = new Set();
   let total = 0;
   for (const key of entries) {
+    const normalized_key = typeof key === 'string' ? key.toUpperCase() : '';
     const descriptor = descriptors[key];
-    if (typeof key !== 'string' || !ENV_KEY.test(key) || BLOCKED_ENVIRONMENT_KEYS.has(key.toUpperCase()) ||
+    if (typeof key !== 'string' || !ENV_KEY.test(key) || BLOCKED_ENVIRONMENT_KEYS.has(normalized_key) ||
+        normalized_keys.has(normalized_key) ||
         !descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) {
       throw new TypeError('env must contain enumerable string data properties with valid names');
     }
+    normalized_keys.add(normalized_key);
     const item = descriptor.value;
     if (typeof item !== 'string' || item.includes('\0')) {
       throw new TypeError('env values must be strings without NUL bytes');
