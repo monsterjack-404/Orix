@@ -53,7 +53,8 @@
     "./formats/cramfs": "./src/formats/cramfs.mjs",
     "./formats/ubi": "./src/formats/ubi.mjs",
     "./formats/ubifs": "./src/formats/ubifs.mjs",
-    "./formats/ubifs-master": "./src/formats/ubifs-master.mjs"
+    "./formats/ubifs-master": "./src/formats/ubifs-master.mjs",
+    "./providers/linux-cgroup-v2-preflight": "./src/providers/linux-cgroup-v2-preflight.mjs"
   },
   "scripts": {
     "start": "node ./src/cli.mjs",
