@@ -43,7 +43,9 @@ async function validate_tree(root) {
   await walk(root, 0);
 }
 async function resolve_csc(environment) {
-  const systemRoot = environment.SystemRoot ?? environment.WINDIR ?? process.env.SystemRoot ?? process.env.WINDIR;
+  // environment must be assembled only from the trusted host process, never
+  // from provider-supplied environment overrides.
+  const systemRoot = environment.SystemRoot ?? environment.WINDIR;
   if (!systemRoot) isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'SystemRoot is required to locate the trusted .NET Framework compiler');
   for (const candidate of [
     path.join(systemRoot, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe'),
@@ -103,7 +105,11 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
   const provider = await realpath(executable);
   if (!within(root, provider) || !within(root, work)) isolation_error('ORIX_PROVIDER_SANDBOX_PATH_DENIED', 'Windows provider executable and working directory must be inside sandbox_root');
   await validate_tree(root);
-  const compiler = await resolve_csc(env);
+  const hostEnvironment = Object.create(null);
+  for (const key of ['SystemRoot', 'WINDIR', 'PATH', 'TEMP', 'TMP']) {
+    if (typeof process.env[key] === 'string') hostEnvironment[key] = process.env[key];
+  }
+  const compiler = await resolve_csc(hostEnvironment);
   const temporary = await mkdtemp(path.join(tmpdir(), 'orix-provider-win-'));
   const configPath = path.join(temporary, 'provider.json');
   const logPath = path.join(temporary, 'provider.log');
@@ -118,7 +124,7 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
     await run_native_helper(compiler, [
       '/nologo', '/target:exe', '/out:' + launcher,
       '/r:System.Core.dll', '/r:System.Security.dll', '/r:System.Web.Extensions.dll', source,
-    ], temporary, env, null, 30_000);
+    ], temporary, hostEnvironment, null, 30_000);
   } catch (error) {
     await rm(temporary, { recursive: true, force: true }).catch(() => {});
     throw new OrixError('ORIX_PROVIDER_WINDOWS_COMPILER_FAILED', 'Could not build the native Windows AppContainer launcher', {
@@ -129,7 +135,7 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
   const cleanup = () => {
     if (cleanupPromise) return cleanupPromise;
     cleanupPromise = (async () => {
-      try { await run_native_helper(launcher, ['cleanup', configPath], temporary, env, logPath, 30_000); }
+      try { await run_native_helper(launcher, ['cleanup', configPath], temporary, hostEnvironment, logPath, 30_000); }
       finally { cleanup.last_log = await readFile(logPath, 'utf8').catch(() => ''); }
       await rm(temporary, { recursive: true, force: true });
     })().catch(error => { cleanupPromise = null; throw error; });
