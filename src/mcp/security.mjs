@@ -79,6 +79,7 @@ export async function resolve_workspace_output(input_path, roots = configured_wo
   try {
     const stats = await fs.lstat(destination);
     if (stats.isSymbolicLink() || !stats.isFile()) fail('ORIX_MCP_UNSAFE_OUTPUT', 'MCP evidence output must be a regular non-symlink file', { path: destination });
+    if (stats.nlink > 1) fail('ORIX_MCP_HARDLINK_REJECTED', 'MCP does not write to hard-linked workspace outputs', { path: destination, link_count: stats.nlink });
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
   return destination;
 }
