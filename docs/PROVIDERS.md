@@ -225,6 +225,32 @@ Provider failure must remain visible. ORIX must not silently substitute another 
 
 A manifest is untrusted input. It is descriptive metadata, not a signed identity, executable policy, sandbox, or authorization token. Provider installation and execution remain separate operations. Dynamic analysis must be explicitly scoped to systems the operator owns or is authorized to assess.
 
+## 7.1 Operating-system isolation support matrix
+
+The current process runner is **not an OS sandbox on any supported platform**. Its timeout, output limits, environment filtering, executable/cwd checks and process teardown are useful controls, but they do not confine provider syscalls or resource use.
+
+| Platform | Current process control | OS-level confinement in ORIX |
+| --- | --- | --- |
+| Linux | Detached process groups; timeout/cancellation signals the group. | Not implemented. No bubblewrap/mount namespace, user/PID/network namespace, seccomp or cgroup policy is applied. |
+| Windows | Timeout/cancellation requests best-effort `taskkill.exe /T /F` process-tree teardown. | Not implemented. No Job Object, restricted token, AppContainer, filesystem ACL boundary or network capability policy is assigned by ORIX. |
+| macOS | Detached process groups; timeout/cancellation signals the group. | Not implemented. No Seatbelt/sandbox profile or App Sandbox entitlement is applied. |
+
+A process group or process-tree kill is a lifecycle mechanism, not a containment boundary. In particular, Windows `taskkill /T` is not a substitute for assigning the process to a Job Object at creation time; a descendant may escape before the tree is enumerated. Likewise, a Linux namespace or a macOS sandbox must be configured before untrusted provider code starts.
+
+### Isolation requirements before enabling untrusted providers
+
+A future sandbox backend must be opt-in and fail closed. It must:
+- create the containment boundary before launching the provider;
+- deny network access by default for static providers;
+- expose only the selected executable, required runtime libraries, read-only input snapshot and an explicitly bounded scratch area;
+- prevent writes to the host filesystem and prevent access to caller secrets, home directories and unrelated project files;
+- apply CPU, memory, process-count, file-size and wall-clock limits where the OS supports them;
+- ensure descendants remain inside the same containment boundary;
+- report the backend and effective policy in a versioned execution receipt;
+- have platform-specific adversarial tests proving denied filesystem, network and process-escape behavior.
+
+Until those controls are implemented and tested, use only trusted provider binaries and run them under a separate low-privilege OS account or disposable VM/container. Do not interpret a manifest's `mode: "static"` as a sandbox guarantee.
+
 ## 8. Public API
 
 - validate_provider_manifest(value) — validate an in-memory data object.
