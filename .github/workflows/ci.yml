@@ -23,9 +23,11 @@ jobs:
         node-version: [20, 22, 24]
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -45,13 +47,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Install Bubblewrap
         run: |
           sudo apt-get update
           sudo apt-get install --yes bubblewrap
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
       - name: Install locked dependencies
@@ -68,8 +72,8 @@ jobs:
         run: |
           test -x /usr/bin/bwrap
           /usr/bin/bwrap --version
-      - name: Run hostile-process isolation checks
-        run: node scripts/linux-isolation-integration.mjs
+      - name: Run real delegated cgroup v2 hostile-process and resource-isolation checks
+        run: sudo node scripts/linux-cgroup-v2-integration.mjs
 
   platform-smoke:
     name: Platform smoke / ${{ matrix.os }}
@@ -81,9 +85,11 @@ jobs:
         os: [windows-latest, macos-latest]
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
           cache: npm
