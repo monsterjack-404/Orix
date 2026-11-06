@@ -5,6 +5,12 @@ import path from 'node:path';
 
 const REQUIRED_CONTROLLERS = Object.freeze(['cpu', 'memory', 'pids']);
 
+function canonical_posix_absolute(value) {
+  return typeof value === 'string' && value.length > 0 &&
+    !value.includes('\0') && path.posix.isAbsolute(value) &&
+    path.posix.normalize(value) === value;
+}
+
 function decode_mount_field(value) {
   return value.replace(/\\([0-7]{3})/g, (_match, octal) => String.fromCharCode(Number.parseInt(octal, 8)));
 }
@@ -21,7 +27,7 @@ export function parse_cgroup2_mounts(mountinfo) {
     if (right[0] !== 'cgroup2' || left.length < 6 || right.length < 3) continue;
     const root = decode_mount_field(left[3]);
     const mountpoint = decode_mount_field(left[4]);
-    if (!path.posix.isAbsolute(root) || !path.posix.isAbsolute(mountpoint)) continue;
+    if (!canonical_posix_absolute(root) || !canonical_posix_absolute(mountpoint)) continue;
     mounts.push(Object.freeze({ root, mountpoint }));
   }
   return mounts;
@@ -31,16 +37,17 @@ export function parse_process_cgroup_path(contents) {
   if (typeof contents !== 'string') throw new TypeError('cgroup contents must be a string');
   for (const line of contents.split('\n')) {
     const match = line.match(/^0::(\/.*)$/);
-    if (match) return path.posix.normalize(match[1]);
+    if (match) return canonical_posix_absolute(match[1]) ? match[1] : null;
   }
   return null;
 }
 
 export function map_cgroup_path_to_mount(cgroup_path, mounts) {
-  if (typeof cgroup_path !== 'string' || !path.posix.isAbsolute(cgroup_path) ||
-      path.posix.normalize(cgroup_path) !== cgroup_path) return null;
+  if (!canonical_posix_absolute(cgroup_path) || !Array.isArray(mounts)) return null;
   const candidates = mounts
-    .filter(mount => cgroup_path === mount.root || cgroup_path.startsWith(mount.root === '/' ? '/' : mount.root + '/'))
+    .filter(mount => mount && canonical_posix_absolute(mount.root) &&
+      canonical_posix_absolute(mount.mountpoint) &&
+      (cgroup_path === mount.root || cgroup_path.startsWith(mount.root === '/' ? '/' : mount.root + '/')))
     .sort((a, b) => b.root.length - a.root.length);
   if (candidates.length === 0) return null;
   const mount = candidates[0];
