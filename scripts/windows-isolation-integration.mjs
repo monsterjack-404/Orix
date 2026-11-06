@@ -58,15 +58,20 @@ async function main() {
     'Cleanup must not silently report success for an arbitrary SID lookup failure');
 
 
-  assert.match(launcherSource, /DuplicateHandle[\\s\\S]*?DUPLICATE_SAME_ACCESS/,
+  assert.ok(launcherSource.includes('DuplicateHandle(') &&
+    launcherSource.includes('DUPLICATE_SAME_ACCESS'),
     'Native helper must duplicate standard handles instead of changing the host handle table');
-  assert.match(launcherSource, /DuplicateStandardHandle\\(GetStdHandle\\(-10\\), "stdin"[\\s\\S]*?DuplicateStandardHandle\\(GetStdHandle\\(-11\\), "stdout"[\\s\\S]*?DuplicateStandardHandle\\(GetStdHandle\\(-12\\), "stderr"/,
+  assert.ok(
+    launcherSource.includes('DuplicateStandardHandle(GetStdHandle(-10), "stdin", inheritedStandardHandles)') &&
+    launcherSource.includes('DuplicateStandardHandle(GetStdHandle(-11), "stdout", inheritedStandardHandles)') &&
+    launcherSource.includes('DuplicateStandardHandle(GetStdHandle(-12), "stderr", inheritedStandardHandles)'),
     'The child must receive dedicated duplicates of stdin, stdout and stderr');
-  assert.match(launcherSource, /PROC_THREAD_ATTRIBUTE_HANDLE_LIST/,
+  assert.ok(launcherSource.includes('PROC_THREAD_ATTRIBUTE_HANDLE_LIST'),
     'The child handle inheritance must remain restricted to the explicit standard-handle list');
-  assert.doesNotMatch(launcherSource, /SetHandleInformation\\s*\\(/,
+  assert.equal(launcherSource.includes('SetHandleInformation('), false,
     'The helper must not alter inheritance flags on the host process standard handles');
-  assert.match(launcherSource, /foreach \\(IntPtr inheritedHandle in inheritedStandardHandles\\)[\\s\\S]*?CloseHandle\\(inheritedHandle\\)/,
+  assert.ok(launcherSource.includes('foreach (IntPtr inheritedHandle in inheritedStandardHandles)') &&
+    launcherSource.includes('CloseHandle(inheritedHandle)'),
     'The helper must close its temporary standard-handle duplicates during teardown');
   assert.doesNotMatch(launcherSource, /Environment\.GetEnvironmentVariable\("SystemRoot"\)/,
     'Native helper must not resolve icacls.exe from inherited SystemRoot');
