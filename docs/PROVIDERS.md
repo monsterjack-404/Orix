@@ -123,7 +123,7 @@ if (!result.ok) {
 }
 ~~~
 
-This runner is a process-control boundary, **not an operating-system sandbox**. It cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. POSIX process groups are signalled on timeout/cancellation; Windows currently signals the direct child and does not guarantee process-tree teardown. Do not run untrusted provider binaries on a sensitive host. Strong isolation requires an OS/container/VM policy supplied and verified separately.
+This runner is a process-control boundary, **not an operating-system sandbox**. It cannot force a declared-static executable to avoid network access, filesystem writes, or malicious behavior. POSIX process groups are signalled on timeout/cancellation. On Windows, the runner invokes the system `taskkill.exe` with `/T /F` to request termination of the provider and its descendants; if the utility cannot be started or reports failure, it falls back to terminating the direct child. Tree teardown is best-effort and is not an absolute guarantee. Do not run untrusted provider binaries on a sensitive host. Strong isolation requires an OS/container/VM policy supplied and verified separately.
 
 ## 5. Rizin import adapter
 
@@ -250,6 +250,6 @@ The static runner accepts two optional allowlists:
 
 Allowlist arrays reject sparse entries, accessors and custom properties. The child does not inherit the full parent environment. Explicit overrides reject command-search and executable-loader keys including `PATH`, `PATHEXT`, `NODE_OPTIONS`, `NODE_PATH`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `PYTHONPATH`, `PERL5OPT` and `RUBYOPT`.
 
-Execution results include a versioned `orix.provider-execution.v1` receipt defined by [provider-execution.v1.schema.json](../schemas/provider-execution.v1.schema.json). Legacy result properties remain available for the current Rizin adapter. POSIX termination signals the detached process group; Windows currently terminates only the direct child.
+Execution results include a versioned `orix.provider-execution.v1` receipt defined by [provider-execution.v1.schema.json](../schemas/provider-execution.v1.schema.json). Legacy result properties remain available for the current Rizin adapter. POSIX termination signals the detached process group. Windows uses the system `taskkill.exe` `/T /F` process-tree option and falls back to direct-child termination if tree termination fails.
 
 These path checks constrain the selected executable and working directory; they do not confine every file the child can read or write. The manifest still cannot enforce provider behavior.
