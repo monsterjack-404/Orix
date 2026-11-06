@@ -72,7 +72,7 @@ static int check_extended_acl(const char *path) {
   acl_t acl = acl_get_file(path, ACL_TYPE_EXTENDED);
   if (acl == NULL) {
     if (errno == ENOENT || errno == EOPNOTSUPP) return 0;
-    fprintf(stderr, "ORIX_MACOS_ACL_CHECK_ERROR=%s:%s\\n", path, strerror(errno));
+    fprintf(stderr, "ORIX_MACOS_ACL_CHECK_ERROR=%s:%s\n", path, strerror(errno));
     return -1;
   }
   acl_entry_t entry;
@@ -80,11 +80,11 @@ static int check_extended_acl(const char *path) {
   int saved_errno = errno;
   acl_free(acl);
   if (result == 0) {
-    fprintf(stderr, "ORIX_MACOS_ACL_DENIED=%s\\n", path);
+    fprintf(stderr, "ORIX_MACOS_ACL_DENIED=%s\n", path);
     return 1;
   }
   if (result == -1) {
-    fprintf(stderr, "ORIX_MACOS_ACL_CHECK_ERROR=%s:%s\\n", path, strerror(saved_errno));
+    fprintf(stderr, "ORIX_MACOS_ACL_CHECK_ERROR=%s:%s\n", path, strerror(saved_errno));
     return -1;
   }
   return 0;
@@ -113,7 +113,7 @@ static int check_rootfs_acls(const char *root) {
   char *paths[] = { (char *)root, NULL };
   FTS *tree = fts_open(paths, FTS_PHYSICAL | FTS_NOCHDIR, NULL);
   if (!tree) {
-    fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=%s\\n", strerror(errno));
+    fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=%s\n", strerror(errno));
     return -1;
   }
   int result = 0;
@@ -123,14 +123,14 @@ static int check_rootfs_acls(const char *root) {
     entry = fts_read(tree);
     if (entry == NULL) {
       if (errno != 0 && result == 0) {
-        fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=%s\\n", strerror(errno));
+        fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=%s\n", strerror(errno));
         result = -1;
       }
       break;
     }
     if (entry->fts_info == FTS_DP) continue;
     if (entry->fts_info != FTS_D && entry->fts_info != FTS_F) {
-      fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=unexpected-rootfs-entry:%s\\n", entry->fts_path);
+      fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=unexpected-rootfs-entry:%s\n", entry->fts_path);
       result = -1;
       break;
     }
@@ -138,7 +138,7 @@ static int check_rootfs_acls(const char *root) {
     if (acl_result != 0) { result = acl_result; break; }
   }
   if (fts_close(tree) != 0 && result == 0) {
-    fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=close:%s\\n", strerror(errno));
+    fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=close:%s\n", strerror(errno));
     result = -1;
   }
   return result;
@@ -163,9 +163,9 @@ int main(int argc, char **argv) {
   int acl_result = check_rootfs_acls(root);
   if (acl_result != 0) {
     if (acl_result > 0)
-      fprintf(stderr, "ORIX_MACOS_ACL_DENIED=provider-rootfs-or-ancestor\\n");
+      fprintf(stderr, "ORIX_MACOS_ACL_DENIED=provider-rootfs-or-ancestor\n");
     else
-      fprintf(stderr, "ORIX_MACOS_ACL_CHECK_FAILED=fail-closed\\n");
+      fprintf(stderr, "ORIX_MACOS_ACL_CHECK_FAILED=fail-closed\n");
     return 125;
   }
 
