@@ -197,11 +197,30 @@ function parse_trace_events(trace_bytes, limits) {
   let source;
   try { source = new TextDecoder('utf-8', { fatal: true }).decode(trace_bytes); }
   catch { fail('ORIX_TRACE_INVALID_UTF8', 'Playwright trace JSONL must be valid UTF-8'); }
-  const raw_lines = source.split('\n');
-  if (raw_lines.length && raw_lines.at(-1) === '') raw_lines.pop();
-  const lines = raw_lines.filter(line => line.length > 0);
-  if (lines.length === 0) fail('ORIX_TRACE_EMPTY', 'Playwright trace JSONL contains no events');
-  const analyzed_count = Math.min(lines.length, limits.max_events);
+  // Count non-empty JSONL records without materializing every line. A trace may
+  // contain millions of blank lines inside the byte ceiling; split/filter would
+  // allocate an attacker-controlled array before max_events could take effect.
+  let events_total = 0;
+  const lines = [];
+  let cursor = 0;
+  while (cursor <= source.length) {
+    const newline = source.indexOf('\n', cursor);
+    const end = newline < 0 ? source.length : newline;
+    if (end > cursor) {
+      events_total += 1;
+      if (lines.length < limits.max_events) {
+        const line = source.slice(cursor, end);
+        if (Buffer.byteLength(line, 'utf8') > limits.max_line_bytes) {
+          fail('ORIX_TRACE_LINE_TOO_LARGE', 'Trace event line exceeds the configured byte ceiling', { line: events_total });
+        }
+        lines.push(line);
+      }
+    }
+    if (newline < 0) break;
+    cursor = newline + 1;
+  }
+  if (events_total === 0) fail('ORIX_TRACE_EMPTY', 'Playwright trace JSONL contains no events');
+  const analyzed_count = lines.length;
   let context = null;
   const action_map = new Map();
   const actions = [];
@@ -227,9 +246,6 @@ function parse_trace_events(trace_bytes, limits) {
 
   for (let index = 0; index < analyzed_count; index += 1) {
     const line = lines[index];
-    if (Buffer.byteLength(line, 'utf8') > limits.max_line_bytes) {
-      fail('ORIX_TRACE_LINE_TOO_LARGE', 'Trace event line exceeds the configured byte ceiling', { line: index + 1 });
-    }
     let event;
     try { event = JSON.parse(line); }
     catch { fail('ORIX_TRACE_INVALID_EVENT_JSON', 'Trace contains a malformed JSONL event', { line: index + 1 }); }
@@ -277,7 +293,7 @@ function parse_trace_events(trace_bytes, limits) {
           continue;
         }
         const action = {
-          id: 'action-' + String(actions.length + action_map.size + 1).padStart(5, '0'),
+          id: 'action-' + String(action_map.size + 1).padStart(5, '0'),
           class: normalize_action_label(event.class),
           method: normalize_action_label(event.method),
           start_time_ms: start,
@@ -291,6 +307,9 @@ function parse_trace_events(trace_bytes, limits) {
         duration_end = end === null ? duration_end : Math.max(duration_end ?? end, end);
       } else if (event.type === 'action') {
         const action = action_map.get(call_id);
+        if (end < action.start_time_ms) {
+          fail('ORIX_TRACE_ACTION_TIMING', 'Trace action ends before its recorded start time', { line: index + 1 });
+        }
         action.end_time_ms = end;
         action.duration_ms = Number((end - action.start_time_ms).toFixed(3));
         action.outcome = object(event.error) && event.error.message ? 'failed' : 'success';
@@ -398,7 +417,7 @@ function parse_trace_events(trace_bytes, limits) {
   const failed_actions = actions.filter(item => item.outcome === 'failed').length;
   const incomplete_actions = actions.filter(item => item.outcome === 'incomplete').length;
   const failed_requests = requests.filter(item => item.failed).length;
-  const omitted_events = Math.max(0, lines.length - analyzed_count);
+  const omitted_events = Math.max(0, events_total - analyzed_count);
   const coverage_complete = omitted_events === 0 && actions_omitted === 0 && requests_omitted === 0 && page_ids_omitted === 0 && unknown_events === 0;
   const findings = [];
   if (failed_actions > 0) {
@@ -419,7 +438,7 @@ function parse_trace_events(trace_bytes, limits) {
     source: { format: 'Playwright trace archive', trace_member: 'trace.trace' },
     trace: context,
     summary: {
-      events_total: lines.length,
+      events_total,
       events_analyzed: analyzed_count,
       event_types: events,
       unknown_event_types: unknown_events,
