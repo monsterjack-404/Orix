@@ -95,7 +95,7 @@ if (process.platform === 'linux') {
   test('bootstrap rejects an unexpected descriptor contract before provider launch', { timeout: 10_000 }, async () => {
     await with_directory(async directory => {
       const launch_marker = path.join(directory, 'provider-started');
-      const provider_code = "import { writeFileSync } from 'node:fs'; writeFileSync(process.argv[1], 'started');";
+      const provider_code = "const { writeFileSync } = require('node:fs'); writeFileSync(process.argv[1], 'started');";
       const result = await new Promise((resolve, reject) => {
         const child = spawn(process.execPath, [
           bootstrap_path, '--attach-fd=4', '--', process.execPath, '-e', provider_code, launch_marker,
