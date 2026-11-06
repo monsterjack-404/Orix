@@ -54,7 +54,9 @@ async function main() {
     '*S-1-5-18:(OI)(CI)F',
     '*S-1-5-32-544:(OI)(CI)F',
   ], { encoding: 'utf8', windowsHide: true });
-  const hostSecret = path.join(base, 'host-only-secret.txt');
+  // Store the sentinel in the runner user's private profile, not under
+  // Program Files where broad read ACLs may be inherited by AppContainers.
+  const hostSecret = path.join(os.homedir(), 'orix-host-only-secret-' + process.pid + '.txt');
   const hostSecretValue = 'host-only-secret-' + process.pid;
   let server;
   try {
@@ -190,7 +192,7 @@ async function main() {
     const result = JSON.parse(execution.stdout);
     assert.ok(result.system_root, 'Provider did not receive the trusted SystemRoot required by the Windows runtime');
     assert.equal(result.windir.toLowerCase(), result.system_root.toLowerCase(), 'WINDIR and SystemRoot disagree');
-    assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
+    assert.notEqual(result.host_file, 'readable', JSON.stringify(result) + ' — provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.temp_exists, true, JSON.stringify(result));
     assert.equal(result.tmp_inside_root, true, JSON.stringify(result));
@@ -206,6 +208,7 @@ async function main() {
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await rm(base, { recursive: true, force: true });
+    await rm(hostSecret, { force: true });
   }
 }
 
