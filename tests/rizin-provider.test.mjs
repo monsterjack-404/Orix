@@ -270,9 +270,7 @@ test('Rizin version probe forwards the isolation mode to the process runner', as
 test('Rizin adapter forwards sandbox_root when required isolation is requested', async () => {
   await with_fixture(async ({ executable, executable_args }) => {
     const missing_root = path.join(tmpdir(), 'orix-missing-sandbox-root-' + process.pid);
-    const expected_code = process.platform === 'linux'
-      ? 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE'
-      : 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE';
+    const expected_code = 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE';
     await assert.rejects(
       probe_rizin({
         executable,
