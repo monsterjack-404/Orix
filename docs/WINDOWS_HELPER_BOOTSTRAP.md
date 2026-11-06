@@ -47,3 +47,9 @@ The next acceptance steps are to review the produced binary, establish a reprodu
 The Windows CI job now inspects both clean-build outputs as PE/.NET artifacts before upload. The verifier checks the DOS/PE signatures, PE32 I386 managed-image shape, CLR header and metadata mapping, and IL-only AnyCPU flags. The project explicitly disables Prefer32Bit so the launcher is not marked as requiring or preferring a 32-bit process. The verifier also prints the SHA-256 digest and rejects malformed/truncated files.
 
 This validates the executable's managed/architecture-neutral format; it does not establish publisher identity, protect the CI runner, pin every transitive build input, or make a workflow artifact a runtime trust anchor. The exact binary still needs independent review, controlled release admission, package inclusion, source-pinned digest verification, and runtime adoption tests.
+
+## Independent Windows runner reproducibility gate
+
+The Windows launcher CI matrix now builds on both `windows-latest` and `windows-2022`. Each runner uses the pinned .NET SDK from `global.json`, performs its own clean double-build comparison, validates the PE/CLR metadata, and uploads a separately named executable artifact. A follow-up Ubuntu job downloads both artifacts and requires their SHA-256 digests to match.
+
+This is stronger evidence than two builds on one runner, but it is still not a release trust anchor: hosted runner images and external package feeds are not fully immutable, and CI artifacts are not shipped in the npm package. A reviewed release artifact and source-pinned digest, package inclusion, runtime digest/path validation, and exact packaged-binary integration tests remain required.
