@@ -1,6 +1,6 @@
 // Windows AppContainer + Job Object hostile-process integration gate.
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -116,6 +116,12 @@ async function main() {
     assert.equal(result.tmp_inside_root, true, JSON.stringify(result));
     assert.equal(result.tmp_write, 'allowed', JSON.stringify(result));
     assert.equal(result.host_network, 'blocked', 'Provider reached host loopback network');
+    const remainingPackageScratch = await readdir(path.join(root, 'tmp', 'Packages')).catch(error => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    });
+    assert.deepEqual(remainingPackageScratch, [],
+      'Per-profile AppContainer temp files must be removed after provider teardown');
     process.stdout.write('Windows AppContainer hostile-process checks passed: token, filesystem ACLs, private temp, network isolation and Job Object quotas.\\n');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
