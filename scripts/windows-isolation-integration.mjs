@@ -61,11 +61,11 @@ async function main() {
       result.temp_dir = os.tmpdir(); result.temp_env = process.env.TEMP; result.tmp_env = process.env.TMP; result.temp_exists = fs.existsSync(os.tmpdir());
       try { fs.writeFileSync(path.join(os.tmpdir(), 'provider-write-probe'), 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
-      const scratchRoot = path.resolve(${JSON.stringify(path.join(root, 'tmp'))}).replace(/[\\\\/]+$/, '').toLowerCase();
-      const actualTemp = path.resolve(os.tmpdir()).replace(/[\\\\/]+$/, '').toLowerCase();
+      const scratchRoot = fs.realpathSync.native(${JSON.stringify(path.join(root, 'tmp'))}).replace(/[\\\\/]+$/, '').toLowerCase();
+      const actualTemp = fs.realpathSync.native(os.tmpdir()).replace(/[\\\\/]+$/, '').toLowerCase();
       result.scratch_root = scratchRoot;
       result.temp_path = actualTemp;
-      result.tmp_inside_root = actualTemp === scratchRoot || actualTemp.startsWith(scratchRoot + path.sep);
+      result.tmp_inside_root = actualTemp === scratchRoot || actualTemp.startsWith(scratchRoot + path.sep.toLowerCase());
       result.host_network = await new Promise(resolve => {
         const socket = net.createConnection({ host: '127.0.0.1', port: ${port} });
         let settled = false;
