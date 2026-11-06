@@ -66,6 +66,7 @@ export function create_wasm_fixture() {
 export function create_zip_fixture(entry_name = 'sample.txt', contents = 'hello') {
   const name = Buffer.from(entry_name, 'utf8');
   const payload = Buffer.from(contents, 'utf8');
+  const checksum = fixture_crc32(payload);
   const local_size = 30 + name.length + payload.length;
   const central_size = 46 + name.length;
   const eocd_size = 22;
@@ -74,7 +75,7 @@ export function create_zip_fixture(entry_name = 'sample.txt', contents = 'hello'
   buffer.writeUInt16LE(20, 4);
   buffer.writeUInt32LE(0, 6);
   buffer.writeUInt16LE(0, 8);
-  buffer.writeUInt32LE(0, 14);
+  buffer.writeUInt32LE(checksum, 14);
   buffer.writeUInt32LE(payload.length, 18);
   buffer.writeUInt32LE(payload.length, 22);
   buffer.writeUInt16LE(name.length, 26);
@@ -87,7 +88,7 @@ export function create_zip_fixture(entry_name = 'sample.txt', contents = 'hello'
   buffer.writeUInt16LE(20, central + 6);
   buffer.writeUInt16LE(0, central + 8);
   buffer.writeUInt16LE(0, central + 10);
-  buffer.writeUInt32LE(0, central + 16);
+  buffer.writeUInt32LE(checksum, central + 16);
   buffer.writeUInt32LE(payload.length, central + 20);
   buffer.writeUInt32LE(payload.length, central + 24);
   buffer.writeUInt16LE(name.length, central + 28);
