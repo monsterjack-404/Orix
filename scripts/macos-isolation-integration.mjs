@@ -62,10 +62,13 @@ async function copy_node_runtime(root) {
 async function main() {
   assert.equal(process.platform, 'darwin', 'This integration gate must run on macOS');
   const isolationSource = await readFile(new URL('../src/providers/macos-isolation.mjs', import.meta.url), 'utf8');
-  assert.match(isolationSource, /let timedOut = false;[\\s\\S]*?timedOut = true;[\\s\\S]*?child\\.kill\\(\\);/,
-    'Compiler timeout must request termination without settling before process closure');
-  assert.match(isolationSource, /child\\.once\\('close',[\\s\\S]*?if \\(timedOut\\) \\{[\\s\\S]*?ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT/,
-    'Compiler timeout must wait for close before caller cleanup can remove its working directory');
+  const timeoutRequest = isolationSource.indexOf('timedOut = true;');
+  const killRequest = isolationSource.indexOf('child.kill();', timeoutRequest);
+  const closeHandler = isolationSource.indexOf("child.once('close', (code, signal) => {", killRequest);
+  const timeoutFailure = isolationSource.indexOf('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', closeHandler);
+  assert.ok(timeoutRequest >= 0 && killRequest > timeoutRequest &&
+    closeHandler > killRequest && timeoutFailure > closeHandler,
+  'Compiler timeout must wait for process close before caller cleanup can remove its working directory');
   const base = await mkdtemp(path.join(os.tmpdir(), 'orix-seatbelt-integration-'));
   const root = path.join(base, 'rootfs');
   const hostSecret = path.join(base, 'host-only-secret.txt');
