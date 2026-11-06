@@ -152,10 +152,10 @@ function read_trace_member(archive, entry, central_directory_offset, max_bytes, 
       if (start < candidate || start > member_boundary - descriptor_width) return false;
       const descriptor_crc = u32(archive, start);
       const descriptor_compressed = zip64_descriptor
-        ? u64_safe(archive, start + 4, central_directory_offset)
+        ? u64_safe(archive, start + 4, member_boundary)
         : u32(archive, start + 4);
       const descriptor_uncompressed = zip64_descriptor
-        ? u64_safe(archive, start + 12, central_directory_offset)
+        ? u64_safe(archive, start + 12, member_boundary)
         : u32(archive, start + 8);
       return descriptor_crc === expected_crc &&
         descriptor_compressed === entry.compressed_size &&
