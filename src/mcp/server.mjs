@@ -1,6 +1,7 @@
 // JavaScript, src/mcp/server.mjs, Node.js 20+, bounded static-analysis Model Context Protocol stdio server.
 
 import path from 'node:path';
+import { lstat } from 'node:fs/promises';
 import { inspect_file } from '../core/inspect.mjs';
 import { analyze_har_file } from '../network/har.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
@@ -20,6 +21,18 @@ import {
   resolve_workspace_output,
   read_workspace_json,
 } from './security.mjs';
+
+async function default_isolation_working_directory(sandbox_root) {
+  // Let the isolation backend report a missing or invalid rootfs with its
+  // dedicated error code. Use the root as cwd only when it is already a real
+  // directory; never follow a symlink while making this preliminary choice.
+  try {
+    const info = await lstat(sandbox_root);
+    return info.isDirectory() && !info.isSymbolicLink() ? sandbox_root : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export const MCP_PROTOCOL_VERSION = '2025-03-26';
 export const MCP_MAX_LINE_BYTES = 4 * 1024 * 1024;
@@ -393,7 +406,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       }
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       const cwd = args.cwd === undefined
-        ? (isolation === 'required' ? sandbox_root : undefined)
+        ? (isolation === 'required' ? await default_isolation_working_directory(sandbox_root) : undefined)
         : (await resolve_workspace_path(args.cwd, roots, { kind: 'directory' })).path;
       return analyze_rizin_imports({
         input_path: target.path,
@@ -415,7 +428,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       }
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       const cwd = args.cwd === undefined
-        ? (isolation === 'required' ? sandbox_root : undefined)
+        ? (isolation === 'required' ? await default_isolation_working_directory(sandbox_root) : undefined)
         : (await resolve_workspace_path(args.cwd, roots, { kind: 'directory' })).path;
       return analyze_rizin_functions({
         input_path: target.path,
