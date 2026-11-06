@@ -152,7 +152,7 @@ test('Windows static provider timeout terminates the spawned process tree', {
     "const descendant = spawn(process.execPath, ['-e', " + JSON.stringify(child_source) + "], { stdio: 'ignore', windowsHide: true });",
     'process.stdout.write(String(descendant.pid));',
     'setInterval(() => {}, 1000);',
-  ].join('\\n');
+  ].join('\n');
 
   const result = await run_static_provider({
     manifest: manifest(),
