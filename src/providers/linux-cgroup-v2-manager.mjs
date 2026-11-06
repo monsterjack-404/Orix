@@ -28,6 +28,17 @@ const DIRECTORY_FLAGS = FS.O_RDONLY | FS.O_DIRECTORY | FS.O_NOFOLLOW | (FS.O_CLO
 const READ_FLAGS = FS.O_RDONLY | FS.O_NOFOLLOW | (FS.O_CLOEXEC ?? 0);
 const WRITE_FLAGS = FS.O_WRONLY | FS.O_NOFOLLOW | (FS.O_CLOEXEC ?? 0);
 
+export function parse_cgroup_process_ids(contents) {
+  if (typeof contents !== 'string') {
+    throw new TypeError('cgroup process list must be a string');
+  }
+  const process_ids = contents.split(/\s+/).filter(Boolean);
+  if (process_ids.some(value => !/^[1-9]\d*$/.test(value))) {
+    throw new TypeError('cgroup process list contains an invalid process ID');
+  }
+  return process_ids;
+}
+
 function cgroup_error(code, message, details = {}, cause) {
   throw new OrixError(code, message, { details, cause, recoverable: true });
 }
@@ -227,7 +238,7 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
     supervisor_fd = open_directory_at(parent_fd, 'supervisor');
     assert_cgroup2_filesystem(supervisor_fd);
     assert_service_owned_directory(supervisor_fd, 'Delegated supervisor child');
-    const supervisor_processes = read_control(supervisor_fd, 'cgroup.procs').split(/\\s+/).filter(Boolean);
+    const supervisor_processes = parse_cgroup_process_ids(read_control(supervisor_fd, 'cgroup.procs'));
     if (!supervisor_processes.includes(String(process.pid))) {
       cgroup_error('ORIX_CGROUP_SUPERVISOR_MEMBERSHIP_INVALID',
         'The current ORIX manager process must remain in the delegated supervisor sibling');
@@ -265,7 +276,7 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
     attach_fd = open_attach_descriptor(child_fd);
     // Re-check the descriptor-anchored supervisor membership after child setup,
     // not only during the earlier path-based deployment preflight.
-    const supervisor_processes_after_setup = read_control(supervisor_fd, 'cgroup.procs').split(/\\s+/).filter(Boolean);
+    const supervisor_processes_after_setup = parse_cgroup_process_ids(read_control(supervisor_fd, 'cgroup.procs'));
     if (!supervisor_processes_after_setup.includes(String(process.pid))) {
       cgroup_error('ORIX_CGROUP_SUPERVISOR_MEMBERSHIP_INVALID',
         'The ORIX manager moved out of the delegated supervisor during cgroup setup');
