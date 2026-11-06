@@ -27,6 +27,15 @@ function is_dex_entry(name) {
   return ordinal === '' || is_decimal(ordinal);
 }
 
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
 function local_stored_prefix(buffer, entry, minimum, central_directory_offset) {
   if (!entry.local_header_valid || !entry.local_data_range_valid) return { status: 'invalid-local-range' };
   if (entry.encrypted || entry.strongly_encrypted) return { status: 'encrypted' };
@@ -48,15 +57,17 @@ function local_stored_prefix(buffer, entry, minimum, central_directory_offset) {
       local_uncompressed_size !== entry.uncompressed_size;
   const name_length = buffer.readUInt16LE(offset + 26);
   const extra_length = buffer.readUInt16LE(offset + 28);
-  if ((flags & 0x0809) !== expected_flags || (flags & 0x0040) !== 0 || method !== 0 || descriptor_mismatch) return { status: 'local-header-mismatch' };
+  if (flags !== expected_flags || method !== 0 || descriptor_mismatch) return { status: 'local-header-mismatch' };
   const name_start = offset + 30;
   const data_offset = name_start + name_length + extra_length;
   if (name_start > buffer.length - name_length || data_offset > central_directory_offset || entry.compressed_size > central_directory_offset - data_offset) {
     return { status: 'invalid-local-range' };
   }
   const local_name = buffer.subarray(name_start, name_start + name_length).toString((flags & 0x0800) !== 0 ? 'utf8' : 'latin1');
-  if (local_name !== entry.name || minimum > entry.uncompressed_size || minimum > entry.compressed_size) return { status: 'local-header-mismatch' };
-  return { status: 'available', bytes: buffer.subarray(data_offset, data_offset + minimum) };
+  if (local_name !== entry.name || minimum !== entry.uncompressed_size || minimum > entry.compressed_size) return { status: 'local-header-mismatch' };
+  const bytes = buffer.subarray(data_offset, data_offset + minimum);
+  if (crc32(bytes) !== central_crc) return { status: 'crc-mismatch' };
+  return { status: 'available', bytes };
 }
 
 function inspect_manifest(buffer, entry, central_directory_offset, options = {}) {
