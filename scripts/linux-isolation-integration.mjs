@@ -118,6 +118,15 @@ async function main() {
       catch (error) { result.root_write = error.code || 'blocked'; }
       try { fs.writeFileSync('/tmp/provider-write-probe', 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
+      const orphan = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
+      result.orphan_spawned = Number.isInteger(orphan.pid) && orphan.pid > 0;
+      result.external_network = await new Promise(resolve => {
+        const socket = net.createConnection({ host: '1.1.1.1', port: 443 }, () => {
+          socket.destroy(); resolve('connected');
+        });
+        socket.setTimeout(700, () => { socket.destroy(); resolve('blocked'); });
+        socket.once('error', () => resolve('blocked'));
+      });
       const memoryChild = spawn(process.execPath, ['-e', 'const block = Buffer.alloc(300 * 1024 * 1024, 0x5a); setTimeout(() => process.exit(block[0] === 0x5a ? 0 : 1), 2500)'], { stdio: 'ignore' });
       const memoryDone = new Promise(resolve => {
         memoryChild.once('error', error => resolve({ code: null, error: error.code || 'spawn-failed' }));
@@ -243,6 +252,8 @@ async function main() {
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.tmp_write, 'allowed', 'Ephemeral /tmp should remain writable');
     assert.equal(result.host_network, 'blocked', 'Provider reached the host loopback network');
+    assert.equal(result.external_network, 'blocked', 'Provider reached an external network endpoint');
+    assert.equal(result.orphan_spawned, true, 'Hostile provider could not create the detached descendant cleanup probe');
     assert.deepEqual(result.rlimits.cpu_seconds, ['60', '60'], 'CPU RLIMIT was not inherited');
     assert.deepEqual(result.rlimits.core_bytes, ['0', '0'], 'Core dump RLIMIT was not inherited');
     assert.deepEqual(result.rlimits.file_size_bytes, ['67108864', '67108864'], 'File-size RLIMIT was not inherited');
