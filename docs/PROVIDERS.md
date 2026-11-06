@@ -1,12 +1,12 @@
 # ORIX Provider Manifests and Registry
 
-The provider layer validates metadata, maintains an in-memory capability catalog, and supports an opt-in bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, grant authorization, create an OS sandbox, or claim that a provider is available before it has actually been located and invoked.
+The provider layer validates metadata, maintains an in-memory capability catalog, and supports an opt-in bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, or grant authorization. Process execution is not sandboxed by default; the Linux Bubblewrap backend is a separate opt-in isolation mode. ORIX does not claim that a provider is available before it has actually been located and invoked.
 
 
 
 ### Executable argument prefixes
 
-For wrapper executables, the provider adapter accepts an optional `executable_args` array. These literal arguments are prepended to the provider's own argument vector; they are passed directly to the selected absolute executable with `shell: false`. The CLI exposes this as repeatable `--executable-arg <value>` (maximum 16), and the MCP `orix.rizin_functions` tool accepts `executable_args` with the same 16-item bound. Prefix arguments are subject to the process runner's argument-count, byte-size and NUL-byte checks. This does not change executable allowlisting or turn the provider into an OS sandbox.
+For wrapper executables, the provider adapter accepts an optional `executable_args` array. These literal arguments are prepended to the provider's own argument vector; they are passed directly to the selected absolute executable with `shell: false`. The CLI exposes this as repeatable `--executable-arg <value>` (maximum 16), and the MCP `orix.rizin_functions` tool accepts `executable_args` with the same 16-item bound. Prefix arguments are subject to the process runner's argument-count, byte-size and NUL-byte checks. This does not change executable allowlisting or the separately configured isolation mode.
 ## 1. Manifest format
 
 Provider manifests use the **orix.provider.v1** contract defined by [provider-manifest.v1.schema.json](../schemas/provider-manifest.v1.schema.json).
@@ -123,7 +123,7 @@ if (!result.ok) {
 }
 ~~~
 
-This runner is a process-control boundary, **not an operating-system sandbox**. It cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. POSIX process groups are signalled on timeout/cancellation; Windows currently signals the direct child and does not guarantee process-tree teardown. Do not run untrusted provider binaries on a sensitive host. Strong isolation requires an OS/container/VM policy supplied and verified separately.
+Without `isolation: 'required'`, this runner is a process-control boundary, **not an operating-system sandbox**: it cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. On Linux, the explicit `isolation: 'required'` mode wraps the selected executable with Bubblewrap namespace and read-only-root filesystem isolation, and fails closed when its rootfs or namespace prerequisites are unavailable. Windows and macOS currently have no enforced backend and therefore reject required isolation. Bubblewrap isolation does not enforce cgroup CPU, memory, or task-count limits. POSIX process groups are still signalled on timeout/cancellation, and Windows process-tree teardown is not guaranteed. Do not treat the default runner as safe for hostile binaries.
 
 ## 5. Rizin import adapter
 
@@ -143,6 +143,24 @@ console.log(report.imports);
 ~~~
 
 The adapter report contract is defined in [rizin-imports.v1.schema.json](../schemas/rizin-imports.v1.schema.json). The adapter checks the manifest's supported platform before launch (`linux`, `windows`, or `macos`), uses Rizin's `-N` no-user-settings option and `-q -c iij` command form, and passes only the bounded private snapshot path to the import command. See the [Rizin CLI options](https://book.rizin.re/src/first_steps/commandline_options.html) and [Rizin command-line guide](https://book.rizin.re/src/first_steps/commandline_rizin.html). Rizin remains an optional external installation; ORIX does not bundle it or claim it was run when it is unavailable. The upstream repository contains files under multiple licenses, including LGPL and GPL; the manifest therefore uses SPDX `NOASSERTION` rather than claiming one license covers the whole installation. The automated adapter tests use a deterministic executable fixture and do not substitute for verification against every supported upstream Rizin release.
+
+
+### Opt-in Linux process isolation
+
+The Rizin JavaScript adapter functions \`analyze_rizin_imports\`, \`analyze_rizin_functions\`, and \`probe_rizin\` accept the same optional \`isolation\` and \`sandbox_root\` fields as \`run_static_provider\`. The default remains \`isolation: 'none'\`. On Linux, request the required Bubblewrap namespace/filesystem backend explicitly:
+
+~~~js
+const report = await analyze_rizin_imports({
+  executable: '/opt/rizin/bin/rizin',
+  input_path: '/evidence/sample.elf',
+  isolation: 'required',
+  sandbox_root: '/opt/orix/provider-root',
+});
+~~~
+
+The sandbox root must contain the selected Rizin executable, the configured working directory, and the adapter's private temporary snapshot. In required Linux isolation mode, ORIX stages this private snapshot in a temporary directory directly under \`sandbox_root\`, not under \`/tmp\`, because the Bubblewrap backend overlays \`/tmp\` with a fresh tmpfs. The root must also provide the required \`/proc\`, \`/dev\`, and \`/tmp\` mount points expected by the backend. The backend fails closed when the required Linux isolation setup is unavailable or any required path is outside the root. Windows and macOS do not currently have an enforced provider isolation backend, so \`isolation: 'required'\` fails closed there.
+
+This option supplies Bubblewrap namespace and filesystem isolation only. It does **not** enable cgroup CPU, memory, or process-count enforcement. The caller remains responsible for constructing and maintaining a safe root filesystem and for validating the deployment environment.
 
 ### Function inventory and bounded disassembly
 
