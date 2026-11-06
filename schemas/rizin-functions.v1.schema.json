@@ -329,6 +329,22 @@
         },
         "decompilation_included": {
           "type": "boolean"
+        },
+        "references_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "references_returned": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "references_truncated": {
+          "type": "boolean"
+        },
+        "call_graph_edges": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
@@ -368,6 +384,13 @@
           "maxLength": 1024
         },
         "decompilation_duration_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "reference_scan_duration_ms": {
           "type": [
             "integer",
             "null"
@@ -423,6 +446,132 @@
             },
             "truncated": {
               "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "references": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to",
+              "type",
+              "from_function_offset",
+              "to_function_offset"
+            ],
+            "properties": {
+              "from": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "to": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "from_function_offset": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "to_function_offset": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "call_graph": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "nodes",
+            "edges"
+          ],
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "maxItems": 100000,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "offset"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            },
+            "edges": {
+              "type": "array",
+              "maxItems": 100000,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "from_function_offset",
+                  "to_function_offset",
+                  "call_site",
+                  "target_address"
+                ],
+                "properties": {
+                  "from_function_offset": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "to_function_offset": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "call_site": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "target_address": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
             }
           }
         }

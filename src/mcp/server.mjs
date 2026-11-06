@@ -57,7 +57,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   {
     name: 'orix.rizin_functions',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    description: 'Use an explicitly selected Rizin executable to enumerate functions, disassemble a bounded instruction window and optionally request rz-ghidra pseudocode. The target is never executed; Rizin and its optional decompiler plugin must be installed separately.',
+    description: 'Use an explicitly selected Rizin executable to enumerate functions, optionally collect bounded JSON cross-references and a function call graph, disassemble a bounded instruction window and request optional rz-ghidra pseudocode. The target is never executed; Rizin and its optional decompiler plugin must be installed separately.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -68,6 +68,8 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         address: { type: 'string', minLength: 1, maxLength: 18, pattern: '^(?:0x[0-9a-fA-F]{1,14}|[0-9]{1,16})$' },
         max_instructions: integer('Maximum instructions in the optional disassembly window.', 1000, 1),
         decompile: { type: 'boolean', description: 'Request optional rz-ghidra pseudocode decompilation at the supplied function entry address.' },
+        include_references: { type: 'boolean', description: 'Include the bounded Rizin axlj cross-reference inventory and a call graph built from provider-identified CALL references.' },
+        max_references: integer('Maximum cross-reference records retained when include_references is true.', 100000, 1),
         timeout_ms: integer('Total provider workflow deadline in milliseconds.', 60000, 1),
         max_output_kib: integer('Aggregate stdout/stderr capture budget in KiB.', 8192, 1),
       },
@@ -372,6 +374,8 @@ export async function call_orix_tool(name, args = {}, options = {}) {
         address: args.address,
         max_instructions: args.max_instructions ?? 100,
         decompile: args.decompile ?? false,
+        include_references: args.include_references ?? false,
+        max_references: args.max_references ?? 20_000,
         timeout_ms: args.timeout_ms ?? 30_000,
         max_output_bytes: (args.max_output_kib ?? 2_048) * 1024,
       });

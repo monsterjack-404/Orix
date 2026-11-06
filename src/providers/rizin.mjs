@@ -11,15 +11,15 @@ import { OrixError } from '../core/errors.mjs';
 import { validate_provider_manifest } from './manifest.mjs';
 import { run_static_provider } from './process-runner.mjs';
 
-export const RIZIN_ADAPTER_VERSION = '0.2.0';
+export const RIZIN_ADAPTER_VERSION = '0.3.0';
 
 export const RIZIN_PROVIDER_MANIFEST = Object.freeze({
   contract_version: 'orix.provider.v1',
   id: 'rizin.static',
   name: 'Rizin static binary analysis',
   version: RIZIN_ADAPTER_VERSION,
-  description: 'Read-only extraction of native imports, function metadata, bounded disassembly and opt-in plugin-backed pseudocode through the Rizin CLI.',
-  capabilities: Object.freeze(['binary.imports', 'binary.functions', 'binary.disassembly', 'binary.decompilation']),
+  description: 'Read-only extraction of native imports, function metadata, bounded cross-references/call graph, disassembly and opt-in plugin-backed pseudocode through the Rizin CLI.',
+  capabilities: Object.freeze(['binary.imports', 'binary.functions', 'binary.references', 'binary.call-graph', 'binary.disassembly', 'binary.decompilation']),
   supported_platforms: Object.freeze(['linux', 'windows', 'macos']),
   input_formats: Object.freeze(['pe', 'elf', 'macho']),
   execution: Object.freeze({
@@ -435,6 +435,85 @@ function normalize_rizin_functions(source, maximum) {
   return { functions, total: parsed.length, truncated: parsed.length > functions.length };
 }
 
+
+function rizin_reference_address(value, label, index) {
+  if (Number.isSafeInteger(value) && value >= 0) return value;
+  if (typeof value === 'string' && /^(?:0x[0-9a-f]{1,16}|[0-9]{1,16})$/i.test(value.trim())) {
+    try {
+      const parsed = BigInt(value.trim());
+      if (parsed <= BigInt(Number.MAX_SAFE_INTEGER)) return Number(parsed);
+    } catch { /* malformed provider address */ }
+  }
+  provider_error('ORIX_RIZIN_REFERENCE_ADDRESS_INVALID', 'Rizin cross-reference contains an invalid or unsafe ' + label + ' address', { index });
+}
+
+function function_at_address(functions, address) {
+  let low = 0;
+  let high = functions.length - 1;
+  let candidate = null;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const current = functions[middle];
+    if (current.offset <= address) {
+      candidate = current;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  if (!candidate) return null;
+  if (candidate.size === null) return candidate.offset === address ? candidate : null;
+  return address >= candidate.offset && address - candidate.offset < Math.max(candidate.size, 1)
+    ? candidate
+    : null;
+}
+
+function normalize_rizin_references(source, maximum, functions) {
+  let parsed;
+  try { parsed = JSON.parse(source); }
+  catch { provider_error('ORIX_RIZIN_REFERENCE_JSON_INVALID', 'Rizin cross-reference command did not return valid JSON'); }
+  if (!Array.isArray(parsed)) {
+    provider_error('ORIX_RIZIN_REFERENCE_SHAPE_INVALID', 'Rizin cross-reference JSON must be an array');
+  }
+  const ordered_functions = [...functions].sort((left, right) => left.offset - right.offset);
+  const references = parsed.slice(0, maximum).map((entry, index) => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry) ||
+        Object.getPrototypeOf(entry) !== Object.prototype) {
+      provider_error('ORIX_RIZIN_REFERENCE_ENTRY_INVALID', 'Rizin cross-reference entry must be an object', { index });
+    }
+    const from = rizin_reference_address(entry.from ?? entry.from_addr, 'source', index);
+    const to = rizin_reference_address(entry.to ?? entry.to_addr, 'target', index);
+    const type = bounded_text(entry.type ?? entry.kind, 64);
+    if (!type) provider_error('ORIX_RIZIN_REFERENCE_TYPE_INVALID', 'Rizin cross-reference entry has no type', { index });
+    const from_function = function_at_address(ordered_functions, from);
+    const to_function = function_at_address(ordered_functions, to);
+    return {
+      from,
+      to,
+      type: type.toUpperCase(),
+      from_function_offset: from_function?.offset ?? null,
+      to_function_offset: to_function?.offset ?? null,
+    };
+  });
+  const edges = references
+    .filter(item => item.type === 'CALL' && item.from_function_offset !== null)
+    .map(item => ({
+      from_function_offset: item.from_function_offset,
+      to_function_offset: item.to_function_offset,
+      call_site: item.from,
+      target_address: item.to,
+    }));
+  return {
+    references,
+    total: parsed.length,
+    truncated: parsed.length > references.length,
+    call_graph: {
+      nodes: ordered_functions.map(item => ({ name: item.name, offset: item.offset })),
+      edges,
+    },
+  };
+}
+
 function normalize_rizin_disassembly(source, maximum) {
   let parsed;
   try { parsed = JSON.parse(source); }
@@ -504,7 +583,8 @@ export async function analyze_rizin_functions(options = {}) {
   const allowed = new Set([
     'executable', 'executable_args', 'input_path', 'manifest', 'cwd', 'env',
     'timeout_ms', 'max_output_bytes', 'max_functions',
-    'address', 'max_instructions', 'decompile', 'max_decompilation_chars', 'signal',
+    'address', 'max_instructions', 'decompile', 'max_decompilation_chars',
+    'include_references', 'max_references', 'signal',
   ]);
   const descriptors = Object.getOwnPropertyDescriptors(options);
   for (const key of Reflect.ownKeys(options)) {
@@ -534,7 +614,13 @@ export async function analyze_rizin_functions(options = {}) {
   const address = requested_rizin_address(descriptors.address?.value);
   const decompile = descriptors.decompile?.value ?? false;
   const max_decompilation_chars = descriptors.max_decompilation_chars?.value ?? 64_000;
+  const include_references = descriptors.include_references?.value ?? false;
+  const max_references = descriptors.max_references?.value ?? 25_000;
   if (typeof decompile !== 'boolean') throw new TypeError('decompile must be a boolean');
+  if (typeof include_references !== 'boolean') throw new TypeError('include_references must be a boolean');
+  if (!Number.isSafeInteger(max_references) || max_references < 1 || max_references > 100_000) {
+    throw new TypeError('max_references must be an integer between 1 and 100000');
+  }
   if (!Number.isSafeInteger(max_decompilation_chars) || max_decompilation_chars < 1 || max_decompilation_chars > 256_000) {
     throw new TypeError('max_decompilation_chars must be an integer between 1 and 256000');
   }
@@ -625,6 +711,15 @@ export async function analyze_rizin_functions(options = {}) {
     const engine_version = parse_engine_version(version_result.stdout);
     const function_result = await invoke(['-N', '-q', '-A', '-c', 'aflj', snapshot_path], 'functions');
     const normalized = normalize_rizin_functions(function_result.stdout, max_functions);
+    let reference_info = null;
+    let reference_duration_ms = null;
+    let reference_stderr = '';
+    if (include_references) {
+      const reference_result = await invoke(['-N', '-q', '-A', '-c', 'axlj', snapshot_path], 'references');
+      reference_info = normalize_rizin_references(reference_result.stdout, max_references, normalized.functions);
+      reference_duration_ms = reference_result.duration_ms;
+      reference_stderr = reference_result.stderr.slice(0, 1024);
+    }
     let disassembly = null;
     let disassembly_duration_ms = null;
     let disassembly_stderr = '';
@@ -717,25 +812,38 @@ export async function analyze_rizin_functions(options = {}) {
       functions: normalized.functions,
       disassembly,
       decompilation,
+      references: reference_info?.references ?? null,
+      call_graph: reference_info?.call_graph ?? null,
       summary: {
         functions_total: normalized.total,
         functions_returned: normalized.functions.length,
         functions_truncated: normalized.truncated,
         disassembly_included: disassembly !== null,
         decompilation_included: decompilation !== null,
+        ...(reference_info ? {
+          references_total: reference_info.total,
+          references_returned: reference_info.references.length,
+          references_truncated: reference_info.truncated,
+          call_graph_edges: reference_info.call_graph.edges.length,
+        } : {}),
       },
       diagnostics: {
         version_probe_duration_ms: version_result.duration_ms,
         function_scan_duration_ms: function_result.duration_ms,
         disassembly_duration_ms,
         decompilation_duration_ms,
+        reference_scan_duration_ms: reference_duration_ms,
         captured_output_bytes,
-        stderr: (function_result.stderr + (disassembly_stderr ? '\n' + disassembly_stderr : '') + (decompilation_stderr ? '\n' + decompilation_stderr : '')).slice(0, 1024),
+        stderr: (function_result.stderr + (reference_stderr ? '\n' + reference_stderr : '') + (disassembly_stderr ? '\n' + disassembly_stderr : '') + (decompilation_stderr ? '\n' + decompilation_stderr : '')).slice(0, 1024),
       },
       notes: [
         'Uses Rizin -A and aflj to enumerate functions; automatic analysis may miss or misclassify code.',
         'Optional pdj output is a bounded instruction disassembly window at a returned function entry, not decompiled source.',
         'Optional pdg output requires the external rz-ghidra plugin; pseudocode is heuristic and is not a source-level proof or a compilable reconstruction.',
+        ...(reference_info ? [
+          'References use Rizin axlj cross-reference records; returned reference and call-graph counts are bounded.',
+          'Call-graph edges include only provider-identified CALL references whose source address maps to a returned function; indirect/unresolved calls may be absent.',
+        ] : []),
         'The inspected target is not executed; Rizin itself is an external optional process.',
         'Rizin analyzes a private temporary copy; the original input path is never passed to the provider.',
         'The process runner bounds runtime and output but is not an OS sandbox.',

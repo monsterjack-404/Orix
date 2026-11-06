@@ -3,8 +3,8 @@
 import { OrixError } from '../core/errors.mjs';
 import { DEFAULT_LIMITS } from '../core/limits.mjs';
 
-const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-nodes','--max-edges','--max-hotspots','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports','--max-functions','--address','--max-instructions','--max-packages','--max-advisories','--max-network-mib','--max-har-entries','--max-har-hosts']);
-const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--osv','--decompile','--help','-h']);
+const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-nodes','--max-edges','--max-hotspots','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports','--max-functions','--address','--max-instructions','--max-references','--max-packages','--max-advisories','--max-network-mib','--max-har-entries','--max-har-hosts']);
+const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--osv','--decompile','--references','--help','-h']);
 
 function positive_integer(value, option, minimum, maximum) {
   if (!/^\d+$/.test(value)) throw new OrixError('ORIX_CLI_INVALID_NUMBER', `${option} requires a whole-number value`, { details: { value }, recoverable: true });
@@ -27,6 +27,7 @@ export function parse_arguments(argv) {
       else if (token === '--no-strings') result.flags.extract_strings = false;
       else if (token === '--osv') result.flags.osv_lookup = true;
       else if (token === '--decompile') result.flags.rizin_decompile = true;
+      else if (token === '--references') result.flags.rizin_include_references = true;
       else result.flags.help = true;
       continue;
     }
@@ -68,6 +69,7 @@ export function parse_arguments(argv) {
       else if (token === '--max-functions') result.flags.max_functions = positive_integer(raw, token, 1, 100_000);
       else if (token === '--address') result.flags.rizin_address = raw;
       else if (token === '--max-instructions') result.flags.max_instructions = positive_integer(raw, token, 1, 1000);
+      else if (token === '--max-references') result.flags.max_references = positive_integer(raw, token, 1, 100000);
       else if (token === '--max-packages') result.flags.max_osv_packages = positive_integer(raw, token, 1, 10_000);
       else if (token === '--max-advisories') result.flags.max_osv_advisories = positive_integer(raw, token, 1, 2_000);
       else if (token === '--max-network-mib') result.flags.max_osv_response_bytes = positive_integer(raw, token, 1, 128) * 1024 * 1024;
