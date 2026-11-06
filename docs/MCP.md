@@ -6,7 +6,7 @@ ORIX includes a dependency-free Model Context Protocol server using the standard
 
 
 
-The `orix.rizin_functions` tool accepts an optional `executable_args` array (up to 16 literal strings) for explicitly selected wrapper executables. Values are prepended to Rizin's argv without shell evaluation and remain subject to the bounded provider process runner. It also accepts `isolation: 'required'`, `sandbox_root`, and an optional workspace-confined `cwd` (defaults to the sandbox root) to opt into Linux Bubblewrap namespace/filesystem isolation. The sandbox root must be an existing directory inside a configured MCP workspace root; isolation defaults to `none`.
+The `orix.rizin_functions` and `orix.rizin_imports` tools accept an optional `executable_args` array (up to 16 literal strings) for explicitly selected wrapper executables. Values are prepended to Rizin's argv without shell evaluation and remain subject to the bounded provider process runner. It also accepts `isolation: 'required'`, `sandbox_root`, and an optional workspace-confined `cwd` (defaults to the sandbox root) to opt into Linux Bubblewrap namespace/filesystem isolation. The sandbox root must be an existing directory inside a configured MCP workspace root; isolation defaults to `none`.
 ## Start
 
 From the repository root:
@@ -22,6 +22,7 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | Tool | Input | Result |
 |---|---|---|
 | `orix.inspect_file` | `path`, optional read/file MiB and string limits | Versioned artifact report with complete-file SHA-256 |
+| `orix.rizin_imports` | Workspace-confined `path`, explicit `executable`, optional import/time/output limits, `isolation: none|required`, workspace-confined `sandbox_root` and optional `cwd` | Bounded static imported-symbol inventory with SHA-256 provenance; explicit Linux Bubblewrap isolation when requested |
 | `orix.rizin_functions` | Workspace-confined `path`, explicit `executable`, optional function/address/instruction/decompile/time/output limits, `isolation: none|required`, workspace-confined `sandbox_root` | Rizin function inventory, address-scoped assembly disassembly and optional rz-ghidra pseudocode with SHA-256 provenance; explicit Linux Bubblewrap isolation when requested |
 | `orix.scan_directory` | `path`, optional file/entry/depth/concurrency limits | Bounded directory scan and artifact reports |
 | `orix.scan_project` | `path`, optional file/entry/depth limits | Project inventory, manifests, imports and symbol candidates |
@@ -62,7 +63,7 @@ The sandbox root must contain the executable, its runtime dependencies, the conf
 ## Security boundary
 
 - Static analysis tools do not execute target code. Case creation, case mutations and bundle exchange are explicit workspace-confined writes; HAR analysis remains offline and does not replay requests or export payload/header/query values. The Rizin tool is an external-process operation and starts the user-selected executable with fixed adapter arguments. By default it runs with the account's OS permissions and is not sandboxed; on Linux, callers may explicitly request Bubblewrap namespace and read-only-root filesystem isolation with `isolation: 'required'` and a workspace-contained `sandbox_root`. Required isolation fails closed when its backend or root prerequisites are unavailable. Use trusted Rizin/plugin installations regardless of mode. The inspected target file and project code are not executed.
-- No shell command-string, arbitrary command-argument, remote URL or network-request tool is exposed. `orix.rizin_functions` is the explicit exception that launches a user-selected Rizin executable with fixed adapter arguments. Bubblewrap mode adds namespace/filesystem isolation only; it does not enforce cgroup CPU, memory or task-count limits.
+- No shell command-string, arbitrary command-argument, remote URL or network-request tool is exposed. `orix.rizin_functions` and `orix.rizin_imports` are the explicit exceptions that launches a user-selected Rizin executable with fixed adapter arguments. Bubblewrap mode adds namespace/filesystem isolation only; it does not enforce cgroup CPU, memory or task-count limits.
 - Symlinks are not followed by the underlying scanners.
 - Existing parser, traversal and file-size limits remain active.
 - Tool output is JSON text in MCP content blocks. Errors are returned with `isError: true`. Comparison reads each report through a no-follow, 64 MiB-bounded file reader and never rescans the original artifacts.
