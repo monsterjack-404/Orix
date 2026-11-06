@@ -525,18 +525,25 @@ export async function run_static_provider(options) {
       return isolation_cleanup_promise;
     }
 
+    function complete_process_group_cleanup() {
+      // On cancellation/timeout, first stop the bootstrap process group so a
+      // not-yet-attached bootstrap cannot join the cgroup after it was emptied.
+      if (termination_started) start_isolation_cleanup(true);
+      finish_close();
+    }
+
     function start_process_group_cleanup() {
       if (process_group_cleanup_started || process_group_cleanup_complete) return;
       if (windows || !detached || !child?.pid) {
         process_group_cleanup_complete = true;
-        finish_close();
+        complete_process_group_cleanup();
         return;
       }
 
       if (!process_group_exists(child.pid)) {
         process_group_cleanup_verified = true;
         process_group_cleanup_complete = true;
-        finish_close();
+        complete_process_group_cleanup();
         return;
       }
 
@@ -550,7 +557,7 @@ export async function run_static_provider(options) {
           process_group_cleanup_verified = true;
           process_group_cleanup_complete = true;
           process_group_cleanup_timer = null;
-          finish_close();
+          complete_process_group_cleanup();
           return;
         }
         if (Date.now() >= deadline) {
@@ -564,7 +571,7 @@ export async function run_static_provider(options) {
             process_group_cleanup_failed = true;
             process_group_cleanup_complete = true;
             process_group_cleanup_timer = null;
-            finish_close();
+            complete_process_group_cleanup();
             return;
           }
         }
@@ -605,7 +612,8 @@ export async function run_static_provider(options) {
         start_isolation_cleanup(true);
         return;
       }
-      start_isolation_cleanup(true);
+      // Prevent an un-attached bootstrap from joining after cgroup.kill has
+      // observed an empty cgroup. The cgroup-wide kill follows group teardown.
       start_process_group_cleanup();
     }
 
@@ -658,8 +666,12 @@ export async function run_static_provider(options) {
       if (timeout_timer) clearTimeout(timeout_timer);
       timeout_timer = null;
       if (signal) signal.removeEventListener('abort', on_abort);
-      if (!termination_started) termination_started = true;
-      start_isolation_cleanup(false);
+      if (!termination_started) {
+        termination_started = true;
+        // Normal completion is different: the bootstrap has exited, so no
+        // process can still consume the one-shot attach capability.
+        start_isolation_cleanup(false);
+      }
       start_process_group_cleanup();
     });
     child.once('close', (exit_code, exit_signal) => {
