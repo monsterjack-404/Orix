@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -137,13 +137,15 @@ test('cgroup directory permission assessment rejects invalid UID and mode metada
   );
 });
 
-async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode = 0o700, events_mode = 0o600, kill_mode = 0o600 } = {}) {
+async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode = 0o700, events_mode = 0o600, kill_mode = 0o600, mountpoint_symlink_ancestor = false } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'orix-cgroup-preflight-'));
-  const mountpoint = path.join(root, 'cgroup2');
-  const parent = path.join(mountpoint, 'tenant');
+  const actual_mountpoint = path.join(root, 'cgroup2');
+  const mountpoint = mountpoint_symlink_ancestor ? path.join(root, 'mount-alias') : actual_mountpoint;
+  const parent = path.join(actual_mountpoint, 'tenant');
   const supervisor = path.join(parent, 'supervisor');
   const proc_self = path.join(root, 'proc', 'self');
   await mkdir(supervisor, { recursive: true });
+  if (mountpoint_symlink_ancestor) await symlink(actual_mountpoint, mountpoint);
   await mkdir(proc_self, { recursive: true });
   await chmod(parent, parent_mode);
   await chmod(supervisor, supervisor_mode);
@@ -165,7 +167,7 @@ async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode
     '29 23 0:26 / ' + mountpoint + ' rw,nosuid,nodev - cgroup2 cgroup rw\n',
   );
   await writeFile(path.join(proc_self, 'cgroup'), '0::/tenant/supervisor/orix\n');
-  return { root, parent };
+  return { root, parent: path.join(mountpoint, 'tenant') };
 }
 
 if (process.platform === 'linux') {
@@ -220,6 +222,23 @@ if (process.platform === 'linux') {
       assert.equal(report.ready, false);
       assert.equal(report.parent.cgroup_events_available, false);
       assert.equal(report.parent.cgroup_kill_available, false);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+}
+
+if (process.platform === 'linux') {
+  test('read-only preflight rejects a symlink in a cgroup2 mountpoint ancestor', { timeout: 10_000 }, async () => {
+    const fixture = await create_fake_delegated_host({ mountpoint_symlink_ancestor: true });
+    try {
+      const report = await inspect_linux_cgroup_v2({
+        proc_root: path.join(fixture.root, 'proc'),
+        parent_path: fixture.parent,
+      });
+      assert.equal(report.ready, false);
+      assert.equal(report.parent.no_symlink_components, false);
+      assert.equal(report.reason, 'configured-parent-has-symlink-or-unsafe-path-component');
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
