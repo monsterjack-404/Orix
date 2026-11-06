@@ -292,6 +292,16 @@ function process_group_exists(pid) {
   }
 }
 
+function signal_process_group(pid, signal) {
+  if (process.platform === 'win32' || !Number.isSafeInteger(pid) || pid < 1) return false;
+  try {
+    process.kill(-pid, signal);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function signal_process(child, detached, signal) {
   if (!child.pid) return;
   if (detached && process.platform !== 'win32') {
@@ -476,7 +486,7 @@ export async function run_static_provider(options) {
       }
 
       process_group_cleanup_started = true;
-      signal_process(child, detached, 'SIGTERM');
+      signal_process_group(child.pid, 'SIGTERM');
       const deadline = Date.now() + limits.kill_grace_ms;
 
       function check_process_group() {
@@ -488,8 +498,7 @@ export async function run_static_provider(options) {
         }
         if (Date.now() >= deadline) {
           // The process-group id is checked immediately before escalation.
-          signal_process(child, detached, 'SIGKILL');
-          process_group_force_kill_sent = true;
+          process_group_force_kill_sent = signal_process_group(child.pid, 'SIGKILL');
           process_group_cleanup_complete = true;
           process_group_cleanup_timer = null;
           finish_close();
