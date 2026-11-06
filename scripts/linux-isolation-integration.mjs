@@ -128,7 +128,7 @@ async function main() {
     assert.equal(
       result.nested_userns,
       'blocked',
-      `Nested user-namespace probe must exit non-zero; provider may still create nested user namespaces (diagnostic: ${result.nested_userns_diagnostic ?? 'none'})`,
+      `Nested user-namespace probe must be explicitly denied; provider may still create nested user namespaces (diagnostic: ${JSON.stringify(result.nested_userns_diagnostic)})`,
     );
     assert.equal(result.namespace_parent_pid, 1, 'Provider is not contained under the private PID namespace init process');
     assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
