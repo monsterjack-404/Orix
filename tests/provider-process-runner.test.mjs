@@ -143,6 +143,54 @@ test('static provider runner terminates providers at the configured deadline', a
   assert.equal(result.ok, false);
 });
 
+test('Windows static provider timeout terminates the spawned process tree', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const child_source = 'setInterval(() => {}, 1000)';
+  const parent_source = [
+    "const { spawn } = require('node:child_process');",
+    "const descendant = spawn(process.execPath, ['-e', " + JSON.stringify(child_source) + "], { stdio: 'ignore', windowsHide: true });",
+    'process.stdout.write(String(descendant.pid));',
+    'setInterval(() => {}, 1000);',
+  ].join('\\n');
+
+  const result = await run_static_provider({
+    manifest: manifest(),
+    executable: await node_executable(),
+    args: ['-e', parent_source],
+    timeout_ms: 1500,
+    kill_grace_ms: 20,
+  });
+
+  assert.equal(result.timed_out, true);
+  assert.equal(result.termination_reason, 'timeout');
+  const descendant_pid = Number(result.stdout.trim());
+  assert.ok(Number.isSafeInteger(descendant_pid) && descendant_pid > 0,
+    'the test provider must report its spawned descendant PID');
+
+  let descendant_exited = false;
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      process.kill(descendant_pid, 0);
+    } catch (error) {
+      if (error.code === 'ESRCH') {
+        descendant_exited = true;
+        break;
+      }
+      throw error;
+    }
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+
+  if (!descendant_exited) {
+    try { process.kill(descendant_pid); } catch {
+      // Best-effort cleanup so a failed regression test does not leak a process.
+    }
+  }
+  assert.equal(descendant_exited, true,
+    'Windows timeout must terminate provider descendants, not only the direct child');
+});
+
 test('static provider runner supports AbortSignal cancellation', async () => {
   const controller = new AbortController();
   // Executable/cwd validation can be substantially slower on Windows CI;
