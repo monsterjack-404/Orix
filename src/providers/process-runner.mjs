@@ -408,6 +408,7 @@ export async function run_static_provider(options) {
     let timed_out = false;
     let cancelled = false;
     let output_limited = false;
+    let launch_setup_failed = false;
     let captured_bytes = 0;
     let stdout_bytes = 0;
     let stderr_bytes = 0;
@@ -446,7 +447,8 @@ export async function run_static_provider(options) {
         ? 'isolation-cleanup-failed'
         : process_group_cleanup_failed
           ? 'process-group-cleanup-failed'
-          : timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
+          : launch_setup_failed ? 'launch-setup-failed'
+            : timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
       const success = exit_code === 0 && termination_reason === null;
       const stdout = Buffer.concat(stdout_chunks).toString('utf8');
       const stderr = Buffer.concat(stderr_chunks).toString('utf8');
@@ -465,6 +467,7 @@ export async function run_static_provider(options) {
         timed_out,
         cancelled,
         output_limited,
+        launch_setup_failed,
         process_group_cleanup: {
           attempted: process_group_cleanup_started,
           force_kill_sent: process_group_force_kill_sent,
@@ -650,14 +653,20 @@ export async function run_static_provider(options) {
         detached,
         stdio: launch_stdio,
       });
-      close_parent_fd?.();
-      close_parent_fd = null;
     } catch (error) {
-      try { close_parent_fd?.(); } catch { /* preserve the spawn/close error */ }
+      try { close_parent_fd?.(); } catch { /* preserve the spawn error */ }
       close_parent_fd = null;
       finish_error(error);
       return;
     }
+
+    // A parent-FD close failure happens after spawn has succeeded. Treat it as
+    // a launch failure, but keep the child's exit/group listeners so teardown
+    // stops a possibly not-yet-attached bootstrap before cgroup cleanup.
+    let parent_fd_close_error = null;
+    try { close_parent_fd?.(); }
+    catch (error) { parent_fd_close_error = error; }
+    close_parent_fd = null;
 
     child.stdout.on('data', chunk => capture('stdout', chunk));
     child.stderr.on('data', chunk => capture('stderr', chunk));
@@ -685,6 +694,10 @@ export async function run_static_provider(options) {
       terminate();
     }, limits.timeout_ms);
     timeout_timer?.unref?.();
+    if (parent_fd_close_error) {
+      launch_setup_failed = true;
+      terminate();
+    }
     if (cancelled || signal?.aborted) on_abort();
   });
 }
