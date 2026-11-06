@@ -4,7 +4,6 @@ import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promis
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
-import os from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
 
