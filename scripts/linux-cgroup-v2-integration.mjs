@@ -122,9 +122,9 @@ async function create_delegated_parent() {
   const mount = mounts.find(item => item.root === '/') ?? mounts[0];
   assert.ok(mount, 'No cgroup v2 mount was found');
   const root = mount.mountpoint;
-  const available = (await read_control(path.join(root, 'cgroup.controllers'))).split(/\\s+/).filter(Boolean);
+  const available = (await read_control(path.join(root, 'cgroup.controllers'))).split(/\s+/).filter(Boolean);
   for (const name of REQUIRED) assert.ok(available.includes(name), 'Host cgroup2 lacks controller: ' + name);
-  const enabledBefore = (await read_control(path.join(root, 'cgroup.subtree_control'))).split(/\\s+/).filter(Boolean).map(item => item.replace(/^\\+/, ''));
+  const enabledBefore = (await read_control(path.join(root, 'cgroup.subtree_control'))).split(/\s+/).filter(Boolean).map(item => item.replace(/^\+/, ''));
   const added = REQUIRED.filter(name => !enabledBefore.includes(name));
 
   // A per-run random suffix prevents a stale PID-named cgroup from being
@@ -150,7 +150,7 @@ async function create_delegated_parent() {
     await write_control(path.join(supervisor, 'cgroup.procs'), String(process.pid));
     processMoved = true;
     await write_control(path.join(parent, 'cgroup.subtree_control'), '+' + REQUIRED.join(' +'));
-    const parentControllers = (await read_control(path.join(parent, 'cgroup.controllers'))).split(/\\s+/);
+    const parentControllers = (await read_control(path.join(parent, 'cgroup.controllers'))).split(/\s+/);
     for (const name of REQUIRED) assert.ok(parentControllers.includes(name), 'Delegated parent did not expose controller: ' + name);
     return { root, parent, supervisor, added };
   } catch (setupError) {
@@ -169,7 +169,7 @@ async function create_delegated_parent() {
     if (parentCreated) {
       try {
         const enabledNow = (await read_control(path.join(parent, 'cgroup.subtree_control')))
-          .split(/\\s+/).filter(Boolean).map(item => item.replace(/^\\+/, ''));
+          .split(/\s+/).filter(Boolean).map(item => item.replace(/^\+/, ''));
         const ours = REQUIRED.filter(name => enabledNow.includes(name));
         if (ours.length) await write_control(path.join(parent, 'cgroup.subtree_control'), '-' + ours.join(' -'));
       } catch (error) { cleanupErrors.push(error); }
@@ -189,7 +189,7 @@ async function create_delegated_parent() {
     if (rootEnableAttempted && parentRemoved) {
       try {
         const rootEnabledNow = (await read_control(path.join(root, 'cgroup.subtree_control')))
-          .split(/\\s+/).filter(Boolean).map(item => item.replace(/^\\+/, ''));
+          .split(/\s+/).filter(Boolean).map(item => item.replace(/^\+/, ''));
         const ours = added.filter(name => rootEnabledNow.includes(name));
         if (ours.length) await write_control(path.join(root, 'cgroup.subtree_control'), '-' + ours.join(' -'));
       } catch (error) { cleanupErrors.push(error); }
