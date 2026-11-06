@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   access_credentials_match,
   assess_cgroup_directory_permissions,
+  assess_cgroup_path_directory_permissions,
   inspect_linux_cgroup_v2,
   map_cgroup_path_to_mount,
   parse_cgroup2_mounts,
@@ -99,6 +100,22 @@ test('cgroup permission assessment rejects out-of-range UID and mode metadata', 
   );
 });
 
+test('cgroup path trust accepts only root/service-owned non-writable directories and the sticky-root ancestor exception', () => {
+  const service = { uid: 1000, mode: 0o40755, is_directory: true, is_symlink: false };
+  assert.equal(assess_cgroup_path_directory_permissions(service, 1000).trusted, true);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, uid: 0 }, 1000).trusted, true);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, mode: 0o40777 }, 1000).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, uid: 1001 }, 1000).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, is_symlink: true }, 1000).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, is_directory: false }, 1000).trusted, false);
+  const sticky_tmp = { uid: 0, mode: 0o41777, is_directory: true, is_symlink: false };
+  assert.equal(assess_cgroup_path_directory_permissions(sticky_tmp, 1000, true).trusted, true);
+  assert.equal(assess_cgroup_path_directory_permissions(sticky_tmp, 1000, false).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...sticky_tmp, uid: 1000 }, 1000, true).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...sticky_tmp, mode: 0o40777 }, 1000, true).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, mode: 0o200000 }, 1000).trusted, false);
+});
+
 test('cgroup access checks fail closed when real and effective credentials differ', () => {
   assert.equal(access_credentials_match(1000, 1000, 1000, 1000), true);
   assert.equal(access_credentials_match(1000, 0, 1000, 0), false);
@@ -144,6 +161,8 @@ async function create_fake_delegated_host({
   kill_mode = 0o600,
   mountpoint_symlink_ancestor = false,
   parent_symlink_component = false,
+  writable_mountpoint_ancestor = false,
+  control_file_symlink = false,
 } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'orix-cgroup-preflight-'));
   const actual_mountpoint = path.join(root, 'cgroup2');
@@ -178,6 +197,13 @@ async function create_fake_delegated_host({
     writeFile(path.join(actual_parent, name), contents)));
   await chmod(path.join(actual_parent, 'cgroup.events'), events_mode);
   await chmod(path.join(actual_parent, 'cgroup.kill'), kill_mode);
+  if (control_file_symlink) {
+    const external_control = path.join(root, 'external-cgroup-controllers');
+    await writeFile(external_control, 'cpu memory pids\\n');
+    await rm(path.join(actual_parent, 'cgroup.controllers'));
+    await symlink(external_control, path.join(actual_parent, 'cgroup.controllers'));
+  }
+  if (writable_mountpoint_ancestor) await chmod(root, 0o777);
   await writeFile(
     path.join(proc_self, 'mountinfo'),
     '29 23 0:26 / ' + mountpoint + ' rw,nosuid,nodev - cgroup2 cgroup rw\n',
@@ -188,6 +214,22 @@ async function create_fake_delegated_host({
   );
   return { root, parent: configured_parent };
 }
+
+test('cgroup path trust accepts only root/service-owned non-writable directories and the sticky-root ancestor exception', () => {
+  const service = { uid: 1000, mode: 0o40755, is_directory: true, is_symlink: false };
+  assert.equal(assess_cgroup_path_directory_permissions(service, 1000).trusted, true);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, uid: 0 }, 1000).trusted, true);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, mode: 0o40777 }, 1000).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, uid: 1001 }, 1000).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, is_symlink: true }, 1000).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, is_directory: false }, 1000).trusted, false);
+  const sticky_tmp = { uid: 0, mode: 0o41777, is_directory: true, is_symlink: false };
+  assert.equal(assess_cgroup_path_directory_permissions(sticky_tmp, 1000, true).trusted, true);
+  assert.equal(assess_cgroup_path_directory_permissions(sticky_tmp, 1000, false).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...sticky_tmp, uid: 1000 }, 1000, true).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...sticky_tmp, mode: 0o40777 }, 1000, true).trusted, false);
+  assert.equal(assess_cgroup_path_directory_permissions({ ...service, mode: 0o200000 }, 1000).trusted, false);
+});
 
 if (process.platform === 'linux') {
   test('read-only preflight accepts an owned, non-group-writable delegated parent with required event files', { timeout: 10_000 }, async () => {
