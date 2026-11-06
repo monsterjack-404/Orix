@@ -88,6 +88,33 @@ async function file_snapshot(input_path, maximum_bytes) {
   return { canonical_path, info };
 }
 
+async function create_snapshot_directory(prefix, options) {
+  let parent_directory = tmpdir();
+  const isolation = options.isolation;
+  const sandbox_root = options.sandbox_root;
+  if (isolation === 'required' && process.platform === 'linux' &&
+      typeof sandbox_root === 'string' && path.isAbsolute(sandbox_root) && !sandbox_root.includes('\0')) {
+    try {
+      const root_info = await lstat(sandbox_root);
+      if (!root_info.isSymbolicLink() && root_info.isDirectory()) {
+        // Bubblewrap overlays /tmp with a fresh tmpfs. Put the private snapshot
+        // elsewhere in the read-only root bind so the provider can read it.
+        parent_directory = sandbox_root;
+      }
+    } catch {
+      // Let the process runner report the canonical sandbox-root validation error.
+    }
+  }
+  try {
+    return await mkdtemp(path.join(parent_directory, prefix));
+  } catch (error) {
+    provider_error('ORIX_RIZIN_SNAPSHOT_DIRECTORY_UNAVAILABLE',
+      'Rizin private analysis snapshot directory could not be created', {
+        reason: error.code ?? error.name ?? 'filesystem-error',
+      });
+  }
+}
+
 function same_file_identity(left, right) {
   return left.dev === right.dev && left.ino === right.ino &&
     left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
@@ -255,7 +282,10 @@ export async function analyze_rizin_imports(options = {}) {
   }
   // Analyze a private copy so the external tool never receives the caller's original path.
   // The copy is private to this process, read-only by default, and checked before and after use.
-  const snapshot_directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-'));
+  const snapshot_directory = await create_snapshot_directory('.orix-rizin-', {
+      isolation: descriptors.isolation?.value,
+      sandbox_root: descriptors.sandbox_root?.value,
+    });
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
@@ -565,7 +595,10 @@ export async function analyze_rizin_functions(options = {}) {
     });
   }
 
-  const snapshot_directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-functions-'));
+  const snapshot_directory = await create_snapshot_directory('.orix-rizin-functions-', {
+      isolation: descriptors.isolation?.value,
+      sandbox_root: descriptors.sandbox_root?.value,
+    });
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
