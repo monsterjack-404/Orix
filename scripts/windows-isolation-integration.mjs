@@ -36,6 +36,13 @@ async function main() {
     'Native helper must resolve security-sensitive Windows utilities through the OS API');
   assert.doesNotMatch(launcherSource, /Environment\.GetEnvironmentVariable\("SystemRoot"\)/,
     'Native helper must not resolve icacls.exe from inherited SystemRoot');
+  const isolationSource = await readFile(new URL('../src/providers/windows-isolation.mjs', import.meta.url), 'utf8');
+  assert.match(isolationSource, /child\\.once\\('close'/,
+    'Native helper timeout handling must wait until the helper process and stdio handles are closed');
+  assert.doesNotMatch(isolationSource, /child\\.once\\('exit'/,
+    'Native helper lifecycle must use close, not exit, before temporary-directory cleanup');
+  assert.match(isolationSource, /timedOut = true;[\\s\\S]*?child\\.kill\\(\\);[\\s\\S]*?child\\.once\\('close'/,
+    'Native helper timeout must terminate the helper and defer rejection until close');
   // Keep the rootfs outside the broadly writable GitHub Actions workspace; its
   // ancestors are part of the native trust check, not just the leaf ACL.
   // Use a protected system directory, not the GitHub workspace or user profile.
