@@ -61,12 +61,12 @@ async function main() {
       result.temp_dir = os.tmpdir(); result.temp_env = process.env.TEMP; result.tmp_env = process.env.TMP; result.temp_exists = fs.existsSync(os.tmpdir());
       try { fs.writeFileSync(path.join(os.tmpdir(), 'provider-write-probe'), 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
-      const scratchRoot = path.resolve(${JSON.stringify(path.join(root, 'tmp'))}).replace(/[\\\\/]+$/, '').toLowerCase();
       const actualTemp = path.resolve(os.tmpdir()).replace(/[\\\\/]+$/, '').toLowerCase();
-      const relativeTemp = path.relative(scratchRoot, actualTemp);
-      result.scratch_root = scratchRoot;
+      const rootMarker = path.basename(path.dirname(${JSON.stringify(root)})).toLowerCase();
+      const tempParts = actualTemp.split(/[\\\\/]+/);
+      const markerIndex = tempParts.lastIndexOf(rootMarker);
       result.temp_path = actualTemp;
-      result.tmp_inside_root = relativeTemp === '' || (relativeTemp !== '..' && !relativeTemp.startsWith('..' + path.sep) && !path.isAbsolute(relativeTemp));
+      result.tmp_inside_root = markerIndex >= 0 && tempParts[markerIndex + 1] === 'rootfs' && tempParts[markerIndex + 2] === 'tmp';
       result.host_network = await new Promise(resolve => {
         const socket = net.createConnection({ host: '127.0.0.1', port: ${port} });
         let settled = false;
