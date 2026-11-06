@@ -81,7 +81,7 @@ export const HELP_TEXT = [
   '  --executable-arg <arg>  Repeatable literal argument prepended to the executable argv (maximum 16).',
   '  --isolation <mode>   Provider isolation mode: none (default) or required (Linux Bubblewrap).',
   '  --sandbox-root <path> Root filesystem for required Linux Bubblewrap provider isolation.',
-  '  --cwd <path>         Provider working directory (must be inside the isolation root when required).'
+  '  --cwd <path>         Provider working directory (must be inside the isolation root when required).',
   '  --timeout-ms <n>     Maximum external provider runtime in milliseconds.',
   '  --max-output-kib <n> Maximum provider stdout/stderr bytes captured per process, in KiB.',
   '  --max-imports <n>    Maximum imported symbols retained in a Rizin report.',
