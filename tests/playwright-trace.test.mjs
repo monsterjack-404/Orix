@@ -81,6 +81,38 @@ function make_archive(events = make_events(), method = 8) {
     { name: 'resources/private.bin', contents: Buffer.from('never extract this') },
   ]);
 }
+function make_data_descriptor_archive({ signature = true, corrupt = false } = {}) {
+  const archive = make_archive();
+  const eocd = archive.length - 22;
+  const central_offset = archive.readUInt32LE(eocd + 16);
+  const local = 0;
+  const name_length = archive.readUInt16LE(local + 26);
+  const extra_length = archive.readUInt16LE(local + 28);
+  const compressed_size = archive.readUInt32LE(local + 18);
+  const data_end = local + 30 + name_length + extra_length + compressed_size;
+  const descriptor = Buffer.alloc(signature ? 16 : 12);
+  let offset = 0;
+  if (signature) {
+    descriptor.writeUInt32LE(0x08074b50, offset);
+    offset += 4;
+  }
+  const crc = archive.readUInt32LE(local + 14);
+  descriptor.writeUInt32LE(corrupt ? (crc ^ 1) >>> 0 : crc, offset);
+  descriptor.writeUInt32LE(compressed_size, offset + 4);
+  descriptor.writeUInt32LE(archive.readUInt32LE(local + 22), offset + 8);
+  const result = Buffer.concat([
+    archive.subarray(0, data_end),
+    descriptor,
+    archive.subarray(data_end),
+  ]);
+  result.writeUInt16LE(result.readUInt16LE(local + 6) | 0x0008, local + 6);
+  result.writeUInt32LE(0, local + 14);
+  result.writeUInt32LE(0, local + 18);
+  result.writeUInt32LE(0, local + 22);
+  const shifted_eocd = result.length - 22;
+  result.writeUInt32LE(central_offset + descriptor.length, shifted_eocd + 16);
+  return result;
+}
 
 test('trace CLI command parses bounded event, action and request ceilings', () => {
   const parsed = parse_arguments([
@@ -141,6 +173,21 @@ test('Playwright trace importer produces a bounded action and network timeline w
     resource_files_extracted: false,
     note: report.privacy.note,
   });
+});
+
+test('Playwright trace importer validates signed and unsigned ZIP data descriptors', () => {
+  for (const signature of [false, true]) {
+    const report = parse_playwright_trace(make_data_descriptor_archive({ signature }));
+    assert.equal(report.trace.version, 9);
+    assert.equal(report.summary.events_analyzed, 9);
+  }
+});
+
+test('Playwright trace importer rejects a mismatched ZIP data descriptor', () => {
+  assert.throws(
+    () => parse_playwright_trace(make_data_descriptor_archive({ signature: true, corrupt: true })),
+    error => error.code === 'ORIX_TRACE_DATA_DESCRIPTOR_MISMATCH',
+  );
 });
 
 test('Playwright trace importer accepts stored and raw-DEFLATE trace members', () => {
