@@ -125,12 +125,14 @@ async function create_delegated_parent() {
   for (const name of REQUIRED) assert.ok(available.includes(name), 'Host cgroup2 lacks controller: ' + name);
   const enabledBefore = (await read_control(path.join(root, 'cgroup.subtree_control'))).split(/\s+/).filter(Boolean).map(item => item.replace(/^\+/, ''));
   const added = REQUIRED.filter(name => !enabledBefore.includes(name));
-  if (added.length) await write_control(path.join(root, 'cgroup.subtree_control'), '+' + added.join(' +'));
 
   const parent = path.join(root, 'orix-ci-' + process.pid);
   const supervisor = path.join(parent, 'supervisor');
-  await mkdir(parent, { mode: 0o755 });
   try {
+    // Keep the root controller change inside the guarded setup transaction:
+    // even a parent-directory creation failure must restore what this test added.
+    if (added.length) await write_control(path.join(root, 'cgroup.subtree_control'), '+' + added.join(' +'));
+    await mkdir(parent, { mode: 0o755 });
     await mkdir(supervisor, { mode: 0o755 });
     await write_control(path.join(supervisor, 'cgroup.procs'), String(process.pid));
     await write_control(path.join(parent, 'cgroup.subtree_control'), '+' + REQUIRED.join(' +'));
@@ -161,13 +163,16 @@ async function remove_delegated_parent(state) {
 async function main() {
   assert.equal(process.platform, 'linux', 'This integration gate must run on Linux');
   const delegated = await create_delegated_parent();
-  process.env.ORIX_CGROUP_PARENT = delegated.parent;
-  const base = await mkdtemp(path.join(os.tmpdir(), 'orix-cgroup-integration-'));
-  const root = path.join(base, 'rootfs');
+  const previousParent = process.env.ORIX_CGROUP_PARENT;
   const hostSecret = path.join(os.tmpdir(), 'orix-cgroup-host-secret-' + process.pid);
   const hostSecretValue = 'host-only-secret-' + process.pid;
+  let base = null;
   let server;
   try {
+    process.env.ORIX_CGROUP_PARENT = delegated.parent;
+    // Allocate temporary state only after entering the cleanup-protected region.
+    base = await mkdtemp(path.join(os.tmpdir(), 'orix-cgroup-integration-'));
+    const root = path.join(base, 'rootfs');
     await mkdir(root);
     const nodePath = await make_minimal_rootfs(root);
     await writeFile(hostSecret, hostSecretValue, { mode: 0o600 });
@@ -336,10 +341,25 @@ async function main() {
 
     process.stdout.write('Linux cgroup v2 integration passed: FD attach-before-exec, rootfs/network isolation, RLIMITs, cpu.max throttling, memory.max OOM, pids.max rejection, descendant teardown and empty-cgroup removal.\\n');
   } finally {
-    if (server) await new Promise(resolve => server.close(resolve));
-    await rm(hostSecret, { force: true });
-    await rm(base, { recursive: true, force: true });
-    await remove_delegated_parent(delegated);
+    const cleanupErrors = [];
+    try {
+      if (server) await new Promise((resolve, reject) => {
+        server.close(error => error ? reject(error) : resolve());
+      });
+    } catch (error) { cleanupErrors.push(error); }
+    try { await rm(hostSecret, { force: true }); }
+    catch (error) { cleanupErrors.push(error); }
+    try { if (base) await rm(base, { recursive: true, force: true }); }
+    catch (error) { cleanupErrors.push(error); }
+    try {
+      if (previousParent === undefined) delete process.env.ORIX_CGROUP_PARENT;
+      else process.env.ORIX_CGROUP_PARENT = previousParent;
+    } catch (error) { cleanupErrors.push(error); }
+    try { await remove_delegated_parent(delegated); }
+    catch (error) { cleanupErrors.push(error); }
+    if (cleanupErrors.length) {
+      throw new AggregateError(cleanupErrors, 'Linux cgroup integration cleanup was incomplete');
+    }
   }
 }
 
