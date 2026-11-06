@@ -1,11 +1,12 @@
 // Windows AppContainer + Job Object hostile-process integration gate.
 import assert from 'node:assert/strict';
-import { access, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { access, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
+import { execFileSync, spawn } from 'node:child_process';
 import net from 'node:net';
 import os_host from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
+import { prepare_windows_provider_isolation } from '../src/providers/windows-isolation.mjs';
 
 function manifest() {
   return {
@@ -37,15 +38,40 @@ async function main() {
   assert.match(launcherSource, /if \(!process\.WaitForExit\(10000\)\)[\s\S]*?process\.Kill\(\)[\s\S]*?process\.WaitForExit\(\)[\s\S]*?throw new TimeoutException/,
     'Timed-out icacls must be observed exited before helper cleanup can mutate its target');
 
+  const purgeStart = launcherSource.indexOf('static void PurgeTree(');
+  const deleteStart = launcherSource.indexOf('static void DeleteTreeNoReparse(', purgeStart);
+  assert.ok(purgeStart >= 0 && deleteStart > purgeStart,
+    'Native helper must retain an explicit AppContainer cleanup tree walker');
+  const purgeSource = launcherSource.slice(purgeStart, deleteStart);
+  assert.match(purgeSource, /File\.GetAttributes\(path\)/,
+    'Cleanup must inspect each directory entry before descending');
+  assert.doesNotMatch(purgeSource, /File\.Exists\(path\)|Directory\.Exists\(path\)/,
+    'Cleanup must not use path existence helpers that can follow a reparse target');
+  assert.match(purgeSource, /FileAttributes\.ReparsePoint[\s\S]*?ORIX_WINDOWS_CLEANUP_REPARSE_POINT[\s\S]*?throw new InvalidOperationException/,
+    'Cleanup must abort on reparse points instead of skipping them and continuing with descendant paths');
+
   assert.doesNotMatch(launcherSource, /Environment\.GetEnvironmentVariable\("SystemRoot"\)/,
     'Native helper must not resolve icacls.exe from inherited SystemRoot');
   const isolationSource = await readFile(new URL('../src/providers/windows-isolation.mjs', import.meta.url), 'utf8');
+  assert.match(isolationSource, /normalizedKey === 'systemroot' \|\| normalizedKey === 'windir'/,
+    'Provider environment overrides must not replace reserved Windows runtime identity keys');
+  assert.match(isolationSource, /const trustedSystemRoot = \[process\.env\.SystemRoot, process\.env\.WINDIR\]\.find\(value => typeof value === 'string' && value\.trim\(\)\.length > 0\);[\s\S]*?providerEnvironment\.SystemRoot = trustedSystemRoot;[\s\S]*?providerEnvironment\.WINDIR = trustedSystemRoot;/,
+    'Windows runtime identity must be restored from the first non-empty trusted host value after provider overrides');
+  assert.match(isolationSource, /const systemRoot = \[environment\.SystemRoot, environment\.WINDIR\]\.find\(value => typeof value === 'string' && value\.trim\(\)\.length > 0\);/,
+    'Compiler lookup must fall back to WINDIR when SystemRoot is empty');
   assert.match(isolationSource, /child\.once\('close'/,
     'Native helper timeout handling must wait until the helper process and stdio handles are closed');
   assert.doesNotMatch(isolationSource, /child\.once\('exit'/,
     'Native helper lifecycle must use close, not exit, before temporary-directory cleanup');
   assert.match(isolationSource, /timedOut = true;[\s\S]*?child\.kill\(\);[\s\S]*?child\.once\('close'/,
     'Native helper timeout must terminate the helper and defer rejection until close');
+  const timeoutRequest = isolationSource.indexOf('timedOut = true;');
+  const killRequest = isolationSource.indexOf('child.kill();', timeoutRequest);
+  const closeHandler = isolationSource.indexOf("child.once('close', async (code, signal) => {", killRequest);
+  const timeoutFailure = isolationSource.indexOf('ORIX_PROVIDER_WINDOWS_HELPER_TIMEOUT', closeHandler);
+  assert.ok(timeoutRequest >= 0 && killRequest > timeoutRequest &&
+    closeHandler > killRequest && timeoutFailure > closeHandler,
+  'Windows helper timeout must wait for stdio close before caller cleanup and log collection');
   // Keep the rootfs outside the broadly writable GitHub Actions workspace; its
   // ancestors are part of the native trust check, not just the leaf ACL.
   // Use a protected system directory, not the GitHub workspace or user profile.
@@ -231,7 +257,98 @@ async function main() {
     });
     assert.deepEqual(remainingPackageScratch, [],
       'Per-profile AppContainer temp files must be removed after provider teardown');
-    process.stdout.write('Windows AppContainer hostile-process checks passed: token, filesystem ACLs, private temp, network isolation and Job Object quotas.\\n');
+
+    // Exercise the cleanup traversal with a real directory junction. The
+    // provider process waits while the host replaces its writable Packages
+    // directory with a junction to an external sentinel tree. Cleanup must
+    // stop at the reparse point and leave the external sentinel untouched.
+    const cleanupReady = path.join(root, 'tmp', 'cleanup-reparse-ready-' + process.pid);
+    const cleanupContinue = path.join(root, 'tmp', 'cleanup-reparse-continue-' + process.pid);
+    const reparsePrepared = await prepare_windows_provider_isolation({
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      args: ['-e', [
+        'const fs = require("node:fs");',
+        'fs.writeFileSync(' + JSON.stringify(cleanupReady) + ', "ready");',
+        'const go = ' + JSON.stringify(cleanupContinue) + ';',
+        'const cell = new Int32Array(new SharedArrayBuffer(4));',
+        'const deadline = Date.now() + 15000;',
+        'while (!fs.existsSync(go) && Date.now() < deadline) Atomics.wait(cell, 0, 0, 25);',
+        'if (!fs.existsSync(go)) { console.error("cleanup injection host timed out"); process.exitCode = 88; }',
+      ].join('\n')],
+      env: {},
+    });
+    let reparseChild = null;
+    let reparseClosed = null;
+    let junctionInstalled = false;
+    let preparedCleanupComplete = false;
+    const packagesRoot = path.join(root, 'tmp', 'Packages');
+    try {
+      reparseChild = spawn(reparsePrepared.executable, reparsePrepared.args, {
+        cwd: reparsePrepared.cwd,
+        env: reparsePrepared.env,
+        shell: false,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let helperStdout = '';
+      let helperStderr = '';
+      reparseChild.stdout.on('data', chunk => { helperStdout += chunk.toString('utf8'); });
+      reparseChild.stderr.on('data', chunk => { helperStderr += chunk.toString('utf8'); });
+      reparseClosed = new Promise((resolve, reject) => {
+        reparseChild.once('error', reject);
+        reparseChild.once('close', (code, signal) => resolve({ code, signal, stdout: helperStdout, stderr: helperStderr }));
+      });
+
+      const readyDeadline = Date.now() + 15000;
+      let providerReady = false;
+      while (Date.now() < readyDeadline) {
+        try { await access(cleanupReady); providerReady = true; break; }
+        catch { await new Promise(resolve => setTimeout(resolve, 25)); }
+      }
+      assert.equal(providerReady, true, 'Provider did not enter the controlled cleanup-junction test');
+
+      const [profileName] = await readdir(packagesRoot);
+      assert.ok(profileName, 'AppContainer redirected Packages profile directory was not created');
+      const externalRoot = path.join(base, 'external-cleanup-target');
+      const externalProfile = path.join(externalRoot, profileName);
+      const externalSentinel = path.join(externalProfile, 'must-survive-cleanup.txt');
+      await mkdir(path.join(externalProfile, 'AC', 'Temp'), { recursive: true });
+      await writeFile(externalSentinel, 'external-data-must-survive', 'utf8');
+
+      await rm(packagesRoot, { recursive: true, force: true });
+      await symlink(externalRoot, packagesRoot, 'junction');
+      junctionInstalled = true;
+      const junctionInfo = await lstat(packagesRoot);
+      assert.equal(junctionInfo.isSymbolicLink(), true, 'Test fixture did not create a Windows junction/reparse point');
+
+      await writeFile(cleanupContinue, 'continue', 'utf8');
+      const reparseResult = await reparseClosed;
+      reparseChild = null;
+      assert.equal(reparseResult.code, 125,
+        'Cleanup must fail closed when an AppContainer cleanup ancestor is a reparse point: ' +
+        JSON.stringify({ stdout: reparseResult.stdout, stderr: reparseResult.stderr }));
+      assert.match(reparseResult.stderr, /ORIX_WINDOWS_CLEANUP_REPARSE_POINT/,
+        'Native cleanup did not report the rejected reparse-point path');
+      assert.equal(await readFile(externalSentinel, 'utf8'), 'external-data-must-survive',
+        'Cleanup traversed the junction and deleted data outside the sandbox root');
+
+      await rmdir(packagesRoot);
+      junctionInstalled = false;
+      await reparsePrepared.cleanup();
+      preparedCleanupComplete = true;
+      await access(externalSentinel);
+    } finally {
+      if (reparseChild) {
+        try { reparseChild.kill(); } catch { /* process may already have exited */ }
+        if (reparseClosed) await reparseClosed.catch(() => {});
+      }
+      if (junctionInstalled) await rmdir(packagesRoot).catch(() => {});
+      if (!preparedCleanupComplete) await reparsePrepared.cleanup().catch(() => {});
+    }
+
+    process.stdout.write('Windows AppContainer hostile-process checks passed: token, filesystem ACLs, private temp, network isolation, Job Object quotas and reparse-safe cleanup.\\n');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await rm(base, { recursive: true, force: true });

@@ -65,7 +65,7 @@ Please use GitHub's private vulnerability reporting or Security Advisories for s
 
 The provider runner compares the canonical executable with an explicit allowlist (or uses the selected executable as its single-entry default) and validates the working directory against explicit canonical roots (or the exact cwd as its default). It rejects final symlink paths and malformed/accessor-backed allowlist arrays. The child does not inherit the full parent environment; explicit values reject PATH/search and runtime-loader variables such as NODE_OPTIONS, LD_PRELOAD, DYLD_INSERT_LIBRARIES, PYTHONPATH and RUBYOPT.
 
-These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. Windows currently terminates only the direct child.
+These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. In explicitly unsandboxed `isolation: "none"` mode, Windows process teardown can signal only the direct child; the required AppContainer backend instead places the provider in a Job Object before resuming it and applies kill-on-job-close to descendants.
 
 
 ## Enforced provider isolation (Linux implementation gate)
@@ -146,12 +146,16 @@ root-owned sticky ancestors (such as /tmp) are exempt, and the filesystem
 root itself is rejected. Every rootfs descendant is also checked: entries must
 be root/service-owned regular files or directories, cannot be group/other
 writable, setuid/setgid, symlinks, hard-linked files or special filesystem
-objects. These are mode/ownership preflight checks, not a race-free filesystem
-pin or a complete inspection of extended ACLs; operators must still protect
-ACLs, mount configuration and rootfs contents. Hostile-
-process tests verify an outside-rootfs secret is unreadable, the rootfs cannot
-be modified, private temporary writes work and host loopback networking is
-blocked.
+objects. The native launcher independently checks the rootfs and each
+ancestor for non-empty macOS extended ACL entries immediately before applying
+Seatbelt; it rejects ACL-bearing paths and fails closed when ACL inspection
+returns an unexpected error. The integration test adds an ACL-granted writer
+while leaving POSIX mode bits restrictive and verifies that the native
+launcher rejects it. This narrows the ACL gap but is not a race-free filesystem
+pin or protection against privileged host administrators and subsequent
+trusted-host mount/ACL changes. Hostile-process tests verify an outside-rootfs
+secret is unreadable, the rootfs cannot be modified, private temporary writes
+work and host loopback networking is blocked.
 
 macOS Seatbelt does not provide the aggregate memory/PID quotas enforced by
 Linux cgroup v2 or Windows Job Objects; ORIX does not claim those controls on

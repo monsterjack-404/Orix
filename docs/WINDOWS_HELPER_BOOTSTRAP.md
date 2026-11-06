@@ -53,3 +53,11 @@ This validates the executable's managed/architecture-neutral format; it does not
 The Windows launcher CI matrix now builds on both `windows-latest` and `windows-2022`. Each runner uses the pinned .NET SDK from `global.json`, performs its own clean double-build comparison, validates the PE/CLR metadata, and uploads a separately named executable artifact. A follow-up Ubuntu job downloads both artifacts and requires their SHA-256 digests to match.
 
 This is stronger evidence than two builds on one runner, but it is still not a release trust anchor: hosted runner images and external package feeds are not fully immutable, and CI artifacts are not shipped in the npm package. A reviewed release artifact and source-pinned digest, package inclusion, runtime digest/path validation, and exact packaged-binary integration tests remain required.
+
+## Cleanup reparse-point fail-closed gate
+
+The cleanup walk now inspects each directory entry with File.GetAttributes before deciding whether it exists as a normal file or directory. It rejects a reparse point with ORIX_WINDOWS_CLEANUP_REPARSE_POINT; it does not silently skip the link and continue to a later path-based delete beneath that link. This matters for the redirected tmp/Packages/<profile> tree: a junction at an ancestor must stop cleanup rather than redirect removal into an external directory.
+
+On this error, cleanup intentionally stops before deleting the profile-specific redirected temp tree or removing the AppContainer profile. Some earlier non-reparse entries may already have had their profile ACLs purged, but no path traversal through the reparse point is attempted. The leftover state is safer to investigate than to follow an attacker-controlled target.
+
+The Windows integration gate asserts the cleanup walker checks entry attributes, avoids File.Exists / Directory.Exists path-following prechecks, and throws on reparse points. The normal Windows hostile-process test continues to exercise successful cleanup on a reparse-free tree. A dedicated end-to-end malicious-junction injection test is still a separate validation gate; this source-level guard does not claim that scenario has been exercised on a live Windows host.

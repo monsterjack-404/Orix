@@ -51,7 +51,7 @@ async function validate_tree(root) {
 async function resolve_csc(environment) {
   // environment must be assembled only from the trusted host process, never
   // from provider-supplied environment overrides.
-  const systemRoot = environment.SystemRoot ?? environment.WINDIR;
+  const systemRoot = [environment.SystemRoot, environment.WINDIR].find(value => typeof value === 'string' && value.trim().length > 0);
   if (!systemRoot) isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'SystemRoot is required to locate the trusted .NET Framework compiler');
   for (const candidate of [
     path.join(systemRoot, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe'),
@@ -97,7 +97,7 @@ async function run_native_helper(executable, args, cwd, environment, logPath, ti
       if (timedOut) {
         const helperLog = logPath ? await readFile(logPath, 'utf8').catch(() => '') : '';
         reject(new OrixError('ORIX_PROVIDER_WINDOWS_HELPER_TIMEOUT', 'Windows native provider helper exceeded its time limit', {
-          details: { timeout_ms: timeoutMs, stdout, stderr, helper_log: helperLog.slice(-8192) }, recoverable: true,
+          details: { timeout_ms: timeoutMs, exit_code: code, signal, stdout, stderr, helper_log: helperLog.slice(-8192) }, recoverable: true,
         }));
       } else if (code === 0) resolve({ stdout, stderr });
       else reject(new OrixError('ORIX_PROVIDER_WINDOWS_HELPER_FAILED', 'Windows native provider helper returned a failure status', {
@@ -131,7 +131,19 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
     const value = process.env[key];
     if (typeof value === 'string' && value.length > 0) providerEnvironment[key] = value;
   }
-  for (const [key, value] of Object.entries(env)) providerEnvironment[key] = value;
+  // Provider overrides must not replace the host's Windows runtime identity.
+  // Windows environment names are case-insensitive, so reject every spelling
+  // of these reserved keys before adding the trusted values below.
+  for (const [key, value] of Object.entries(env)) {
+    const normalizedKey = key.toLowerCase();
+    if (normalizedKey === 'systemroot' || normalizedKey === 'windir') continue;
+    providerEnvironment[key] = value;
+  }
+  const trustedSystemRoot = [process.env.SystemRoot, process.env.WINDIR].find(value => typeof value === 'string' && value.trim().length > 0);
+  if (typeof trustedSystemRoot === 'string') {
+    providerEnvironment.SystemRoot = trustedSystemRoot;
+    providerEnvironment.WINDIR = trustedSystemRoot;
+  }
   Object.assign(providerEnvironment, {
     HOME: root,
     USERPROFILE: root,

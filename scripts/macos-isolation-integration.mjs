@@ -1,6 +1,6 @@
 // macOS Seatbelt hostile-process integration gate.
 import assert from 'node:assert/strict';
-import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
@@ -62,14 +62,15 @@ async function copy_node_runtime(root) {
 async function main() {
   assert.equal(process.platform, 'darwin', 'This integration gate must run on macOS');
   const isolationSource = await readFile(new URL('../src/providers/macos-isolation.mjs', import.meta.url), 'utf8');
+  const timeoutRequest = isolationSource.indexOf('timedOut = true;');
+  const processGroupKill = isolationSource.indexOf("process.kill(-child.pid, 'SIGKILL')", timeoutRequest);
+  const closeHandler = isolationSource.indexOf("child.once('close', (code, signal) => {", processGroupKill);
+  const timeoutFailure = isolationSource.indexOf('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', closeHandler);
   assert.match(isolationSource, /detached: true/,
-    'macOS compiler must use a dedicated process group for descendant cleanup');
-  assert.ok(isolationSource.includes("process.kill(-child.pid, 'SIGKILL')"),
-    'macOS compiler timeout must kill the complete compiler process group');
-  const closeHandler = isolationSource.indexOf("child.once('close'");
-  const timeoutError = isolationSource.indexOf('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', closeHandler);
-  assert.ok(closeHandler >= 0 && timeoutError > closeHandler,
-    'macOS compiler timeout must not reject until the child close event confirms termination');
+    'Compiler must run in its own process group for descendant teardown');
+  assert.ok(timeoutRequest >= 0 && processGroupKill > timeoutRequest &&
+    closeHandler > processGroupKill && timeoutFailure > closeHandler,
+  'Compiler timeout must kill its process group and wait for closure before temporary-directory cleanup');
   const base = await mkdtemp(path.join(os.tmpdir(), 'orix-seatbelt-integration-'));
   const root = path.join(base, 'rootfs');
   const hostSecret = path.join(base, 'host-only-secret.txt');
@@ -144,6 +145,31 @@ async function main() {
     await rm(unsafeFile, { force: true });
 
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
+
+    // POSIX mode bits do not reveal macOS extended ACL entries. The native
+    // launcher must reject an ACL-granted writer even when mode bits look safe.
+    const aclProbe = path.join(root, 'work', 'extended-acl-probe.txt');
+    await writeFile(aclProbe, 'ACL must be rejected', { mode: 0o600 });
+    execFileSync('/bin/chmod', ['+a', 'everyone allow write', aclProbe]);
+    try {
+      const aclExecution = await run_static_provider({
+        manifest: manifest(),
+        executable,
+        cwd: path.join(root, 'work'),
+        sandbox_root: root,
+        isolation: 'required',
+        env: {},
+        args: ['-e', 'process.exit(0)'],
+        timeout_ms: 12_000,
+        max_output_bytes: 4_096,
+      });
+      assert.equal(aclExecution.ok, false, 'macOS isolation accepted a rootfs entry with an extended ACL');
+      assert.match(aclExecution.stderr, /ORIX_MACOS_ACL_DENIED=/,
+        'Native launcher did not report the extended ACL rejection');
+    } finally {
+      execFileSync('/bin/chmod', ['-N', aclProbe]);
+      await rm(aclProbe, { force: true });
+    }
 
     server = net.createServer();
     await new Promise((resolve, reject) => {
