@@ -31,7 +31,9 @@ function manifest() {
 
 async function main() {
   assert.equal(process.platform, 'win32', 'This integration gate must run on Windows');
-  const base = await mkdtemp(path.join(process.cwd(), '.orix-appcontainer-integration-'));
+  // Keep the rootfs outside the broadly writable GitHub Actions workspace; its
+  // ancestors are part of the native trust check, not just the leaf ACL.
+  const base = await mkdtemp(path.join(os.homedir(), '.orix-appcontainer-integration-'));
   const root = path.join(base, 'rootfs');
   // GitHub-hosted Windows runners grant BUILTIN\\Users write access to the
   // workspace. The sandbox must not inherit that broad ACL: make the rootfs
