@@ -70,7 +70,10 @@ export function inspectWindowsLauncher(bytes) {
   const metadataRva = u32(bytes, clrOffset + 8, 'CLR metadata RVA');
   const metadataSize = u32(bytes, clrOffset + 12, 'CLR metadata size');
   if (!metadataRva || metadataSize < 4) fail('missing CLR metadata');
-  rvaToOffset(bytes, sections, metadataRva, 4, 'CLR metadata');
+  const metadataOffset = rvaToOffset(bytes, sections, metadataRva, metadataSize, 'CLR metadata');
+  if (u32(bytes, metadataOffset, 'CLR metadata signature') !== 0x424a5342) {
+    fail('invalid CLR metadata signature (expected BSJB)');
+  }
   const flags = u32(bytes, clrOffset + 16, 'CLR flags');
   const ilOnly = (flags & 0x00000001) !== 0;
   const requires32Bit = (flags & 0x00000002) !== 0;
