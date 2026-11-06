@@ -1,6 +1,6 @@
 // macOS Seatbelt hostile-process integration gate.
 import assert from 'node:assert/strict';
-import { chmod, copyFile, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
@@ -61,6 +61,11 @@ async function copy_node_runtime(root) {
 
 async function main() {
   assert.equal(process.platform, 'darwin', 'This integration gate must run on macOS');
+  const isolationSource = await readFile(new URL('../src/providers/macos-isolation.mjs', import.meta.url), 'utf8');
+  assert.match(isolationSource, /let timedOut = false;[\\s\\S]*?timedOut = true;[\\s\\S]*?child\\.kill\\(\\);/,
+    'Compiler timeout must request termination without settling before process closure');
+  assert.match(isolationSource, /child\\.once\\('close',[\\s\\S]*?if \\(timedOut\\) \\{[\\s\\S]*?ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT/,
+    'Compiler timeout must wait for close before caller cleanup can remove its working directory');
   const base = await mkdtemp(path.join(os.tmpdir(), 'orix-seatbelt-integration-'));
   const root = path.join(base, 'rootfs');
   const hostSecret = path.join(base, 'host-only-secret.txt');
