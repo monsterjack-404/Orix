@@ -62,6 +62,8 @@ jobs:
             printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
             sudo apparmor_parser -r /etc/apparmor.d/bwrap || sudo apparmor_parser -a /etc/apparmor.d/bwrap
           fi
+      - name: Diagnose cgroup v2 delegation (read-only)
+        run: node scripts/linux-cgroup-v2-preflight.mjs
       - name: Verify Bubblewrap availability
         run: |
           test -x /usr/bin/bwrap

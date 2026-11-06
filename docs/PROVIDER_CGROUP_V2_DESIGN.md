@@ -148,3 +148,9 @@ The integration job must not silently skip when the security gate is expected to
 Implement as a separate follow-up after the Linux Bubblewrap stack is merged in dependency order. Keep this research document distinct from implementation status. Update provider docs, CLI/API docs, threat-model notes, and CI only when the behavior exists and the real-kernel integration gate is available.
 
 Until then, ORIX must continue to describe its current Linux provider backend as Bubblewrap namespace/filesystem isolation with bounded process execution—not as CPU, memory, or process-count isolated.
+
+## Read-only deployment preflight (diagnostic only)
+
+The follow-up `scripts/linux-cgroup-v2-preflight.mjs` command inspects the host's unified cgroup v2 mount, current process membership, and an optional administrator-configured `ORIX_CGROUP_PARENT`. It reports whether the expected empty-parent / sibling-supervisor layout and required controllers appear to be present.
+
+The command is intentionally read-only: it does not create a child cgroup, move a process, enable controllers, change limits, or claim that kernel enforcement has been proven. It is suitable for CI environment discovery and operator diagnostics. A positive result is a deployment precondition, not a substitute for the real-kernel enforcement tests below.
