@@ -1,12 +1,12 @@
 # ORIX Provider Manifests and Registry
 
-The provider layer validates metadata, maintains an in-memory capability catalog, and supports an opt-in bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, grant authorization, create an OS sandbox, or claim that a provider is available before it has actually been located and invoked.
+The provider layer validates metadata, maintains an in-memory capability catalog, and supports an opt-in bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, or grant authorization. Process execution is not sandboxed by default; the Linux Bubblewrap backend is a separate opt-in isolation mode. ORIX does not claim that a provider is available before it has actually been located and invoked.
 
 
 
 ### Executable argument prefixes
 
-For wrapper executables, the provider adapter accepts an optional `executable_args` array. These literal arguments are prepended to the provider's own argument vector; they are passed directly to the selected absolute executable with `shell: false`. The CLI exposes this as repeatable `--executable-arg <value>` (maximum 16), and the MCP `orix.rizin_functions` tool accepts `executable_args` with the same 16-item bound. Prefix arguments are subject to the process runner's argument-count, byte-size and NUL-byte checks. This does not change executable allowlisting or turn the provider into an OS sandbox.
+For wrapper executables, the provider adapter accepts an optional `executable_args` array. These literal arguments are prepended to the provider's own argument vector; they are passed directly to the selected absolute executable with `shell: false`. The CLI exposes this as repeatable `--executable-arg <value>` (maximum 16), and the MCP `orix.rizin_functions` tool accepts `executable_args` with the same 16-item bound. Prefix arguments are subject to the process runner's argument-count, byte-size and NUL-byte checks. This does not change executable allowlisting or the separately configured isolation mode.
 ## 1. Manifest format
 
 Provider manifests use the **orix.provider.v1** contract defined by [provider-manifest.v1.schema.json](../schemas/provider-manifest.v1.schema.json).
@@ -123,7 +123,7 @@ if (!result.ok) {
 }
 ~~~
 
-This runner is a process-control boundary, **not an operating-system sandbox**. It cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. POSIX process groups are signalled on timeout/cancellation; Windows currently signals the direct child and does not guarantee process-tree teardown. Do not run untrusted provider binaries on a sensitive host. Strong isolation requires an OS/container/VM policy supplied and verified separately.
+Without `isolation: 'required'`, this runner is a process-control boundary, **not an operating-system sandbox**: it cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. On Linux, the explicit `isolation: 'required'` mode wraps the selected executable with Bubblewrap namespace and read-only-root filesystem isolation, and fails closed when its rootfs or namespace prerequisites are unavailable. Windows and macOS currently have no enforced backend and therefore reject required isolation. Bubblewrap isolation does not enforce cgroup CPU, memory, or task-count limits. POSIX process groups are still signalled on timeout/cancellation, and Windows process-tree teardown is not guaranteed. Do not treat the default runner as safe for hostile binaries.
 
 ## 5. Rizin import adapter
 
