@@ -368,6 +368,9 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       return inspect_file(target.path, { limits, extract_strings: args.extract_strings });
     }
     case 'orix.rizin_functions': {
+      if (args.isolation === 'required' && args.sandbox_root === undefined) {
+        throw new TypeError('sandbox_root is required when isolation is required');
+      }
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       const sandbox_root = args.sandbox_root === undefined
         ? undefined
