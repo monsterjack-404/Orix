@@ -286,6 +286,7 @@ function validate_arguments(name, value) {
         throw new TypeError(key + ' must be a string within its declared length bounds');
       }
       if (schema.pattern && !new RegExp(schema.pattern).test(item)) throw new TypeError(key + ' does not match its required pattern');
+      if (schema.enum && !schema.enum.includes(item)) throw new TypeError(key + ' must be one of: ' + schema.enum.join(', '));
     }
     if (schema.type === 'array') {
       if (!Array.isArray(item) || item.length > (schema.maxItems ?? Infinity)) {
