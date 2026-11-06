@@ -118,7 +118,6 @@ test('DEX parser resolves class descriptors even when the public type list is tr
 
 test('DEX parser rejects malformed class interface lists before indexing them', () => {
   const fixture = create_dex_class_fixture();
-  fixture.writeUInt32LE(260, 140);
-  fixture.writeUInt32LE(4, 260);
+  fixture.writeUInt32LE(161, 140); // Inside the data section but not 4-byte aligned.
   assert.throws(() => parse_dex(fixture), error => error.code === 'ORIX_DEX_INTERFACE_RANGE');
 });
