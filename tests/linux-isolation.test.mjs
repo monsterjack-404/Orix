@@ -1,7 +1,7 @@
 // JavaScript, tests/linux-isolation.test.mjs, Node.js 20+, Bubblewrap rootfs trust checks.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -92,6 +92,32 @@ if (process.platform === 'linux') {
           env: {},
         }),
         error => error.code === 'ORIX_PROVIDER_SANDBOX_PATH_DENIED',
+      );
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  test('Bubblewrap rejects a final rootfs symlink even when the input ends with a separator', { timeout: 10_000 }, async () => {
+    const base = await mkdtemp(path.join(tmpdir(), 'orix-rootfs-final-symlink-'));
+    const root = path.join(base, 'rootfs');
+    const alias = path.join(base, 'rootfs-alias');
+    try {
+      await mkdir(root);
+      await mkdir(path.join(root, 'proc'));
+      await mkdir(path.join(root, 'dev'));
+      await mkdir(path.join(root, 'tmp'));
+      await symlink(root, alias);
+
+      await assert.rejects(
+        prepare_linux_provider_isolation({
+          executable: path.join(root, 'usr/bin/rizin'),
+          cwd: path.join(root, 'work'),
+          sandbox_root: alias + path.sep,
+          args: [],
+          env: {},
+        }),
+        error => error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_INVALID',
       );
     } finally {
       await rm(base, { recursive: true, force: true });
