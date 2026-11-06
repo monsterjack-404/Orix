@@ -144,6 +144,24 @@ console.log(report.imports);
 
 The adapter report contract is defined in [rizin-imports.v1.schema.json](../schemas/rizin-imports.v1.schema.json). The adapter checks the manifest's supported platform before launch (`linux`, `windows`, or `macos`), uses Rizin's `-N` no-user-settings option and `-q -c iij` command form, and passes only the bounded private snapshot path to the import command. See the [Rizin CLI options](https://book.rizin.re/src/first_steps/commandline_options.html) and [Rizin command-line guide](https://book.rizin.re/src/first_steps/commandline_rizin.html). Rizin remains an optional external installation; ORIX does not bundle it or claim it was run when it is unavailable. The upstream repository contains files under multiple licenses, including LGPL and GPL; the manifest therefore uses SPDX `NOASSERTION` rather than claiming one license covers the whole installation. The automated adapter tests use a deterministic executable fixture and do not substitute for verification against every supported upstream Rizin release.
 
+
+### Opt-in Linux process isolation
+
+The Rizin JavaScript adapter functions \`analyze_rizin_imports\`, \`analyze_rizin_functions\`, and \`probe_rizin\` accept the same optional \`isolation\` and \`sandbox_root\` fields as \`run_static_provider\`. The default remains \`isolation: 'none'\`. On Linux, request the required Bubblewrap namespace/filesystem backend explicitly:
+
+~~~js
+const report = await analyze_rizin_imports({
+  executable: '/opt/rizin/bin/rizin',
+  input_path: '/evidence/sample.elf',
+  isolation: 'required',
+  sandbox_root: '/opt/orix/provider-root',
+});
+~~~
+
+The sandbox root must contain the selected Rizin executable, the configured working directory, and the adapter's private temporary snapshot path (including the host temporary directory used by Node). It must also provide the required \`/proc\`, \`/dev\`, and \`/tmp\` mount points expected by the Bubblewrap backend. The backend fails closed when the required Linux isolation setup is unavailable or any required path is outside the root. Windows and macOS do not currently have an enforced provider isolation backend, so \`isolation: 'required'\` fails closed there.
+
+This option supplies Bubblewrap namespace and filesystem isolation only. It does **not** enable cgroup CPU, memory, or process-count enforcement. The caller remains responsible for constructing and maintaining a safe root filesystem and for validating the deployment environment.
+
 ### Function inventory and bounded disassembly
 
 `analyze_rizin_functions` uses Rizin's `-A` automatic-analysis option and `aflj` JSON output to return a bounded function inventory. Pass `address` to request a bounded instruction window from one exact function-entry address; the adapter confirms that the address is present in the returned function inventory before using Rizin's `pdj` JSON disassembly command. Add `decompile: true` to request optional pseudocode from Rizin's `pdg` command.
