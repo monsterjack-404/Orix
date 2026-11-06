@@ -261,6 +261,27 @@ namespace OrixWindowsSandbox {
       }
     }
 
+    // Remove only the per-profile AppContainer temp tree. Never recurse through
+    // reparse points: a provider or concurrent host actor must not redirect cleanup.
+    static void DeleteTreeNoReparse(string path) {
+      FileAttributes attributes;
+      try { attributes = File.GetAttributes(path); }
+      catch (FileNotFoundException) { return; }
+      catch (DirectoryNotFoundException) { return; }
+      if ((attributes & FileAttributes.ReparsePoint) != 0)
+        throw new InvalidOperationException("Refusing to clean an AppContainer temp reparse point: " + path);
+      if ((attributes & FileAttributes.Directory) != 0) {
+        foreach (string child in Directory.EnumerateFileSystemEntries(path)) DeleteTreeNoReparse(child);
+        if ((attributes & FileAttributes.ReadOnly) != 0)
+          File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
+        Directory.Delete(path, false);
+      } else {
+        if ((attributes & FileAttributes.ReadOnly) != 0)
+          File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
+        File.Delete(path);
+      }
+    }
+
     static string Quote(string value) {
       if (value.Length > 0 && value.IndexOfAny(new char[] { ' ', '\t', '\n', '\v', '"' }) < 0) return value;
       StringBuilder output = new StringBuilder();
@@ -498,6 +519,14 @@ namespace OrixWindowsSandbox {
         SecurityIdentifier identity = new SecurityIdentifier(sid);
         if (Directory.Exists(root)) PurgeTree(root, identity);
         string scratch = Path.Combine(root, "tmp");
+        // AppContainer's Win32 temp redirection is profile-specific. Remove its
+        // files and low-integrity directory after the provider job is empty so
+        // temporary artifacts cannot leak into later runs.
+        string packageScratch = Path.Combine(scratch, "Packages", profileName.ToLowerInvariant());
+        DeleteTreeNoReparse(packageScratch);
+        string packagesRoot = Path.Combine(scratch, "Packages");
+        if (Directory.Exists(packagesRoot) && !Directory.EnumerateFileSystemEntries(packagesRoot).Any())
+          Directory.Delete(packagesRoot, false);
         if (Directory.Exists(scratch)) SetIntegrityLevel(scratch, "M");
         Console.Error.WriteLine("ORIX_CLEANUP:ROOT_ACL_PURGED");
         Log("CLEANUP:ROOT_ACL_PURGED");
