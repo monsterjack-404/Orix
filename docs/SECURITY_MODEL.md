@@ -109,28 +109,46 @@ against privileged host administrators or kernel vulnerabilities.
 ## Windows AppContainer + Job Object
 
 The Windows backend creates a unique AppContainer profile with no network
-capabilities. Before profile creation, the native launcher walks the canonical
-rootfs and its ancestors, rejects reparse points, and requires each owner to be
-the service identity, LocalSystem, local Administrators or TrustedInstaller.
+capabilities. Runtime loads a prebuilt, package-owned .NET Framework 4.8
+AnyCPU launcher from a compressed package asset. It rejects symlink/non-file
+or oversized payloads, checks file identity before and after the read,
+validates the source-pinned compressed SHA-256, performs bounded gzip
+decompression, and validates the exact executable SHA-256. It stages those
+verified bytes in a fresh per-invocation temporary directory, makes the
+launcher read/execute-only, and hashes the staged executable again before
+launch. Missing, modified or unverifiable helper payloads fail closed.
+Runtime does not locate `csc.exe` or compile native helper source; the
+managed .NET Framework runtime is still required on Windows, but a compiler
+or SDK is not required for provider execution. The source-pinned digest is
+an integrity check, not a publisher signature, and does not protect against
+a compromised repository or privileged local administrator. CI builds the
+launcher on two independent Windows runner images and requires both outputs
+to match the exact source-pinned payload. The npm dry-run package check
+confirms the integrity module and compressed helper are shipped.
+
+Before profile creation, the native launcher walks the canonical rootfs and
+its ancestors, rejects reparse points, and requires each owner to be the
+service identity, LocalSystem, local Administrators or TrustedInstaller.
 The rootfs itself must have no write-capable ACL grant to another principal.
 Ancestors must not grant untrusted principals deletion/replacement, ownership
-or ACL-control rights; ordinary sibling-creation rights on an ancestor are not
-treated as permission to modify an existing rootfs child. Any inherited
+or ACL-control rights; ordinary sibling-creation rights on an ancestor are
+not treated as permission to modify an existing rootfs child. Any inherited
 write-capable ACE effective on the rootfs is rejected at the rootfs itself.
 This is a conservative ACL preflight, not a defense against privileged host
-administrators or a subsequent trusted-host ACL/mount change. It grants the package SID
-read/execute access to the explicit provider rootfs and confines writable
-scratch to `rootfs/tmp`, including the package-specific
-`Packages/<profile>/AC/Temp` location used by Windows temporary-file APIs. The native launcher creates the provider suspended,
-assigns it to a Job Object before resume, verifies the process token is an
-AppContainer token, and configures a 50% CPU hard cap, 512 MiB aggregate job
-memory limit, 64 active processes and kill-on-job-close. It terminates and
-waits for remaining descendants before cleanup. Windows does not expose the
-same per-process RLIMIT file-size/open-descriptor controls used by Linux and
-macOS; ORIX's parent runner still limits wall-clock time and captured output.
-The Windows hostile-process integration test checks host-file denial,
-read-only rootfs, confined writable temporary storage and loopback network
-denial, and the launcher confirms Job Object configuration.
+administrators or a subsequent trusted-host ACL/mount change. It grants the
+package SID read/execute access to the explicit provider rootfs and confines
+writable scratch to `rootfs/tmp`, including the package-specific
+`Packages/<profile>/AC/Temp` location used by Windows temporary-file APIs.
+The native launcher creates the provider suspended, assigns it to a Job Object
+before resume, verifies the process token is an AppContainer token, and
+configures a 50% CPU hard cap, 512 MiB aggregate job memory limit, 64 active
+processes and kill-on-job-close. It terminates and waits for remaining
+descendants before cleanup. Windows does not expose the same per-process
+RLIMIT file-size/open-descriptor controls used by Linux and macOS; ORIX's
+parent runner still limits wall-clock time and captured output. The Windows
+hostile-process integration test checks host-file denial, read-only rootfs,
+confined writable temporary storage and loopback network denial, and the
+launcher confirms Job Object configuration.
 
 ## macOS Seatbelt (experimental)
 

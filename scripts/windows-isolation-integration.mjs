@@ -1,5 +1,6 @@
 // Windows AppContainer + Job Object hostile-process integration gate.
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { access, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
 import { execFileSync, spawn } from 'node:child_process';
 import net from 'node:net';
@@ -7,6 +8,7 @@ import os_host from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
 import { prepare_windows_provider_isolation } from '../src/providers/windows-isolation.mjs';
+import { decodeWindowsProviderLauncher, WINDOWS_PROVIDER_LAUNCHER_SHA256 } from '../src/providers/windows-launcher-integrity.mjs';
 
 function manifest() {
   return {
@@ -80,8 +82,14 @@ async function main() {
     'Provider environment overrides must not replace reserved Windows runtime identity keys');
   assert.match(isolationSource, /const trustedSystemRoot = \[process\.env\.SystemRoot, process\.env\.WINDIR\]\.find\(value => typeof value === 'string' && value\.trim\(\)\.length > 0\);[\s\S]*?providerEnvironment\.SystemRoot = trustedSystemRoot;[\s\S]*?providerEnvironment\.WINDIR = trustedSystemRoot;/,
     'Windows runtime identity must be restored from the first non-empty trusted host value after provider overrides');
-  assert.match(isolationSource, /const systemRoot = \[environment\.SystemRoot, environment\.WINDIR\]\.find\(value => typeof value === 'string' && value\.trim\(\)\.length > 0\);/,
-    'Compiler lookup must fall back to WINDIR when SystemRoot is empty');
+  assert.doesNotMatch(isolationSource, /resolve_csc|csc\.exe|windows-provider-launcher\.cs/,
+    'Windows runtime must not discover a compiler or compile native helper source');
+  assert.match(isolationSource, /decodeWindowsProviderLauncher/,
+    'Windows runtime must load the prebuilt source-pinned launcher');
+  const packagedPayload = await readFile(new URL('../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
+  const packagedLauncher = decodeWindowsProviderLauncher(packagedPayload);
+  assert.equal(createHash('sha256').update(packagedLauncher).digest('hex'), WINDOWS_PROVIDER_LAUNCHER_SHA256,
+    'Packaged Windows launcher does not match its source-pinned digest');
   assert.match(isolationSource, /child\.once\('close'/,
     'Native helper timeout handling must wait until the helper process and stdio handles are closed');
   assert.doesNotMatch(isolationSource, /child\.once\('exit'/,

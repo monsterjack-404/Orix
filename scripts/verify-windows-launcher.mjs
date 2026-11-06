@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { WINDOWS_PROVIDER_LAUNCHER_SHA256, decodeWindowsProviderLauncher } from '../src/providers/windows-launcher-integrity.mjs';
 
 function fail(message) {
   throw new Error('Windows launcher artifact validation failed: ' + message);
@@ -86,15 +87,25 @@ export function inspectWindowsLauncher(bytes) {
   return { machine, sections: sectionCount, clrRva, clrSize, flags };
 }
 
+export function verifyWindowsLauncher(bytes, expectedSha256 = WINDOWS_PROVIDER_LAUNCHER_SHA256) {
+  const metadata = inspectWindowsLauncher(bytes);
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  if (sha256 !== expectedSha256) fail('SHA-256 does not match the source-pinned Windows launcher digest');
+  return { sha256: sha256.toUpperCase(), ...metadata };
+}
+
 async function main() {
   const input = process.argv[2];
   if (!input) fail('usage: node scripts/verify-windows-launcher.mjs <launcher.exe>');
   const bytes = await readFile(path.resolve(input));
-  const metadata = inspectWindowsLauncher(bytes);
-  const sha256 = createHash('sha256').update(bytes).digest('hex').toUpperCase();
-  process.stdout.write(JSON.stringify({ file: path.basename(input), size: bytes.length, sha256, ...metadata }, null, 2) + '\n');
+  const payload = await readFile(new URL('../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
+  const packaged = decodeWindowsProviderLauncher(payload);
+  const packagedHash = createHash('sha256').update(packaged).digest('hex');
+  if (packagedHash !== WINDOWS_PROVIDER_LAUNCHER_SHA256) fail('packaged launcher payload does not match the source-pinned digest');
+  const metadata = verifyWindowsLauncher(bytes);
+  if (metadata.sha256.toLowerCase() !== packagedHash) fail('fresh Windows build does not match the packaged runtime launcher');
+  process.stdout.write(JSON.stringify({ file: path.basename(input), size: bytes.length, ...metadata }, null, 2) + '\n');
 }
-
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch(error => { process.stderr.write(error.message + '\n'); process.exitCode = 1; });
 }

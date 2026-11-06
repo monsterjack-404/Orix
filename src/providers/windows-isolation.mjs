@@ -1,12 +1,12 @@
 // Windows provider isolation through AppContainer and Job Objects.
-import { constants as FS_CONSTANTS } from 'node:fs';
-import { access, lstat, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, open, readFile, readdir, realpath, rm, writeFile, chmod } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OrixError } from '../core/errors.mjs';
+import { decodeWindowsProviderLauncher, WINDOWS_PROVIDER_LAUNCHER_SHA256, WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256, WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES } from './windows-launcher-integrity.mjs';
 
 function isolation_error(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
@@ -48,24 +48,53 @@ async function validate_tree(root) {
   }
   await walk(root, 0);
 }
-async function resolve_csc(environment) {
-  // environment must be assembled only from the trusted host process, never
-  // from provider-supplied environment overrides.
-  const systemRoot = [environment.SystemRoot, environment.WINDIR].find(value => typeof value === 'string' && value.trim().length > 0);
-  if (!systemRoot) isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'SystemRoot is required to locate the trusted .NET Framework compiler');
-  for (const candidate of [
-    path.join(systemRoot, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe'),
-    path.join(systemRoot, 'Microsoft.NET', 'Framework', 'v4.0.30319', 'csc.exe'),
-  ]) {
-    try {
-      const info = await lstat(candidate);
-      if (info.isSymbolicLink() || !info.isFile()) continue;
-      const canonical = await realpath(candidate);
-      await access(canonical, FS_CONSTANTS.X_OK);
-      return canonical;
-    } catch { /* fixed trusted compiler paths only */ }
+function same_file_identity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino && left.size === right.size &&
+    left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
+}
+async function load_windows_launcher_payload() {
+  const payloadPath = fileURLToPath(new URL('../../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
+  let before;
+  try { before = await lstat(payloadPath); }
+  catch (error) {
+    isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The source-pinned Windows AppContainer launcher payload is unavailable', { reason: error.code ?? error.name });
   }
-  isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'A trusted .NET Framework csc.exe compiler is required for Windows AppContainer isolation');
+  if (before.isSymbolicLink() || !before.isFile() || before.size <= 0 ||
+      before.size > WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES) {
+    isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The packaged Windows AppContainer launcher payload is not a bounded regular file');
+  }
+  let handle;
+  try {
+    handle = await open(payloadPath, 'r');
+    const opened = await handle.stat();
+    if (!opened.isFile() || !same_file_identity(before, opened)) {
+      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The Windows launcher payload changed during open');
+    }
+    const compressed = await handle.readFile();
+    const afterHandle = await handle.stat();
+    const afterPath = await lstat(payloadPath);
+    if (afterPath.isSymbolicLink() || !afterPath.isFile() ||
+        !same_file_identity(opened, afterHandle) || !same_file_identity(afterHandle, afterPath) ||
+        compressed.length !== afterPath.size) {
+      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The Windows launcher payload changed while being read');
+    }
+    try {
+      const launcherBytes = decodeWindowsProviderLauncher(compressed);
+      if (createHash('sha256').update(compressed).digest('hex') !== WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256 ||
+          createHash('sha256').update(launcherBytes).digest('hex') !== WINDOWS_PROVIDER_LAUNCHER_SHA256) {
+        isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The packaged Windows launcher failed its source-pinned integrity check');
+      }
+      return launcherBytes;
+    } catch (error) {
+      if (error instanceof OrixError) throw error;
+      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The packaged Windows launcher failed its source-pinned integrity check', { reason: error.message });
+    }
+  } catch (error) {
+    if (error instanceof OrixError) throw error;
+    isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The Windows launcher payload could not be safely read', { reason: error.code ?? error.name });
+  } finally {
+    await handle?.close().catch(() => {});
+  }
 }
 async function run_native_helper(executable, args, cwd, environment, logPath, timeoutMs = 30_000) {
   return new Promise((resolve, reject) => {
@@ -119,12 +148,11 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
   for (const key of ['SystemRoot', 'WINDIR', 'PATH', 'TEMP', 'TMP']) {
     if (typeof process.env[key] === 'string') hostEnvironment[key] = process.env[key];
   }
-  const compiler = await resolve_csc(hostEnvironment);
+  const launcherBytes = await load_windows_launcher_payload();
   const temporary = await mkdtemp(path.join(tmpdir(), 'orix-provider-win-'));
   const configPath = path.join(temporary, 'provider.json');
   const logPath = path.join(temporary, 'provider.log');
   const launcher = path.join(temporary, 'orix-windows-provider-launcher.exe');
-  const source = fileURLToPath(new URL('../../native/windows-provider-launcher.cs', import.meta.url));
   const profileName = 'ORIX-' + randomUUID().replaceAll('-', '');
   const providerEnvironment = Object.create(null);
   for (const key of ['SystemRoot', 'WINDIR']) {
@@ -156,14 +184,22 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
     await writeFile(configPath, JSON.stringify({
       executable: provider, args, cwd: work, sandboxRoot: root, profileName, logPath, environment: providerEnvironment,
     }), { encoding: 'utf8', flag: 'wx', mode: 0o600 });
-    await run_native_helper(compiler, [
-      '/nologo', '/target:exe', '/out:' + launcher,
-      '/r:System.Core.dll', '/r:System.Security.dll', '/r:System.Web.Extensions.dll', source,
-    ], temporary, hostEnvironment, null, 30_000);
+    await writeFile(launcher, launcherBytes, { flag: 'wx', mode: 0o500 });
+    await chmod(launcher, 0o500);
+    const stagedInfo = await lstat(launcher);
+    if (stagedInfo.isSymbolicLink() || !stagedInfo.isFile() || stagedInfo.size !== launcherBytes.length) {
+      throw new Error('Staged Windows launcher is not a stable regular file');
+    }
+    const stagedBytes = await readFile(launcher);
+    if (!stagedBytes.equals(launcherBytes) ||
+        createHash('sha256').update(stagedBytes).digest('hex') !== WINDOWS_PROVIDER_LAUNCHER_SHA256) {
+      throw new Error('Staged Windows launcher failed its source-pinned integrity check');
+    }
   } catch (error) {
     await rm(temporary, { recursive: true, force: true }).catch(() => {});
-    throw new OrixError('ORIX_PROVIDER_WINDOWS_COMPILER_FAILED', 'Could not build the native Windows AppContainer launcher', {
-      details: { reason: error.code ?? error.name, diagnostic: error.details ?? null }, cause: error, recoverable: true,
+    if (error instanceof OrixError) throw error;
+    throw new OrixError('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'Could not stage the source-pinned Windows AppContainer launcher', {
+      details: { reason: error.code ?? error.name }, cause: error, recoverable: true,
     });
   }
   let cleanupPromise = null;

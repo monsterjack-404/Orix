@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inspectWindowsLauncher } from '../scripts/verify-windows-launcher.mjs';
+import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { inspectWindowsLauncher, verifyWindowsLauncher } from '../scripts/verify-windows-launcher.mjs';
+import { decodeWindowsProviderLauncher, WINDOWS_PROVIDER_LAUNCHER_SHA256 } from '../src/providers/windows-launcher-integrity.mjs';
 
 function makeAnyCpuPe() {
   const bytes = Buffer.alloc(0x400);
@@ -57,4 +60,26 @@ test('Windows launcher artifact verifier rejects a CLR directory extending past 
   const truncatedDirectory = makeAnyCpuPe();
   truncatedDirectory.writeUInt32LE(0x201, 0x84 + 20 + 96 + (14 * 8) + 4);
   assert.throws(() => inspectWindowsLauncher(truncatedDirectory), /CLR directory extends beyond section raw data/);
+});
+
+test('source-pinned Windows launcher payload decodes to the exact reviewed AnyCPU executable', async () => {
+  const payload = await readFile(new URL('../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
+  const bytes = decodeWindowsProviderLauncher(payload);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), WINDOWS_PROVIDER_LAUNCHER_SHA256);
+  assert.equal(bytes.toString('ascii', 0, 2), 'MZ');
+  assert.equal(inspectWindowsLauncher(bytes).machine, 0x014c);
+});
+
+test('source-pinned Windows launcher payload rejects modified compressed bytes', async () => {
+  const payload = await readFile(new URL('../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
+  const changed = Buffer.from(payload);
+  changed[changed.length - 1] ^= 0x01;
+  assert.throws(() => decodeWindowsProviderLauncher(changed), /SHA-256 mismatch/);
+});
+
+test('Windows launcher build verifier requires the reviewed binary digest', () => {
+  const synthetic = makeAnyCpuPe();
+  const digest = createHash('sha256').update(synthetic).digest('hex');
+  assert.equal(verifyWindowsLauncher(synthetic, digest).sha256.toLowerCase(), digest);
+  assert.throws(() => verifyWindowsLauncher(synthetic), /source-pinned Windows launcher digest/);
 });

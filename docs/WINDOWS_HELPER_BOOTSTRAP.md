@@ -2,68 +2,45 @@
 
 ## Decision
 
-Do not treat the current runtime-compiled Windows AppContainer launcher as fully hardened. The current implementation locates .NET Framework `csc.exe` below `SystemRoot` / `WINDIR` inherited by the Node host. Those values are normally populated by Windows, but they are still process-environment inputs; checking that the compiler is a regular file or that its path is absolute does not establish that the compiler is trusted.
+The runtime-compiled Windows AppContainer launcher previously located .NET Framework `csc.exe` using host environment values. Even with path checks, runtime compiler discovery adds an unnecessary dependency on host toolchain provenance.
 
-The safe target architecture is a prebuilt, package-owned native launcher. Runtime provider setup must not discover or execute a compiler.
+The runtime now consumes a prebuilt, package-owned .NET Framework 4.8 AnyCPU launcher. The exact executable is source-pinned by SHA-256 in `src/providers/windows-launcher-integrity.mjs`; its compressed package payload has a separate pinned SHA-256.
 
-## Required implementation
+## Runtime trust
 
-1. Build `native/windows-provider-launcher.cs` in a dedicated Windows build job using a pinned, known-good .NET Framework compiler/toolchain supplied by the controlled build runner.
-2. Produce the launcher as a versioned package artifact at a fixed package-relative path (for example, `native/bin/win32-x64/orix-windows-provider-launcher.exe`). Do not fetch it dynamically at runtime.
-3. Record the expected SHA-256 digest in reviewed source metadata. The digest must be changed in the same reviewed commit as the binary. A checksum file shipped beside the executable is insufficient because an attacker able to replace both files could replace the trust anchor too.
-4. At runtime, resolve the artifact relative to the installed module, reject symlink/reparse-point path components, require a regular file, hash the bytes with Node's built-in `node:crypto`, and compare against the source-pinned digest before execution.
-5. Remove runtime `csc.exe` discovery and compilation completely. A missing, mismatched, unsupported-architecture, or unverifiable helper must fail closed with `ORIX_PROVIDER_ISOLATION_UNAVAILABLE`; never fall back to a compiler found through `PATH`, `SystemRoot`, `WINDIR`, registry values, or the current directory.
-6. Make the Windows hostile-process integration job execute the packaged helper, and add negative tests for a modified binary, missing binary, symlink/reparse path, and architecture mismatch.
-7. Ensure the package manifest includes the helper for supported Windows architectures and excludes it from unrelated platform packages where practical. Verify the packed package contents in CI, not only the repository checkout.
+The reviewed package asset is `native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz`. Runtime:
+1. Uses `lstat` to reject symlinks, non-regular files and oversized input.
+2. Opens the file through a handle and checks file identity before and after reading so path replacement during the read fails closed.
+3. Verifies the compressed SHA-256 before bounded gzip decompression.
+4. Verifies the exact executable SHA-256 after decompression.
+5. Stages the verified bytes into a fresh per-invocation temporary directory, makes the launcher read/execute-only, then reads and hashes the staged executable again before spawn.
+6. Fails closed with `ORIX_PROVIDER_ISOLATION_UNAVAILABLE` if any step is missing, malformed, oversized, replaced or unverified.
 
-## Release and validation gates
+Runtime no longer discovers a compiler, invokes `csc.exe`, or compiles C# source. A Windows host still needs .NET Framework 4.8 to execute the managed launcher; it does not need the compiler or SDK at provider-launch time.
 
-- Build output must be reproducible for the pinned toolchain, or CI must compare the generated artifact to the reviewed checked-in artifact and fail on drift.
-- The exact packaged executable's SHA-256 must match the source-pinned digest.
-- Windows CI must exercise the exact packaged executable through AppContainer token, Job Object quota, filesystem, private-temp, network-denial, and cleanup tests.
-- A clean install test must prove the helper is present without a local .NET SDK or compiler.
-- The runtime must never compile native helper source.
+## Reviewed build identity
 
-## Current status
+The source-pinned executable SHA-256 is:
 
-This is an architectural blocker, not a completed fix. The repository currently contains the C# source but no verified, package-owned launcher binary or source-pinned digest. The current GitHub file-edit workflow cannot produce and verify a Windows executable by itself. Until the build/package artifact and exact-binary tests exist, keep the Windows isolation PR draft and do not describe the Windows backend as fully hardened or production-ready.
+```text
+7e914c03c24dbca54657357552a62b76830892d01e2a577a8cd528f9d597ec29
+```
 
-## Explicit non-goals
+The source-pinned gzip SHA-256 is:
 
-- Do not substitute a different environment variable, PATH lookup, registry lookup, or PowerShell command for the current compiler lookup; these are not equivalent to a source-pinned executable trust anchor.
-- Do not claim that a hash stored only beside the binary authenticates the binary.
-- Do not weaken Windows integration tests or silently skip them when the helper is absent.
+```text
+65d3d9a83deb1287ed149238823e170e55407da8098d6f22aa1ec4247d7c4a40
+```
 
-## Build-pipeline progress
+Both independent Windows CI runners built the launcher from the exact PR head. Their fresh executables were byte-for-byte identical and passed the PE/CLR metadata and IL-only AnyCPU checks. The exact matching binary was then packaged and its compressed and uncompressed hashes checked. This artifact's GitHub Actions provenance is a CI build result, not a publisher signature.
 
-The Windows CI job now compiles this launcher through the checked-in .NET Framework 4.8 project definition and retains the resulting executable as a short-lived Actions artifact for inspection. This is a compile-validation milestone only: the artifact is built from the PR checkout, is not included in the npm package, is not authenticated by a source-pinned digest, and is not used by runtime provider setup. The existing runtime compiler path and its trust limitation therefore remain unchanged.
+CI also checks that `npm pack --dry-run --json` contains both the integrity module and the compressed launcher. The Windows hostile-process smoke test runs through the actual runtime path using the packaged executable, rather than treating a compiler-success step as proof of isolation.
 
-The Windows CI job pins the .NET SDK to `10.0.100` through `global.json` and `actions/setup-dotnet`, and pins the .NET Framework reference-assemblies package to `1.0.3`. It performs two clean, non-incremental builds in the same runner job and requires the resulting executable SHA-256 values to match. This checks same-runner repeatability for the pinned SDK/package inputs; it does not establish independent-runner reproducibility, protect against a compromised runner/toolchain, or authenticate the binary for runtime use.
+## Security limits
 
-The next acceptance steps are to review the produced binary, establish a reproducible/pinned toolchain and reviewed digest, admit the exact executable into the package, and switch runtime + hostile-process tests to that exact packaged binary. Do not treat the temporary CI artifact or its printed hash as a runtime trust anchor.
+- The checksum is a source-pinned integrity control, not a cryptographic publisher signature. A malicious change that alters both the payload and trusted source digest in the same reviewed branch could replace the trust anchor.
+- It does not defend against a compromised repository, compromised build/release system, privileged local administrator, kernel vulnerability or malicious Windows security service.
+- Hosted Windows runner images and package feeds are not fully hermetic. Double builds and cross-runner reproducibility detect many sources of drift but do not prove reproducible builds in every environment.
+- The launcher is managed .NET Framework 4.8. Hosts without that runtime cannot use this backend; ORIX fails closed rather than compiling at runtime.
+- Keep the PR draft until current exact-head Node, Linux, Windows and macOS checks pass and the native launcher lifecycle remains reviewed.
 
-## Artifact format validation
-
-The Windows CI job now inspects both clean-build outputs as PE/.NET artifacts before upload. The verifier checks the DOS/PE signatures, PE32 I386 managed-image shape, CLR header and metadata mapping, and IL-only AnyCPU flags. The project explicitly disables Prefer32Bit so the launcher is not marked as requiring or preferring a 32-bit process. The verifier also prints the SHA-256 digest and rejects malformed/truncated files.
-
-This validates the executable's managed/architecture-neutral format; it does not establish publisher identity, protect the CI runner, pin every transitive build input, or make a workflow artifact a runtime trust anchor. The exact binary still needs independent review, controlled release admission, package inclusion, source-pinned digest verification, and runtime adoption tests.
-
-## Independent Windows runner reproducibility gate
-
-The Windows launcher CI matrix now builds on both `windows-latest` and `windows-2022`. Each runner uses the pinned .NET SDK from `global.json`, performs its own clean double-build comparison, validates the PE/CLR metadata, and uploads a separately named executable artifact. A follow-up Ubuntu job downloads both artifacts and requires their SHA-256 digests to match.
-
-This is stronger evidence than two builds on one runner, but it is still not a release trust anchor: hosted runner images and external package feeds are not fully immutable, and CI artifacts are not shipped in the npm package. A reviewed release artifact and source-pinned digest, package inclusion, runtime digest/path validation, and exact packaged-binary integration tests remain required.
-
-## Cleanup reparse-point fail-closed gate
-
-The cleanup walk now inspects each directory entry with File.GetAttributes before deciding whether it exists as a normal file or directory. It rejects a reparse point with ORIX_WINDOWS_CLEANUP_REPARSE_POINT; it does not silently skip the link and continue to a later path-based delete beneath that link. This matters for the redirected tmp/Packages/<profile> tree: a junction at an ancestor must stop cleanup rather than redirect removal into an external directory.
-
-On this error, cleanup intentionally stops before deleting the profile-specific redirected temp tree or removing the AppContainer profile. Some earlier non-reparse entries may already have had their profile ACLs purged, but no path traversal through the reparse point is attempted. The leftover state is safer to investigate than to follow an attacker-controlled target.
-
-The Windows integration gate asserts the cleanup walker checks entry attributes, avoids File.Exists / Directory.Exists path-following prechecks, and throws on reparse points. It also creates a real Windows directory junction at the AppContainer tmp/Packages ancestor while a controlled provider process is alive, then requires native cleanup to fail with ORIX_WINDOWS_CLEANUP_REPARSE_POINT while preserving an external sentinel file. After removing the junction, the test retries cleanup and verifies that the external target remains accessible. This is an end-to-end CI test definition; it is not considered verified until the exact PR head's Windows job completes successfully.
-
-## AppContainer SID lookup errors fail closed
-
-Cleanup no longer interprets every nonzero HRESULT from DeriveAppContainerSidFromAppContainerName as proof that a profile is absent. It now raises the HRESULT and reports cleanup failure. The Windows API contract documents S_OK and E_INVALIDARG for SID derivation; it does not define arbitrary failures as an absent-profile signal. DeleteAppContainerProfile is documented as idempotent when the named profile does not exist, so a failed SID lookup is not silently converted into success.
-
-The Windows integration gate checks that the cleanup path propagates SID derivation failures and runs the compiled helper with an invalid overlength profile name, requiring nonzero exit code 125 and a native error diagnostic. It then runs normal cleanup for the valid profile to ensure the negative probe does not prevent subsequent recovery.

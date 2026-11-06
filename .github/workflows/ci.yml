@@ -42,6 +42,9 @@ jobs:
       - name: Generate coverage summary
         if: matrix.node-version == 20
         run: npm run test:coverage
+      - name: Verify Windows helper payload is included in the npm package
+        if: matrix.node-version == 20
+        run: node scripts/verify-windows-launcher-package.mjs
 
   linux-provider-isolation:
     name: Linux Bubblewrap hostile-process isolation
