@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520" role="img" aria-labelledby="title desc">
+<title id="title">ORIX — Understand. Analyze. Engineer.</title>
+<desc id="desc">A dark technical identity for the ORIX local-first engineering intelligence workbench, with a geometric signal mark, connected evidence nodes and format layers.</desc>
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#07111f"/><stop offset=".55" stop-color="#0b1425"/><stop offset="1" stop-color="#10152a"/></linearGradient>
+ <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#69e0ef"/><stop offset=".48" stop-color="#5b9dff"/><stop offset="1" stop-color="#a78bfa"/></linearGradient>
+ <linearGradient id="line" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#67dce9" stop-opacity="0"/><stop offset=".45" stop-color="#67dce9" stop-opacity=".85"/><stop offset="1" stop-color="#a78bfa" stop-opacity=".08"/></linearGradient>
+ <radialGradient id="glow"><stop offset="0" stop-color="#4ccde7" stop-opacity=".22"/><stop offset="1" stop-color="#4ccde7" stop-opacity="0"/></radialGradient>
+ <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M36 0H0V36" fill="none" stroke="#8fb9d8" stroke-opacity=".07"/><circle cx="0" cy="0" r="1.4" fill="#83c9df" fill-opacity=".22"/></pattern>
+</defs>
+<rect width="1600" height="520" rx="28" fill="url(#bg)"/><rect width="1600" height="520" rx="28" fill="url(#grid)"/>
+<ellipse cx="270" cy="250" rx="330" ry="270" fill="url(#glow)"/><ellipse cx="1370" cy="270" rx="330" ry="270" fill="url(#glow)"/>
+<path d="M0 420H1600" stroke="url(#line)" stroke-width="1.5"/><path d="M0 445C270 405 410 475 670 430S1120 395 1600 445M0 462C270 422 410 492 670 447S1120 412 1600 462" fill="none" stroke="#68d9e9" stroke-opacity=".12"/>
+<g transform="translate(182 244)">
+ <circle r="130" fill="none" stroke="#6ad9e9" stroke-opacity=".12" stroke-width="1.5"/><circle r="108" fill="none" stroke="#79b7ff" stroke-opacity=".32" stroke-width="1.5" stroke-dasharray="5 10"/>
+ <circle r="83" fill="#101e32" fill-opacity=".88" stroke="url(#accent)" stroke-width="2.5"/><path d="M0 -62L54 -31L54 31L0 62L-54 31L-54 -31Z" fill="none" stroke="url(#accent)" stroke-width="3" stroke-linejoin="round"/>
+ <path d="M-31 22L30 -40L14 -5L43 4L-18 44L-2 10Z" fill="url(#accent)" opacity=".95"/><circle r="14" fill="#0b1526" stroke="#8de7ef" stroke-width="2"/><circle r="4" fill="#d9fcff"/>
+ <path d="M-153 0H-114M114 0H153M0 -153V-114M0 114V153" stroke="#77d9ea" stroke-opacity=".3"/><circle cx="94" cy="-72" r="4" fill="#9a8bff"/><circle cx="-94" cy="72" r="4" fill="#67dce9"/>
+</g>
+<g transform="translate(390 115)">
+ <text x="0" y="0" fill="#eaf4ff" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="88" font-weight="760" letter-spacing="11">ORIX</text>
+ <rect x="3" y="26" width="430" height="2" rx="1" fill="url(#accent)"/>
+ <text x="2" y="70" fill="#a9c2dc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="600" letter-spacing="4.6">OPEN RESEARCH &amp; INTELLIGENCE EXPLORER</text>
+ <text x="2" y="142" fill="#f1f6ff" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="33" font-weight="650">Understand. Analyze. Engineer.</text>
+ <text x="2" y="184" fill="#9fb3ca" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19">Local-first engineering intelligence, grounded in evidence.</text>
+ <g transform="translate(2 231)">
+  <rect width="132" height="39" rx="19.5" fill="#12273a" stroke="#4cc8df" stroke-opacity=".46"/><text x="66" y="25" text-anchor="middle" fill="#c6f6fb" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" font-weight="650" letter-spacing="1.2">LOCAL-FIRST</text>
+  <rect x="145" width="132" height="39" rx="19.5" fill="#14233a" stroke="#649af4" stroke-opacity=".46"/><text x="211" y="25" text-anchor="middle" fill="#d8e7ff" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" font-weight="650" letter-spacing="1.2">EVIDENCE-LED</text>
+  <rect x="290" width="125" height="39" rx="19.5" fill="#1b203a" stroke="#a38cf7" stroke-opacity=".46"/><text x="352.5" y="25" text-anchor="middle" fill="#e4dcff" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" font-weight="650" letter-spacing="1.2">OPEN SOURCE</text>
+ </g>
+</g>
+<g transform="translate(1110 110)">
+ <path d="M0 70L115 0L230 70L230 208L115 278L0 208Z" fill="#12243a" fill-opacity=".46" stroke="#73c9ed" stroke-opacity=".42" stroke-width="1.5"/>
+ <path d="M27 82L115 28L203 82V194L115 248L27 194Z" fill="none" stroke="url(#accent)" stroke-opacity=".62" stroke-width="1.5"/>
+ <g stroke="#7addec" stroke-opacity=".5" fill="none"><path d="M115 28V-18M203 82H258M115 248V294M27 194H-28"/><path d="M67 55L115 83L163 55M67 221L115 193L163 221M27 138H78M152 138H203"/></g>
+ <g fill="#b8f3fb"><circle cx="115" cy="28" r="4"/><circle cx="203" cy="82" r="4"/><circle cx="115" cy="248" r="4"/><circle cx="27" cy="194" r="4"/><circle cx="78" cy="138" r="4"/><circle cx="152" cy="138" r="4"/></g>
+ <g transform="translate(61 95)"><rect width="108" height="86" rx="12" fill="#0d1b2e" stroke="#5bb9e5" stroke-opacity=".65"/><path d="M22 24H86M22 39H73M22 54H80" stroke="#81dce9" stroke-width="2.5" stroke-linecap="round" opacity=".8"/><circle cx="22" cy="24" r="3" fill="#b5f3f7"/><circle cx="22" cy="39" r="3" fill="#83aaff"/><circle cx="22" cy="54" r="3" fill="#ab94ff"/></g>
+ <text x="115" y="333" text-anchor="middle" fill="#9db7d2" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" letter-spacing="2.1">ARTIFACT → EVIDENCE</text>
+</g>
+<g transform="translate(1170 460)" fill="#7893b2" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" letter-spacing="2"><text x="0" y="0">CLI</text><circle cx="34" cy="-4" r="2" fill="#63d5e5"/><text x="48" y="0">LIBRARY</text><circle cx="112" cy="-4" r="2" fill="#63d5e5"/><text x="126" y="0">MCP</text><circle cx="162" cy="-4" r="2" fill="#63d5e5"/><text x="176" y="0">LOCAL VIEWER</text></g>
+<rect x=".75" y=".75" width="1598.5" height="518.5" rx="27.25" fill="none" stroke="#8eb9d7" stroke-opacity=".22" stroke-width="1.5"/>
+</svg>
