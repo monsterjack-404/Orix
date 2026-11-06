@@ -236,7 +236,7 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
     assert_cgroup2_filesystem(child_fd);
 
     for (const [name, value] of Object.entries(LINUX_PROVIDER_CGROUP_LIMITS)) write_control(child_fd, name, value);
-    for (const [name, expected] of Object.entries(LIMITS)) {
+    for (const [name, expected] of Object.entries(LINUX_PROVIDER_CGROUP_LIMITS)) {
       const actual = read_control(child_fd, name);
       if (actual !== expected) {
         cgroup_error('ORIX_CGROUP_LIMIT_MISMATCH', 'Kernel did not retain the requested provider cgroup limit: ' + name, {
