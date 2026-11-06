@@ -571,6 +571,26 @@ test('MCP confines artifact access to configured roots and rejects symlinks', as
   }
 });
 
+test('MCP refuses to append evidence through a hard-linked output alias', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-output-root-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-output-outside-'));
+  try {
+    const external = path.join(outside, 'external-ledger.jsonl');
+    const alias = path.join(root, 'ledger.jsonl');
+    const { link, readFile } = await import('node:fs/promises');
+    await writeFile(external, 'external data must remain unchanged');
+    await link(external, alias);
+    await assert.rejects(
+      call_orix_tool('orix.ledger.append', { path: alias, type: 'analysis.completed', payload: {} }, { roots: [root] }),
+      error => error.code === 'ORIX_MCP_HARDLINK_REJECTED',
+    );
+    assert.equal(await readFile(external, 'utf8'), 'external data must remain unchanged');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
 test('MCP rejects hard-linked files to prevent workspace aliases to external file content', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-root-'));
   const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-outside-'));
