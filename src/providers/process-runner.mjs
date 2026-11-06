@@ -486,6 +486,7 @@ export async function run_static_provider(options) {
       }
 
       if (!process_group_exists(child.pid)) {
+        process_group_cleanup_verified = true;
         process_group_cleanup_complete = true;
         finish_close();
         return;
