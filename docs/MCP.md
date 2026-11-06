@@ -6,7 +6,7 @@ ORIX includes a dependency-free Model Context Protocol server using the standard
 
 
 
-The `orix.rizin_functions` tool accepts an optional `executable_args` array (up to 16 literal strings) for explicitly selected wrapper executables. Values are prepended to Rizin's argv without shell evaluation and remain subject to the bounded provider process runner.
+The `orix.rizin_functions` and `orix.rizin_imports` tools accept an optional `executable_args` array (up to 16 literal strings) for explicitly selected wrapper executables. Values are prepended to Rizin's argv without shell evaluation and remain subject to the bounded provider process runner.
 ## Start
 
 From the repository root:
@@ -22,7 +22,7 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | Tool | Input | Result |
 |---|---|---|
 | `orix.inspect_file` | `path`, optional read/file MiB and string limits | Versioned artifact report with complete-file SHA-256 |
-| `orix.rizin_functions` | Workspace-confined `path`, explicit `executable`, optional function/address/instruction/decompile/time/output limits | Rizin function inventory, address-scoped assembly disassembly and optional rz-ghidra pseudocode with SHA-256 provenance |
+| `orix.rizin_functions` | Workspace-confined `path`, explicit `executable`, optional function/address/instruction/decompile/time/output limits, isolation mode and workspace-confined `cwd` | Rizin function inventory, address-scoped assembly disassembly and optional rz-ghidra pseudocode with SHA-256 provenance |
 | `orix.scan_directory` | `path`, optional file/entry/depth/concurrency limits | Bounded directory scan and artifact reports |
 | `orix.scan_project` | `path`, optional file/entry/depth limits | Project inventory, manifests, imports and symbol candidates |
 | `orix.analyze_architecture` | `path`, optional inventory and graph limits | Static source-import graph with entry-point candidates, cycles, reachability, hotspots and explicit limitations |
