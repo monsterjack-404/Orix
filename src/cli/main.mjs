@@ -96,6 +96,8 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
         executable_args:parsed.flags.provider_executable_args,
         timeout_ms:parsed.flags.timeout_ms,
         max_output_bytes:parsed.flags.max_output_bytes,
+        isolation:parsed.flags.isolation,
+        sandbox_root:parsed.flags.sandbox_root ?? process.env.ORIX_PROVIDER_SANDBOX_ROOT,
       });
       await write_or_print(render_json(report),parsed.flags.out);
       return 0;
@@ -114,6 +116,8 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
         address:parsed.flags.rizin_address,
         max_instructions:parsed.flags.max_instructions,
         decompile:parsed.flags.rizin_decompile,
+        isolation:parsed.flags.isolation,
+        sandbox_root:parsed.flags.sandbox_root ?? process.env.ORIX_PROVIDER_SANDBOX_ROOT,
       });
       const output=parsed.flags.format==='json'
         ? render_json(report)
@@ -132,6 +136,8 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
         timeout_ms:parsed.flags.timeout_ms,
         max_output_bytes:parsed.flags.max_output_bytes,
         max_imports:parsed.flags.max_imports,
+        isolation:parsed.flags.isolation,
+        sandbox_root:parsed.flags.sandbox_root ?? process.env.ORIX_PROVIDER_SANDBOX_ROOT,
       });
       const output=parsed.flags.format==='json'
         ? render_json(report)
