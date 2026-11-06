@@ -49,6 +49,14 @@ async function main() {
     'Cleanup must not use path existence helpers that can follow a reparse target');
   assert.match(purgeSource, /FileAttributes\.ReparsePoint[\s\S]*?throw new InvalidOperationException\("ORIX_WINDOWS_CLEANUP_REPARSE_POINT/,
     'Cleanup must abort on reparse points instead of skipping them and continuing with descendant paths');
+  const cleanupStart = launcherSource.indexOf('public static void Cleanup(');
+  assert.ok(cleanupStart >= 0, 'Native helper must expose the explicit profile cleanup path');
+  const cleanupSource = launcherSource.slice(cleanupStart);
+  assert.match(cleanupSource, /DeriveAppContainerSidFromAppContainerName\(profileName, out sid\)[\s\S]*?if \(hr != 0\) Marshal\.ThrowExceptionForHR\(hr\)/,
+    'AppContainer SID lookup errors must fail cleanup instead of being treated as profile absence');
+  assert.doesNotMatch(cleanupSource, /ORIX_CLEANUP:NO_PROFILE/,
+    'Cleanup must not silently report success for an arbitrary SID lookup failure');
+
 
   assert.doesNotMatch(launcherSource, /Environment\.GetEnvironmentVariable\("SystemRoot"\)/,
     'Native helper must not resolve icacls.exe from inherited SystemRoot');
