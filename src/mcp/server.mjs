@@ -281,6 +281,9 @@ function validate_arguments(name, value) {
   for (const [key, item] of Object.entries(value)) {
     const schema = properties[key];
     if (!schema) throw new TypeError('Unknown tool argument: ' + key);
+    if (schema.enum && !schema.enum.includes(item)) {
+      throw new TypeError(key + ' must be one of: ' + schema.enum.join(', '));
+    }
     if (schema.type === 'string') {
       if (typeof item !== 'string' || item.length < (schema.minLength ?? 0) || item.length > (schema.maxLength ?? Infinity)) {
         throw new TypeError(key + ' must be a string within its declared length bounds');
