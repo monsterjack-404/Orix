@@ -1,9 +1,13 @@
 // macOS provider rootfs permission policy tests; pure policy tests run on every CI OS.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import {
   assess_macos_rootfs_directory_permissions,
   assess_macos_rootfs_entry_permissions,
+  build_macos_compiler_environment,
+  cleanup_macos_compiler_process_group,
 } from '../src/providers/macos-isolation.mjs';
 
 test('macOS rootfs trust accepts root-owned and service-owned non-writable directories', () => {
@@ -47,4 +51,66 @@ test('macOS rootfs entry trust accepts root-owned, read-only directories', () =>
   assert.equal(assess_macos_rootfs_entry_permissions({
     uid: 0, mode: 0o40755, is_file: false, is_directory: true, is_symlink: false, nlink: 2,
   }, 1000).trusted, true);
+});
+
+test('macOS compiler environment ignores inherited SDK and toolchain overrides', () => {
+  const temporary = '/orix-test/private-compiler-tmp';
+  const environment = build_macos_compiler_environment(temporary);
+  assert.deepEqual(environment, {
+    HOME: temporary,
+    PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
+    LANG: 'C',
+    TMPDIR: temporary,
+    TMP: temporary,
+    TEMP: temporary,
+  });
+  for (const key of [
+    'DEVELOPER_DIR', 'SDKROOT', 'TOOLCHAINS', 'CPATH', 'CFLAGS',
+    'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH',
+  ]) {
+    assert.equal(Object.hasOwn(environment, key), false, key + ' must not enter the host compiler environment');
+  }
+});
+
+test('macOS compiler cleanup kills and verifies a same-group descendant after the leader exits', {
+  skip: process.platform === 'win32',
+  timeout: 10_000,
+}, async () => {
+  const script = [
+    "const { spawn } = require('node:child_process');",
+    "spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { stdio: 'ignore' });",
+    "process.on('SIGTERM', () => process.exit(0));",
+    "setInterval(() => {}, 1000);",
+  ].join('\n');
+  const child = spawn(process.execPath, ['-e', script], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  try {
+    await once(child, 'spawn');
+    const closed = once(child, 'close');
+    const report = await cleanup_macos_compiler_process_group(child.pid, {
+      term_grace_ms: 50,
+      verify_timeout_ms: 3000,
+    });
+    await closed;
+    assert.equal(report.term_signal_sent, true);
+    assert.equal(report.force_kill_sent, true);
+    assert.equal(report.verified_empty, true);
+  } finally {
+    if (Number.isSafeInteger(child.pid)) {
+      try { process.kill(-child.pid, 'SIGKILL'); } catch {}
+    }
+  }
+});
+
+test('macOS compiler cleanup rejects invalid process-group identifiers and limits', async () => {
+  await assert.rejects(
+    cleanup_macos_compiler_process_group(0),
+    TypeError,
+  );
+  await assert.rejects(
+    cleanup_macos_compiler_process_group(123, { term_grace_ms: 10_001 }),
+    TypeError,
+  );
 });
