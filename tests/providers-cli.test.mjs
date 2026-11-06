@@ -283,6 +283,7 @@ test('Rizin CLI fails closed when required isolation receives an unavailable san
         ...executable_args.flatMap(value => ['--executable-arg', value]),
         '--isolation', 'required',
         '--sandbox-root', missing_root,
+        '--cwd', directory,
         '--json',
       ]),
       error => process.platform === 'linux'
