@@ -93,6 +93,7 @@ export async function read_workspace_json(input_path, roots = configured_workspa
     handle = await fs.open(resolved.path, fs_constants.O_RDONLY | (fs_constants.O_NOFOLLOW ?? 0));
     const opened = await handle.stat();
     if (!opened.isFile() || opened.dev !== resolved.stats.dev || opened.ino !== resolved.stats.ino) fail('ORIX_MCP_FILE_CHANGED', 'JSON report identity changed between lookup and open', { path: resolved.path });
+    if (opened.nlink > 1) fail('ORIX_MCP_HARDLINK_REJECTED', 'MCP does not read hard-linked workspace reports', { path: resolved.path, link_count: opened.nlink });
     if (!Number.isSafeInteger(opened.size) || opened.size > maximum) fail('ORIX_MCP_INPUT_LIMIT', 'JSON report exceeds configured input limit', { size: opened.size, maximum });
     const bytes = Buffer.alloc(opened.size);
     let offset = 0;
@@ -102,6 +103,7 @@ export async function read_workspace_json(input_path, roots = configured_workspa
       offset += bytesRead;
     }
     const after = await handle.stat();
+    if (after.nlink > 1) fail('ORIX_MCP_HARDLINK_REJECTED', 'MCP report acquired a hard-link alias during bounded read', { path: resolved.path, link_count: after.nlink });
     if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) fail('ORIX_MCP_FILE_CHANGED', 'JSON report changed during bounded read', { path: resolved.path });
     const text = bytes.toString('utf8');
     try { return JSON.parse(text); }
