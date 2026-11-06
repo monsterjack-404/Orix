@@ -283,7 +283,48 @@ function minimal_environment(overrides) {
 
 function signal_process(child, detached, signal) {
   if (!child.pid) return;
-  if (detached && process.platform !== 'win32') {
+  if (process.platform === 'win32') {
+    const system_root = process.env.SystemRoot ?? process.env.WINDIR;
+    if (typeof system_root === 'string' && path.isAbsolute(system_root)) {
+      let tree_killer;
+      try {
+        tree_killer = spawn(
+          path.join(system_root, 'System32', 'taskkill.exe'),
+          ['/PID', String(child.pid), '/T', '/F'],
+          {
+            cwd: system_root,
+            env: minimal_environment({}),
+            shell: false,
+            windowsHide: true,
+            stdio: 'ignore',
+          },
+        );
+      } catch {
+        try { child.kill(); } catch {
+          // The process may have exited between the state check and signal.
+        }
+        return;
+      }
+      let fallback_attempted = false;
+      const fallback_to_direct_child = () => {
+        if (fallback_attempted) return;
+        fallback_attempted = true;
+        try { child.kill(); } catch {
+          // The process may have exited between the state check and signal.
+        }
+      };
+      tree_killer.once('error', fallback_to_direct_child);
+      tree_killer.once('close', exit_code => {
+        if (exit_code !== 0) fallback_to_direct_child();
+      });
+      return;
+    }
+    try { child.kill(); } catch {
+      // The process may have exited between the state check and signal.
+    }
+    return;
+  }
+  if (detached) {
     try {
       process.kill(-child.pid, signal);
       return;
@@ -291,7 +332,7 @@ function signal_process(child, detached, signal) {
       // Fall through to direct child signalling.
     }
   }
-  try { if (process.platform === 'win32') child.kill(); else child.kill(signal); } catch {
+  try { child.kill(signal); } catch {
     // The process may have exited between the state check and signal.
   }
 }
