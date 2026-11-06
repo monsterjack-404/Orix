@@ -65,7 +65,8 @@ export function inspectWindowsLauncher(bytes) {
     });
   }
 
-  const clrOffset = rvaToOffset(bytes, sections, clrRva, 0x48, 'CLR header');
+  // Validate the complete declared CLR data-directory range, not just the fixed header prefix.
+  const clrOffset = rvaToOffset(bytes, sections, clrRva, clrSize, 'CLR directory');
   const clrHeaderSize = u32(bytes, clrOffset, 'CLR header size');
   if (clrHeaderSize < 0x48 || clrHeaderSize > clrSize) fail('invalid CLR header size');
   const metadataRva = u32(bytes, clrOffset + 8, 'CLR metadata RVA');
