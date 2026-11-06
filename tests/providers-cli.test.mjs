@@ -120,7 +120,8 @@ test('providers rizin imports writes the actual normalized JSON report', async (
       'providers', 'rizin', 'imports', input,
       '--executable', executable,
       ...executable_args.flatMap(argument => ['--executable-arg', argument]),
-      '--format', 'json',      '--isolation', 'none',
+      '--format', 'json',
+      '--isolation', 'none',
 
       '--out', output,
     ]);
@@ -140,7 +141,8 @@ test('providers rizin functions writes the actual bounded function/disassembly r
       'providers', 'rizin', 'functions', input,
       '--executable', executable,
       ...executable_args.flatMap(argument => ['--executable-arg', argument]),
-      '--address', '0x401000',      '--isolation', 'none',
+      '--address', '0x401000',
+      '--isolation', 'none',
 
       '--max-instructions', '1',
       '--decompile',
@@ -237,7 +239,8 @@ test('providers rizin doctor performs a real explicit executable version probe',
       '--executable', executable,
       ...executable_args.flatMap(argument => ['--executable-arg', argument]),
       '--json',
-      '--out', output,      '--isolation', 'none',
+      '--out', output,
+      '--isolation', 'none',
 
     ]);
     assert.equal(exit_code, 0);
