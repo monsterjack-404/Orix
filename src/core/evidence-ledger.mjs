@@ -91,6 +91,7 @@ async function read_ledger_file(file_path, options = {}) {
   try { before = await fs.lstat(absolute); }
   catch (error) { fail('ORIX_LEDGER_READ_FAILED', 'Cannot stat evidence ledger', { path: absolute, reason: error.code }, error); }
   if (before.isSymbolicLink() || !before.isFile()) fail('ORIX_LEDGER_NOT_REGULAR_FILE', 'Evidence ledger must be a regular non-symlink file', { path: absolute });
+  if (options.reject_hardlinks === true && before.nlink > 1) fail('ORIX_LEDGER_HARDLINK_REJECTED', 'Evidence ledger must not have hard-link aliases', { path: absolute, link_count: before.nlink });
   if (before.size > limits.max_bytes) fail('ORIX_LEDGER_SIZE_LIMIT', 'Evidence ledger exceeds configured read limit', { size: before.size, maximum: limits.max_bytes });
   let handle;
   try {
@@ -98,6 +99,7 @@ async function read_ledger_file(file_path, options = {}) {
     handle = await fs.open(absolute, fs_constants.O_RDONLY | nofollow);
     const opened = await handle.stat();
     if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) fail('ORIX_LEDGER_FILE_CHANGED', 'Evidence ledger identity changed between lookup and open', { path: absolute });
+    if (options.reject_hardlinks === true && opened.nlink > 1) fail('ORIX_LEDGER_HARDLINK_REJECTED', 'Evidence ledger acquired a hard-link alias before descriptor acquisition completed', { path: absolute, link_count: opened.nlink });
     const chunks = [];
     let total = 0;
     const chunk = Buffer.allocUnsafe(64 * 1024);
@@ -109,6 +111,7 @@ async function read_ledger_file(file_path, options = {}) {
       chunks.push(Buffer.from(chunk.subarray(0, bytesRead)));
     }
     const after = await handle.stat();
+    if (options.reject_hardlinks === true && after.nlink > 1) fail('ORIX_LEDGER_HARDLINK_REJECTED', 'Evidence ledger acquired a hard-link alias while being read', { path: absolute, link_count: after.nlink });
     if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) fail('ORIX_LEDGER_FILE_CHANGED', 'Evidence ledger changed while it was being read', { path: absolute });
     return { absolute, buffer: Buffer.concat(chunks), limits, dev: opened.dev, ino: opened.ino };
   } catch (error) {
@@ -233,6 +236,7 @@ export async function append_evidence_event(file_path, event, payload, options =
     try {
       const opened = await handle.stat();
       if (opened.dev !== current.dev || opened.ino !== current.ino) fail('ORIX_LEDGER_FILE_CHANGED', 'Evidence ledger identity changed after chain verification', { path: absolute });
+      if (options.reject_hardlinks === true && opened.nlink > 1) fail('ORIX_LEDGER_HARDLINK_REJECTED', 'Evidence ledger must not have hard-link aliases before append', { path: absolute, link_count: opened.nlink });
       if (opened.size !== current.buffer.length) fail('ORIX_LEDGER_CONCURRENT_MODIFICATION', 'Ledger size changed after chain verification', { verified_size: current.buffer.length, current_size: opened.size });
       await handle.writeFile(line, 'utf8');
       await handle.sync();
