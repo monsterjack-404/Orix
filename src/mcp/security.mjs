@@ -43,6 +43,7 @@ export async function resolve_workspace_path(input_path, roots = configured_work
   catch (error) { fail('ORIX_MCP_PATH_UNAVAILABLE', 'MCP path does not exist or cannot be accessed', { path: absolute, system_code: error.code }, error); }
   if (stats.isSymbolicLink()) fail('ORIX_MCP_SYMLINK_REJECTED', 'MCP does not follow symbolic links', { path: absolute });
   if (options.kind === 'file' && !stats.isFile()) fail('ORIX_MCP_NOT_FILE', 'MCP operation requires a regular file', { path: absolute });
+  if (options.kind === 'file' && stats.nlink > 1) fail('ORIX_MCP_HARDLINK_REJECTED', 'MCP does not accept hard-linked workspace files', { path: absolute, link_count: stats.nlink });
   if (options.kind === 'directory' && !stats.isDirectory()) fail('ORIX_MCP_NOT_DIRECTORY', 'MCP operation requires a directory', { path: absolute });
   const real = await fs.realpath(absolute);
   const allowed = await real_roots(roots);
