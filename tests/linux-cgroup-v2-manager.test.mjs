@@ -1,7 +1,7 @@
 // JavaScript, tests/linux-cgroup-v2-manager.test.mjs, Linux cgroup v2 lease-manager tests.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeSync, readFileSync, writeSync } from 'node:fs';
+import { readFileSync, writeSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -88,9 +88,11 @@ function fake_adapter({ populated_after_kill = 0, mismatch_file = null } = {}) {
       await Promise.all(Object.entries(controls).map(([name, contents]) =>
         writeFile(path.join(leaf_path, name), contents, { mode: 0o600 })));
     },
-    after_control_write: async ({ leaf_fd_path, name }) => {
+    after_control_write: async ({ leaf_fd_path, name, value }) => {
       if (mismatch_file === name) {
         await writeFile(path.join(leaf_fd_path, name), 'mismatch\n');
+      } else if (name !== 'cgroup.kill') {
+        await writeFile(path.join(leaf_fd_path, name), String(value) + '\n');
       }
       if (name === 'cgroup.kill' && populated_after_kill === 0) {
         await writeFile(path.join(leaf_fd_path, 'cgroup.events'), 'populated 0\nfrozen 0\n');
