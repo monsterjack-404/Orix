@@ -344,6 +344,32 @@ async function main() {
 
       await rmdir(packagesRoot);
       junctionInstalled = false;
+
+      // A malformed profile name must not be mistaken for an absent profile.
+      // DeriveAppContainerSidFromAppContainerName documents invalid arguments
+      // as failures; the launcher must return non-zero instead of claiming that
+      // cleanup succeeded and discarding its diagnostics.
+      const invalidProfileConfig = path.join(base, 'invalid-appcontainer-profile.json');
+      await writeFile(invalidProfileConfig, JSON.stringify({
+        sandboxRoot: root,
+        profileName: 'x'.repeat(65),
+        logPath: path.join(base, 'invalid-appcontainer-profile.log'),
+      }), 'utf8');
+      let invalidCleanupError = null;
+      try {
+        execFileSync(reparsePrepared.executable, ['cleanup', invalidProfileConfig], {
+          cwd: reparsePrepared.cwd,
+          env: reparsePrepared.env,
+          encoding: 'utf8',
+          windowsHide: true,
+        });
+      } catch (error) { invalidCleanupError = error; }
+      assert.ok(invalidCleanupError, 'Invalid AppContainer profile names must not be reported as successful cleanup');
+      assert.equal(invalidCleanupError.status, 125,
+        'Invalid AppContainer profile name should fail closed with exit code 125');
+      assert.match(String(invalidCleanupError.stderr), /ORIX_WINDOWS_ISOLATION_ERROR=/,
+        'Invalid AppContainer profile name did not surface a native cleanup diagnostic');
+
       await reparsePrepared.cleanup();
       preparedCleanupComplete = true;
       await access(externalSentinel);
