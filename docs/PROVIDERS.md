@@ -64,7 +64,7 @@ process.stdout.write(JSON.stringify(manifest, null, 2));
 The reader:
 - Accepts only regular files and rejects symbolic links.
 - Defaults to a 64 KiB input limit (configurable up to 1 MiB).
-- Opens the file read-only and checks file identity before and after reading.
+- Opens the file read-only with `O_NOFOLLOW` where supported, then re-checks the opened handle against the path to detect a symlink/path swap during open; it also checks file identity before and after reading.
 - Rejects files that change while being read.
 - Requires valid UTF-8 and JSON.
 - Rejects unknown fields, accessors, sparse arrays, duplicate array values, and non-enumerable data.
