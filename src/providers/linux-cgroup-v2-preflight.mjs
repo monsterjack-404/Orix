@@ -95,7 +95,8 @@ export async function inspect_linux_cgroup_v2(options = {}) {
     report.reason = 'cgroup-v2-mount-or-process-membership-not-found';
     return Object.freeze(report);
   }
-  if (typeof configured_parent !== 'string' || !path.isAbsolute(configured_parent)) {
+  if (typeof configured_parent !== 'string' || !path.isAbsolute(configured_parent) ||
+      path.normalize(configured_parent) !== configured_parent) {
     report.reason = 'ORIX_CGROUP_PARENT-not-configured-as-an-absolute-path';
     return Object.freeze(report);
   }
@@ -109,6 +110,10 @@ export async function inspect_linux_cgroup_v2(options = {}) {
   }
   const relative = path.relative(mount.mountpoint, configured_parent).split(path.sep).join('/');
   const parent_cgroup_path = path.posix.resolve(mount.root, relative);
+  if (configured_parent === mount.mountpoint || parent_cgroup_path === '/') {
+    report.reason = 'configured-parent-must-not-be-cgroup2-mount-root';
+    return Object.freeze(report);
+  }
   const supervisor_path = path.join(configured_parent, 'supervisor');
   const parent = {
     path: configured_parent,
