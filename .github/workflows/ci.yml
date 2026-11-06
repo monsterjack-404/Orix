@@ -23,20 +23,23 @@ jobs:
         node-version: [20, 22, 24]
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Audit locked dependencies
+        run: npm audit --audit-level=low
       - name: Validate JavaScript syntax
         run: npm run check
       - name: Run tests
         run: npm test
       - name: Generate coverage summary
-        if: matrix.node-version == 22
         run: npm run test:coverage
 
   linux-provider-isolation:
@@ -45,13 +48,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Install Bubblewrap
         run: |
           sudo apt-get update
           sudo apt-get install --yes bubblewrap
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
       - name: Install locked dependencies
@@ -81,9 +86,11 @@ jobs:
         os: [windows-latest, macos-latest]
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
           cache: npm
