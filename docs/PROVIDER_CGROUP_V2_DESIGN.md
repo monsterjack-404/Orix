@@ -168,3 +168,12 @@ Until then, ORIX must continue to describe its current Linux provider backend as
 The follow-up `scripts/linux-cgroup-v2-preflight.mjs` command inspects the host's unified cgroup v2 mount, current process membership, and an optional administrator-configured `ORIX_CGROUP_PARENT`. It reports whether the expected empty-parent / sibling-supervisor layout and required controllers appear to be present.
 
 The command is intentionally read-only: it does not create a child cgroup, move a process, enable controllers, change limits, or claim that kernel enforcement has been proven. It is suitable for CI environment discovery and operator diagnostics. A positive result is a deployment precondition, not a substitute for the real-kernel enforcement tests below.
+
+
+## Trusted bootstrap descriptor prototype (not yet integrated)
+
+The follow-up prototype in \`src/providers/linux-cgroup-v2-bootstrap.mjs\` consumes only child descriptor 3, writes the bootstrap PID, and closes that descriptor before launching the already-prepared absolute command. It rejects an unexpected descriptor contract, uses \`shell: false\`, bounds the command vector, and fails closed if the attach write or descriptor close fails. It does not accept a cgroup path or controller-management capability.
+
+The Linux regression tests in \`tests/linux-cgroup-v2-bootstrap.test.mjs\` exercise the real Node child-process descriptor handoff using ordinary temporary files as stand-ins for \`cgroup.procs\`. They verify attach-before-provider ordering, that the attach descriptor is not visible to the provider child, and that an attach-write failure prevents provider launch. The repository CI runs these tests on Node.js 20, 22, and 24.
+
+**Validation boundary:** these tests prove the Node descriptor handoff behavior on Linux; they do not prove behavior on a cgroup2 filesystem, actual kernel membership, controller enforcement, or teardown. The current process runner does not call this helper. A host-side cgroup manager, runner integration, and real delegated-cgroup integration environment remain required before ORIX can claim cgroup resource isolation.
