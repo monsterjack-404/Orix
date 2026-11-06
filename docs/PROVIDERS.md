@@ -123,6 +123,8 @@ if (!result.ok) {
 }
 ~~~
 
+On POSIX, the runner also checks for remaining members of the provider's process group when the leader exits; it sends SIGTERM, escalates to SIGKILL after the configured grace period, and waits for the process-group cleanup signal to be issued before returning. This does not catch descendants that deliberately create a new session/process group, and the result records only whether a force-kill signal was sent—not a kernel-verified empty-process guarantee. Windows currently signals only the direct child; process-tree teardown is not guaranteed.
+
 Without `isolation: 'required'`, this runner is a process-control boundary, **not an operating-system sandbox**: it cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. On Linux, the explicit `isolation: 'required'` mode wraps the selected executable with Bubblewrap namespace and read-only-root filesystem isolation, and fails closed when its rootfs or namespace prerequisites are unavailable. Windows and macOS currently have no enforced backend and therefore reject required isolation. Bubblewrap isolation does not enforce cgroup CPU, memory, or task-count limits. POSIX process groups are still signalled on timeout/cancellation, and Windows process-tree teardown is not guaranteed. Do not treat the default runner as safe for hostile binaries.
 
 ## 5. Rizin import adapter
