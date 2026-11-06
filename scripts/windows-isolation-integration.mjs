@@ -33,6 +33,20 @@ async function main() {
   assert.equal(process.platform, 'win32', 'This integration gate must run on Windows');
   const base = await mkdtemp(path.join(process.cwd(), '.orix-appcontainer-integration-'));
   const root = path.join(base, 'rootfs');
+  // GitHub-hosted Windows runners grant BUILTIN\\Users write access to the
+  // workspace. The sandbox must not inherit that broad ACL: make the rootfs
+  // private to the runner identity, SYSTEM and local Administrators before
+  // creating any provider-controlled entries.
+  await mkdir(root, { recursive: true });
+  const runnerIdentity = execFileSync('whoami.exe', [], { encoding: 'utf8', windowsHide: true }).trim();
+  const systemRoot = process.env.SystemRoot || process.env.WINDIR;
+  assert.ok(systemRoot, 'Windows SystemRoot is required for the trusted ACL test helper');
+  execFileSync(path.join(systemRoot, 'System32', 'icacls.exe'), [
+    root, '/inheritance:r', '/grant:r',
+    runnerIdentity + ':(OI)(CI)F',
+    '*S-1-5-18:(OI)(CI)F',
+    '*S-1-5-32-544:(OI)(CI)F',
+  ], { encoding: 'utf8', windowsHide: true });
   const hostSecret = path.join(base, 'host-only-secret.txt');
   const hostSecretValue = 'host-only-secret-' + process.pid;
   let server;
