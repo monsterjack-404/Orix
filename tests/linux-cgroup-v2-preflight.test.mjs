@@ -167,11 +167,11 @@ async function create_fake_delegated_host({
   await chmod(supervisor, supervisor_mode);
 
   const files = {
-    'cgroup.controllers': 'cpu memory pids\\n',
-    'cgroup.subtree_control': '+cpu +memory +pids\\n',
+    'cgroup.controllers': 'cpu memory pids\n',
+    'cgroup.subtree_control': '+cpu +memory +pids\n',
     'cgroup.procs': '',
-    'cgroup.type': 'domain\\n',
-    'cgroup.events': 'populated 0\\nfrozen 0\\n',
+    'cgroup.type': 'domain\n',
+    'cgroup.events': 'populated 0\nfrozen 0\n',
     'cgroup.kill': '',
   };
   await Promise.all(Object.entries(files).map(([name, contents]) =>
@@ -180,11 +180,11 @@ async function create_fake_delegated_host({
   await chmod(path.join(actual_parent, 'cgroup.kill'), kill_mode);
   await writeFile(
     path.join(proc_self, 'mountinfo'),
-    '29 23 0:26 / ' + mountpoint + ' rw,nosuid,nodev - cgroup2 cgroup rw\\n',
+    '29 23 0:26 / ' + mountpoint + ' rw,nosuid,nodev - cgroup2 cgroup rw\n',
   );
   await writeFile(
     path.join(proc_self, 'cgroup'),
-    '0::/' + parent_name + '/supervisor/orix\\n',
+    '0::/' + parent_name + '/supervisor/orix\n',
   );
   return { root, parent: configured_parent };
 }
