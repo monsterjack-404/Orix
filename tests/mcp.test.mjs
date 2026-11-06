@@ -112,8 +112,41 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   }
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.inspect_file').annotations.readOnlyHint, true);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_functions').annotations.readOnlyHint, true);
+  const rizin_schema = response.result.tools.find(tool => tool.name === 'orix.rizin_functions').inputSchema;
+  assert.deepEqual(rizin_schema.properties.isolation.enum, ['none', 'required']);
+  assert.equal(rizin_schema.properties.sandbox_root.type, 'string');
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.readOnlyHint, false);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
+});
+
+test('MCP Rizin required isolation requires a workspace-confined sandbox root', async () => {
+  await assert.rejects(
+    call_orix_tool('orix.rizin_functions', {
+      path: '/not/used/sample.elf',
+      executable: '/not/used/rizin',
+      isolation: 'required',
+    }),
+    /requires sandbox_root inside a configured workspace/,
+  );
+
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-root-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-outside-'));
+  try {
+    const input = path.join(workspace, 'sample.elf');
+    await writeFile(input, Buffer.from('MCP isolation fixture'));
+    await assert.rejects(
+      call_orix_tool('orix.rizin_functions', {
+        path: input,
+        executable: '/not/used/rizin',
+        isolation: 'required',
+        sandbox_root: outside,
+      }, { roots: [workspace] }),
+      error => error.code === 'ORIX_MCP_PATH_OUTSIDE_WORKSPACE',
+    );
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
 });
 
 test('MCP Rizin tool validates executable argument prefixes before resolving workspace paths', async () => {
