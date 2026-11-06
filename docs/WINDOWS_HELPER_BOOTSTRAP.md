@@ -33,3 +33,12 @@ This is an architectural blocker, not a completed fix. The repository currently 
 - Do not substitute a different environment variable, PATH lookup, registry lookup, or PowerShell command for the current compiler lookup; these are not equivalent to a source-pinned executable trust anchor.
 - Do not claim that a hash stored only beside the binary authenticates the binary.
 - Do not weaken Windows integration tests or silently skip them when the helper is absent.
+
+
+## Cleanup reparse-point fail-closed gate
+
+The cleanup walk now inspects each directory entry with File.GetAttributes before deciding whether it exists as a normal file or directory. It rejects a reparse point with ORIX_WINDOWS_CLEANUP_REPARSE_POINT; it does not silently skip the link and continue to a later path-based delete beneath that link. This matters for the redirected tmp/Packages/<profile> tree: a junction at an ancestor must stop cleanup rather than redirect removal into an external directory.
+
+On this error, cleanup intentionally stops before deleting the profile-specific redirected temp tree or removing the AppContainer profile. Some earlier non-reparse entries may already have had their profile ACLs purged, but no path traversal through the reparse point is attempted. The leftover state is safer to investigate than to follow an attacker-controlled target.
+
+The Windows integration gate asserts the cleanup walker checks entry attributes, avoids File.Exists / Directory.Exists path-following prechecks, and throws on reparse points. The normal Windows hostile-process test continues to exercise successful cleanup on a reparse-free tree. A dedicated end-to-end malicious-junction injection test is still a separate validation gate; this source-level guard does not claim that scenario has been exercised on a live Windows host.
