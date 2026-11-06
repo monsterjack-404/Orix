@@ -131,9 +131,15 @@ rootfs and required system runtime files, allows writes only under
 `rootfs/tmp`, and denies network operations. The launcher verifies that the
 kernel sandbox is active before exec and applies inherited RLIMIT ceilings:
 60 CPU seconds, 64 MiB file size, 256 open descriptors and disabled core
-dumps. Hostile-process tests verify an outside-rootfs secret is unreadable,
-the rootfs cannot be modified, private temporary writes work and host
-loopback networking is blocked.
+dumps. Before launch, the canonical rootfs and each ancestor must be owned by
+root or the ORIX service account and must not be group/other writable; only
+root-owned sticky ancestors (such as /tmp) are exempt, and the filesystem
+root itself is rejected. These are mode/ownership preflight checks, not a
+race-free filesystem pin or a complete inspection of extended ACLs; operators
+must still protect ACLs, mount configuration and rootfs contents. Hostile-
+process tests verify an outside-rootfs secret is unreadable, the rootfs cannot
+be modified, private temporary writes work and host loopback networking is
+blocked.
 
 macOS Seatbelt does not provide the aggregate memory/PID quotas enforced by
 Linux cgroup v2 or Windows Job Objects; ORIX does not claim those controls on

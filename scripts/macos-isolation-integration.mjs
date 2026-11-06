@@ -6,6 +6,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
+import { prepare_macos_provider_isolation } from '../src/providers/macos-isolation.mjs';
 
 function manifest() {
   return {
@@ -68,6 +69,49 @@ async function main() {
   try {
     await mkdir(path.join(root, 'work'), { recursive: true });
     await mkdir(path.join(root, 'tmp'), { recursive: true });
+
+    // The canonical rootfs and every ancestor must resist untrusted writers.
+    const unsafeRoot = path.join(base, 'unsafe-rootfs');
+    await mkdir(path.join(unsafeRoot, 'tmp'), { recursive: true });
+    await mkdir(path.join(unsafeRoot, 'work'), { recursive: true });
+    await chmod(unsafeRoot, 0o777);
+    await assert.rejects(
+      prepare_macos_provider_isolation({
+        executable: process.execPath,
+        cwd: path.join(unsafeRoot, 'work'),
+        sandbox_root: unsafeRoot,
+        args: [],
+        env: {},
+      }),
+      error => error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+      'macOS isolation must reject a group/other-writable rootfs',
+    );
+    await chmod(unsafeRoot, 0o700);
+    await rm(unsafeRoot, { recursive: true, force: true });
+
+    const unsafeParent = path.join(base, 'unsafe-parent');
+    const unsafeParentRoot = path.join(unsafeParent, 'rootfs');
+    await mkdir(path.join(unsafeParentRoot, 'tmp'), { recursive: true });
+    await mkdir(path.join(unsafeParentRoot, 'work'), { recursive: true });
+    await chmod(unsafeParent, 0o700);
+    await chmod(base, 0o777);
+    try {
+      await assert.rejects(
+        prepare_macos_provider_isolation({
+          executable: process.execPath,
+          cwd: path.join(unsafeParentRoot, 'work'),
+          sandbox_root: unsafeParentRoot,
+          args: [],
+          env: {},
+        }),
+        error => error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+        'macOS isolation must reject a group/other-writable rootfs ancestor',
+      );
+    } finally {
+      await chmod(base, 0o700);
+      await rm(unsafeParent, { recursive: true, force: true });
+    }
+
     const executable = await copy_node_runtime(root);
     const canonicalScratch = await realpath(path.join(root, 'tmp'));
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });

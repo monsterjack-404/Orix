@@ -17,6 +17,77 @@ function within(root, candidate) {
     !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
 }
 
+/**
+ * Rootfs paths must not be replaceable by an untrusted group/other writer.
+ * A root-owned sticky ancestor (for example /tmp) is the only writable
+ * ancestor exception; the rootfs directory itself never gets that exception.
+ */
+export function assess_macos_rootfs_directory_permissions(metadata, expected_uid, allow_root_sticky = false) {
+  const valid = metadata !== null && typeof metadata === 'object' &&
+    Number.isSafeInteger(metadata.uid) && Number.isSafeInteger(metadata.mode);
+  const directory = valid && metadata.is_directory === true;
+  const symlink = !valid || metadata.is_symlink === true;
+  const owner_is_trusted = valid && (metadata.uid === 0 || metadata.uid === expected_uid);
+  const group_or_other_writable = !valid || (metadata.mode & 0o022) !== 0;
+  const sticky_root_exception = valid && allow_root_sticky &&
+    metadata.uid === 0 && (metadata.mode & 0o1000) !== 0;
+  const writable_by_untrusted = group_or_other_writable && !sticky_root_exception;
+  return Object.freeze({
+    directory,
+    symlink,
+    owner_is_trusted,
+    group_or_other_writable,
+    sticky_root_exception,
+    trusted: directory && !symlink && owner_is_trusted && !writable_by_untrusted,
+  });
+}
+
+async function validate_rootfs_path_trust(root) {
+  if (root === path.parse(root).root) {
+    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID',
+      'The filesystem root cannot be used as a provider sandbox root');
+  }
+
+  const expected_uid = process.geteuid();
+  let current = root;
+  let is_rootfs = true;
+  for (;;) {
+    let info;
+    try {
+      info = await lstat(current);
+    } catch (error) {
+      isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+        'A provider sandbox root path component cannot be inspected', {
+          reason: error.code ?? 'filesystem-error',
+        });
+    }
+    const assessment = assess_macos_rootfs_directory_permissions({
+      uid: info.uid,
+      mode: info.mode,
+      is_directory: info.isDirectory(),
+      is_symlink: info.isSymbolicLink(),
+    }, expected_uid, !is_rootfs);
+
+    if (!assessment.trusted) {
+      isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+        is_rootfs
+          ? 'Provider sandbox root must be owned by root or the ORIX service account and not group/other writable'
+          : 'Provider sandbox root ancestors must be trusted and not group/other writable (except root-owned sticky directories)',
+        {
+          component: current,
+          owner_uid: info.uid,
+          expected_uid,
+          mode: info.mode & 0o7777,
+          rootfs_component: is_rootfs,
+        });
+    }
+
+    if (current === path.parse(current).root) break;
+    current = path.dirname(current);
+    is_rootfs = false;
+  }
+}
+
 async function validate_directory(value, label) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
     isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', label + ' must be an absolute path for required macOS isolation');
@@ -31,7 +102,9 @@ async function validate_directory(value, label) {
     const code = label === 'sandbox_root' ? 'ORIX_PROVIDER_SANDBOX_ROOT_INVALID' : 'ORIX_PROVIDER_SANDBOX_PATH_INVALID';
     isolation_error(code, label + ' must be a real non-symlink directory');
   }
-  return realpath(value);
+  const canonical = await realpath(value);
+  if (label === 'sandbox_root') await validate_rootfs_path_trust(canonical);
+  return canonical;
 }
 
 async function validate_tree(root) {
