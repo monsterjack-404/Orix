@@ -294,12 +294,12 @@ export async function analyze_rizin_imports(options = {}) {
       manifest,
       executable: descriptors.executable?.value,
       executable_args: descriptors.executable_args?.value,
-      cwd: descriptors.cwd?.value,
+      cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
       env: descriptors.env?.value,
       timeout_ms,
       max_output_bytes,
       signal,
-      isolation: isolation,
+      isolation,
       sandbox_root: descriptors.sandbox_root?.value,
     };
 
@@ -606,10 +606,10 @@ export async function analyze_rizin_functions(options = {}) {
       manifest,
       executable: descriptors.executable?.value,
       executable_args: descriptors.executable_args?.value,
-      cwd: descriptors.cwd?.value,
+      cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
       env: descriptors.env?.value,
       signal,
-      isolation: isolation,
+      isolation,
       sandbox_root: descriptors.sandbox_root?.value,
     };
     let captured_output_bytes = 0;
@@ -806,7 +806,7 @@ export async function probe_rizin(options = {}) {
     manifest,
     executable: descriptors.executable?.value,
     executable_args: descriptors.executable_args?.value,
-    cwd: descriptors.cwd?.value,
+    cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
     env: descriptors.env?.value,
     args: ['-v'],
     timeout_ms,
