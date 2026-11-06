@@ -79,10 +79,11 @@ async function no_symlink_components(target, boundary) {
  * Mode bits are a preflight signal, not proof of the administrator trust boundary.
  */
 export function assess_cgroup_directory_permissions(metadata, expected_uid) {
-  const valid_expected_uid = Number.isSafeInteger(expected_uid) && expected_uid >= 0;
+  const valid_expected_uid = Number.isSafeInteger(expected_uid) &&
+    expected_uid >= 0 && expected_uid <= 0xffff_ffff;
   const valid_metadata = metadata !== null && typeof metadata === 'object' &&
-    Number.isSafeInteger(metadata.uid) && metadata.uid >= 0 &&
-    Number.isSafeInteger(metadata.mode) && metadata.mode >= 0;
+    Number.isSafeInteger(metadata.uid) && metadata.uid >= 0 && metadata.uid <= 0xffff_ffff &&
+    Number.isSafeInteger(metadata.mode) && metadata.mode >= 0 && metadata.mode <= 0o177777;
   const owner_matches_process = valid_metadata && valid_expected_uid &&
     metadata.uid === expected_uid;
   const mode = valid_metadata ? metadata.mode : null;
@@ -96,7 +97,7 @@ export function assess_cgroup_directory_permissions(metadata, expected_uid) {
  */
 export function access_credentials_match(real_uid, effective_uid, real_gid, effective_gid) {
   const valid = [real_uid, effective_uid, real_gid, effective_gid]
-    .every(value => Number.isSafeInteger(value) && value >= 0);
+    .every(value => Number.isSafeInteger(value) && value >= 0 && value <= 0xffff_ffff);
   return valid && real_uid === effective_uid && real_gid === effective_gid;
 }
 
