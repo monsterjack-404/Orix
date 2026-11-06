@@ -65,14 +65,6 @@ jobs:
         run: |
           test -x /usr/bin/bwrap
           /usr/bin/bwrap --version
-      - name: Ensure user-namespace probe capacity
-        run: |
-          current="$(cat /proc/sys/user/max_user_namespaces)"
-          echo "Current user.max_user_namespaces: $current"
-          if [ "$current" -lt 1048576 ]; then
-            sudo sysctl -w user.max_user_namespaces=1048576
-          fi
-          test "$(cat /proc/sys/user/max_user_namespaces)" -ge 1048576
       - name: Run hostile-process isolation checks
         run: node scripts/linux-isolation-integration.mjs
 
