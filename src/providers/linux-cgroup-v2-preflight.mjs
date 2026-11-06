@@ -75,6 +75,19 @@ async function no_symlink_components(target, boundary) {
 }
 
 /**
+ * Conservative ownership/mode check for a delegated cgroup directory.
+ * Mode bits are a preflight signal, not proof of the administrator trust boundary.
+ */
+export function assess_cgroup_directory_permissions(metadata, expected_uid) {
+  const valid_metadata = metadata !== null && typeof metadata === 'object';
+  const owner_matches_process = valid_metadata &&
+    Number.isSafeInteger(expected_uid) && metadata.uid === expected_uid;
+  const mode = valid_metadata && Number.isSafeInteger(metadata.mode) ? metadata.mode : null;
+  const not_group_or_other_writable = mode !== null && (mode & 0o022) === 0;
+  return Object.freeze({ owner_matches_process, not_group_or_other_writable });
+}
+
+/**
  * Read-only deployment diagnostic. It does not create directories, move tasks,
  * write controller files, or claim kernel enforcement.
  */
@@ -135,7 +148,12 @@ export async function inspect_linux_cgroup_v2(options = {}) {
     domain_type: false,
     supervisor_exists: false,
     supervisor_contains_current_process: false,
+    owner_matches_process: false,
+    not_group_or_other_writable: false,
+    supervisor_owner_matches_process: false,
+    supervisor_not_group_or_other_writable: false,
     writable: false,
+    cgroup_events_available: false,
     cgroup_kill_available: false,
   };
   report.parent = parent;
@@ -145,11 +163,13 @@ export async function inspect_linux_cgroup_v2(options = {}) {
       report.reason = 'configured-parent-has-symlink-or-unsafe-path-component';
       return Object.freeze(report);
     }
-    const [controllers, enabled, procs, type] = await Promise.all([
+    const [controllers, enabled, procs, type, parent_info, supervisor_info] = await Promise.all([
       read_text(path.join(configured_parent, 'cgroup.controllers')),
       read_text(path.join(configured_parent, 'cgroup.subtree_control')),
       read_text(path.join(configured_parent, 'cgroup.procs')),
       read_text(path.join(configured_parent, 'cgroup.type')),
+      lstat(configured_parent),
+      lstat(supervisor_path),
     ]);
     parent.controllers = controllers.split(/\s+/).filter(Boolean);
     parent.enabled_controllers = enabled.split(/\s+/).filter(Boolean).map(item => item.replace(/^\+/, ''));
@@ -157,11 +177,21 @@ export async function inspect_linux_cgroup_v2(options = {}) {
     parent.required_controllers_available = REQUIRED_CONTROLLERS.every(item => parent.controllers.includes(item));
     parent.required_controllers_enabled = REQUIRED_CONTROLLERS.every(item => parent.enabled_controllers.includes(item));
     parent.domain_type = type === 'domain';
-    const supervisor_info = await lstat(supervisor_path);
     parent.supervisor_exists = !supervisor_info.isSymbolicLink() && supervisor_info.isDirectory();
     parent.supervisor_contains_current_process = process_cgroup_path === parent_cgroup_path + '/supervisor' ||
       process_cgroup_path.startsWith(parent_cgroup_path + '/supervisor/');
+
+    const expected_uid = process.geteuid();
+    const parent_permissions = assess_cgroup_directory_permissions(parent_info, expected_uid);
+    const supervisor_permissions = assess_cgroup_directory_permissions(supervisor_info, expected_uid);
+    parent.owner_matches_process = parent_info.isDirectory() && !parent_info.isSymbolicLink() &&
+      parent_permissions.owner_matches_process;
+    parent.not_group_or_other_writable = parent_permissions.not_group_or_other_writable;
+    parent.supervisor_owner_matches_process = parent.supervisor_exists &&
+      supervisor_permissions.owner_matches_process;
+    parent.supervisor_not_group_or_other_writable = supervisor_permissions.not_group_or_other_writable;
     parent.writable = await access(configured_parent, FS_CONSTANTS.W_OK | FS_CONSTANTS.X_OK).then(() => true, () => false);
+    parent.cgroup_events_available = await access(path.join(configured_parent, 'cgroup.events')).then(() => true, () => false);
     parent.cgroup_kill_available = await access(path.join(configured_parent, 'cgroup.kill')).then(() => true, () => false);
   } catch (error) {
     report.reason = 'delegated-parent-inspection-failed:' + (error.code ?? error.name ?? 'unknown');
@@ -170,7 +200,9 @@ export async function inspect_linux_cgroup_v2(options = {}) {
   parent.ready = parent.no_symlink_components && parent.empty &&
     parent.required_controllers_available && parent.required_controllers_enabled &&
     parent.domain_type && parent.supervisor_exists && parent.supervisor_contains_current_process &&
-    parent.writable && parent.cgroup_kill_available;
+    parent.owner_matches_process && parent.not_group_or_other_writable &&
+    parent.supervisor_owner_matches_process && parent.supervisor_not_group_or_other_writable &&
+    parent.writable && parent.cgroup_events_available && parent.cgroup_kill_available;
   report.ready = parent.ready;
   report.reason = parent.ready ? null : 'delegated-parent-does-not-meet-required-layout-and-controller-contract';
   return Object.freeze(report);
