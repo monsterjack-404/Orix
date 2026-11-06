@@ -425,6 +425,7 @@ export async function run_static_provider(options) {
     let isolation_cleanup_started = false;
     let isolation_cleanup_failed = false;
     let isolation_cleanup_error = null;
+    let isolation_cleanup_report = null;
     let isolation_cleanup_promise = null;
     let close_result = null;
 
@@ -475,6 +476,7 @@ export async function run_static_provider(options) {
           complete: isolation_cleanup_complete,
           failed: isolation_cleanup_failed,
           reason: isolation_cleanup_error?.code ?? null,
+          report: isolation_cleanup_report,
         },
         ok: success,
         output: {
@@ -511,6 +513,7 @@ export async function run_static_provider(options) {
       isolation_cleanup_complete = false;
       isolation_cleanup_promise = Promise.resolve()
         .then(() => isolation_cleanup())
+        .then(report => { isolation_cleanup_report = report ?? null; })
         .catch(error => {
           isolation_cleanup_failed = true;
           isolation_cleanup_error = error;

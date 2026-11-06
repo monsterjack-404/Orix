@@ -262,6 +262,12 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
     const attach_fd_value = attach_fd;
     let attach_open = true;
     let cleanup_promise = null;
+    const cleanup_report = {
+      memory_events: null,
+      cpu_stat: null,
+      pids_events: null,
+      limits: LINUX_PROVIDER_CGROUP_LIMITS,
+    };
     const close_attach_fd = () => {
       if (!attach_open) return;
       closeSync(attach_fd_value);
@@ -277,13 +283,22 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
           while (Date.now() < deadline) {
             const events = read_control(child_fd, 'cgroup.events');
             if (/^populated 0$/m.test(events)) {
+              cleanup_report.memory_events = read_control(child_fd, 'memory.events');
+              cleanup_report.cpu_stat = read_control(child_fd, 'cpu.stat');
+              cleanup_report.pids_events = read_control(child_fd, 'pids.events');
               closeSync(child_fd);
               child_fd = undefined;
               rmdirSync(fd_path(parent_fd, child_name));
               child_created = false;
               closeSync(parent_fd);
               parent_fd = undefined;
-              return;
+              return Object.freeze({
+                memory_events: cleanup_report.memory_events,
+                cpu_stat: cleanup_report.cpu_stat,
+                pids_events: cleanup_report.pids_events,
+                limits: cleanup_report.limits,
+                removed: true,
+              });
             }
             await new Promise(resolve => setTimeout(resolve, 25));
           }

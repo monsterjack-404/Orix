@@ -1,6 +1,6 @@
 // Real-kernel cgroup v2 integration gate. Run as root on a writable cgroup2 host.
 import assert from 'node:assert/strict';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rmdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rmdir, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
@@ -10,6 +10,19 @@ import { parse_cgroup2_mounts } from '../src/providers/linux-cgroup-v2-preflight
 
 const REQUIRED = ['cpu', 'memory', 'pids'];
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function child_directories(parent) {
+  const names = await readdir(parent);
+  const directories = [];
+  for (const name of names) {
+    try {
+      if ((await lstat(path.join(parent, name))).isDirectory()) directories.push(name);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  return directories;
+}
 
 function manifest() {
   return {
@@ -132,7 +145,7 @@ async function create_delegated_parent() {
 async function remove_delegated_parent(state) {
   const { root, parent, supervisor, added } = state;
   // All run cgroups must have been removed by the provider manager before this point.
-  const remaining = (await readdir(parent)).filter(name => name !== 'supervisor');
+  const remaining = (await child_directories(parent)).filter(name => name !== 'supervisor');
   assert.deepEqual(remaining, [], 'Provider cgroups remain after integration cleanup');
   await write_control(path.join(root, 'cgroup.procs'), String(process.pid));
   await rmdir(supervisor);
