@@ -70,6 +70,12 @@ test('provider CLI parser accepts list and Rizin import operations', () => {
   ]);
   assert.equal(isolated.flags.isolation, 'required');
   assert.equal(isolated.flags.sandbox_root, '/opt/orix/provider-root');
+  const cwd_option = parse_arguments([
+    'providers', 'rizin', 'doctor',
+    '--executable', '/usr/bin/rizin',
+    '--cwd', '/opt/orix/provider-root/work',
+  ]);
+  assert.equal(cwd_option.flags.provider_cwd, '/opt/orix/provider-root/work');
   assert.throws(
     () => parse_arguments(['providers', 'rizin', 'doctor', '--executable', '/usr/bin/rizin', '--isolation', 'maybe']),
     error => error.code === 'ORIX_CLI_BAD_ISOLATION',
@@ -272,6 +278,13 @@ test('providers rizin doctor requires an explicit executable and rejects extra p
   );
 });
 
+
+test('provider CLI rejects --cwd outside the Rizin provider command', () => {
+  assert.throws(
+    () => parse_arguments(['providers', 'list', '--cwd', '/tmp']),
+    error => error.code === 'ORIX_CLI_PROVIDER_CWD_SCOPE',
+  );
+});
 
 test('Rizin CLI fails closed when required isolation receives an unavailable sandbox root', async () => {
   await with_fixture(async ({ executable, executable_args, input, directory }) => {
