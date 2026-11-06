@@ -65,6 +65,8 @@ jobs:
         run: |
           test -x /usr/bin/bwrap
           /usr/bin/bwrap --version
+          test -x /usr/bin/prlimit
+          /usr/bin/prlimit --version
       - name: Run hostile-process isolation checks
         run: node scripts/linux-isolation-integration.mjs
 

@@ -1,4 +1,4 @@
-// Linux Bubblewrap hostile-process integration gate. Run only on a Linux host with Bubblewrap installed.
+// Linux Bubblewrap hostile-process integration gate. Run only on Linux with Bubblewrap and util-linux.
 import assert from 'node:assert/strict';
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
@@ -82,6 +82,18 @@ async function main() {
       catch (error) { result.root_write = error.code || 'blocked'; }
       try { fs.writeFileSync('/tmp/provider-write-probe', 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
+      const limits = fs.readFileSync('/proc/self/limits', 'utf8');
+      const limit = label => {
+        const line = limits.split('\\n').find(item => item.startsWith(label));
+        const columns = label.split(' ').length;
+        return line ? line.trim().split(/\\s+/).slice(columns, columns + 2) : null;
+      };
+      result.rlimits = {
+        cpu_seconds: limit('Max cpu time'),
+        core_bytes: limit('Max core file size'),
+        file_size_bytes: limit('Max file size'),
+        open_files: limit('Max open files')
+      };
       result.host_network = await new Promise(resolve => {
         const socket = net.createConnection({ host: '127.0.0.1', port: ${port} }, () => {
           socket.destroy(); resolve('connected');
@@ -111,8 +123,12 @@ async function main() {
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.tmp_write, 'allowed', 'Ephemeral /tmp should remain writable');
     assert.equal(result.host_network, 'blocked', 'Provider reached the host loopback network');
+    assert.deepEqual(result.rlimits.cpu_seconds, ['60', '60'], 'CPU RLIMIT was not inherited');
+    assert.deepEqual(result.rlimits.core_bytes, ['0', '0'], 'Core dump RLIMIT was not inherited');
+    assert.deepEqual(result.rlimits.file_size_bytes, ['67108864', '67108864'], 'File-size RLIMIT was not inherited');
+    assert.deepEqual(result.rlimits.open_files, ['256', '256'], 'Open-file RLIMIT was not inherited');
     assert.equal(await readFile(hostSecret, 'utf8'), hostSecretValue, 'Host secret changed unexpectedly');
-    process.stdout.write('Linux Bubblewrap hostile-process checks passed: host file denied, rootfs read-only, private /tmp writable, host loopback unreachable.\n');
+    process.stdout.write('Linux Bubblewrap hostile-process checks passed: filesystem, PID/network namespaces, private tmp, and inherited CPU/core/file-size/open-file RLIMITs.\\n');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await rm(hostSecret, { force: true });

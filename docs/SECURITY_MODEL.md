@@ -8,14 +8,14 @@ ORIX's built-in analysis remains static and read-only: it reads file bytes, calc
 
 | Threat | Current mitigation | Residual risk |
 |---|---|---|
-| Malformed offsets and truncated files | Central bounds-checked `BinaryReader`; parser-specific range and size checks | A parser logic bug can still misinterpret a valid range |
+| Malformed offsets and truncated files | Central bounds-checked BinaryReader; parser-specific range and size checks | A parser logic bug can still misinterpret a valid range |
 | Count-driven memory or CPU exhaustion | Limits on file bytes, read bytes, section counts, scan depth, files, concurrency and strings | Very large but permitted inputs can still consume resources within configured ceilings |
 | Symlink traversal | Inspector rejects symlinks; walker skips symlink entries | Filesystem races and platform-specific link semantics require continued testing |
-| File replacement during open | `lstat`, no-follow open where available, opened-file identity checks | Not a complete anti-race guarantee on all filesystems and platforms |
-| File mutation during analysis | Before/after metadata comparison and `stable_during_read` result | A sufficiently unusual filesystem or timestamp behavior may evade metadata comparison |
-| Report overwrite | `--out` uses exclusive-create semantics | Parent-directory permissions and storage integrity remain OS responsibilities |
+| File replacement during open | lstat, no-follow open where available, opened-file identity checks | Not a complete anti-race guarantee on all filesystems and platforms |
+| File mutation during analysis | Before/after metadata comparison and stable_during_read result | A sufficiently unusual filesystem or timestamp behavior may evade metadata comparison |
+| Report overwrite | --out uses exclusive-create semantics | Parent-directory permissions and storage integrity remain OS responsibilities |
 | False confidence | Evidence confidence labels, explicit parser status and limitations | Users can still over-interpret results; reports must be read with their warnings |
-| External provider process | Absolute executable path, no shell interpolation, minimal explicit environment, timeout, cancellation and output-byte cap | Provider binaries are not sandboxed; filesystem/network side effects and Windows child-tree teardown are not enforced |
+| External provider process | Absolute executable path, no shell interpolation, minimal explicit environment, timeout, cancellation and output-byte cap | Legacy mode is not sandboxed; platform isolation remains incomplete |
 | Dependency supply chain | No third-party runtime dependencies in current package | Node.js runtime, npm and development tooling still require trusted acquisition |
 
 ## MCP, browser viewer and network boundaries
@@ -24,9 +24,9 @@ ORIX's built-in analysis remains static and read-only: it reads file bytes, calc
 |---|---|---|---|
 | MCP stdio | Malformed JSON-RPC envelopes, oversized frames/batches and repeated tool calls | Strict UTF-8/JSON parsing, request-ID validation, 4 MiB frame cap, 100-message batch cap, 60 tool calls per minute by default, argument schemas | No remote HTTP transport or remote authorization; stdio clients must be locally trusted |
 | MCP workspace tools | Path traversal, symlink escape and unintended writes | Workspace-root resolution, no-follow file reads, bounded reports and explicit case/ledger mutation routes confined to configured roots | Safety annotations are hints, not authorization; local filesystem permissions remain authoritative |
-| Browser report viewer | Stored script injection through report strings or untrusted filenames | DOM construction with `textContent`, fixed static-asset allowlist, loopback-only binding, CSP with `connect-src 'none'`, `nosniff` | The viewer is not a sandbox for a compromised browser; do not open untrusted files in a compromised environment |
-| CSV export | Spreadsheet formula injection and CSV quoting confusion | Cells beginning with whitespace then `=`, `+`, `-` or `@` are prefixed with an apostrophe; quotes are doubled and line breaks normalized | CSV is for review/interchange, not a signed or canonical evidence format |
-| OSV dependency audit | Network disclosure and oversized/untrusted advisory responses | Explicit `--osv` opt-in; only ecosystem/name/version package identities are queried; response bytes, batches, pages and advisory counts are bounded | Public OSV service availability and data quality are external; source files are not uploaded; partial results must remain partial |
+| Browser report viewer | Stored script injection through report strings or untrusted filenames | DOM construction with textContent, fixed static-asset allowlist, loopback-only binding, CSP with connect-src 'none', nosniff | The viewer is not a sandbox for a compromised browser; do not open untrusted files in a compromised environment |
+| CSV export | Spreadsheet formula injection and CSV quoting confusion | Cells beginning with whitespace then =, +, - or @ are prefixed with an apostrophe; quotes are doubled and line breaks normalized | CSV is for review/interchange, not a signed or canonical evidence format |
+| OSV dependency audit | Network disclosure and oversized/untrusted advisory responses | Explicit --osv opt-in; only ecosystem/name/version package identities are queried; response bytes, batches, pages and advisory counts are bounded | Public OSV service availability and data quality are external; source files are not uploaded; partial results must remain partial |
 | Evidence ledger and cases | Local modification, truncation, record reordering, unsafe bundle paths and accidental source-sample disclosure | Append-only writer lock, SHA-256 chain verification, case-local workspace confinement, no-follow reads, bounded report/bundle sizes, member digests and event-chain verification on import | Tamper-evident, not tamper-proof; bundles are unsigned; no trusted timestamp, multi-user isolation, retention/deletion policy or remote transparency log |
 
 Strings, package metadata and report fields may contain prompt-injection text. ORIX currently has no autonomous agent that consumes these strings as instructions. Any future agent must treat artifact/report content as untrusted data, keep instructions separate from evidence, require approval for writes/network actions and retain replayable tool/audit records.
@@ -54,12 +54,11 @@ These findings are not detections of malicious behavior. API-name strings do not
 
 Executing the inspected target is not part of this release. The static provider runner starts only explicitly selected analysis tools. A future dynamic-analysis subsystem must be separate and opt-in. Minimum design requirements include explicit authorization context, a disposable isolated environment, resource/time limits, network policy, process ownership and identity verification, cancellation, cleanup on every exit path, audit events, and evidence provenance that distinguishes observed runtime behavior from static inference.
 
-A sandbox is a risk reduction control, not a guarantee. Dynamic analysis must not silently start from `inspect`, `scan`, or a static provider adapter.
+A sandbox is a risk reduction control, not a guarantee. Dynamic analysis must not silently start from inspect, scan, or a static provider adapter.
 
 ## Vulnerability reporting
 
 Please use GitHub's private vulnerability reporting or Security Advisories for sensitive reports. Include the ORIX version, Node.js version, operating system, exact command, a minimal non-sensitive reproducer and observed impact. Do not publish sensitive sample files, credentials or private target data in a public issue.
-
 
 ## Provider path and environment controls
 
@@ -67,23 +66,10 @@ The provider runner compares the canonical executable with an explicit allowlist
 
 These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. Windows currently terminates only the direct child.
 
-
 ## Enforced provider isolation (Linux implementation gate)
 
-The provider runner accepts `isolation: "required"` only when an explicit Linux
-sandbox root is supplied. The current Linux adapter uses Bubblewrap with an
-unshared network namespace, a PID/IPC/UTS/user namespace set, a read-only
-sandbox-root mount, fresh ephemeral `/tmp`, a private `/proc` and minimal
-`/dev`, and an explicit working directory. The provider executable and its
-working directory must resolve inside that root. The host project, home
-directories, and credentials are not bind-mounted into the provider namespace.
-The rootfs must be a deliberately provisioned minimal runtime containing the
-provider and its runtime dependencies; it must contain real `/proc`, `/dev`,
-and `/tmp` mount-point directories.
+The provider runner accepts isolation: "required" only when an explicit Linux sandbox root is supplied. The current Linux adapter uses Bubblewrap with an unshared network, PID, IPC, UTS and user namespace set; a read-only sandbox-root mount; fresh ephemeral /tmp; a private /proc and minimal /dev. The provider executable and working directory must resolve inside that root. Host project, home directories and credentials are not bind-mounted into the provider namespace.
 
-This is an opt-in Linux backend, not a claim of complete cross-platform
-isolation. It does not yet impose cgroup CPU/memory/PID quotas, and it does not
-provide macOS or Windows enforcement. Those controls remain explicit delivery
-gates. If Bubblewrap or a valid rootfs is unavailable, required isolation fails
-before provider launch. Omitting `isolation: "required"` preserves the legacy
-process-control behavior and must not be described as sandboxed.
+The adapter also requires util-linux prlimit at a fixed trusted system path and applies inherited per-process RLIMIT ceilings before Bubblewrap starts: 60 seconds of CPU time per process, 64 MiB maximum file size, 256 open file descriptors and zero core-dump bytes. The integration test reads /proc/self/limits inside the actual provider process and asserts these values. These are per-process limits, not aggregate cgroup quotas: RLIMIT_AS/memory and RLIMIT_NPROC/PID-count limits are not claimed, and a process tree can consume more aggregate resources than one process's limits. The host-side wall-clock timeout and output cap remain separate controls.
+
+This is an opt-in Linux backend, not complete cross-platform isolation. It does not yet impose cgroup CPU/memory/PID quotas and does not provide macOS or Windows enforcement. Those remain explicit delivery gates. If Bubblewrap, prlimit or a valid rootfs is unavailable, required isolation fails before provider launch. Omitting isolation: "required" preserves legacy process-control behavior and must not be described as sandboxed.
