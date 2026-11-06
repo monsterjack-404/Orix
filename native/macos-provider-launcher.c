@@ -3,6 +3,7 @@
 #include <limits.h>
 #include <sandbox.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 /*
  * Apple does not publish these Seatbelt SPI prototypes in the public SDK
