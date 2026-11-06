@@ -18,8 +18,8 @@ function within(root, candidate) {
     !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
 }
 
-async function resolve_bwrap() {
-  for (const candidate of ['/usr/bin/bwrap', '/bin/bwrap']) {
+async function resolve_trusted_executable(candidates, label) {
+  for (const candidate of candidates) {
     try {
       const info = await lstat(candidate);
       if (info.isSymbolicLink() || !info.isFile()) continue;
@@ -27,14 +27,22 @@ async function resolve_bwrap() {
       await access(canonical, 1);
       return canonical;
     } catch {
-      // Try the next fixed system location; never resolve through PATH.
+      // Only fixed system locations are considered; never search PATH.
     }
   }
   isolation_error(
     'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
-    'Bubblewrap is not installed at a trusted system path; required isolation cannot start',
-    { platform: process.platform, backend: 'bubblewrap' },
+    label + ' is not installed at a trusted system path; required isolation cannot start',
+    { platform: process.platform, backend: label },
   );
+}
+
+async function resolve_bwrap() {
+  return resolve_trusted_executable(['/usr/bin/bwrap', '/bin/bwrap'], 'bubblewrap');
+}
+
+async function resolve_prlimit() {
+  return resolve_trusted_executable(['/usr/bin/prlimit', '/bin/prlimit'], 'prlimit');
 }
 
 /**
@@ -161,6 +169,7 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
   const sandboxExecutable = sandbox_path(root, executable, 'executable');
   const sandboxCwd = sandbox_path(root, cwd, 'cwd');
   const bwrap = await resolve_bwrap();
+  const prlimit = await resolve_prlimit();
   const bwrapArgs = [
     '--die-with-parent',
     '--new-session',
@@ -187,11 +196,21 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
     bwrapArgs.push('--setenv', key, value);
   }
   bwrapArgs.push('--', sandboxExecutable, ...args);
+  // These per-process RLIMITs complement aggregate cgroup CPU/memory/task quotas.
+  const limitArgs = [
+    '--cpu=60:60',
+    '--fsize=67108864:67108864',
+    '--nofile=256:256',
+    '--core=0:0',
+    '--',
+    bwrap,
+    ...bwrapArgs,
+  ];
   const cgroup = await prepare_linux_provider_cgroup();
   const bootstrap = fileURLToPath(new URL('./linux-cgroup-v2-bootstrap.mjs', import.meta.url));
   return Object.freeze({
     executable: process.execPath,
-    args: Object.freeze([bootstrap, '--attach-fd=3', '--', bwrap, ...bwrapArgs]),
+    args: Object.freeze([bootstrap, '--attach-fd=3', '--', prlimit, ...limitArgs]),
     cwd: '/',
     env: Object.freeze({}),
     stdio: cgroup.stdio,
