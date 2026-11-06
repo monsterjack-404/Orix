@@ -47,6 +47,7 @@ export function inspectWindowsLauncher(bytes) {
   if (sectionCount < 1 || sectionCount > 96) fail('invalid PE section count');
   const directoryOffset = optionalOffset + 96;
   if (optionalSize < 96 + (15 * 8)) fail('optional header has no CLR data-directory entry');
+  if (u32(bytes, optionalOffset + 92, 'number of data directories') < 15) fail('PE image does not declare the CLR data directory');
   const clrRva = u32(bytes, directoryOffset + (14 * 8), 'CLR directory RVA');
   const clrSize = u32(bytes, directoryOffset + (14 * 8) + 4, 'CLR directory size');
   if (!clrRva || clrSize < 0x48) fail('missing or truncated CLR header');
