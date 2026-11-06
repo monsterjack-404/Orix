@@ -79,12 +79,25 @@ async function no_symlink_components(target, boundary) {
  * Mode bits are a preflight signal, not proof of the administrator trust boundary.
  */
 export function assess_cgroup_directory_permissions(metadata, expected_uid) {
-  const valid_metadata = metadata !== null && typeof metadata === 'object';
-  const owner_matches_process = valid_metadata &&
-    Number.isSafeInteger(expected_uid) && metadata.uid === expected_uid;
-  const mode = valid_metadata && Number.isSafeInteger(metadata.mode) ? metadata.mode : null;
+  const valid_expected_uid = Number.isSafeInteger(expected_uid) && expected_uid >= 0;
+  const valid_metadata = metadata !== null && typeof metadata === 'object' &&
+    Number.isSafeInteger(metadata.uid) && metadata.uid >= 0 &&
+    Number.isSafeInteger(metadata.mode) && metadata.mode >= 0;
+  const owner_matches_process = valid_metadata && valid_expected_uid &&
+    metadata.uid === expected_uid;
+  const mode = valid_metadata ? metadata.mode : null;
   const not_group_or_other_writable = mode !== null && (mode & 0o022) === 0;
   return Object.freeze({ owner_matches_process, not_group_or_other_writable });
+}
+
+/**
+ * Node's access(2)-backed checks use real IDs. They are only suitable for this
+ * effective-UID preflight when real/effective UID and GID are identical.
+ */
+export function access_credentials_match(real_uid, effective_uid, real_gid, effective_gid) {
+  const valid = [real_uid, effective_uid, real_gid, effective_gid]
+    .every(value => Number.isSafeInteger(value) && value >= 0);
+  return valid && real_uid === effective_uid && real_gid === effective_gid;
 }
 
 /**
@@ -152,6 +165,7 @@ export async function inspect_linux_cgroup_v2(options = {}) {
     not_group_or_other_writable: false,
     supervisor_owner_matches_process: false,
     supervisor_not_group_or_other_writable: false,
+    access_credentials_match: false,
     writable: false,
     cgroup_events_available: false,
     cgroup_kill_available: false,
@@ -190,9 +204,18 @@ export async function inspect_linux_cgroup_v2(options = {}) {
     parent.supervisor_owner_matches_process = parent.supervisor_exists &&
       supervisor_permissions.owner_matches_process;
     parent.supervisor_not_group_or_other_writable = supervisor_permissions.not_group_or_other_writable;
-    parent.writable = await access(configured_parent, FS_CONSTANTS.W_OK | FS_CONSTANTS.X_OK).then(() => true, () => false);
-    parent.cgroup_events_available = await access(path.join(configured_parent, 'cgroup.events'), FS_CONSTANTS.R_OK).then(() => true, () => false);
-    parent.cgroup_kill_available = await access(path.join(configured_parent, 'cgroup.kill'), FS_CONSTANTS.W_OK).then(() => true, () => false);
+
+    // access(2) checks real IDs. Do not claim readiness from those checks if
+    // the process is running with different effective credentials.
+    parent.access_credentials_match = access_credentials_match(
+      process.getuid(), process.geteuid(), process.getgid(), process.getegid(),
+    );
+    parent.writable = parent.access_credentials_match &&
+      await access(configured_parent, FS_CONSTANTS.W_OK | FS_CONSTANTS.X_OK).then(() => true, () => false);
+    parent.cgroup_events_available = parent.access_credentials_match &&
+      await access(path.join(configured_parent, 'cgroup.events'), FS_CONSTANTS.R_OK).then(() => true, () => false);
+    parent.cgroup_kill_available = parent.access_credentials_match &&
+      await access(path.join(configured_parent, 'cgroup.kill'), FS_CONSTANTS.W_OK).then(() => true, () => false);
   } catch (error) {
     report.reason = 'delegated-parent-inspection-failed:' + (error.code ?? error.name ?? 'unknown');
     return Object.freeze(report);
@@ -202,7 +225,8 @@ export async function inspect_linux_cgroup_v2(options = {}) {
     parent.domain_type && parent.supervisor_exists && parent.supervisor_contains_current_process &&
     parent.owner_matches_process && parent.not_group_or_other_writable &&
     parent.supervisor_owner_matches_process && parent.supervisor_not_group_or_other_writable &&
-    parent.writable && parent.cgroup_events_available && parent.cgroup_kill_available;
+    parent.access_credentials_match && parent.writable &&
+    parent.cgroup_events_available && parent.cgroup_kill_available;
   report.ready = parent.ready;
   report.reason = parent.ready ? null : 'delegated-parent-does-not-meet-required-layout-and-controller-contract';
   return Object.freeze(report);

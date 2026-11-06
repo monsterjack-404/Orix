@@ -163,7 +163,7 @@ Implement as a separate follow-up after the Linux Bubblewrap stack is merged in 
 
 Until then, ORIX must continue to describe its current Linux provider backend as Bubblewrap namespace/filesystem isolation with bounded process execution—not as CPU, memory, or process-count isolated.
 
-The delegated parent and its `supervisor/` child must be owned by the ORIX service effective UID and must not be group- or other-writable. The read-only preflight reports and enforces these conservative ownership/mode-bit checks, and also confirms that `cgroup.events` is readable and `cgroup.kill` is writable. This is not a full host trust proof: operators still control delegation, account membership, mount configuration, and any external policy beyond the mode-bit checks.
+The delegated parent and its `supervisor/` child must be owned by the ORIX service effective UID and must not be group- or other-writable. The read-only preflight reports and enforces these conservative ownership/mode-bit checks, and also confirms that `cgroup.events` is readable and `cgroup.kill` is writable. Because Node's `access(2)`-backed permission checks use the process real UID/GID, the preflight fails closed unless real and effective UID/GID match; it must not use a real-ID access result to claim effective-ID readiness. This is not a full host trust proof: operators still control delegation, account membership, mount configuration, ACL policy and any external policy beyond the mode-bit checks.
 
 ## Read-only deployment preflight (diagnostic only)
 

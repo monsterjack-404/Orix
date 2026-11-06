@@ -4,14 +4,12 @@ import assert from 'node:assert/strict';
 import { chmod, mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import {
-  assess_rootfs_directory_permissions,
-  prepare_linux_provider_isolation,
-} from '../src/providers/linux-isolation.mjs';
+import { assess_linux_rootfs_directory_permissions } from '../src/providers/linux-rootfs-trust.mjs';
+import { prepare_linux_provider_isolation } from '../src/providers/linux-isolation.mjs';
 
 test('rootfs trust assessment accepts service-owned and root-owned non-writable directories', () => {
   assert.deepEqual(
-    assess_rootfs_directory_permissions({
+    assess_linux_rootfs_directory_permissions({
       uid: 1000, mode: 0o40700, is_directory: true, is_symlink: false,
     }, 1000),
     {
@@ -24,7 +22,7 @@ test('rootfs trust assessment accepts service-owned and root-owned non-writable 
     },
   );
   assert.equal(
-    assess_rootfs_directory_permissions({
+    assess_linux_rootfs_directory_permissions({
       uid: 0, mode: 0o40755, is_directory: true, is_symlink: false,
     }, 1000).trusted,
     true,
@@ -33,42 +31,42 @@ test('rootfs trust assessment accepts service-owned and root-owned non-writable 
 
 test('rootfs trust assessment rejects foreign owners, symlinks, non-directories and writable roots', () => {
   const base = { mode: 0o40755, is_directory: true, is_symlink: false };
-  assert.equal(assess_rootfs_directory_permissions({ ...base, uid: 1001 }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({ ...base, uid: 1000, mode: 0o40777 }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({ ...base, uid: 1000, is_symlink: true }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({ ...base, uid: 1000, is_directory: false }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, uid: 1001 }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, uid: 1000, mode: 0o40777 }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, uid: 1000, is_symlink: true }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, uid: 1000, is_directory: false }, 1000).trusted, false);
 });
 
 test('rootfs trust assessment rejects invalid owner and mode metadata', () => {
   const base = { mode: 0o40755, is_directory: true, is_symlink: false, uid: 1000 };
-  assert.equal(assess_rootfs_directory_permissions({ ...base, uid: -1 }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({ ...base, uid: 1.5 }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({ ...base, mode: -1 }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({ ...base, mode: 0.5 }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions(base, -1).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions(base, Number.NaN).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, uid: -1 }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, uid: 1.5 }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, mode: -1 }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, mode: 0.5 }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions(base, -1).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions(base, Number.NaN).trusted, false);
 });
 
 test('rootfs trust assessment rejects malformed type flags and out-of-range metadata', () => {
   const base = { uid: 1000, mode: 0o40755, is_directory: true, is_symlink: false };
-  assert.equal(assess_rootfs_directory_permissions({ ...base, is_directory: 'true' }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({ ...base, is_symlink: 'false' }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({ uid: 1000, mode: 0o40755 }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({ ...base, mode: 0o200000 }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({ ...base, uid: 0x1_0000_0000 }, 1000).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions(base, 0x1_0000_0000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, is_directory: 'true' }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, is_symlink: 'false' }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ uid: 1000, mode: 0o40755 }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, mode: 0o200000 }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({ ...base, uid: 0x1_0000_0000 }, 1000).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions(base, 0x1_0000_0000).trusted, false);
 });
 
 test('rootfs trust assessment permits only the root-owned sticky ancestor exception', () => {
   const sticky_tmp = {
     uid: 0, mode: 0o41777, is_directory: true, is_symlink: false,
   };
-  assert.equal(assess_rootfs_directory_permissions(sticky_tmp, 1000, true).trusted, true);
-  assert.equal(assess_rootfs_directory_permissions(sticky_tmp, 1000, false).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({
+  assert.equal(assess_linux_rootfs_directory_permissions(sticky_tmp, 1000, true).trusted, true);
+  assert.equal(assess_linux_rootfs_directory_permissions(sticky_tmp, 1000, false).trusted, false);
+  assert.equal(assess_linux_rootfs_directory_permissions({
     ...sticky_tmp, uid: 1000,
   }, 1000, true).trusted, false);
-  assert.equal(assess_rootfs_directory_permissions({
+  assert.equal(assess_linux_rootfs_directory_permissions({
     ...sticky_tmp, mode: 0o40777,
   }, 1000, true).trusted, false);
 });
