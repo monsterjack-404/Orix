@@ -248,6 +248,25 @@ test('Rizin function adapter validates isolation mode before input filesystem ac
   );
 });
 
+test('Rizin import and function adapters reject missing sandbox_root before input filesystem access', async () => {
+  await assert.rejects(
+    analyze_rizin_imports({
+      input_path: '/not/opened/file',
+      executable: '/not/launched/rizin',
+      isolation: 'required',
+    }),
+    /sandbox_root must be an absolute filesystem path/,
+  );
+  await assert.rejects(
+    analyze_rizin_functions({
+      input_path: '/not/opened/file',
+      executable: '/not/launched/rizin',
+      isolation: 'required',
+    }),
+    /sandbox_root must be an absolute filesystem path/,
+  );
+});
+
 test('Rizin version probe forwards the isolation mode to the process runner', async () => {
   await with_fixture(async ({ executable, executable_args }) => {
     await assert.rejects(
