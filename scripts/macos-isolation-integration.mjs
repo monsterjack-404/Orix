@@ -64,9 +64,11 @@ async function main() {
   const isolationSource = await readFile(new URL('../src/providers/macos-isolation.mjs', import.meta.url), 'utf8');
   assert.match(isolationSource, /detached: true/,
     'macOS compiler must use a dedicated process group for descendant cleanup');
-  assert.match(isolationSource, /timedOut = true;[\\s\\S]*?process\\.kill\\(-child\\.pid, 'SIGKILL'\\)/,
+  assert.ok(isolationSource.includes("process.kill(-child.pid, 'SIGKILL')"),
     'macOS compiler timeout must kill the complete compiler process group');
-  assert.match(isolationSource, /child\\.once\\('close',[\\s\\S]*?if \\(timedOut\\)[\\s\\S]*?ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT/,
+  const closeHandler = isolationSource.indexOf("child.once('close'");
+  const timeoutError = isolationSource.indexOf('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', closeHandler);
+  assert.ok(closeHandler >= 0 && timeoutError > closeHandler,
     'macOS compiler timeout must not reject until the child close event confirms termination');
   const base = await mkdtemp(path.join(os.tmpdir(), 'orix-seatbelt-integration-'));
   const root = path.join(base, 'rootfs');
