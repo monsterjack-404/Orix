@@ -146,6 +146,31 @@ async function main() {
 
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
 
+    // POSIX mode bits do not reveal macOS extended ACL entries. The native
+    // launcher must reject an ACL-granted writer even when mode bits look safe.
+    const aclProbe = path.join(root, 'work', 'extended-acl-probe.txt');
+    await writeFile(aclProbe, 'ACL must be rejected', { mode: 0o600 });
+    execFileSync('/bin/chmod', ['+a', 'everyone allow write', aclProbe]);
+    try {
+      const aclExecution = await run_static_provider({
+        manifest: manifest(),
+        executable,
+        cwd: path.join(root, 'work'),
+        sandbox_root: root,
+        isolation: 'required',
+        env: {},
+        args: ['-e', 'process.exit(0)'],
+        timeout_ms: 12_000,
+        max_output_bytes: 4_096,
+      });
+      assert.equal(aclExecution.ok, false, 'macOS isolation accepted a rootfs entry with an extended ACL');
+      assert.match(aclExecution.stderr, /ORIX_MACOS_ACL_DENIED=/,
+        'Native launcher did not report the extended ACL rejection');
+    } finally {
+      execFileSync('/bin/chmod', ['-N', aclProbe]);
+      await rm(aclProbe, { force: true });
+    }
+
     server = net.createServer();
     await new Promise((resolve, reject) => {
       server.once('error', reject);
