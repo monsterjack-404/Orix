@@ -199,6 +199,22 @@ test('Rizin adapter isolates the original artifact and discards results if a pro
   });
 });
 
+test('Rizin import and function adapters reject hard-linked MCP inputs', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args }) => {
+    const alias = input_path + '.alias';
+    const { link } = await import('node:fs/promises');
+    await link(input_path, alias);
+    await assert.rejects(
+      analyze_rizin_imports({ input_path, executable, executable_args, reject_hardlinks: true }),
+      error => error.code === 'ORIX_RIZIN_HARDLINK_REJECTED',
+    );
+    await assert.rejects(
+      analyze_rizin_functions({ input_path, executable, executable_args, reject_hardlinks: true }),
+      error => error.code === 'ORIX_RIZIN_HARDLINK_REJECTED',
+    );
+  });
+});
+
 test('Rizin adapter and doctor reject manifests that exclude the current runtime platform', async () => {
   const current = process.platform === 'win32'
     ? 'windows'
