@@ -82,6 +82,34 @@ test('cgroup directory permission gate requires effective-UID ownership and no g
   );
 });
 
+test('cgroup directory permission assessment rejects invalid UID and mode metadata', () => {
+  const base = { uid: 1000, mode: 0o40755 };
+  assert.deepEqual(
+    assess_cgroup_directory_permissions({ ...base, uid: -1 }, 1000),
+    { owner_matches_process: false, not_group_or_other_writable: false },
+  );
+  assert.deepEqual(
+    assess_cgroup_directory_permissions({ ...base, uid: 1.5 }, 1000),
+    { owner_matches_process: false, not_group_or_other_writable: false },
+  );
+  assert.deepEqual(
+    assess_cgroup_directory_permissions({ ...base, mode: -1 }, 1000),
+    { owner_matches_process: false, not_group_or_other_writable: false },
+  );
+  assert.deepEqual(
+    assess_cgroup_directory_permissions({ ...base, mode: 0.5 }, 1000),
+    { owner_matches_process: false, not_group_or_other_writable: false },
+  );
+  assert.deepEqual(
+    assess_cgroup_directory_permissions(base, -1),
+    { owner_matches_process: false, not_group_or_other_writable: true },
+  );
+  assert.deepEqual(
+    assess_cgroup_directory_permissions(base, Number.NaN),
+    { owner_matches_process: false, not_group_or_other_writable: true },
+  );
+});
+
 async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode = 0o700, events_mode = 0o600, kill_mode = 0o600 } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'orix-cgroup-preflight-'));
   const mountpoint = path.join(root, 'cgroup2');
@@ -122,6 +150,7 @@ if (process.platform === 'linux') {
         parent_path: fixture.parent,
       });
       assert.equal(report.ready, true, report.reason);
+      assert.equal(report.parent.access_credentials_match, true);
       assert.equal(report.parent.owner_matches_process, true);
       assert.equal(report.parent.not_group_or_other_writable, true);
       assert.equal(report.parent.supervisor_owner_matches_process, true);
