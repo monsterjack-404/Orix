@@ -422,7 +422,7 @@ namespace OrixWindowsSandbox {
       // directory directly, then use only an absolute path beneath it.
       StringBuilder buffer = new StringBuilder(32768);
       uint length = GetSystemDirectoryW(buffer, (uint)buffer.Capacity);
-      if (length == 0 || length >= buffer.Capacity)
+      if (length == 0 || length >= (uint)buffer.Capacity)
         throw Win32("Resolve trusted Windows system directory");
       string directory = Path.GetFullPath(buffer.ToString());
       if (!Path.IsPathRooted(directory))
