@@ -39,6 +39,16 @@ test('rootfs trust assessment rejects foreign owners, symlinks, non-directories 
   assert.equal(assess_rootfs_directory_permissions({ ...base, uid: 1000, is_directory: false }, 1000).trusted, false);
 });
 
+test('rootfs trust assessment rejects invalid owner and mode metadata', () => {
+  const base = { mode: 0o40755, is_directory: true, is_symlink: false, uid: 1000 };
+  assert.equal(assess_rootfs_directory_permissions({ ...base, uid: -1 }, 1000).trusted, false);
+  assert.equal(assess_rootfs_directory_permissions({ ...base, uid: 1.5 }, 1000).trusted, false);
+  assert.equal(assess_rootfs_directory_permissions({ ...base, mode: -1 }, 1000).trusted, false);
+  assert.equal(assess_rootfs_directory_permissions({ ...base, mode: 0.5 }, 1000).trusted, false);
+  assert.equal(assess_rootfs_directory_permissions(base, -1).trusted, false);
+  assert.equal(assess_rootfs_directory_permissions(base, Number.NaN).trusted, false);
+});
+
 test('rootfs trust assessment permits only the root-owned sticky ancestor exception', () => {
   const sticky_tmp = {
     uid: 0, mode: 0o41777, is_directory: true, is_symlink: false,
