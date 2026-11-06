@@ -37,6 +37,15 @@ function create_dex_fixture() {
   return buffer;
 }
 
+function zip_crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
 function create_zip(entries) {
   const local_records = [];
   const central_records = [];
@@ -48,12 +57,13 @@ function create_zip(entries) {
     const method = entry.method ?? 0;
     const compressed = method === 8 ? deflateRawSync(contents) : contents;
     const flags = entry.flags ?? 0;
+    const checksum = zip_crc32(contents);
     const local = Buffer.alloc(30 + name.length + compressed.length);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
     local.writeUInt16LE(flags, 6);
     local.writeUInt16LE(method, 8);
-    local.writeUInt32LE(0, 14);
+    local.writeUInt32LE(checksum, 14);
     local.writeUInt32LE(compressed.length, 18);
     local.writeUInt32LE(contents.length, 22);
     local.writeUInt16LE(name.length, 26);
@@ -68,7 +78,7 @@ function create_zip(entries) {
     central.writeUInt16LE(20, 6);
     central.writeUInt16LE(flags, 8);
     central.writeUInt16LE(method, 10);
-    central.writeUInt32LE(0, 16);
+    central.writeUInt32LE(checksum, 16);
     central.writeUInt32LE(compressed.length, 20);
     central.writeUInt32LE(contents.length, 24);
     central.writeUInt16LE(name.length, 28);
