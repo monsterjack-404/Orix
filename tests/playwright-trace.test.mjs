@@ -196,6 +196,34 @@ test('Playwright trace action ceilings count unique action IDs and mark omission
   assert.ok(report.warnings.some(item => item.includes('max_actions')));
 });
 
+test('Playwright JSONL scanning bounds retained lines when traces contain many blank records', () => {
+  const context = JSON.stringify({ type: 'context-options', version: 9, browserName: 'chromium' });
+  const trace = Buffer.from(context + '\n' + '\n'.repeat(300_000), 'utf8');
+  const report = parse_playwright_trace(create_zip_entries([{ name: 'trace.trace', contents: trace }]), { max_events: 1 });
+  assert.equal(report.summary.events_total, 1);
+  assert.equal(report.summary.events_analyzed, 1);
+  assert.equal(report.coverage.complete, true);
+});
+
+test('Playwright action IDs are sequential and duplicate action updates cannot create negative durations', () => {
+  const events = make_events();
+  events.splice(2, 0,
+    { type: 'before', callId: 'call-2', startTime: 11, class: 'Page', method: 'goto', params: {} },
+    { type: 'after', callId: 'call-2', endTime: 13 },
+  );
+  const report = parse_playwright_trace(make_archive(events));
+  assert.deepEqual(report.actions.map(item => item.id), ['action-00001', 'action-00002']);
+
+  const invalid = make_events();
+  invalid.splice(7, 0, {
+    type: 'action', callId: 'call-1', startTime: 1, endTime: 2, class: 'Locator', method: 'click',
+  });
+  assert.throws(
+    () => parse_playwright_trace(make_archive(invalid)),
+    error => error.code === 'ORIX_TRACE_ACTION_TIMING',
+  );
+});
+
 test('Playwright trace importer rejects archive CRC corruption and non-UTF-8 trace data', () => {
   const corrupt = make_archive();
   corrupt[31] ^= 0x01;
