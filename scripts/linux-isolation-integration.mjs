@@ -119,6 +119,7 @@ async function main() {
       try { fs.writeFileSync('/tmp/provider-write-probe', 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
       const orphan = spawn('/usr/bin/sleep', ['60'], { detached: true, stdio: 'ignore' });
+      orphan.unref();
       result.orphan_spawned = Number.isInteger(orphan.pid) && orphan.pid > 0;
       result.external_network = await new Promise(resolve => {
         const socket = net.createConnection({ host: '1.1.1.1', port: 443 }, () => {
