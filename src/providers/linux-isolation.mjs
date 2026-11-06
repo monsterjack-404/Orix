@@ -35,6 +35,80 @@ async function resolve_bwrap() {
   );
 }
 
+
+/**
+ * Check ownership and mode for one directory in the trusted rootfs path.
+ * Ancestors may use the root-owned sticky-directory exception (for example /tmp).
+ */
+export function assess_rootfs_directory_permissions(metadata, expected_uid, allow_root_sticky = false) {
+  const valid_expected_uid = Number.isSafeInteger(expected_uid) && expected_uid >= 0;
+  const valid = metadata !== null && typeof metadata === 'object' &&
+    Number.isSafeInteger(metadata.uid) && metadata.uid >= 0 &&
+    Number.isSafeInteger(metadata.mode) && metadata.mode >= 0;
+  const directory = valid && metadata.is_directory === true;
+  const symlink = !valid || metadata.is_symlink === true;
+  const owner_is_trusted = valid && valid_expected_uid &&
+    (metadata.uid === 0 || metadata.uid === expected_uid);
+  const group_or_other_writable = !valid || (metadata.mode & 0o022) !== 0;
+  const sticky_root_exception = valid && allow_root_sticky &&
+    metadata.uid === 0 && (metadata.mode & 0o1000) !== 0;
+  const writable_by_untrusted = group_or_other_writable && !sticky_root_exception;
+  return Object.freeze({
+    directory,
+    symlink,
+    owner_is_trusted,
+    group_or_other_writable,
+    sticky_root_exception,
+    trusted: directory && !symlink && owner_is_trusted && !writable_by_untrusted,
+  });
+}
+
+async function validate_rootfs_path_trust(root) {
+  if (root === path.parse(root).root) {
+    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID',
+      'The filesystem root cannot be used as a provider sandbox root');
+  }
+
+  const expected_uid = process.geteuid();
+  let current = root;
+  let is_rootfs = true;
+  for (;;) {
+    let info;
+    try {
+      info = await lstat(current);
+    } catch (error) {
+      isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+        'A provider sandbox root path component cannot be inspected', {
+          reason: error.code ?? 'filesystem-error',
+        });
+    }
+    const assessment = assess_rootfs_directory_permissions({
+      uid: info.uid,
+      mode: info.mode,
+      is_directory: info.isDirectory(),
+      is_symlink: info.isSymbolicLink(),
+    }, expected_uid, !is_rootfs);
+
+    if (!assessment.trusted) {
+      isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+        is_rootfs
+          ? 'Provider sandbox root must be owned by root or the ORIX service account and not group/other writable'
+          : 'Provider sandbox root ancestors must be trusted and not group/other writable (except root-owned sticky directories)',
+        {
+          component: current,
+          owner_uid: info.uid,
+          expected_uid,
+          mode: info.mode & 0o7777,
+          rootfs_component: is_rootfs,
+        });
+    }
+
+    if (current === path.parse(current).root) break;
+    current = path.dirname(current);
+    is_rootfs = false;
+  }
+}
+
 async function validate_rootfs(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
     throw new TypeError('sandbox_root must be an absolute filesystem path');
@@ -50,6 +124,7 @@ async function validate_rootfs(value) {
     isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID', 'Provider sandbox root must be a non-symlink directory');
   }
   const root = await realpath(value);
+  await validate_rootfs_path_trust(root);
   for (const required of ['proc', 'dev', 'tmp']) {
     let entry;
     try { entry = await lstat(path.join(root, required)); }
@@ -113,6 +188,16 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
     bwrapArgs.push('--setenv', key, value);
   }
   bwrapArgs.push('--', sandboxExecutable, ...args);
+
+  // Re-check rootfs ownership/modes and every ancestor after preparing argv,
+  // immediately before handing the launch plan back to the process runner.
+  // This narrows (but cannot eliminate) the validation-to-spawn race.
+  const final_root = await validate_rootfs(sandbox_root);
+  if (final_root !== root) {
+    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_CHANGED',
+      'Provider sandbox root identity changed while its launch policy was being prepared');
+  }
+
   return Object.freeze({
     executable: bwrap,
     args: Object.freeze(bwrapArgs),
