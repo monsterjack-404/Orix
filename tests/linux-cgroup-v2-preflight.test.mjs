@@ -82,7 +82,7 @@ test('cgroup directory permission gate requires effective-UID ownership and no g
   );
 });
 
-async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode = 0o700 } = {}) {
+async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode = 0o700, events_mode = 0o600, kill_mode = 0o600 } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'orix-cgroup-preflight-'));
   const mountpoint = path.join(root, 'cgroup2');
   const parent = path.join(mountpoint, 'tenant');
@@ -103,6 +103,8 @@ async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode
   };
   await Promise.all(Object.entries(files).map(([name, contents]) =>
     writeFile(path.join(parent, name), contents)));
+  await chmod(path.join(parent, 'cgroup.events'), events_mode);
+  await chmod(path.join(parent, 'cgroup.kill'), kill_mode);
   await writeFile(
     path.join(proc_self, 'mountinfo'),
     '29 23 0:26 / ' + mountpoint + ' rw,nosuid,nodev - cgroup2 cgroup rw\n',
@@ -144,6 +146,24 @@ if (process.platform === 'linux') {
       assert.equal(report.parent.supervisor_owner_matches_process, true);
       assert.equal(report.parent.supervisor_not_group_or_other_writable, false);
       assert.equal(report.reason, 'delegated-parent-does-not-meet-required-layout-and-controller-contract');
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+}
+
+
+if (process.platform === 'linux') {
+  test('read-only preflight requires readable cgroup.events and writable cgroup.kill', { timeout: 10_000 }, async () => {
+    const fixture = await create_fake_delegated_host({ events_mode: 0o200, kill_mode: 0o400 });
+    try {
+      const report = await inspect_linux_cgroup_v2({
+        proc_root: path.join(fixture.root, 'proc'),
+        parent_path: fixture.parent,
+      });
+      assert.equal(report.ready, false);
+      assert.equal(report.parent.cgroup_events_available, false);
+      assert.equal(report.parent.cgroup_kill_available, false);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
