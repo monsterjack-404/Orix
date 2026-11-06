@@ -119,6 +119,17 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
 });
 
+test('MCP validates Rizin isolation enum values before workspace resolution', async () => {
+  await assert.rejects(
+    call_orix_tool('orix.rizin_functions', {
+      path: '/not/used/sample.elf',
+      executable: '/not/used/rizin',
+      isolation: 'untrusted-mode',
+    }),
+    /isolation must be one of: none, required/,
+  );
+});
+
 test('MCP Rizin required isolation requires a workspace-confined sandbox root', async () => {
   await assert.rejects(
     call_orix_tool('orix.rizin_functions', {
