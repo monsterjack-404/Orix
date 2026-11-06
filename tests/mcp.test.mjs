@@ -112,6 +112,7 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   }
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.inspect_file').annotations.readOnlyHint, true);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_functions').annotations.readOnlyHint, true);
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_functions').inputSchema.properties.cwd.type, 'string');
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.readOnlyHint, false);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
 });
@@ -697,6 +698,31 @@ test('MCP architecture analysis reuses the bounded scanner and reports local cyc
   }
 });
 
+
+test('MCP Rizin working directory must remain inside configured workspace roots', async () => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-cwd-workspace-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-cwd-outside-'));
+  const previous_root = process.env.ORIX_PROVIDER_SANDBOX_ROOT;
+  try {
+    const file = path.join(workspace, 'sample.elf');
+    await writeFile(file, Buffer.from('MCP cwd fixture'));
+    process.env.ORIX_PROVIDER_SANDBOX_ROOT = path.join(workspace, 'missing-rootfs');
+    await assert.rejects(
+      call_orix_tool('orix.rizin_functions', {
+        path: file,
+        executable: process.execPath,
+        isolation: 'required',
+        cwd: outside,
+      }, { roots: [workspace] }),
+      /outside configured workspace roots/,
+    );
+  } finally {
+    if (previous_root === undefined) delete process.env.ORIX_PROVIDER_SANDBOX_ROOT;
+    else process.env.ORIX_PROVIDER_SANDBOX_ROOT = previous_root;
+    await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
 
 test('MCP Rizin isolation mode is schema-validated and uses the administrator sandbox root', async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-isolation-'));
