@@ -8,6 +8,7 @@ const REQUIRED_CONTROLLERS = Object.freeze(['cpu', 'memory', 'pids']);
 function canonical_posix_absolute(value) {
   return typeof value === 'string' && value.length > 0 &&
     !value.includes('\0') && path.posix.isAbsolute(value) &&
+    (value === '/' || !value.endsWith('/')) &&
     path.posix.normalize(value) === value;
 }
 
