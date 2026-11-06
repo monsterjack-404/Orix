@@ -71,6 +71,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         timeout_ms: integer('Total provider workflow deadline in milliseconds.', 60000, 1),
         isolation: { type: 'string', enum: ['none', 'required'], description: 'Opt into required Linux Bubblewrap isolation; defaults to none.' },
         sandbox_root: { type: 'string', minLength: 1, maxLength: 4096, description: 'Existing provider rootfs directory inside a configured MCP workspace; required when isolation is required.' },
+        cwd: { type: 'string', minLength: 1, maxLength: 4096, description: 'Optional provider working directory inside a configured MCP workspace; defaults to sandbox_root when required isolation is selected.' },
         max_output_kib: integer('Aggregate stdout/stderr capture budget in KiB.', 8192, 1),
       },
       required: ['path', 'executable'],
@@ -376,6 +377,9 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       const sandbox_root = isolation === 'required'
         ? (await resolve_workspace_path(args.sandbox_root, roots, { kind: 'directory' })).path
         : undefined;
+      const cwd = args.cwd !== undefined
+        ? (await resolve_workspace_path(args.cwd, roots, { kind: 'directory' })).path
+        : sandbox_root;
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       return analyze_rizin_functions({
         input_path: target.path,
@@ -389,6 +393,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
         max_output_bytes: (args.max_output_kib ?? 2_048) * 1024,
         isolation,
         sandbox_root,
+        cwd,
       });
     }
     case 'orix.scan_directory': {

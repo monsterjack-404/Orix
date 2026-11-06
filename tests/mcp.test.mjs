@@ -115,6 +115,7 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   const rizin_schema = response.result.tools.find(tool => tool.name === 'orix.rizin_functions').inputSchema;
   assert.deepEqual(rizin_schema.properties.isolation.enum, ['none', 'required']);
   assert.equal(rizin_schema.properties.sandbox_root.type, 'string');
+  assert.equal(rizin_schema.properties.cwd.type, 'string');
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.readOnlyHint, false);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
 });
@@ -151,6 +152,16 @@ test('MCP Rizin required isolation requires a workspace-confined sandbox root', 
         executable: '/not/used/rizin',
         isolation: 'required',
         sandbox_root: outside,
+      }, { roots: [workspace] }),
+      error => error.code === 'ORIX_MCP_PATH_OUTSIDE_WORKSPACE',
+    );
+    await assert.rejects(
+      call_orix_tool('orix.rizin_functions', {
+        path: input,
+        executable: '/not/used/rizin',
+        isolation: 'required',
+        sandbox_root: workspace,
+        cwd: outside,
       }, { roots: [workspace] }),
       error => error.code === 'ORIX_MCP_PATH_OUTSIDE_WORKSPACE',
     );

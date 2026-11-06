@@ -46,7 +46,7 @@ function validate_command_flags(command, flags) {
     capabilities: ['format', 'out'],
     ledger: ['format', 'out', 'ledger_operation', 'ledger_path'],
     case: ['format', 'out', 'case_operation', 'case_args'],
-    providers: ['format', 'out', 'provider_executable', 'provider_executable_args', 'timeout_ms', 'max_output_bytes', 'max_imports', 'max_functions', 'rizin_address', 'max_instructions', 'rizin_decompile', 'isolation', 'sandbox_root'],
+    providers: ['format', 'out', 'provider_executable', 'provider_executable_args', 'timeout_ms', 'max_output_bytes', 'max_imports', 'max_functions', 'rizin_address', 'max_instructions', 'rizin_decompile', 'isolation', 'sandbox_root', 'provider_cwd'],
     audit: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'osv_lookup', 'max_osv_packages', 'max_osv_advisories', 'max_osv_response_bytes', 'timeout_ms'],
     har: ['format', 'out', 'max_har_entries', 'max_har_hosts'],
   }[command];
@@ -98,6 +98,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
         max_output_bytes:parsed.flags.max_output_bytes,
         isolation:parsed.flags.isolation,
         sandbox_root:parsed.flags.sandbox_root,
+        cwd:parsed.flags.provider_cwd ?? (parsed.flags.isolation === 'required' ? parsed.flags.sandbox_root : undefined),
       });
       await write_or_print(render_json(report),parsed.flags.out);
       return 0;
@@ -118,6 +119,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
         decompile:parsed.flags.rizin_decompile,
         isolation:parsed.flags.isolation,
         sandbox_root:parsed.flags.sandbox_root,
+        cwd:parsed.flags.provider_cwd ?? (parsed.flags.isolation === 'required' ? parsed.flags.sandbox_root : undefined),
       });
       const output=parsed.flags.format==='json'
         ? render_json(report)
@@ -138,6 +140,7 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
         max_imports:parsed.flags.max_imports,
         isolation:parsed.flags.isolation,
         sandbox_root:parsed.flags.sandbox_root,
+        cwd:parsed.flags.provider_cwd ?? (parsed.flags.isolation === 'required' ? parsed.flags.sandbox_root : undefined),
       });
       const output=parsed.flags.format==='json'
         ? render_json(report)
