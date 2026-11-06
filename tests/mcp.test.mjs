@@ -98,6 +98,7 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   const response = await handle_mcp_message({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
   assert.deepEqual(response.result.tools.map(tool => tool.name), ORIX_MCP_TOOLS.map(tool => tool.name));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.inspect_file'));
+  assert.ok(response.result.tools.some(tool => tool.name === 'orix.rizin_imports'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.rizin_functions'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_architecture'));
   assert.ok(response.result.tools.some(tool => tool.name === 'orix.analyze_har'));
@@ -111,6 +112,7 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
     assert.equal(tool.annotations.openWorldHint, false);
   }
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.inspect_file').annotations.readOnlyHint, true);
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_imports').annotations.readOnlyHint, true);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_functions').annotations.readOnlyHint, true);
   const rizin_schema = response.result.tools.find(tool => tool.name === 'orix.rizin_functions').inputSchema;
   assert.deepEqual(rizin_schema.properties.isolation.enum, ['none', 'required']);
@@ -162,6 +164,79 @@ test('MCP Rizin required isolation rejects a missing sandbox root before launchi
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('MCP Rizin imports tool returns a bounded static import inventory', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-imports-'));
+  try {
+    const file = path.join(directory, 'native sample.elf');
+    const config_path = path.join(directory, 'rizin-imports-stub-config.json');
+    const executable = await realpath(process.execPath);
+    const executable_args = [
+      fileURLToPath(new URL('./fixtures/rizin-stub.mjs', import.meta.url)),
+      config_path,
+    ];
+    await writeFile(file, Buffer.from('MCP native import fixture'));
+    await writeFile(config_path, JSON.stringify({
+      import_output: JSON.stringify([
+        { name: 'puts', libname: 'libc.so.6', ordinal: 1, bind: 'GLOBAL', type: 'FUNC', plt: 4096 },
+      ]),
+    }));
+    const response = await handle_mcp_message({
+      jsonrpc: '2.0', id: 511, method: 'tools/call',
+      params: {
+        name: 'orix.rizin_imports',
+        arguments: { path: file, executable, executable_args, max_imports: 100, timeout_ms: 10000 },
+      },
+    }, { roots: [directory] });
+    assert.equal(response.result.isError, false);
+    const report = JSON.parse(response.result.content[0].text);
+    assert.equal(report.schema_version, 'orix.rizin-imports.v1');
+    assert.equal(report.imports[0].name, 'puts');
+    assert.equal(report.imports[0].library, 'libc.so.6');
+    assert.equal(report.artifact.stable_during_analysis, true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('MCP Rizin imports requires a sandbox root when required isolation is selected', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-imports-required-root-'));
+  try {
+    const file = path.join(directory, 'sample.elf');
+    await writeFile(file, Buffer.from('MCP native import fixture'));
+    await assert.rejects(
+      call_orix_tool('orix.rizin_imports', {
+        path: file,
+        executable: process.execPath,
+        isolation: 'required',
+      }, { roots: [directory] }),
+      /sandbox_root is required when isolation is required/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('MCP Rizin imports isolation root cannot escape configured workspace roots', async () => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-imports-workspace-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-imports-outside-'));
+  try {
+    const file = path.join(workspace, 'sample.elf');
+    await writeFile(file, Buffer.from('MCP native fixture'));
+    await assert.rejects(
+      call_orix_tool('orix.rizin_imports', {
+        path: file,
+        executable: process.execPath,
+        isolation: 'required',
+        sandbox_root: outside,
+      }, { roots: [workspace] }),
+      /outside configured workspace roots/,
+    );
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
   }
 });
 
