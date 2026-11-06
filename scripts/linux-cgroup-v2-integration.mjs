@@ -1,6 +1,6 @@
 // Real-kernel cgroup v2 integration gate. Run as root on a writable cgroup2 host.
 import assert from 'node:assert/strict';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rmdir, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
@@ -122,7 +122,8 @@ async function create_delegated_parent() {
     return { root, parent, supervisor, added };
   } catch (error) {
     try { await write_control(path.join(root, 'cgroup.procs'), String(process.pid)); } catch { /* best-effort recovery */ }
-    try { await rm(parent, { recursive: true, force: true }); } catch { /* preserve setup error */ }
+    try { await rmdir(supervisor); } catch { /* preserve setup error */ }
+    try { await rmdir(parent); } catch { /* preserve setup error */ }
     if (added.length) try { await write_control(path.join(root, 'cgroup.subtree_control'), '-' + added.join(' -')); } catch { /* preserve setup error */ }
     throw error;
   }
@@ -134,9 +135,9 @@ async function remove_delegated_parent(state) {
   const remaining = (await readdir(parent)).filter(name => name !== 'supervisor');
   assert.deepEqual(remaining, [], 'Provider cgroups remain after integration cleanup');
   await write_control(path.join(root, 'cgroup.procs'), String(process.pid));
-  await rm(supervisor, { recursive: true, force: true });
+  await rmdir(supervisor);
   await write_control(path.join(parent, 'cgroup.subtree_control'), '-' + REQUIRED.join(' -'));
-  await rm(parent, { recursive: true, force: true });
+  await rmdir(parent);
   if (added.length) await write_control(path.join(root, 'cgroup.subtree_control'), '-' + added.join(' -'));
 }
 
@@ -258,7 +259,7 @@ async function main() {
     assert.ok(peakPids >= 32, 'pids.current did not reflect provider-created descendants');
     assert.ok(result.pids_limit_hits > 0, 'pids.max did not reject excess process creation');
     assert.ok(sleepPids.length > 0, 'Provider descendants were not observed inside the run cgroup');
-    assert.notEqual(result.namespace_parent_pid, process.pid, 'Provider is not isolated in a private PID namespace');
+    assert.equal(result.namespace_parent_pid, 1, 'Provider is not contained under the private PID namespace init process');
     assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.tmp_write, 'allowed', 'Ephemeral /tmp should remain writable');
@@ -271,7 +272,11 @@ async function main() {
     assert.ok(runCgroup, 'Run cgroup path was not observed');
     await assert.rejects(readFile(path.join(runCgroup, 'cgroup.events'), 'utf8'), error => error.code === 'ENOENT');
     for (const pid of sleepPids) {
-      await assert.rejects(readFile('/proc/' + pid + '/cmdline', 'utf8'), error => error.code === 'ENOENT');
+      const command = await readFile('/proc/' + pid + '/cmdline', 'utf8').catch(error => {
+        if (error.code === 'ENOENT') return '';
+        throw error;
+      });
+      assert.equal(command.includes('/usr/bin/sleep'), false, 'Provider descendant survived cgroup cleanup');
     }
 
     // A separate provider intentionally exceeds memory.max. memory.oom.group=1

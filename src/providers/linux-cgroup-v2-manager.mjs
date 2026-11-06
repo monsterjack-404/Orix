@@ -17,7 +17,7 @@ import { inspect_linux_cgroup_v2 } from './linux-cgroup-v2-preflight.mjs';
 
 const CGROUP2_SUPER_MAGIC = 0x63677270;
 const REQUIRED_CONTROLLERS = ['cpu', 'memory', 'pids'];
-const LIMITS = Object.freeze({
+export const LINUX_PROVIDER_CGROUP_LIMITS = Object.freeze({
   'cpu.max': '50000 100000',
   'memory.max': '536870912',
   'memory.swap.max': '0',
@@ -235,7 +235,7 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
     child_fd = open_directory_at(parent_fd, child_name);
     assert_cgroup2_filesystem(child_fd);
 
-    for (const [name, value] of Object.entries(LIMITS)) write_control(child_fd, name, value);
+    for (const [name, value] of Object.entries(LINUX_PROVIDER_CGROUP_LIMITS)) write_control(child_fd, name, value);
     for (const [name, expected] of Object.entries(LIMITS)) {
       const actual = read_control(child_fd, name);
       if (actual !== expected) {
