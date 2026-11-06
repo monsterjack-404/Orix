@@ -72,9 +72,16 @@ These controls reduce accidental path substitution and environment injection but
 
 The provider runner accepts `isolation: "required"` only when an explicit Linux
 sandbox root is supplied. The current Linux adapter uses Bubblewrap with an
-unshared network namespace, a PID/IPC/UTS/user namespace set, a read-only
-sandbox-root mount, fresh ephemeral `/tmp`, a private `/proc` and minimal
-`/dev`, and an explicit working directory. The provider executable and its
+unshared network namespace, explicitly required user/PID/IPC/UTS namespaces,
+a read-only sandbox-root mount, fresh ephemeral `/tmp`, a private `/proc` and
+minimal `/dev`, and an explicit working directory. The backend also applies
+Bubblewrap 0.8.0 or later's `--disable-userns` and
+`--assert-userns-disabled` controls so the provider cannot create nested user
+namespaces to rearrange mount isolation. Older versions reject the required
+flags and therefore fail closed before provider launch.
+The Linux hostile-process integration test attempts to create a nested user
+namespace from inside the provider and requires that attempt to fail, in
+addition to checking filesystem and network boundaries. The provider executable and its
 working directory must resolve inside that root. The host project, home
 directories, and credentials are not bind-mounted into the provider namespace.
 The rootfs must be a deliberately provisioned minimal runtime containing the
