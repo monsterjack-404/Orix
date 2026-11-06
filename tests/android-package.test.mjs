@@ -417,3 +417,24 @@ test('android CLI writes a JSON APK report and refuses to overwrite output', asy
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+
+test('AAB inventory recognizes BundleConfig and module manifest/DEX paths without protobuf claims', () => {
+  const manifest = Buffer.alloc(8);
+  manifest.writeUInt16LE(0x0003, 0);
+  manifest.writeUInt16LE(8, 2);
+  manifest.writeUInt32LE(8, 4);
+  const report = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x0a, 0x00]) },
+    { name: 'base/manifest/AndroidManifest.xml', contents: manifest },
+    { name: 'base/dex/classes.dex', contents: create_dex_fixture() },
+  ]));
+  assert.equal(report.format, 'AAB');
+  assert.equal(report.detected, true);
+  assert.equal(report.summary.manifest_entries, 1);
+  assert.equal(report.manifests[0].path, 'base/manifest/AndroidManifest.xml');
+  assert.equal(report.manifests[0].status, 'malformed-binary-xml');
+  assert.equal(report.summary.dex_entries, 1);
+  assert.equal(report.dex[0].status, 'metadata-parsed');
+  assert.ok(report.limitations.some(note => note.includes('AAB protobuf manifests')));
+});
