@@ -171,6 +171,12 @@ console.log(report.call_graph);
 The function inventory is capped at 100,000 entries; the default is 10,000. Address-scoped disassembly is optional and capped at 1,000 instructions; the default is 100. Cross-reference collection is opt-in (include_references: true), uses one additional axlj JSON pass, and is capped at 100,000 records (default 25,000). The call graph is built from references that Rizin explicitly classifies as CALL; source addresses are mapped to the returned function inventory, and unresolved/external destinations retain their target address with a null function offset. This does not prove completeness: indirect calls, tail calls or unrecognized reference kinds may be absent. Runtime and captured stdout/stderr share one total budget across version, function, reference, disassembly and optional decompilation processes. Each report includes the input SHA-256 and records whether inventories were truncated.
 
 The `pdg` pseudocode mode requires the separately installed `rz-ghidra` plugin; it is never downloaded or installed by ORIX. The upstream project is LGPL-3.0 and documents Rizin-version compatibility; choose a compatible plugin/Rizin pair before enabling it. ORIX does not redistribute or auto-install the plugin. Its output is heuristic and may be incomplete, incorrect or non-compilable. When the plugin is absent, the request returns `ORIX_RIZIN_DECOMPILER_UNAVAILABLE`. Rizin's automatic analysis is heuristic and may miss or misclassify functions. See the [rz-ghidra project and command reference](https://github.com/rizinorg/rz-ghidra), which documents `pdg` as its native Ghidra decompiler command. See the [Rizin command-line options](https://book.rizin.re/src/first_steps/commandline_options.html), [code analysis guide](https://book.rizin.re/src/analysis/code_analysis.html) and [function analysis reference](https://book.rizin.re/src/analysis/code_analysis.html#analyze-functions).
+
+### Real-provider conformance check
+
+The pull-request CI includes a separate real-provider lane pinned to the upstream Rizin 0.9.1 static Linux release. It verifies the downloaded archive against its source-pinned SHA-256 digest, compiles a tiny no-inline ELF fixture, runs the actual adapter against that binary, and requires the real `axlj` output to identify the direct `orix_caller → orix_helper` call. This complements deterministic fake-provider tests; it does not imply that every Rizin release, architecture or binary format has been tested.
+
+
 ### CLI
 
 List adapters without probing external installations:
