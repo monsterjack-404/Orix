@@ -126,6 +126,10 @@ export function parse_arguments(argv) {
     } else {
       throw new OrixError('ORIX_CLI_PROVIDER_UNKNOWN', 'Unknown provider: ' + result.provider_id, { recoverable: true });
     }
+    if (result.provider_id !== 'rizin' &&
+        (result.flags.isolation !== undefined || result.flags.sandbox_root !== undefined)) {
+      throw new OrixError('ORIX_CLI_PROVIDER_ISOLATION_SCOPE', '--isolation and --sandbox-root are supported only by the Rizin provider', { recoverable: true });
+    }
     if (result.provider_id === 'rizin' && result.flags.sandbox_root !== undefined && result.flags.isolation !== 'required') {
       throw new OrixError('ORIX_CLI_SANDBOX_ROOT_REQUIRES_ISOLATION', '--sandbox-root requires --isolation required', { recoverable: true });
     }
