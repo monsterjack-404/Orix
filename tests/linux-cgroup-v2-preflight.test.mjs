@@ -83,12 +83,30 @@ test('cgroup directory permission gate requires effective-UID ownership and no g
   );
 });
 
+test('cgroup permission assessment rejects out-of-range UID and mode metadata', () => {
+  const base = { uid: 1000, mode: 0o40755 };
+  assert.deepEqual(
+    assess_cgroup_directory_permissions({ ...base, uid: 0x1_0000_0000 }, 1000),
+    { owner_matches_process: false, not_group_or_other_writable: false },
+  );
+  assert.deepEqual(
+    assess_cgroup_directory_permissions({ ...base, mode: 0o200000 }, 1000),
+    { owner_matches_process: false, not_group_or_other_writable: false },
+  );
+  assert.deepEqual(
+    assess_cgroup_directory_permissions(base, 0x1_0000_0000),
+    { owner_matches_process: false, not_group_or_other_writable: true },
+  );
+});
+
 test('cgroup access checks fail closed when real and effective credentials differ', () => {
   assert.equal(access_credentials_match(1000, 1000, 1000, 1000), true);
   assert.equal(access_credentials_match(1000, 0, 1000, 0), false);
   assert.equal(access_credentials_match(1000, 1000, 1000, 0), false);
   assert.equal(access_credentials_match(-1, 0, 0, 0), false);
   assert.equal(access_credentials_match(0, Number.NaN, 0, 0), false);
+  assert.equal(access_credentials_match(0x1_0000_0000, 0, 0, 0), false);
+  assert.equal(access_credentials_match(0, 0, 0x1_0000_0000, 0), false);
 });
 
 test('cgroup directory permission assessment rejects invalid UID and mode metadata', () => {
