@@ -216,12 +216,36 @@ namespace OrixWindowsSandbox {
       throw new InvalidOperationException("Could not create or derive the AppContainer SID");
     }
 
-    static void ValidateTree(string path) {
+    static void ValidateTree(string path, SecurityIdentifier serviceSid) {
       FileAttributes attributes = File.GetAttributes(path);
       if ((attributes & FileAttributes.ReparsePoint) != 0)
-        throw new InvalidOperationException("Reparse points are not allowed in the provider rootfs: " + path);
-      if ((attributes & FileAttributes.Directory) != 0) {
-        foreach (string child in Directory.EnumerateFileSystemEntries(path)) ValidateTree(child);
+        throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: reparse points are not allowed in the provider rootfs: " + path);
+      bool directory = (attributes & FileAttributes.Directory) != 0;
+      FileSystemSecurity security = directory
+        ? (FileSystemSecurity)Directory.GetAccessControl(path, AccessControlSections.Owner | AccessControlSections.Access)
+        : (FileSystemSecurity)File.GetAccessControl(path, AccessControlSections.Owner | AccessControlSections.Access);
+      SecurityIdentifier owner = (SecurityIdentifier)security.GetOwner(typeof(SecurityIdentifier));
+      if (!IsTrustedRootPrincipal(owner, serviceSid))
+        throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: rootfs entry has an untrusted owner: " + path);
+
+      FileSystemRights writeMask = FileSystemRights.Write |
+        FileSystemRights.Delete |
+        FileSystemRights.DeleteSubdirectoriesAndFiles |
+        FileSystemRights.ChangePermissions |
+        FileSystemRights.TakeOwnership;
+      AuthorizationRuleCollection rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier));
+      foreach (FileSystemAccessRule rule in rules) {
+        if (rule.AccessControlType != AccessControlType.Allow) continue;
+        SecurityIdentifier principal = rule.IdentityReference as SecurityIdentifier;
+        if (principal == null || IsTrustedRootPrincipal(principal, serviceSid)) continue;
+        if ((rule.FileSystemRights & writeMask) != 0)
+          throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: an untrusted principal has write-capable access to rootfs entry " +
+            path + " (" + principal.Value + "; rights=" + rule.FileSystemRights + ")");
+      }
+
+      if (directory) {
+        foreach (string child in Directory.EnumerateFileSystemEntries(path))
+          ValidateTree(child, serviceSid);
       }
     }
 
@@ -481,7 +505,7 @@ namespace OrixWindowsSandbox {
         if (!Directory.Exists(root) || !Directory.Exists(cwd))
           throw new DirectoryNotFoundException("Provider rootfs or working directory is missing");
         ValidateRootTrust(root);
-        ValidateTree(root);
+        ValidateTree(root, WindowsIdentity.GetCurrent().User);
         sid = CreateProfile(profileName);
         Log("RUN:PROFILE_CREATED");
         SecurityIdentifier identity = new SecurityIdentifier(sid);

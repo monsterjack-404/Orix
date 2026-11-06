@@ -88,6 +88,36 @@ async function main() {
       'Native launcher did not report the rejected untrusted rootfs ACL');
     assert.equal(unsafeExecution.stdout, '', 'Provider executed despite the untrusted rootfs ACL');
 
+    // A protected root directory is insufficient if a nested entry has a
+    // broad writable ACL. The native launcher must inspect every descendant.
+    const unsafeNested = path.join(root, 'work');
+    execFileSync(path.join(systemRoot, 'System32', 'icacls.exe'), [
+      unsafeNested, '/grant', '*S-1-1-0:(OI)(CI)M',
+    ], { encoding: 'utf8', windowsHide: true });
+    try {
+      const nestedUnsafeExecution = await run_static_provider({
+        manifest: manifest(),
+        executable: path.join(root, 'node.exe'),
+        cwd: unsafeNested,
+        sandbox_root: root,
+        isolation: 'required',
+        env: {},
+        args: ['-e', 'process.stdout.write("must-not-run")'],
+        timeout_ms: 12_000,
+        max_output_bytes: 4_096,
+      });
+      assert.equal(nestedUnsafeExecution.ok, false,
+        'Windows isolation must reject a writable nested rootfs directory');
+      assert.match(nestedUnsafeExecution.stderr, /ORIX_WINDOWS_ROOTFS_UNTRUSTED/,
+        'Native launcher did not report the rejected nested rootfs ACL');
+      assert.equal(nestedUnsafeExecution.stdout, '',
+        'Provider executed despite the untrusted nested rootfs ACL');
+    } finally {
+      execFileSync(path.join(systemRoot, 'System32', 'icacls.exe'), [
+        unsafeNested, '/remove:g', '*S-1-1-0',
+      ], { encoding: 'utf8', windowsHide: true });
+    }
+
     await copyFile(process.execPath, path.join(root, 'node.exe'));
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
 
