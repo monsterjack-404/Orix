@@ -79,11 +79,11 @@ static int check_extended_acl(const char *path) {
   int result = acl_get_entry(acl, ACL_FIRST_ENTRY, &entry);
   int saved_errno = errno;
   acl_free(acl);
-  if (result > 0) {
+  if (result == 0) {
     fprintf(stderr, "ORIX_MACOS_ACL_DENIED=%s\\n", path);
     return 1;
   }
-  if (result < 0) {
+  if (result == -1) {
     fprintf(stderr, "ORIX_MACOS_ACL_CHECK_ERROR=%s:%s\\n", path, strerror(saved_errno));
     return -1;
   }
