@@ -147,6 +147,24 @@ test('MCP Rizin tool validates executable argument prefixes before resolving wor
   );
 });
 
+test('MCP Rizin required isolation rejects a missing sandbox root before launching a provider', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-required-root-'));
+  try {
+    const file = path.join(directory, 'sample.elf');
+    await writeFile(file, Buffer.from('MCP native fixture'));
+    await assert.rejects(
+      call_orix_tool('orix.rizin_functions', {
+        path: file,
+        executable: process.execPath,
+        isolation: 'required',
+      }, { roots: [directory] }),
+      /sandbox_root is required when isolation is required/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('MCP Rizin isolation root must remain inside configured workspace roots', async () => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-workspace-'));
   const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-outside-'));
