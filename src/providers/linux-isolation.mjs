@@ -41,12 +41,14 @@ async function resolve_bwrap() {
  * Ancestors may use the root-owned sticky-directory exception (for example /tmp).
  */
 export function assess_rootfs_directory_permissions(metadata, expected_uid, allow_root_sticky = false) {
-  const valid_expected_uid = Number.isSafeInteger(expected_uid) && expected_uid >= 0;
+  const valid_expected_uid = Number.isSafeInteger(expected_uid) && expected_uid >= 0 && expected_uid <= 0xffff_ffff;
   const valid = metadata !== null && typeof metadata === 'object' &&
-    Number.isSafeInteger(metadata.uid) && metadata.uid >= 0 &&
-    Number.isSafeInteger(metadata.mode) && metadata.mode >= 0;
-  const directory = valid && metadata.is_directory === true;
-  const symlink = !valid || metadata.is_symlink === true;
+    Number.isSafeInteger(metadata.uid) && metadata.uid >= 0 && metadata.uid <= 0xffff_ffff &&
+    Number.isSafeInteger(metadata.mode) && metadata.mode >= 0 && metadata.mode <= 0o177777 &&
+    typeof metadata.is_directory === 'boolean' &&
+    typeof metadata.is_symlink === 'boolean';
+  const directory = valid && metadata.is_directory;
+  const symlink = !valid || metadata.is_symlink;
   const owner_is_trusted = valid && valid_expected_uid &&
     (metadata.uid === 0 || metadata.uid === expected_uid);
   const group_or_other_writable = !valid || (metadata.mode & 0o022) !== 0;
@@ -124,6 +126,19 @@ async function validate_rootfs(value) {
     isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID', 'Provider sandbox root must be a non-symlink directory');
   }
   const root = await realpath(value);
+  let resolved_info;
+  try {
+    resolved_info = await lstat(root);
+  } catch (error) {
+    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE', 'Canonical provider sandbox root cannot be inspected', {
+      reason: error.code ?? 'filesystem-error',
+    });
+  }
+  if (resolved_info.isSymbolicLink() || !resolved_info.isDirectory() ||
+      resolved_info.dev !== info.dev || resolved_info.ino !== info.ino) {
+    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_CHANGED',
+      'Provider sandbox root identity changed while resolving its canonical path');
+  }
   await validate_rootfs_path_trust(root);
   for (const required of ['proc', 'dev', 'tmp']) {
     let entry;
@@ -139,7 +154,7 @@ async function validate_rootfs(value) {
       });
     }
   }
-  return root;
+  return Object.freeze({ path: root, dev: resolved_info.dev, ino: resolved_info.ino });
 }
 
 function sandbox_path(root, host_path, label) {
@@ -158,7 +173,8 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
       { platform: process.platform },
     );
   }
-  const root = await validate_rootfs(sandbox_root);
+  const rootfs = await validate_rootfs(sandbox_root);
+  const root = rootfs.path;
   const sandboxExecutable = sandbox_path(root, executable, 'executable');
   const sandboxCwd = sandbox_path(root, cwd, 'cwd');
   const bwrap = await resolve_bwrap();
@@ -193,9 +209,11 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
   // immediately before handing the launch plan back to the process runner.
   // This narrows (but cannot eliminate) the validation-to-spawn race.
   const final_root = await validate_rootfs(sandbox_root);
-  if (final_root !== root) {
+  if (final_root.path !== rootfs.path ||
+      final_root.dev !== rootfs.dev ||
+      final_root.ino !== rootfs.ino) {
     isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_CHANGED',
-      'Provider sandbox root identity changed while its launch policy was being prepared');
+      'Provider sandbox root directory was replaced while its launch policy was being prepared');
   }
 
   return Object.freeze({
