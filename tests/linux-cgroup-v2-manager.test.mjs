@@ -120,7 +120,7 @@ if (process.platform === 'linux') {
       assert.match(lease.leaf_name, /^provider-\d+-[0-9a-f-]+$/);
       const leaf_path = path.join(fixture.parent, lease.leaf_name);
       assert.equal(await readFile(path.join(leaf_path, 'cpu.max'), 'utf8'), '50000 100000\n');
-      assert.equal(await readFile(path.join(leaf_path, 'memory.max'), 'utf8'), String(valid_limits.memory_max_bytes));
+      assert.equal(await readFile(path.join(leaf_path, 'memory.max'), 'utf8'), String(valid_limits.memory_max_bytes) + '\n');
       assert.equal(await readFile(path.join(leaf_path, 'pids.max'), 'utf8'), '32\n');
 
       writeSync(lease.attach_fd, Buffer.from(String(process.pid) + '\n', 'ascii'));
