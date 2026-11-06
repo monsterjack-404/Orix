@@ -68,8 +68,8 @@ jobs:
           /usr/bin/bwrap --version
           test -x /usr/bin/prlimit
           /usr/bin/prlimit --version
-      - name: Run hostile-process isolation checks
-        run: node scripts/linux-isolation-integration.mjs
+      - name: Run hostile-process isolation checks with a temporary delegated cgroup-v2 hierarchy
+        run: sudo node scripts/linux-isolation-integration.mjs
 
   platform-smoke:
     name: Platform smoke / ${{ matrix.os }}

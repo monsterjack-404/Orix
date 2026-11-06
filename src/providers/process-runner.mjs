@@ -36,7 +36,7 @@ function plain_options(value) {
   const allowed = new Set([
     'manifest', 'executable', 'args', 'cwd', 'env',
     'allowed_executables', 'allowed_working_directories', 'executable_args',
-    'timeout_ms', 'max_output_bytes', 'kill_grace_ms', 'signal', 'isolation', 'sandbox_root',
+    'timeout_ms', 'max_output_bytes', 'kill_grace_ms', 'signal', 'isolation', 'sandbox_root', 'sandbox_cgroup_parent',
   ]);
   for (const key of Reflect.ownKeys(value)) {
     if (typeof key !== 'string' || !allowed.has(key)) {
@@ -339,23 +339,6 @@ export async function run_static_provider(options) {
   if (isolation !== 'none' && isolation !== 'required') {
     throw new TypeError('isolation must be either none or required');
   }
-  let launch_executable = executable;
-  let launch_args = [...executable_args, ...args];
-  let launch_cwd = cwd;
-  let launch_env = minimal_environment(env);
-  if (isolation === 'required') {
-    const prepared = await prepare_linux_provider_isolation({
-      executable,
-      cwd,
-      sandbox_root: descriptors.sandbox_root?.value,
-      args: launch_args,
-      env,
-    });
-    launch_executable = prepared.executable;
-    launch_args = prepared.args;
-    launch_cwd = prepared.cwd;
-    launch_env = prepared.env;
-  }
   const signal = descriptors.signal?.value;
   if (signal !== undefined && !(signal instanceof AbortSignal)) {
     throw new TypeError('signal must be an AbortSignal');
@@ -364,6 +347,26 @@ export async function run_static_provider(options) {
     runner_error('ORIX_PROVIDER_CANCELLED', 'Provider process was cancelled before launch', {
       provider_id: manifest.id,
     });
+  }
+  let launch_executable = executable;
+  let launch_args = [...executable_args, ...args];
+  let launch_cwd = cwd;
+  let launch_env = minimal_environment(env);
+  let isolation_cleanup = null;
+  if (isolation === 'required') {
+    const prepared = await prepare_linux_provider_isolation({
+      executable,
+      cwd,
+      sandbox_root: descriptors.sandbox_root?.value,
+      sandbox_cgroup_parent: descriptors.sandbox_cgroup_parent?.value,
+      args: launch_args,
+      env,
+    });
+    launch_executable = prepared.executable;
+    launch_args = prepared.args;
+    launch_cwd = prepared.cwd;
+    launch_env = prepared.env;
+    isolation_cleanup = prepared.cleanup;
   }
 
   const started_at = new Date().toISOString();
@@ -378,6 +381,7 @@ export async function run_static_provider(options) {
     let timed_out = false;
     let cancelled = false;
     let output_limited = false;
+    let isolation_cleanup_error = null;
     let captured_bytes = 0;
     let stdout_bytes = 0;
     let stderr_bytes = 0;
@@ -392,11 +396,16 @@ export async function run_static_provider(options) {
       if (signal) signal.removeEventListener('abort', on_abort);
     }
 
-    function finish_error(error) {
+    async function finish_error(error) {
       if (settled) return;
       settled = true;
       cleanup();
-      reject(new OrixError('ORIX_PROVIDER_SPAWN_FAILED', 'Provider process could not be started', {
+      try {
+        if (isolation_cleanup) await isolation_cleanup();
+      } catch (cleanup_error) {
+        error = cleanup_error;
+      }
+      reject(new OrixError('ORIX_PROVIDER_SPAWN_FAILED', 'Provider process could not be started or cleaned up safely', {
         details: {
           provider_id: manifest.id,
           executable,
@@ -411,6 +420,9 @@ export async function run_static_provider(options) {
       if (termination_started || !child || settled) return;
       termination_started = true;
       signal_process(child, detached, 'SIGTERM');
+      if (isolation_cleanup) {
+        isolation_cleanup().catch(error => { isolation_cleanup_error = error; });
+      }
       kill_timer = setTimeout(() => signal_process(child, detached, 'SIGKILL'), limits.kill_grace_ms);
       kill_timer.unref?.();
     }
@@ -455,7 +467,15 @@ export async function run_static_provider(options) {
     child.stdout.on('data', chunk => capture('stdout', chunk));
     child.stderr.on('data', chunk => capture('stderr', chunk));
     child.once('error', finish_error);
-    child.once('close', (exit_code, exit_signal) => {
+    child.once('close', async (exit_code, exit_signal) => {
+      if (settled) return;
+      try {
+        if (isolation_cleanup) await isolation_cleanup();
+        if (isolation_cleanup_error) throw isolation_cleanup_error;
+      } catch (error) {
+        await finish_error(error);
+        return;
+      }
       if (settled) return;
       settled = true;
       cleanup();

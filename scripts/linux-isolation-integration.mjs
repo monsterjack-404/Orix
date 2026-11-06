@@ -1,11 +1,24 @@
 // Linux Bubblewrap hostile-process integration gate. Run only on Linux with Bubblewrap and util-linux.
 import assert from 'node:assert/strict';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, rmdir, writeFile } from 'node:fs/promises';
+import { execFileSync, spawn } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
+
+async function child_cgroup_directories(parent) {
+  const entries = await readdir(parent);
+  const directories = [];
+  for (const name of entries) {
+    try {
+      if ((await lstat(path.join(parent, name))).isDirectory()) directories.push(name);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  return directories;
+}
 
 function manifest() {
   return {
@@ -34,11 +47,14 @@ async function make_minimal_rootfs(root) {
     await mkdir(path.join(root, directory), { recursive: true });
   }
   const executable = process.execPath;
-  const dependencies = execFileSync('ldd', [executable], { encoding: 'utf8' });
-  const paths = new Set([executable]);
-  for (const line of dependencies.split('\n')) {
-    const match = line.match(/(?:=>\s*)?(\/\S+)\s+\(/);
-    if (match) paths.add(match[1]);
+  const sleepExecutable = '/usr/bin/sleep';
+  const paths = new Set([executable, sleepExecutable]);
+  for (const binary of [executable, sleepExecutable]) {
+    const dependencies = execFileSync('ldd', [binary], { encoding: 'utf8' });
+    for (const line of dependencies.split('\n')) {
+      const match = line.match(/(?:=>\s*)?(\/\S+)\s+\(/);
+      if (match) paths.add(match[1]);
+    }
   }
   const nodePath = path.join(root, 'usr/bin/node');
   await copyFile(executable, nodePath);
@@ -55,14 +71,33 @@ async function make_minimal_rootfs(root) {
 
 async function main() {
   assert.equal(process.platform, 'linux', 'This integration gate must run on Linux');
+  assert.equal(process.getuid?.(), 0, 'The cgroup-v2 integration gate must run with permission to create a delegated test hierarchy');
   const base = await mkdtemp(path.join(os.tmpdir(), 'orix-bwrap-integration-'));
   const root = path.join(base, 'rootfs');
   const hostSecret = path.join(os.tmpdir(), 'orix-host-secret-' + process.pid);
   const hostSecretValue = 'host-only-secret-' + process.pid;
+  const cgroupParent = path.join('/sys/fs/cgroup', 'orix-integration-' + process.pid);
   let server;
+  let cgroupParentCreated = false;
+  const rootControllersEnabledByTest = [];
   try {
     await mkdir(root);
-    await make_minimal_rootfs(root);
+    const nodePath = await make_minimal_rootfs(root);
+    const cgroupRoot = '/sys/fs/cgroup';
+    const available = (await readFile(path.join(cgroupRoot, 'cgroup.controllers'), 'utf8')).trim().split(/\s+/);
+    for (const controller of ['cpu', 'memory', 'pids']) {
+      assert.ok(available.includes(controller), 'Missing cgroup-v2 controller: ' + controller);
+    }
+    const rootEnabled = (await readFile(path.join(cgroupRoot, 'cgroup.subtree_control'), 'utf8')).trim().split(/\s+/);
+    const rootMissing = ['cpu', 'memory', 'pids'].filter(controller => !rootEnabled.includes(controller));
+    rootControllersEnabledByTest.push(...rootMissing);
+    if (rootMissing.length) await writeFile(path.join(cgroupRoot, 'cgroup.subtree_control'), rootMissing.map(item => '+' + item).join(' '));
+    await mkdir(cgroupParent);
+    cgroupParentCreated = true;
+    assert.equal((await readFile(path.join(cgroupParent, 'cgroup.type'), 'utf8')).trim(), 'domain');
+    assert.match(await readFile(path.join(cgroupParent, 'cgroup.events'), 'utf8'), /populated 0/);
+    assert.equal((await readFile(path.join(cgroupParent, 'cgroup.procs'), 'utf8')).trim(), '');
+    await writeFile(path.join(cgroupParent, 'cgroup.subtree_control'), '+cpu +memory +pids');
     await writeFile(hostSecret, hostSecretValue, { mode: 0o600 });
 
     server = net.createServer();
@@ -75,6 +110,7 @@ async function main() {
     const probe = `
       import fs from 'node:fs';
       import net from 'node:net';
+      import { spawn } from 'node:child_process';
       const result = { namespace_pid: process.pid, namespace_parent_pid: process.ppid, host_pid: Number(process.env.ORIX_HOST_PID) };
       try { fs.readFileSync(${JSON.stringify(hostSecret)}, 'utf8'); result.host_file = 'readable'; }
       catch (error) { result.host_file = error.code || 'blocked'; }
@@ -82,6 +118,50 @@ async function main() {
       catch (error) { result.root_write = error.code || 'blocked'; }
       try { fs.writeFileSync('/tmp/provider-write-probe', 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
+      const orphan = spawn('/usr/bin/sleep', ['60'], { detached: true, stdio: 'ignore' });
+      orphan.unref();
+      result.orphan_spawned = Number.isInteger(orphan.pid) && orphan.pid > 0;
+      result.external_network = await new Promise(resolve => {
+        const socket = net.createConnection({ host: '1.1.1.1', port: 443 }, () => {
+          socket.destroy(); resolve('connected');
+        });
+        socket.setTimeout(700, () => { socket.destroy(); resolve('blocked'); });
+        socket.once('error', () => resolve('blocked'));
+      });
+      const memoryChild = spawn(process.execPath, ['-e', 'const block = Buffer.alloc(300 * 1024 * 1024, 0x5a); setTimeout(() => process.exit(block[0] === 0x5a ? 0 : 1), 2500)'], { stdio: 'ignore' });
+      const memoryDone = new Promise(resolve => {
+        memoryChild.once('error', error => resolve({ code: null, error: error.code || 'spawn-failed' }));
+        memoryChild.once('close', (code, signal) => resolve({ code, signal }));
+      });
+      const cpuStart = Date.now();
+      let cpuIterations = 0;
+      while (Date.now() - cpuStart < 1200) cpuIterations += 1;
+      result.cpu_probe = cpuIterations > 0;
+      const sleepChildren = [];
+      const sleepCompletions = [];
+      let pidsLimitHits = 0;
+      for (let index = 0; index < 100; index += 1) {
+        try {
+          const child = spawn('/usr/bin/sleep', ['5'], { stdio: 'ignore' });
+          sleepChildren.push(child);
+          sleepCompletions.push(new Promise(resolve => {
+            child.once('error', error => {
+              if (error.code === 'EAGAIN') pidsLimitHits += 1;
+              resolve();
+            });
+            child.once('close', () => resolve());
+          }));
+        } catch (error) {
+          if (error.code === 'EAGAIN') pidsLimitHits += 1;
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+      for (const child of sleepChildren) if (child.pid) child.kill('SIGKILL');
+      await Promise.all(sleepCompletions);
+      result.pids_limit_hits = pidsLimitHits;
+      const memoryOutcome = await memoryDone;
+      result.memory_probe_ok = memoryOutcome.code === 0;
+      result.memory_probe_error = memoryOutcome.error || null;
       const limits = fs.readFileSync('/proc/self/limits', 'utf8');
       const limit = label => {
         const line = limits.split('\\n').find(item => item.startsWith(label));
@@ -101,38 +181,126 @@ async function main() {
         socket.setTimeout(700, () => { socket.destroy(); resolve('blocked'); });
         socket.once('error', () => resolve('blocked'));
       });
+      await new Promise(resolve => setTimeout(resolve, 1200));
       process.stdout.write(JSON.stringify(result));
     `;
 
-    const execution = await run_static_provider({
+    const executionPromise = run_static_provider({
       manifest: manifest(),
       executable: path.join(root, 'usr/bin/node'),
       cwd: path.join(root, 'work'),
       sandbox_root: root,
+      sandbox_cgroup_parent: cgroupParent,
       isolation: 'required',
       env: { ORIX_HOST_PID: String(process.pid) },
       args: ['--input-type=module', '-e', probe],
       timeout_ms: 8_000,
       max_output_bytes: 4_096,
     });
-    assert.equal(execution.ok, true, execution.stderr || 'Sandboxed provider failed');
+    let providerCgroup = null;
+    let observed = null;
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const entries = await child_cgroup_directories(cgroupParent);
+      if (entries.length) {
+        const candidate = path.join(cgroupParent, entries[0]);
+        try {
+          const snapshot = {
+            memory: (await readFile(path.join(candidate, 'memory.max'), 'utf8')).trim(),
+            swap: (await readFile(path.join(candidate, 'memory.swap.max'), 'utf8')).trim(),
+            oom_group: (await readFile(path.join(candidate, 'memory.oom.group'), 'utf8')).trim(),
+            pids: (await readFile(path.join(candidate, 'pids.max'), 'utf8')).trim(),
+            cpu: (await readFile(path.join(candidate, 'cpu.max'), 'utf8')).trim(),
+            processes: (await readFile(path.join(candidate, 'cgroup.procs'), 'utf8')).trim(),
+            events: (await readFile(path.join(candidate, 'cgroup.events'), 'utf8')).trim(),
+          };
+          if (snapshot.processes && /populated 1/.test(snapshot.events)) {
+            providerCgroup = candidate;
+            observed = snapshot;
+            break;
+          }
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    await new Promise(resolve => setTimeout(resolve, 900));
+    assert.ok(providerCgroup, 'Provider cgroup was not created');
+    const memoryCurrent = Number((await readFile(path.join(providerCgroup, 'memory.current'), 'utf8')).trim());
+    await new Promise(resolve => setTimeout(resolve, 800));
+    const cpuStat = await readFile(path.join(providerCgroup, 'cpu.stat'), 'utf8');
+    const throttledPeriods = Number(cpuStat.match(/^nr_throttled (\d+)$/m)?.[1] || 0);
+    process.stdout.write('CPU quota probe: ' + JSON.stringify({ throttledPeriods, cpuStat }));
+    const execution = await executionPromise;
+    assert.equal(execution.ok, true, JSON.stringify({ exit_code: execution.exit_code, signal: execution.signal, termination_reason: execution.termination_reason, stderr: execution.stderr, stdout: execution.stdout.slice(0, 500) }));
     const result = JSON.parse(execution.stdout);
+    assert.ok(observed, 'Live cgroup state was not captured');
+    assert.equal(observed.memory, '536870912');
+    assert.equal(observed.swap, '0');
+    assert.equal(observed.oom_group, '1');
+    assert.equal(observed.pids, '64');
+    assert.equal(observed.cpu, '50000 100000');
+    assert.match(observed.processes, /[1-9][0-9]*/);
+    assert.match(observed.events, /populated 1/);
+    assert.ok(memoryCurrent > 250 * 1024 * 1024, 'Provider memory allocation was not accounted by the cgroup');
+    assert.ok(throttledPeriods > 0, 'CPU quota did not throttle the busy provider');
+    assert.ok(result.memory_probe_ok, 'Bounded memory probe did not complete');
+    assert.ok(result.pids_limit_hits > 0, 'pids.max did not reject excess process creation');
+    assert.deepEqual(await child_cgroup_directories(cgroupParent), [], 'Provider cgroup was not cleaned up after exit');
     assert.notEqual(result.namespace_pid, result.host_pid, 'Provider PID was not remapped into a private PID namespace');
     assert.equal(result.namespace_parent_pid, 1, 'Provider is not contained under the private PID namespace init process');
     assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.tmp_write, 'allowed', 'Ephemeral /tmp should remain writable');
     assert.equal(result.host_network, 'blocked', 'Provider reached the host loopback network');
+    assert.equal(result.external_network, 'blocked', 'Provider reached an external network endpoint');
+    assert.equal(result.orphan_spawned, true, 'Hostile provider could not create the detached descendant cleanup probe');
     assert.deepEqual(result.rlimits.cpu_seconds, ['60', '60'], 'CPU RLIMIT was not inherited');
     assert.deepEqual(result.rlimits.core_bytes, ['0', '0'], 'Core dump RLIMIT was not inherited');
     assert.deepEqual(result.rlimits.file_size_bytes, ['67108864', '67108864'], 'File-size RLIMIT was not inherited');
     assert.deepEqual(result.rlimits.open_files, ['256', '256'], 'Open-file RLIMIT was not inherited');
     assert.equal(await readFile(hostSecret, 'utf8'), hostSecretValue, 'Host secret changed unexpectedly');
-    process.stdout.write('Linux Bubblewrap hostile-process checks passed: filesystem, PID/network namespaces, private tmp, and inherited CPU/core/file-size/open-file RLIMITs.\\n');
+
+    // A second provider deliberately exceeds memory.max. memory.oom.group=1
+    // should kill the complete provider cgroup, while the outer test process survives.
+    const oomExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: nodePath,
+      args: ['-e', 'const block = Buffer.alloc(700 * 1024 * 1024); for (let offset = 0; offset < block.length; offset += 4096) block[offset] = 0x5a; setTimeout(() => process.exit(0), 1000)'],
+      cwd: path.join(root, 'work'),
+      allowed_executables: [nodePath],
+      allowed_working_directories: [path.join(root, 'work')],
+      timeout_ms: 10_000,
+      isolation: 'required',
+      sandbox_root: root,
+      sandbox_cgroup_parent: cgroupParent,
+    });
+    assert.equal(oomExecution.signal, 'SIGKILL', 'memory.max did not terminate the provider cgroup when its aggregate memory budget was exceeded');
+    process.stdout.write('Linux Bubblewrap hostile-process checks passed: filesystem, PID/network namespaces, private tmp, inherited RLIMITs, cgroup CPU throttling, PID ceiling, and aggregate memory OOM enforcement.\\n');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await rm(hostSecret, { force: true });
     await rm(base, { recursive: true, force: true });
+    if (cgroupParentCreated) {
+      await writeFile(path.join(cgroupParent, 'cgroup.subtree_control'), '-cpu -memory -pids');
+      const remainingChildren = await child_cgroup_directories(cgroupParent);
+      const parentState = {
+        child_cgroups: remainingChildren,
+        processes: (await readFile(path.join(cgroupParent, 'cgroup.procs'), 'utf8')).trim(),
+        events: (await readFile(path.join(cgroupParent, 'cgroup.events'), 'utf8')).trim(),
+        controllers: (await readFile(path.join(cgroupParent, 'cgroup.subtree_control'), 'utf8')).trim(),
+      };
+      process.stdout.write('Delegated cgroup cleanup state: ' + JSON.stringify(parentState) + '\\n');
+      assert.deepEqual(parentState.child_cgroups, [], 'Delegated cgroup parent still contains child cgroups');
+      assert.equal(parentState.processes, '', 'Delegated cgroup parent still contains processes');
+      assert.match(parentState.events, /populated 0/);
+      assert.equal(parentState.controllers, '', 'Delegated cgroup controllers were not disabled');
+      await rmdir(cgroupParent);
+    }
+    if (rootControllersEnabledByTest.length) {
+      const restore = rootControllersEnabledByTest.map(item => '-' + item).join(' ');
+      await writeFile(path.join('/sys/fs/cgroup', 'cgroup.subtree_control'), restore);
+    }
   }
 }
 
