@@ -3,7 +3,7 @@
 import { OrixError } from '../core/errors.mjs';
 import { DEFAULT_LIMITS } from '../core/limits.mjs';
 
-const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-nodes','--max-edges','--max-hotspots','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports','--max-functions','--address','--max-instructions','--max-packages','--max-advisories','--max-network-mib','--max-har-entries','--max-har-hosts']);
+const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-nodes','--max-edges','--max-hotspots','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports','--max-functions','--address','--max-instructions','--max-packages','--max-advisories','--max-network-mib','--max-har-entries','--max-har-hosts','--isolation','--sandbox-root']);
 const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--osv','--decompile','--help','-h']);
 
 function positive_integer(value, option, minimum, maximum) {
@@ -62,6 +62,11 @@ export function parse_arguments(argv) {
       else if (token === '--concurrency') result.flags.max_scan_concurrency = positive_integer(raw, token, 1, 32);
       else if (token === '--strings-limit') result.flags.max_strings = positive_integer(raw, token, 0, 100_000);
       else if (token === '--executable') result.flags.provider_executable = raw;
+      else if (token === '--isolation') {
+        if (!['none', 'required'].includes(raw)) throw new OrixError('ORIX_CLI_BAD_ISOLATION', '--isolation must be none or required', { details: { value: raw }, recoverable: true });
+        result.flags.isolation = raw;
+      }
+      else if (token === '--sandbox-root') result.flags.sandbox_root = raw;
       else if (token === '--timeout-ms') result.flags.timeout_ms = positive_integer(raw, token, 1, 60_000);
       else if (token === '--max-output-kib') result.flags.max_output_bytes = positive_integer(raw, token, 1, 8_192) * 1024;
       else if (token === '--max-imports') result.flags.max_imports = positive_integer(raw, token, 0, 1_000_000);
