@@ -70,27 +70,43 @@ These controls reduce accidental path substitution and environment injection but
 
 ## Enforced provider isolation (Linux implementation gate)
 
-The provider runner accepts `isolation: "required"` only when an explicit Linux
-sandbox root is supplied. The current Linux adapter uses Bubblewrap with an
-unshared network namespace, explicitly required user/PID/IPC/UTS namespaces,
-a read-only sandbox-root mount, fresh ephemeral `/tmp`, a private `/proc` and
-minimal `/dev`, and an explicit working directory. The backend also applies
-Bubblewrap 0.8.0 or later's `--disable-userns` and
-`--assert-userns-disabled` controls so the provider cannot create nested user
-namespaces to rearrange mount isolation. Older versions reject the required
-flags and therefore fail closed before provider launch.
-The Linux hostile-process integration test attempts to create a nested user
-namespace from inside the provider and requires that attempt to fail, in
-addition to checking filesystem and network boundaries. The provider executable and its
-working directory must resolve inside that root. The host project, home
-directories, and credentials are not bind-mounted into the provider namespace.
-The rootfs must be a deliberately provisioned minimal runtime containing the
-provider and its runtime dependencies; it must contain real `/proc`, `/dev`,
-and `/tmp` mount-point directories.
+The provider runner requires every caller to explicitly select an execution
+policy. Omitting `isolation` is rejected before launch. `isolation: "none"`
+is an explicitly unsandboxed legacy mode: it retains shell-free argv, an
+allowlisted executable, a reduced environment, a timeout and output ceiling,
+but it does not confine filesystem access, networking or descendants.
+Execution results report `isolation: "none"` and
+`isolation_enforced: false` for this mode.
 
-This is an opt-in Linux backend, not a claim of complete cross-platform
-isolation. It does not yet impose cgroup CPU/memory/PID quotas, and it does not
-provide macOS or Windows enforcement. Those controls remain explicit delivery
-gates. If Bubblewrap or a valid rootfs is unavailable, required isolation fails
-before provider launch. Omitting `isolation: "required"` preserves the legacy
-process-control behavior and must not be described as sandboxed.
+`isolation: "required"` is the enforced Linux path. It requires an explicit
+sandbox root and an administrator-provisioned delegated cgroup-v2 parent with
+the `cpu`, `memory` and `pids` controllers available. The adapter uses
+Bubblewrap with unshared network, PID, IPC, UTS and user namespaces, a
+read-only provider rootfs, a fresh ephemeral `/tmp`, private `/proc`, and
+minimal `/dev`. It disables nested user namespaces and fails closed if the
+installed Bubblewrap does not support the required controls. The provider
+executable and working directory must resolve inside the deliberately
+provisioned rootfs.
+
+Before provider execution, a trusted bootstrap moves itself into the
+per-provider cgroup; the spawned Bubblewrap and provider descendants inherit
+membership. The cgroup enforces `cpu.max=50000 100000` (50% of one CPU),
+`memory.max=536870912` (512 MiB), `memory.swap.max=0`,
+`memory.oom.group=1` and `pids.max=64`. Per-process RLIMIT ceilings are
+60 CPU seconds, 64 MiB file size, 256 open descriptors and zero core-dump
+bytes. The lifecycle kills and verifies descendants, waits for
+`cgroup.events populated=0`, removes the per-run cgroup, and surfaces
+cleanup failures instead of reporting successful execution.
+
+The Linux hostile-process integration test exercises filesystem and network
+boundaries, nested-user-namespace denial, kernel CPU throttling, memory OOM,
+PID-limit rejection, RLIMIT values, and descendant teardown against a
+temporary delegated cgroup-v2 hierarchy. The caller must supply a correctly
+delegated, exclusively managed parent; ORIX does not change controllers on a
+parent it does not own. This is a risk-reduction boundary, not protection
+against privileged host administrators or kernel vulnerabilities.
+
+A passing Linux backend does not imply Windows or macOS support. Those
+platforms must have their own backend and hostile-process integration proof
+before ORIX can claim enforcement there. Process control without
+`isolation: "required"` is not OS sandboxing.
