@@ -137,7 +137,7 @@ test('MCP Rizin required isolation requires a workspace-confined sandbox root', 
       executable: '/not/used/rizin',
       isolation: 'required',
     }),
-    /requires sandbox_root inside a configured workspace/,
+    /needs sandbox_root inside a configured workspace/,
   );
 
   const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-root-'));
