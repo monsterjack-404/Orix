@@ -90,7 +90,12 @@ async function main() {
       cwd: path.join(root, 'work'),
       sandbox_root: root,
       isolation: 'required',
-      env: { ORIX_HOST_PID: String(process.pid) },
+      // Deliberately hostile caller overrides must not redirect host-side csc.exe or icacls.exe.
+      env: {
+        ORIX_HOST_PID: String(process.pid),
+        SystemRoot: path.join(base, 'attacker-controlled-system-root'),
+        WINDIR: path.join(base, 'attacker-controlled-windir'),
+      },
       args: ['--input-type=module', '-e', probe],
       timeout_ms: 12_000,
       max_output_bytes: 4_096,
