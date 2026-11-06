@@ -718,3 +718,28 @@ test('MCP architecture analysis reuses the bounded scanner and reports local cyc
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+
+test('MCP enforces declared enum and array constraints before tool dispatch', async () => {
+  await assert.rejects(
+    call_orix_tool('orix.case.get', { workspace: '/not-used', action: 'delete' }),
+    /action must be one of the declared values/,
+  );
+  await assert.rejects(
+    call_orix_tool('orix.case.mutate', {
+      workspace: '/not-used',
+      case_id: '00000000-0000-4000-8000-000000000000',
+      action: 'status',
+      status: 'pending',
+    }),
+    /status must be one of the declared values/,
+  );
+  await assert.rejects(
+    call_orix_tool('orix.rizin_functions', {
+      path: '/not-used/sample.bin',
+      executable: '/not-used/rizin',
+      executable_args: Array.from({ length: 17 }, () => 'prefix'),
+    }),
+    /executable_args must be an array within its declared item limits/,
+  );
+});
