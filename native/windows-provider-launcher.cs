@@ -269,6 +269,15 @@ namespace OrixWindowsSandbox {
         if (!IsTrustedRootPrincipal(owner, serviceSid))
           throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: rootfs path component has an untrusted owner: " + current.FullName);
 
+        // The volume root (for example C:\\) is not a replaceable path
+        // component. Hosted Windows images may expose generic volume-root
+        // rights to Authenticated Users; those rights cannot rename or replace
+        // the volume root itself. Continue checking its owner/reparse status,
+        // but apply ACL write checks to the actual rootfs and replaceable parents.
+        bool volumeRootComponent = String.Equals(current.FullName.TrimEnd('\\', '/'),
+          volumeRoot.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+        if (volumeRootComponent) continue;
+
         AuthorizationRuleCollection rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier));
         foreach (FileSystemAccessRule rule in rules) {
           if (rule.AccessControlType != AccessControlType.Allow) continue;
