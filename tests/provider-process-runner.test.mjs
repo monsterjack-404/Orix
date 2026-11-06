@@ -397,6 +397,26 @@ test('provider isolation rejects unknown isolation modes before launch', async (
   );
 });
 
+test('required provider isolation validates sandbox root before a default cwd inside that root', async () => {
+  await with_directory(async parent => {
+    const missing_root = path.join(parent, 'not-created-rootfs');
+    const executable = await node_executable();
+    await assert.rejects(
+      run_static_provider({
+        manifest: manifest(),
+        executable,
+        args: [],
+        isolation: 'required',
+        sandbox_root: missing_root,
+        cwd: missing_root,
+      }),
+      error => process.platform === 'linux'
+        ? error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE'
+        : error.code === 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+    );
+  });
+});
+
 test('required provider isolation refuses executable and cwd paths outside its rootfs', async () => {
   await with_directory(async root => {
     const fs = await import('node:fs/promises');

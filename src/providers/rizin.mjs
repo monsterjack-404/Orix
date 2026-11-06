@@ -5,11 +5,11 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
-import { chmod, lstat, mkdtemp, realpath, rm, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { chmod, lstat, realpath, rm, stat } from 'node:fs/promises';
 import { OrixError } from '../core/errors.mjs';
 import { validate_provider_manifest } from './manifest.mjs';
 import { run_static_provider } from './process-runner.mjs';
+import { create_rizin_snapshot_directory } from './rizin-snapshot.mjs';
 
 export const RIZIN_ADAPTER_VERSION = '0.2.0';
 
@@ -65,6 +65,19 @@ function validate_input_path(input_path) {
   }
 }
 
+
+function requested_isolation(value) {
+  const isolation = value ?? 'none';
+  if (isolation !== 'none' && isolation !== 'required') {
+    throw new TypeError('isolation must be either none or required');
+  }
+  if (isolation === 'required' && process.platform !== 'linux') {
+    provider_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+      'Required provider isolation currently has no enforced backend for this operating system',
+      { platform: process.platform });
+  }
+  return isolation;
+}
 
 async function file_snapshot(input_path, maximum_bytes) {
   let link_info;
@@ -208,7 +221,7 @@ export async function analyze_rizin_imports(options = {}) {
   }
   const allowed = new Set([
     'executable', 'executable_args', 'input_path', 'manifest', 'cwd', 'env',
-    'timeout_ms', 'max_output_bytes', 'max_imports', 'signal',
+    'timeout_ms', 'max_output_bytes', 'max_imports', 'signal', 'isolation', 'sandbox_root',
   ]);
   const descriptors = Object.getOwnPropertyDescriptors(options);
   for (const key of Reflect.ownKeys(options)) {
@@ -218,6 +231,7 @@ export async function analyze_rizin_imports(options = {}) {
     }
   }
 
+  const isolation = requested_isolation(descriptors.isolation?.value);
   const manifest = validate_provider_manifest(descriptors.manifest?.value ?? RIZIN_PROVIDER_MANIFEST);
   if (manifest.id !== 'rizin.static') {
     throw new TypeError('Rizin adapter requires the rizin.static provider manifest');
@@ -255,7 +269,10 @@ export async function analyze_rizin_imports(options = {}) {
   }
   // Analyze a private copy so the external tool never receives the caller's original path.
   // The copy is private to this process, read-only by default, and checked before and after use.
-  const snapshot_directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-'));
+  const snapshot_directory = await create_rizin_snapshot_directory('.orix-rizin-', {
+    isolation: isolation,
+    sandbox_root: descriptors.sandbox_root?.value,
+  });
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
@@ -277,11 +294,13 @@ export async function analyze_rizin_imports(options = {}) {
       manifest,
       executable: descriptors.executable?.value,
       executable_args: descriptors.executable_args?.value,
-      cwd: descriptors.cwd?.value,
+      cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
       env: descriptors.env?.value,
       timeout_ms,
       max_output_bytes,
       signal,
+      isolation,
+      sandbox_root: descriptors.sandbox_root?.value,
     };
 
     const remaining_before_probe = timeout_ms - (Date.now() - analysis_started_at);
@@ -389,7 +408,7 @@ export async function analyze_rizin_imports(options = {}) {
         'Uses Rizin -N -q -c iij for static import metadata; the target is not executed.',
         'Rizin analyzes a private temporary copy; the original input path is never passed to the provider.',
         'Rizin remains an optional external installation and is not bundled by ORIX.',
-        'The process runner bounds runtime and captured output but is not an OS sandbox.',
+        isolation === 'required' ? 'Rizin was launched through required Bubblewrap namespace and filesystem isolation.' : 'The process runner bounds runtime and captured output but is not an OS sandbox.',
       ],
     };
   } finally {
@@ -504,7 +523,7 @@ export async function analyze_rizin_functions(options = {}) {
   const allowed = new Set([
     'executable', 'executable_args', 'input_path', 'manifest', 'cwd', 'env',
     'timeout_ms', 'max_output_bytes', 'max_functions',
-    'address', 'max_instructions', 'decompile', 'max_decompilation_chars', 'signal',
+    'address', 'max_instructions', 'decompile', 'max_decompilation_chars', 'signal', 'isolation', 'sandbox_root',
   ]);
   const descriptors = Object.getOwnPropertyDescriptors(options);
   for (const key of Reflect.ownKeys(options)) {
@@ -514,6 +533,7 @@ export async function analyze_rizin_functions(options = {}) {
     }
   }
 
+  const isolation = requested_isolation(descriptors.isolation?.value);
   const manifest = validate_provider_manifest(descriptors.manifest?.value ?? RIZIN_PROVIDER_MANIFEST);
   if (manifest.id !== 'rizin.static') {
     throw new TypeError('Rizin function analysis requires the rizin.static provider manifest');
@@ -563,7 +583,10 @@ export async function analyze_rizin_functions(options = {}) {
     });
   }
 
-  const snapshot_directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-functions-'));
+  const snapshot_directory = await create_rizin_snapshot_directory('.orix-rizin-functions-', {
+    isolation: isolation,
+    sandbox_root: descriptors.sandbox_root?.value,
+  });
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
@@ -583,9 +606,11 @@ export async function analyze_rizin_functions(options = {}) {
       manifest,
       executable: descriptors.executable?.value,
       executable_args: descriptors.executable_args?.value,
-      cwd: descriptors.cwd?.value,
+      cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
       env: descriptors.env?.value,
       signal,
+      isolation,
+      sandbox_root: descriptors.sandbox_root?.value,
     };
     let captured_output_bytes = 0;
     const invoke = async (args, label) => {
@@ -738,7 +763,7 @@ export async function analyze_rizin_functions(options = {}) {
         'Optional pdg output requires the external rz-ghidra plugin; pseudocode is heuristic and is not a source-level proof or a compilable reconstruction.',
         'The inspected target is not executed; Rizin itself is an external optional process.',
         'Rizin analyzes a private temporary copy; the original input path is never passed to the provider.',
-        'The process runner bounds runtime and output but is not an OS sandbox.',
+        isolation === 'required' ? 'Rizin was launched through required Bubblewrap namespace and filesystem isolation.' : 'The process runner bounds runtime and output but is not an OS sandbox.',
       ],
     };
   } finally {
@@ -754,7 +779,7 @@ export async function probe_rizin(options = {}) {
   if (options === null || typeof options !== 'object' || Array.isArray(options)) {
     throw new TypeError('Rizin probe options must be an object');
   }
-  const allowed = new Set(['executable', 'executable_args', 'manifest', 'cwd', 'env', 'timeout_ms', 'max_output_bytes', 'signal']);
+  const allowed = new Set(['executable', 'executable_args', 'manifest', 'cwd', 'env', 'timeout_ms', 'max_output_bytes', 'signal', 'isolation', 'sandbox_root']);
   const descriptors = Object.getOwnPropertyDescriptors(options);
   for (const key of Reflect.ownKeys(options)) {
     if (typeof key !== 'string' || !allowed.has(key) ||
@@ -762,6 +787,7 @@ export async function probe_rizin(options = {}) {
       throw new TypeError('Rizin probe options must use known enumerable data properties');
     }
   }
+  const isolation = requested_isolation(descriptors.isolation?.value);
   const manifest = validate_provider_manifest(descriptors.manifest?.value ?? RIZIN_PROVIDER_MANIFEST);
   if (manifest.id !== 'rizin.static') {
     throw new TypeError('Rizin probe requires the rizin.static provider manifest');
@@ -780,12 +806,14 @@ export async function probe_rizin(options = {}) {
     manifest,
     executable: descriptors.executable?.value,
     executable_args: descriptors.executable_args?.value,
-    cwd: descriptors.cwd?.value,
+    cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
     env: descriptors.env?.value,
     args: ['-v'],
     timeout_ms,
     max_output_bytes,
     signal: descriptors.signal?.value,
+    isolation: isolation,
+    sandbox_root: descriptors.sandbox_root?.value,
   });
   if (!result.ok) {
     const code = result.cancelled
@@ -820,7 +848,7 @@ export async function probe_rizin(options = {}) {
     notes: [
       'The executable was invoked by its explicit absolute path; ORIX did not search PATH.',
       'This probe confirms version output only; it does not validate every Rizin command or supported binary format.',
-      'The process runner is not an OS sandbox.',
+      isolation === 'required' ? 'The version probe used required Bubblewrap namespace and filesystem isolation.' : 'The process runner is not an OS sandbox.',
     ],
   };
 }
