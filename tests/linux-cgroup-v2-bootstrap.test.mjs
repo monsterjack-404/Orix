@@ -56,7 +56,7 @@ if (process.platform === 'linux') {
       writeFileSync(attach_file, '');
       const fd = openSync(attach_file, 'w');
       const provider_code = [
-        "import { readFileSync, readlinkSync } from 'node:fs';",
+        "const { readFileSync, readlinkSync } = require('node:fs');",
         "const marker = process.argv[1];",
         "const membership = readFileSync(marker, 'utf8');",
         "let leaked = false;",
@@ -81,7 +81,7 @@ if (process.platform === 'linux') {
       const launch_marker = path.join(directory, 'provider-started');
       writeFileSync(attach_file, 'read-only');
       const fd = openSync(attach_file, 'r');
-      const provider_code = "import { writeFileSync } from 'node:fs'; writeFileSync(process.argv[1], 'started');";
+      const provider_code = "const { writeFileSync } = require('node:fs'); writeFileSync(process.argv[1], 'started');";
       const result = await run_bootstrap_with_fd(fd, [
         '--attach-fd=3', '--', process.execPath, '-e', provider_code, launch_marker,
       ]);
