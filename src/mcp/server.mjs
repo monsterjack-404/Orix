@@ -57,7 +57,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   {
     name: 'orix.rizin_functions',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    description: 'Use an explicitly selected Rizin executable to enumerate functions, disassemble a bounded instruction window and optionally request rz-ghidra pseudocode. The target is never executed; Rizin and its optional decompiler plugin must be installed separately.',
+    description: 'Use an explicitly selected Rizin executable to enumerate functions, disassemble a bounded instruction window and optionally request rz-ghidra pseudocode. The target is never executed; Rizin and its optional decompiler plugin must be installed separately. Provider isolation is disabled by default; callers may explicitly require Linux Bubblewrap isolation with a sandbox root directory inside configured MCP workspace roots. Required isolation fails closed on unsupported platforms and does not enforce cgroup resource limits.',
     inputSchema: {
       type: 'object',
       properties: {
