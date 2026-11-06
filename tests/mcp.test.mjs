@@ -124,6 +124,15 @@ test('MCP Rizin tool validates executable argument prefixes before resolving wor
     call_orix_tool('orix.rizin_functions', {
       path: '/not/used/sample.elf',
       executable: '/not/used/rizin',
+      isolation: 'required-but-not-supported',
+    }),
+    /isolation must be one of: none, required/,
+  );
+
+  await assert.rejects(
+    call_orix_tool('orix.rizin_functions', {
+      path: '/not/used/sample.elf',
+      executable: '/not/used/rizin',
       executable_args: 'not-an-array',
     }),
     /executable_args must be an array/,
