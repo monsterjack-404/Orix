@@ -109,8 +109,10 @@ function make_data_descriptor_archive({ signature = true, corrupt = false } = {}
   result.writeUInt32LE(0, local + 14);
   result.writeUInt32LE(0, local + 18);
   result.writeUInt32LE(0, local + 22);
+  const shifted_central_offset = central_offset + descriptor.length;
+  result.writeUInt16LE(result.readUInt16LE(shifted_central_offset + 8) | 0x0008, shifted_central_offset + 8);
   const shifted_eocd = result.length - 22;
-  result.writeUInt32LE(central_offset + descriptor.length, shifted_eocd + 16);
+  result.writeUInt32LE(shifted_central_offset, shifted_eocd + 16);
   return result;
 }
 
