@@ -93,23 +93,37 @@ async function find_provider_cgroup(parent) {
 async function sample_cgroup(parent, marker) {
   const cgroup = await find_provider_cgroup(parent);
   if (!cgroup) return null;
-  let provider_seen = false;
-  let sleep_pids = [];
-  const pids = (await read_control(path.join(cgroup, 'cgroup.procs'))).split('\n').filter(Boolean);
-  for (const pid of pids) {
-    try {
-      const command = await readFile('/proc/' + pid + '/cmdline', 'utf8');
-      if (command.includes(marker)) provider_seen = true;
-      if (command.includes('/usr/bin/sleep')) sleep_pids.push(Number(pid));
-    } catch { /* process may have exited between cgroup.procs and procfs read */ }
+  try {
+    let provider_seen = false;
+    let sleep_pids = [];
+    const pids = (await read_control(path.join(cgroup, 'cgroup.procs'))).split('\n').filter(Boolean);
+    for (const pid of pids) {
+      try {
+        const command = await readFile('/proc/' + pid + '/cmdline', 'utf8');
+        if (command.includes(marker)) provider_seen = true;
+        if (command.includes('/usr/bin/sleep')) sleep_pids.push(Number(pid));
+      } catch { /* process may have exited between cgroup.procs and procfs read */ }
+    }
+    const cpu = await read_control(path.join(cgroup, 'cpu.stat'));
+    const throttled = Number(cpu.match(/^nr_throttled (\d+)$/m)?.[1] || 0);
+    const memory = Number(await read_control(path.join(cgroup, 'memory.current')));
+    const pidsCurrent = Number(await read_control(path.join(cgroup, 'pids.current')));
+    const memoryEvents = await read_control(path.join(cgroup, 'memory.events'));
+    const oomKills = Number(memoryEvents.match(/^oom_kill (\d+)$/m)?.[1] || 0);
+    return { cgroup, provider_seen, sleep_pids, throttled, memory, pidsCurrent, oomKills };
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENODEV') {
+      // The provider may finish while this monitor is reading controller
+      // files. Ignore the race only after confirming the cgroup itself is gone.
+      try {
+        await lstat(cgroup);
+      } catch (directoryError) {
+        if (directoryError.code === 'ENOENT' || directoryError.code === 'ENODEV') return null;
+        throw directoryError;
+      }
+    }
+    throw error;
   }
-  const cpu = await read_control(path.join(cgroup, 'cpu.stat'));
-  const throttled = Number(cpu.match(/^nr_throttled (\d+)$/m)?.[1] || 0);
-  const memory = Number(await read_control(path.join(cgroup, 'memory.current')));
-  const pidsCurrent = Number(await read_control(path.join(cgroup, 'pids.current')));
-  const memoryEvents = await read_control(path.join(cgroup, 'memory.events'));
-  const oomKills = Number(memoryEvents.match(/^oom_kill (\d+)$/m)?.[1] || 0);
-  return { cgroup, provider_seen, sleep_pids, throttled, memory, pidsCurrent, oomKills };
 }
 
 async function create_delegated_parent() {
