@@ -120,7 +120,8 @@ test('providers rizin imports writes the actual normalized JSON report', async (
       'providers', 'rizin', 'imports', input,
       '--executable', executable,
       ...executable_args.flatMap(argument => ['--executable-arg', argument]),
-      '--format', 'json',
+      '--format', 'json',      '--isolation', 'none',
+
       '--out', output,
     ]);
     assert.equal(exit_code, 0);
@@ -139,7 +140,8 @@ test('providers rizin functions writes the actual bounded function/disassembly r
       'providers', 'rizin', 'functions', input,
       '--executable', executable,
       ...executable_args.flatMap(argument => ['--executable-arg', argument]),
-      '--address', '0x401000',
+      '--address', '0x401000',      '--isolation', 'none',
+
       '--max-instructions', '1',
       '--decompile',
       '--format', 'json',
@@ -223,7 +225,8 @@ test('provider help documents the opt-in provider commands and limits', () => {
   assert.match(HELP_TEXT, /providers rizin doctor/);
   assert.match(HELP_TEXT, /providers rizin imports/);
   assert.match(HELP_TEXT, /providers rizin functions/);
-  assert.match(HELP_TEXT, /not an OS sandbox/);
+  assert.match(HELP_TEXT, /Required explicit choice: none \(unsandboxed\) or required/);
+  assert.match(HELP_TEXT, /requires an explicit --isolation choice/);
 });
 
 test('providers rizin doctor performs a real explicit executable version probe', async () => {
@@ -234,7 +237,8 @@ test('providers rizin doctor performs a real explicit executable version probe',
       '--executable', executable,
       ...executable_args.flatMap(argument => ['--executable-arg', argument]),
       '--json',
-      '--out', output,
+      '--out', output,      '--isolation', 'none',
+
     ]);
     assert.equal(exit_code, 0);
     const report = JSON.parse(await readFile(output, 'utf8'));
@@ -275,6 +279,19 @@ test('provider CLI parses and validates explicit Rizin isolation options', () =>
     () => parse_arguments(['providers', 'rizin', 'doctor', '--sandbox-root', '/opt/orix/rootfs']),
     error => error.code === 'ORIX_CLI_SANDBOX_ROOT_REQUIRES_ISOLATION',
   );
+});
+
+test('Rizin CLI refuses to execute a provider without an explicit isolation policy', async () => {
+  await with_fixture(async ({ executable, executable_args }) => {
+    await assert.rejects(
+      main([
+        'providers', 'rizin', 'doctor',
+        '--executable', executable,
+        ...executable_args.flatMap(argument => ['--executable-arg', argument]),
+      ]),
+      /isolation must be explicitly set/,
+    );
+  });
 });
 
 test('Rizin CLI forwards required isolation and sandbox root to the adapter and fails closed', async () => {
