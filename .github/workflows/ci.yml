@@ -36,8 +36,37 @@ jobs:
       - name: Run tests
         run: npm test
       - name: Generate coverage summary
-        if: matrix.node-version == 22
         run: npm run test:coverage
+
+  linux-provider-isolation:
+    name: Linux Bubblewrap hostile-process isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Bubblewrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Allow Bubblewrap user namespaces under Ubuntu AppArmor
+        run: |
+          if [ -r /sys/module/apparmor/parameters/enabled ] && grep -q '^Y' /sys/module/apparmor/parameters/enabled; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap || sudo apparmor_parser -a /etc/apparmor.d/bwrap
+          fi
+      - name: Verify Bubblewrap availability
+        run: |
+          test -x /usr/bin/bwrap
+          /usr/bin/bwrap --version
+      - name: Run hostile-process isolation checks
+        run: node scripts/linux-isolation-integration.mjs
 
   platform-smoke:
     name: Platform smoke / ${{ matrix.os }}
