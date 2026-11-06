@@ -57,12 +57,6 @@ export function validate_linux_cgroup_v2_limits(value) {
   if (limits.cpu_period_us < 1000 || limits.cpu_period_us > 1_000_000) {
     fail('ORIX_CGROUP_LIMITS_INVALID', 'cpu_period_us must be between 1000 and 1000000 microseconds');
   }
-  if (limits.cpu_quota_us > 1_000_000_000) {
-    fail('ORIX_CGROUP_LIMITS_INVALID', 'cpu_quota_us exceeds the configured safety ceiling');
-  }
-  if (limits.pids_max < 2) {
-    fail('ORIX_CGROUP_LIMITS_INVALID', 'pids_max must allow at least the bootstrap and provider tasks');
-  }
   return Object.freeze(limits);
 }
 
