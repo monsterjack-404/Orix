@@ -22,7 +22,8 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | Tool | Input | Result |
 |---|---|---|
 | `orix.inspect_file` | `path`, optional read/file MiB and string limits | Versioned artifact report with complete-file SHA-256 |
-| `orix.rizin_functions` | Workspace-confined `path`, explicit `executable`, optional function/address/instruction/decompile/time/output limits, isolation mode and workspace-confined `cwd` | Rizin function inventory, address-scoped assembly disassembly and optional rz-ghidra pseudocode with SHA-256 provenance |
+| `orix.rizin_imports` | Workspace-confined `path`, explicit `executable`, optional import/time/output limits, isolation mode and workspace-confined `cwd` | Bounded static imported-symbol inventory with SHA-256 provenance; optional administrator-configured Linux Bubblewrap isolation |
+| `orix.rizin_functions` | Workspace-confined `path`, explicit `executable`, optional function/address/instruction/decompile/time/output limits, isolation mode and workspace-confined `cwd`, isolation mode and workspace-confined `cwd` | Rizin function inventory, address-scoped assembly disassembly and optional rz-ghidra pseudocode with SHA-256 provenance |
 | `orix.scan_directory` | `path`, optional file/entry/depth/concurrency limits | Bounded directory scan and artifact reports |
 | `orix.scan_project` | `path`, optional file/entry/depth limits | Project inventory, manifests, imports and symbol candidates |
 | `orix.analyze_architecture` | `path`, optional inventory and graph limits | Static source-import graph with entry-point candidates, cycles, reachability, hotspots and explicit limitations |
