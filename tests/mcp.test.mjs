@@ -647,7 +647,7 @@ test('Evidence-ledger read and append reject hard-link aliases when requested by
       append_ledger(alias, { type: 'test.appended', payload: {} }, { reject_hardlinks: true }),
       error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
     );
-    assert.equal((await readFile(external, 'utf8')).split('\\n').length, 2);
+    assert.equal((await readFile(external, 'utf8')).split('\n').length, 2);
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
