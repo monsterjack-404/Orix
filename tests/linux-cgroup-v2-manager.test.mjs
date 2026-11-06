@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeSync } from 'node:fs';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile, rmdir } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -119,9 +119,9 @@ if (process.platform === 'linux') {
 
       assert.match(lease.leaf_name, /^provider-\d+-[0-9a-f-]+$/);
       const leaf_path = path.join(fixture.parent, lease.leaf_name);
-      assert.equal(await readFile(path.join(leaf_path, 'cpu.max'), 'utf8'), '50000 100000');
+      assert.equal(await readFile(path.join(leaf_path, 'cpu.max'), 'utf8'), '50000 100000\n');
       assert.equal(await readFile(path.join(leaf_path, 'memory.max'), 'utf8'), String(valid_limits.memory_max_bytes));
-      assert.equal(await readFile(path.join(leaf_path, 'pids.max'), 'utf8'), '32');
+      assert.equal(await readFile(path.join(leaf_path, 'pids.max'), 'utf8'), '32\n');
 
       writeSync(lease.attach_fd, Buffer.from(String(process.pid) + '\n', 'ascii'));
       assert.equal(readFileSync(path.join(leaf_path, 'cgroup.procs'), 'utf8'), String(process.pid) + '\n');
@@ -135,7 +135,7 @@ if (process.platform === 'linux') {
       const second = await lease.teardown();
       assert.equal(first.removed, true);
       assert.deepEqual(second, first);
-      await assert.rejects(readFile(leaf_path), error => error.code === 'ENOENT');
+      await assert.rejects(lstat(leaf_path), error => error.code === 'ENOENT');
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
