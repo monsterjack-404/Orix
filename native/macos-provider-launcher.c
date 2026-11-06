@@ -2,6 +2,25 @@
 #include <errno.h>
 #include <limits.h>
 #include <sandbox.h>
+#include <stdint.h>
+
+/*
+ * Apple does not publish these Seatbelt SPI prototypes in the public SDK
+ * sandbox.h. The symbols are reserved and may disappear in a future macOS
+ * release; keep the dependency explicit and fail closed if the runtime cannot
+ * provide them. The signatures match Apple's private header and Chromium's
+ * established macOS Seatbelt integration.
+ */
+enum sandbox_filter_type {
+  SANDBOX_FILTER_NONE = 0
+};
+extern int sandbox_init_with_parameters(
+  const char *profile,
+  uint64_t flags,
+  const char *const parameters[],
+  char **errorbuf
+);
+extern int sandbox_check(pid_t pid, const char *operation, int type, ...);
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
