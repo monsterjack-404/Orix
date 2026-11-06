@@ -45,7 +45,7 @@ Product direction and release scope are intentionally separated. The [Product Ch
 | **Local-first by default** | Core inspection runs locally without an account, cloud service or paid API. |
 | **Static and bounded** | Inputs, traversal, parser work, output and concurrency have explicit ceilings. Inspected samples and project scripts are not executed by core analysis. |
 | **Honest coverage** | Unsupported structures, truncation, skipped files and provider failures stay visible. |
-| **One coherent workflow** | CLI, JavaScript API and local stdio MCP expose the same underlying analysis contracts. |
+| **Consistent interfaces** | CLI, JavaScript API and local stdio MCP share versioned report and evidence models where each interface exposes them. |
 | **Interoperable output** | Export JSON, Markdown, SARIF and CycloneDX data for downstream review and tooling. |
 
 ## Capabilities
@@ -224,6 +224,11 @@ Read the [Security Model](docs/SECURITY_MODEL.md), [Security Policy](SECURITY.md
 | [Format support](docs/FORMATS.md) | Parser status, implemented structures and unsupported areas |
 | [Project intelligence](docs/PROJECT_INTELLIGENCE.md) | Repository inventory, lockfiles, source analysis and SBOM |
 | [Architecture analysis](docs/ARCHITECTURE-ANALYSIS.md) | Import graph and structural metrics |
+| [Static indicators](docs/INDICATORS.md) | Rule IDs, severity, confidence and false-positive guidance |
+| [WebAssembly analysis](docs/WASM_ANALYSIS.md) | WebAssembly parser fields, ceilings and exclusions |
+| [Dependency vulnerability intelligence](docs/VULNERABILITY-INTELLIGENCE.md) | Opt-in OSV lookup and coverage limitations |
+| [Core architecture](docs/ARCHITECTURE.md) | Module ownership, data flow and extension boundaries |
+| [Competitive landscape](docs/COMPETITIVE_LANDSCAPE.md) | Research context and adapter priorities |
 | [Investigation cases](docs/CASES.md) | Case lifecycle, events, reports and bundles |
 | [Evidence and security model](docs/SECURITY_MODEL.md) | Threats, controls, residual risks and trust boundaries |
 | [Provider integration](docs/PROVIDERS.md) | Provider manifests, process control and Rizin workflows |
