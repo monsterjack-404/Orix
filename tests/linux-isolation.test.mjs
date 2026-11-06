@@ -54,6 +54,30 @@ test('rootfs trust assessment permits only the root-owned sticky ancestor except
 });
 
 if (process.platform === 'linux') {
+  test('Bubblewrap accepts a service-owned rootfs below the root-owned sticky temp ancestor', { timeout: 10_000 }, async () => {
+    const base = await mkdtemp(path.join(tmpdir(), 'orix-rootfs-sticky-'));
+    const root = path.join(base, 'rootfs');
+    try {
+      await mkdir(root);
+      await mkdir(path.join(root, 'proc'));
+      await mkdir(path.join(root, 'dev'));
+      await mkdir(path.join(root, 'tmp'));
+
+      await assert.rejects(
+        prepare_linux_provider_isolation({
+          executable: '/usr/bin/true',
+          cwd: root,
+          sandbox_root: root,
+          args: [],
+          env: {},
+        }),
+        error => error.code === 'ORIX_PROVIDER_SANDBOX_PATH_DENIED',
+      );
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
   test('Bubblewrap rejects a group/other-writable rootfs before resolving or launching bwrap', { timeout: 10_000 }, async () => {
     const base = await mkdtemp(path.join(tmpdir(), 'orix-rootfs-unsafe-'));
     const root = path.join(base, 'rootfs');
