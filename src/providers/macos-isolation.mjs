@@ -18,6 +18,95 @@ function within(root, candidate) {
 }
 
 /**
+ * Build a minimal host-side compiler environment. Never inherit SDK, toolchain,
+ * loader, PATH or user-home overrides from the ORIX parent process.
+ * The system-selected Xcode/Command Line Tools installation remains the
+ * administrator-controlled compiler source.
+ */
+export function build_macos_compiler_environment(temporary_directory) {
+  if (typeof temporary_directory !== 'string' || !path.isAbsolute(temporary_directory) ||
+      temporary_directory.includes('\\0')) {
+    throw new TypeError('temporary_directory must be an absolute path without NUL bytes');
+  }
+  return Object.freeze({
+    HOME: temporary_directory,
+    PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
+    LANG: 'C',
+    TMPDIR: temporary_directory,
+    TMP: temporary_directory,
+    TEMP: temporary_directory,
+  });
+}
+
+function process_group_exists(pid) {
+  if (!Number.isSafeInteger(pid) || pid < 1) return false;
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code !== 'ESRCH';
+  }
+}
+
+/**
+ * Terminate and verify an isolated host-side compiler process group. Never
+ * allow temporary compiler inputs/outputs to be removed while descendants
+ * from that group may still be running.
+ */
+export async function cleanup_macos_compiler_process_group(pid, options = {}) {
+  const term_grace_ms = options.term_grace_ms ?? 500;
+  const verify_timeout_ms = options.verify_timeout_ms ?? 5000;
+  if (!Number.isSafeInteger(pid) || pid < 1 ||
+      !Number.isSafeInteger(term_grace_ms) || term_grace_ms < 0 || term_grace_ms > 10_000 ||
+      !Number.isSafeInteger(verify_timeout_ms) || verify_timeout_ms < 1 || verify_timeout_ms > 30_000) {
+    throw new TypeError('invalid macOS compiler process-group cleanup limits');
+  }
+  const wait_until_empty = async deadline => {
+    while (process_group_exists(pid)) {
+      if (Date.now() >= deadline) return false;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    return true;
+  };
+  if (!process_group_exists(pid)) {
+    return Object.freeze({ term_signal_sent: false, force_kill_sent: false, verified_empty: true });
+  }
+  let term_signal_sent = false;
+  try {
+    process.kill(-pid, 'SIGTERM');
+    term_signal_sent = true;
+  } catch (error) {
+    if (error?.code !== 'ESRCH') {
+      // Continue to the verification/escalation phase. Failure to signal is
+      // not treated as proof that the process group has disappeared.
+    }
+  }
+  if (await wait_until_empty(Date.now() + term_grace_ms)) {
+    return Object.freeze({ term_signal_sent, force_kill_sent: false, verified_empty: true });
+  }
+  let force_kill_sent = false;
+  try {
+    process.kill(-pid, 'SIGKILL');
+    force_kill_sent = true;
+  } catch (error) {
+    if (error?.code !== 'ESRCH') {
+      // The final bounded existence check below reports failure if it remains.
+    }
+  }
+  const verified_empty = await wait_until_empty(Date.now() + verify_timeout_ms);
+  if (!verified_empty) {
+    isolation_error('ORIX_PROVIDER_MACOS_COMPILER_CLEANUP_FAILED',
+      'Compiler process group remained present after SIGTERM/SIGKILL cleanup', {
+        process_group_id: pid,
+        term_signal_sent,
+        force_kill_sent,
+        verified_empty: false,
+      });
+  }
+  return Object.freeze({ term_signal_sent, force_kill_sent, verified_empty: true });
+}
+
+/**
  * Rootfs paths must not be replaceable by an untrusted group/other writer.
  * A root-owned sticky ancestor (for example /tmp) is the only writable
  * ancestor exception; the rootfs directory itself never gets that exception.
@@ -208,44 +297,104 @@ async function run_compiler(executable, args, cwd, env) {
     let stderr = '';
     let settled = false;
     let timedOut = false;
-    const child = spawn(executable, args, {
-      cwd, env, shell: false, windowsHide: true, detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    child.stdout.on('data', chunk => { if (stdout.length < 8192) stdout += chunk.toString('utf8').slice(0, 8192 - stdout.length); });
-    child.stderr.on('data', chunk => { if (stderr.length < 8192) stderr += chunk.toString('utf8').slice(0, 8192 - stderr.length); });
-    const timer = setTimeout(() => {
-      if (settled) return;
-      timedOut = true;
-      // clang may spawn cc1 or other compiler children. Kill the dedicated
-      // process group so no descendant can keep writing into the temp directory.
-      try { process.kill(-child.pid, 'SIGKILL'); }
-      catch { child.kill('SIGKILL'); }
-    }, 30_000);
-    child.once('error', error => {
-      if (settled) return;
+    let childClosed = false;
+    let groupCleanupComplete = false;
+    let groupCleanupError = null;
+    let spawnError = null;
+    let closeResult = null;
+    let groupCleanupPromise = null;
+    let timer = null;
+    let child;
+
+    const finish = () => {
+      if (settled || !childClosed || !groupCleanupComplete) return;
       settled = true;
-      clearTimeout(timer);
-      reject(new OrixError('ORIX_PROVIDER_MACOS_COMPILER_FAILED', 'Could not start the macOS isolation launcher compiler', {
-        details: { reason: error.code ?? error.name, stdout, stderr }, cause: error, recoverable: true,
-      }));
+      if (timer) clearTimeout(timer);
+      if (groupCleanupError) {
+        reject(groupCleanupError);
+      } else if (timedOut) {
+        reject(new OrixError('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT',
+          'macOS isolation launcher compilation exceeded 30 seconds; its process group was cleaned up', {
+            details: { stdout, stderr, exit_code: closeResult?.code ?? null, signal: closeResult?.signal ?? null },
+            recoverable: true,
+          }));
+      } else if (spawnError) {
+        reject(new OrixError('ORIX_PROVIDER_MACOS_COMPILER_FAILED',
+          'Could not start the macOS isolation launcher compiler', {
+            details: { reason: spawnError.code ?? spawnError.name, stdout, stderr },
+            cause: spawnError,
+            recoverable: true,
+          }));
+      } else if (closeResult?.code === 0) {
+        resolve();
+      } else {
+        reject(new OrixError('ORIX_PROVIDER_MACOS_COMPILER_FAILED',
+          'Could not compile the macOS Seatbelt launcher', {
+            details: { exit_code: closeResult?.code ?? null, signal: closeResult?.signal ?? null, stdout, stderr },
+            recoverable: true,
+          }));
+      }
+    };
+
+    const start_group_cleanup = () => {
+      if (groupCleanupPromise) return groupCleanupPromise;
+      if (!Number.isSafeInteger(child?.pid) || child.pid < 1) {
+        groupCleanupComplete = true;
+        finish();
+        return Promise.resolve();
+      }
+      groupCleanupComplete = false;
+      groupCleanupPromise = cleanup_macos_compiler_process_group(child.pid)
+        .catch(error => { groupCleanupError = error; })
+        .finally(() => {
+          groupCleanupComplete = true;
+          finish();
+        });
+      return groupCleanupPromise;
+    };
+
+    try {
+      child = spawn(executable, args, {
+        cwd, env, shell: false, windowsHide: true, detached: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      spawnError = error;
+      childClosed = true;
+      groupCleanupComplete = true;
+      finish();
+      return;
+    }
+
+    child.stdout.on('data', chunk => {
+      if (stdout.length < 8192) stdout += chunk.toString('utf8').slice(0, 8192 - stdout.length);
+    });
+    child.stderr.on('data', chunk => {
+      if (stderr.length < 8192) stderr += chunk.toString('utf8').slice(0, 8192 - stderr.length);
+    });
+    child.once('error', error => {
+      spawnError = error;
+      childClosed = true;
+      void start_group_cleanup();
     });
     child.once('close', (code, signal) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (timedOut) {
-        reject(new OrixError('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', 'macOS isolation launcher compilation exceeded 30 seconds', {
-          details: { stdout, stderr, exit_code: code, signal }, recoverable: true,
-        }));
-      } else if (code === 0) resolve();
-      else reject(new OrixError('ORIX_PROVIDER_MACOS_COMPILER_FAILED', 'Could not compile the macOS Seatbelt launcher', {
-        details: { exit_code: code, signal, stdout, stderr }, recoverable: true,
-      }));
+      closeResult = { code, signal };
+      childClosed = true;
+      // Even a successful compiler leader may have left a same-group child.
+      // Verify group emptiness before its temporary directory can be removed.
+      void start_group_cleanup();
     });
+
+    timer = setTimeout(() => {
+      if (settled || childClosed) return;
+      timedOut = true;
+      // cleanup_macos_compiler_process_group sends SIGTERM, escalates to
+      // SIGKILL only if needed, and waits until the OS reports the group gone.
+      void start_group_cleanup();
+    }, 30_000);
+    timer.unref?.();
   });
 }
-
 async function resolve_compiler() {
   const candidate = '/usr/bin/clang';
   try {
@@ -306,20 +455,20 @@ export async function prepare_macos_provider_isolation({
   const launcher = path.join(temporary, 'orix-macos-provider-launcher');
   // Compile only with the trusted service environment. Provider-supplied SDK,
   // toolchain and temp variables must not influence this host-side compiler.
-  const hostEnvironment = Object.create(null);
-  for (const key of ['HOME', 'PATH', 'DEVELOPER_DIR', 'SDKROOT', 'TOOLCHAINS', 'LANG']) {
-    if (typeof process.env[key] === 'string') hostEnvironment[key] = process.env[key];
-  }
-  hostEnvironment.TMPDIR = temporary;
-  hostEnvironment.TMP = temporary;
-  hostEnvironment.TEMP = temporary;
+  const hostEnvironment = build_macos_compiler_environment(temporary);
   const source = fileURLToPath(new URL('../../native/macos-provider-launcher.c', import.meta.url));
   try {
     await writeFile(profilePath, PROFILE, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
     await run_compiler(compiler, ['-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', source, '-lsandbox', '-o', launcher],
       temporary, hostEnvironment);
   } catch (error) {
-    await rm(temporary, { recursive: true, force: true }).catch(() => {});
+    if (error?.code === 'ORIX_PROVIDER_MACOS_COMPILER_CLEANUP_FAILED') {
+      // A compiler descendant may still reference this directory. Preserve it
+      // rather than deleting files while an unverified process group survives.
+      error.details = { ...(error.details ?? {}), temporary_directory_preserved: temporary };
+    } else {
+      await rm(temporary, { recursive: true, force: true }).catch(() => {});
+    }
     throw error;
   }
 
