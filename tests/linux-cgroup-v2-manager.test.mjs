@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeSync } from 'node:fs';
-import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile, rmdir } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -71,7 +71,7 @@ async function make_fake_delegated_parent() {
   return { root, parent };
 }
 
-function fake_adapter({ populated_after_kill = 0, mismatch_file = null } = {}) {
+function fake_adapter({ populated_after_kill = 0, mismatch_file = null, controllers = 'cpu memory pids\\n' } = {}) {
   return {
     preflight: async () => ({ ready: true, reason: null }),
     after_create_leaf: async leaf_path => {
@@ -199,4 +199,39 @@ if (process.platform === 'linux') {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+
+  test('manager rejects a symlinked parent component before creating a leaf', { timeout: 10_000 }, async () => {
+    const fixture = await make_fake_delegated_parent();
+    try {
+      const linked_parent = path.join(fixture.root, 'delegated-link');
+      await symlink(fixture.parent, linked_parent, 'dir');
+      await assert.rejects(
+        create_linux_provider_cgroup({
+          parent_path: linked_parent,
+          limits: valid_limits,
+        }, fake_adapter()),
+        error => error.code === 'ORIX_CGROUP_PARENT_PATH_UNSAFE',
+      );
+      assert.deepEqual(await readdir(fixture.parent), ['cgroup.procs']);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test('manager rejects a leaf missing a required controller and removes it safely', { timeout: 10_000 }, async () => {
+    const fixture = await make_fake_delegated_parent();
+    try {
+      await assert.rejects(
+        create_linux_provider_cgroup({
+          parent_path: fixture.parent,
+          limits: valid_limits,
+        }, fake_adapter({ controllers: 'cpu memory\n' })),
+        error => error.code === 'ORIX_CGROUP_LEAF_CONTROLLERS_MISSING',
+      );
+      assert.deepEqual(await readdir(fixture.parent), ['cgroup.procs']);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
 }
