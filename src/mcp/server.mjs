@@ -412,7 +412,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
         cwd,
       });
     }
-
+    case 'orix.rizin_functions': {
       if (args.isolation === 'required' && args.sandbox_root === undefined) {
         throw new TypeError('sandbox_root is required when isolation is required');
       }
