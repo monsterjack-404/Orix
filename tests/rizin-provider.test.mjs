@@ -6,7 +6,8 @@ import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { analyze_rizin_imports, analyze_rizin_functions, create_rizin_snapshot_directory, probe_rizin, RIZIN_PROVIDER_MANIFEST } from '../src/providers/rizin.mjs';
+import { analyze_rizin_imports, analyze_rizin_functions, probe_rizin, RIZIN_PROVIDER_MANIFEST } from '../src/providers/rizin.mjs';
+import { create_rizin_snapshot_directory } from '../src/providers/rizin-snapshot.mjs';
 
 const RIZIN_STUB = fileURLToPath(new URL('./fixtures/rizin-stub.mjs', import.meta.url));
 
