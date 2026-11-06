@@ -77,6 +77,20 @@ Before creating a child, implementation must:
 
 Node’s path-based filesystem APIs do not provide a complete openat-style directory-fd API. The implementation must explicitly address path-component TOCTOU risks; if it cannot guarantee a safe delegated parent under the documented ownership/permission model, it must reject that configuration rather than overstate race resistance.
 
+### Descriptor-anchored filesystem access and bootstrap handoff
+
+The implementation should avoid reopening attacker-influenced absolute paths after validation. A Node-only implementation candidate is to retain directory FileHandles and perform each next-component operation through /proc/self/fd/<dirfd>/<single-component>, opening every directory with O_DIRECTORY | O_NOFOLLOW. Components must be validated as single names (no slash, dot, dot-dot, NUL or empty value); never append a multi-component relative path to the descriptor path. Control files must likewise be opened with O_NOFOLLOW relative to the retained cgroup directory handle. If procfs descriptor paths are unavailable or their semantics cannot be verified on the target host, fail closed. This is not a substitute for administrator-owned, non-writable-by-untrusted-users delegation, and it must be tested on the actual cgroup2 filesystem before being treated as a security guarantee.
+
+For the bootstrap attach step, prefer descriptor passing over giving the helper a cgroup path:
+
+1. The trusted host manager opens the new leaf's cgroup.procs for writing and passes that already-open descriptor as a dedicated extra stdio descriptor to the trusted bootstrap process.
+2. The bootstrap writes only its own PID to that descriptor as its first operation. It must treat a short/failed write as fatal and must not spawn Bubblewrap unless the attach operation succeeds.
+3. The bootstrap closes the inherited cgroup descriptor before spawning Bubblewrap. The provider and Bubblewrap must never inherit it.
+4. The host closes its copy after the bootstrap spawn handoff; on spawn failure, the host closes it and removes only the still-empty leaf.
+5. Tests must prove the bootstrap is a member of the leaf before provider code begins, the provider cannot access the attach descriptor, and attach failure prevents any Bubblewrap/provider spawn.
+
+This narrows the bootstrap's authority: it receives one write-only capability to attach itself, not the delegated parent path, directory handles, controller files, or a general-purpose cgroup-management API. Verify descriptor inheritance and closure on every supported Node.js version before relying on it.
+
 ## Limit model
 
 The public API should accept a small validated resource-limit object with conservative finite defaults or require all three limits explicitly. The exact defaults and maximums must be chosen from documented ORIX policy, not guessed from the host’s available resources.
