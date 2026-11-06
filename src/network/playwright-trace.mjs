@@ -51,6 +51,12 @@ function u32(buffer, offset) {
   if (offset < 0 || offset > buffer.length - 4) fail('ORIX_TRACE_ZIP_BOUNDS', 'ZIP local header is truncated', { offset });
   return buffer.readUInt32LE(offset);
 }
+function u64_safe(buffer, offset, end) {
+  if (offset < 0 || offset > end - 8) fail('ORIX_TRACE_ZIP_BOUNDS', 'ZIP64 data descriptor is truncated', { offset });
+  const value = buffer.readBigUInt64LE(offset);
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) fail('ORIX_TRACE_ZIP64_RANGE', 'ZIP64 data descriptor exceeds safe integer precision', { offset });
+  return Number(value);
+}
 function crc32(buffer) {
   let value = 0xffffffff;
   for (const byte of buffer) {
@@ -92,6 +98,10 @@ function read_trace_member(archive, entry, central_directory_offset, max_bytes) 
   const name_length = u16(archive, local + 26);
   const extra_length = u16(archive, local + 28);
   const descriptor = Boolean(flags & 0x0008);
+  const local_crc = u32(archive, local + 14);
+  const local_compressed_size = u32(archive, local + 18);
+  const local_uncompressed_size = u32(archive, local + 22);
+  const expected_crc = Number.parseInt(entry.crc32.slice(2), 16) >>> 0;
   const method_ids = { stored: 0, deflate: 8, deflate64: 9, bzip2: 12, lzma: 14, zstandard: 93, xpress: 95, 'aes-wrapper': 99 };
   const expected_method = method_ids[entry.compression_method] ??
     (entry.compression_method.startsWith('unknown-') ? Number(entry.compression_method.slice(8)) : -1);
@@ -110,10 +120,42 @@ function read_trace_member(archive, entry, central_directory_offset, max_bytes) 
     fail('ORIX_TRACE_MEMBER_RANGE', 'Trace compressed data overlaps the central directory or exceeds archive bounds');
   }
   if (!descriptor) {
-    if (u32(archive, local + 14) !== Number.parseInt(entry.crc32.slice(2), 16) ||
-        u32(archive, local + 18) !== entry.compressed_size ||
-        u32(archive, local + 22) !== entry.uncompressed_size) {
+    if (local_crc !== expected_crc || local_compressed_size !== entry.compressed_size ||
+        local_uncompressed_size !== entry.uncompressed_size) {
       fail('ORIX_TRACE_LOCAL_SIZE_MISMATCH', 'Trace local-header sizes or CRC do not match the central directory');
+    }
+  } else {
+    const local_crc_mismatch = local_crc !== 0 && local_crc !== expected_crc;
+    const local_compressed_mismatch = local_compressed_size !== 0 && local_compressed_size !== 0xffffffff &&
+      local_compressed_size !== entry.compressed_size;
+    const local_uncompressed_mismatch = local_uncompressed_size !== 0 && local_uncompressed_size !== 0xffffffff &&
+      local_uncompressed_size !== entry.uncompressed_size;
+    if (local_crc_mismatch || local_compressed_mismatch || local_uncompressed_mismatch) {
+      fail('ORIX_TRACE_LOCAL_SIZE_MISMATCH', 'Trace local-header placeholder values conflict with the central directory');
+    }
+    const zip64_descriptor = local_compressed_size === 0xffffffff || local_uncompressed_size === 0xffffffff;
+    const descriptor_offset = data_offset + entry.compressed_size;
+    const descriptor_width = zip64_descriptor ? 20 : 12;
+    const has_valid_descriptor = (candidate, has_signature) => {
+      const start = candidate + (has_signature ? 4 : 0);
+      if (start < candidate || start > central_directory_offset - descriptor_width) return false;
+      const descriptor_crc = u32(archive, start);
+      const descriptor_compressed = zip64_descriptor
+        ? u64_safe(archive, start + 4, central_directory_offset)
+        : u32(archive, start + 4);
+      const descriptor_uncompressed = zip64_descriptor
+        ? u64_safe(archive, start + 12, central_directory_offset)
+        : u32(archive, start + 8);
+      return descriptor_crc === expected_crc &&
+        descriptor_compressed === entry.compressed_size &&
+        descriptor_uncompressed === entry.uncompressed_size;
+    };
+    const signature_present = descriptor_offset <= central_directory_offset - 4 &&
+      u32(archive, descriptor_offset) === 0x08074b50;
+    const descriptor_valid = has_valid_descriptor(descriptor_offset, false) ||
+      (signature_present && has_valid_descriptor(descriptor_offset, true));
+    if (!descriptor_valid) {
+      fail('ORIX_TRACE_DATA_DESCRIPTOR_MISMATCH', 'Trace ZIP data descriptor does not match its central-directory CRC or sizes');
     }
   }
   const compressed = archive.subarray(data_offset, data_offset + entry.compressed_size);
@@ -136,7 +178,6 @@ function read_trace_member(archive, entry, central_directory_offset, max_bytes) 
   if (expanded.length !== entry.uncompressed_size || expanded.length > max_bytes) {
     fail('ORIX_TRACE_EXPANDED_SIZE_MISMATCH', 'Expanded trace size does not match its bounded ZIP metadata');
   }
-  const expected_crc = Number.parseInt(entry.crc32.slice(2), 16) >>> 0;
   if (crc32(expanded) !== expected_crc) {
     fail('ORIX_TRACE_CRC_MISMATCH', 'Playwright trace member failed CRC32 integrity validation');
   }
