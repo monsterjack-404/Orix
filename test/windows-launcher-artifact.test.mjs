@@ -52,3 +52,9 @@ test('Windows launcher artifact verifier rejects 32-bit-required and malformed C
   badMetadata.writeUInt32LE(0, 0x280);
   assert.throws(() => inspectWindowsLauncher(badMetadata), /metadata signature/);
 });
+
+test('Windows launcher artifact verifier rejects a CLR directory extending past section raw data', () => {
+  const truncatedDirectory = makeAnyCpuPe();
+  truncatedDirectory.writeUInt32LE(0x201, 0x84 + 20 + 96 + (14 * 8) + 4);
+  assert.throws(() => inspectWindowsLauncher(truncatedDirectory), /CLR directory extends beyond section raw data/);
+});
