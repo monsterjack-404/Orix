@@ -1,6 +1,6 @@
 # Linux cgroup v2 provider resource-isolation design
 
-**Status: research/design only — no cgroup resource enforcement is implemented by this document or the current provider runner.**
+**Status: implementation is wired in the PR #64 branch (not yet merged).** The Linux `isolation: 'required'` path now creates a per-run cgroup v2 leaf, applies and reads back fixed host policy limits, launches the descriptor-attaching bootstrap, and removes the leaf only after the kernel reports it empty. The real-kernel CI gate exercises the implementation on its Ubuntu Linux runner. This branch-level status is not a claim that the feature is available from the current `main` release, nor that every Linux distribution/kernel has been certified.
 
 ## Goal
 
@@ -93,13 +93,15 @@ This narrows the bootstrap's authority: it receives one write-only capability to
 
 ## Limit model
 
-The public API should accept a small validated resource-limit object with conservative finite defaults or require all three limits explicitly. The exact defaults and maximums must be chosen from documented ORIX policy, not guessed from the host’s available resources.
+PR #64 currently uses a fixed host-owned policy in `LINUX_PROVIDER_CGROUP_LIMITS`; neither provider manifests nor individual requests can raise or override it. The enforced cgroup values are:
 
-- CPU: validate integer quota and period in the kernel-supported range; serialize as `<quota> <period>` for `cpu.max`.
-- Memory: validate a positive safe integer byte count and serialize to `memory.max`.
-- Processes/tasks: validate a positive bounded integer and serialize to `pids.max`.
+- `cpu.max = 50000 100000` (50% of one CPU's bandwidth; not a total CPU-time budget).
+- `memory.max = 536870912` (512 MiB).
+- `memory.swap.max = 0`.
+- `memory.oom.group = 1` (an OOM event kills the whole provider leaf group).
+- `pids.max = 64` (Linux tasks, including threads).
 
-Provider manifests may request a stricter limit only if policy explicitly allows it; they must never raise host policy ceilings. The host-side configuration owns the maximum allowed values. If there is no trusted host configuration, required cgroup isolation is unavailable.
+The Bubblewrap launch also applies per-process `RLIMIT_CPU=60s`, `RLIMIT_FSIZE=64 MiB`, `RLIMIT_NOFILE=256`, and `RLIMIT_CORE=0`. Wall-clock timeout and captured-output limits remain separate runner controls. The fixed limits are conservative implementation policy, not host auto-detection; changing them requires a reviewed code/policy change.
 
 ## Lifecycle and failure handling
 
@@ -115,16 +117,14 @@ Provider manifests may request a stricter limit only if policy explicitly allows
 
 ## Existing process-runner lifecycle constraints
 
-The current `run_static_provider()` implementation directly spawns the prepared executable, owns stdout/stderr capture, starts a wall-clock timer, and settles its result from child-process `close`. Timeout, abort and output overflow currently signal the POSIX process group (or the direct child on Windows). A cgroup-backed implementation must change this lifecycle rather than bolting a PID move onto the existing spawn call.
+`run_static_provider()` is now wired to the cgroup lifecycle for Linux `isolation: 'required'`:
 
-Required integration behavior:
-
-- Spawn only the trusted bootstrap helper as the initial child. The provider executable is passed to it as validated, bounded host-generated configuration; the helper must join the run cgroup before launching Bubblewrap.
-- Keep the existing argument, environment, wall-clock and captured-output validation. The bootstrap must not inherit provider-controlled environment values or execute a shell.
-- Route timeout, abort, output overflow, bootstrap failure, child spawn error and normal child completion through one idempotent finalization path.
-- On every terminal path, kill any remaining tasks in the run cgroup, wait for `cgroup.events` to report `populated 0`, and remove the run cgroup only after emptiness is proven. Normal provider exit also requires this check because descendants may outlive the first process.
-- Do not settle a successful result on the initial child `close` event alone. A descendant may retain inherited stdout/stderr descriptors, and the cgroup’s populated state is the authority for process cleanup.
-- Preserve separate diagnostics for provider exit status, termination reason and cgroup cleanup failure. Cleanup failure must never be reported as successful provider execution.
+- The host creates/configures a leaf and launches the package-owned bootstrap with only the write-only `cgroup.procs` descriptor at child FD 3. The bootstrap writes its own PID, closes FD 3, then launches the absolute `prlimit` command and Bubblewrap with `shell: false` and a minimal environment.
+- The provider never receives the attach descriptor or the delegated parent path. Provider arguments remain bounded and are passed as literal argv values.
+- On timeout, AbortSignal cancellation, or output overflow, the runner first terminates/verifies the bootstrap's original POSIX process group. This closes the window in which a bootstrap that has not yet attached could join after an empty cgroup was removed. It then uses `cgroup.kill` as the authoritative whole-leaf cleanup and waits for `cgroup.events` to report `populated 0`.
+- On normal completion and launch failure, it also runs idempotent cgroup cleanup. A result is not successful unless process-group and isolation teardown complete; cleanup failures have explicit unsuccessful termination diagnostics.
+- Process groups are a pre-attach race guard, not the descendant-security boundary. Bubblewrap can create a separate session; the cgroup leaf remains authoritative for all attached descendants.
+- The default remains `isolation: 'none'`. Windows and macOS have no enforced backend and fail closed when required isolation is requested.
 
 ## Required test plan
 
@@ -145,7 +145,7 @@ Fake filesystem tests prove validation logic only; they do not prove kernel enfo
 
 ### Linux integration tests
 
-A dedicated Linux test environment must provide a real delegated cgroup v2 subtree with `cpu`, `memory`, and `pids` controllers enabled and `cgroup.kill` available. The test must prove, using real kernel state, that:
+The PR #64 CI job requires a privileged Linux runner with a real cgroup v2 filesystem, `cpu`, `memory`, and `pids` controllers, and `cgroup.kill`. The integration harness creates a unique temporary parent/supervisor layout on that runner, enables the controllers only for the test setup, and removes its hierarchy during teardown. The runtime cgroup manager itself does not enable parent controllers or write parent resource limits. The test proves, using real kernel state, that:
 
 - bootstrap is in the run cgroup before Bubblewrap/provider code begins;
 - a provider-created child remains in the same cgroup;
@@ -155,13 +155,11 @@ A dedicated Linux test environment must provide a real delegated cgroup v2 subtr
 - cancellation/timeout kills all descendants and the cgroup reaches `populated 0`;
 - the run cgroup is removed after successful cleanup.
 
-The integration job must not silently skip when the security gate is expected to run. If the standard hosted runner cannot supply a delegated subtree, add a dedicated self-hosted/VM test environment or a reproducible privileged harness before claiming the feature is validated. A skipped integration test is not evidence of enforcement.
+The integration job must not silently skip when the security gate is expected to run. The current workflow invokes the harness with `sudo`; missing controllers, unavailable `cgroup.kill`, or failed setup are hard failures. This proves behavior on the exact CI kernel/runner image only; it is not cross-distribution or cross-kernel certification. Deployments must run the read-only preflight and validate their own delegated hierarchy.
 
 ## Rollout and documentation rules
 
-Implement as a separate follow-up after the Linux Bubblewrap stack is merged in dependency order. Keep this research document distinct from implementation status. Update provider docs, CLI/API docs, threat-model notes, and CI only when the behavior exists and the real-kernel integration gate is available.
-
-Until then, ORIX must continue to describe its current Linux provider backend as Bubblewrap namespace/filesystem isolation with bounded process execution—not as CPU, memory, or process-count isolated.
+Keep the feature opt-in and merge its stacked dependencies in order. The implementation in this branch must not be described as generally available until the PR chain is reviewed and merged. The provider API remains process-controlled but unsandboxed by default; only Linux calls that explicitly request `isolation: 'required'`, supply a trusted rootfs, and satisfy `ORIX_CGROUP_PARENT` can use this backend. No cgroup enforcement is claimed for `isolation: 'none'`, Windows, or macOS.
 
 The delegated parent and its `supervisor/` child must be owned by the ORIX service effective UID and must not be group- or other-writable. The read-only preflight reports and enforces these conservative ownership/mode-bit checks, and also confirms that `cgroup.events` is readable and `cgroup.kill` is writable. This is not a full host trust proof: operators still control delegation, account membership, mount configuration, and any external policy beyond the mode-bit checks.
 
@@ -172,10 +170,10 @@ The follow-up `scripts/linux-cgroup-v2-preflight.mjs` command inspects the host'
 The command is intentionally read-only: it does not create a child cgroup, move a process, enable controllers, change limits, or claim that kernel enforcement has been proven. It is suitable for CI environment discovery and operator diagnostics. A positive result is a deployment precondition, not a substitute for the real-kernel enforcement tests below.
 
 
-## Trusted bootstrap descriptor prototype (not yet integrated)
+## Integrated trusted bootstrap descriptor handoff
 
-The follow-up prototype in \`src/providers/linux-cgroup-v2-bootstrap.mjs\` consumes only child descriptor 3, writes the bootstrap PID, and closes that descriptor before launching the already-prepared absolute command. It rejects an unexpected descriptor contract, uses \`shell: false\`, bounds the command vector, and fails closed if the attach write or descriptor close fails. It does not accept a cgroup path or controller-management capability.
+The integrated helper in \`src/providers/linux-cgroup-v2-bootstrap.mjs\` consumes only child descriptor 3, writes the bootstrap PID, closes that descriptor before launching the already-prepared absolute command, and never accepts a cgroup path or controller-management capability. Its argument vector is bounded and NUL-free; command launch uses \`shell: false\`.
 
-The Linux regression tests in \`tests/linux-cgroup-v2-bootstrap.test.mjs\` exercise the real Node child-process descriptor handoff using ordinary temporary files as stand-ins for \`cgroup.procs\`. They verify attach-before-provider ordering, that the attach descriptor is not visible to the provider child, and that an attach-write failure prevents provider launch. The repository CI runs these tests on Node.js 20, 22, and 24.
+The Node child-process tests in \`tests/linux-cgroup-v2-bootstrap.test.mjs\` use ordinary temporary files as stand-ins for \`cgroup.procs\` to check descriptor handoff, attach-before-provider order, descriptor non-inheritance, and attach failure. These tests run in the Node 20/22/24 matrix. The privileged \`scripts/linux-cgroup-v2-integration.mjs\` additionally exercises actual cgroup v2 membership, CPU/memory/task limits, OOM group behavior, process cleanup, cancellation, timeout, and leaf removal on the CI Linux kernel.
 
-**Validation boundary:** these tests prove the Node descriptor handoff behavior on Linux; they do not prove behavior on a cgroup2 filesystem, actual kernel membership, controller enforcement, or teardown. The current process runner does not call this helper. A host-side cgroup manager, runner integration, and real delegated-cgroup integration environment remain required before ORIX can claim cgroup resource isolation.
+**Validation boundary:** the integration gate validates the current hosted Ubuntu kernel only. Deterministic fake-filesystem coverage for every setup/rollback/cleanup failure mode and validation on other supported Linux distributions/kernels remain further hardening tasks. The backend remains opt-in and does not certify arbitrary host delegation setups.
