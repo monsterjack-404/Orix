@@ -279,6 +279,9 @@ function validate_arguments(name, value) {
   for (const [key, item] of Object.entries(value)) {
     const schema = properties[key];
     if (!schema) throw new TypeError('Unknown tool argument: ' + key);
+    if (schema.enum && !schema.enum.some(allowed => Object.is(allowed, item))) {
+      throw new TypeError(key + ' must be one of the declared values: ' + schema.enum.join(', '));
+    }
     if (schema.type === 'string') {
       if (typeof item !== 'string' || item.length < (schema.minLength ?? 0) || item.length > (schema.maxLength ?? Infinity)) {
         throw new TypeError(key + ' must be a string within its declared length bounds');
@@ -286,8 +289,16 @@ function validate_arguments(name, value) {
       if (schema.pattern && !new RegExp(schema.pattern).test(item)) throw new TypeError(key + ' does not match its required pattern');
     }
     if (schema.type === 'array') {
-      if (!Array.isArray(item) || item.length > (schema.maxItems ?? Infinity)) {
-        throw new TypeError(key + ' must be an array within its declared item limit');
+      if (!Array.isArray(item) ||
+          item.length < (schema.minItems ?? 0) ||
+          item.length > (schema.maxItems ?? Infinity)) {
+        throw new TypeError(key + ' must be an array within its declared item limits');
+      }
+      if (schema.uniqueItems && new Set(item.map(entry => JSON.stringify(entry))).size !== item.length) {
+        throw new TypeError(key + ' must not contain duplicate items');
+      }
+      if (schema.items?.enum && item.some(entry => !schema.items.enum.some(allowed => Object.is(allowed, entry)))) {
+        throw new TypeError(key + ' contains an item outside its declared values');
       }
       if (schema.items?.type === 'string') {
         for (const entry of item) {
