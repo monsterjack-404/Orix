@@ -696,3 +696,47 @@ test('MCP architecture analysis reuses the bounded scanner and reports local cyc
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+
+test('MCP Rizin isolation mode is schema-validated and uses the administrator sandbox root', async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-isolation-'));
+  const previous_root = process.env.ORIX_PROVIDER_SANDBOX_ROOT;
+  try {
+    const file = path.join(directory, 'sample.elf');
+    const config_path = path.join(directory, 'rizin-stub-config.json');
+    const executable = await realpath(process.execPath);
+    const executable_args = [
+      fileURLToPath(new URL('./fixtures/rizin-stub.mjs', import.meta.url)),
+      config_path,
+    ];
+    await writeFile(file, Buffer.from('MCP isolation fixture'));
+    await writeFile(config_path, '{}');
+    const missing_root = path.join(directory, 'missing-rootfs');
+    process.env.ORIX_PROVIDER_SANDBOX_ROOT = missing_root;
+
+    await assert.rejects(
+      call_orix_tool('orix.rizin_functions', {
+        path: file, executable, executable_args, isolation: 'unsupported',
+      }, { roots: [directory] }),
+      /isolation must be one of: none, required/,
+    );
+    await assert.rejects(
+      call_orix_tool('orix.rizin_functions', {
+        path: file, executable, executable_args, isolation: 'required',
+      }, { roots: [directory] }),
+      error => error.code === (process.platform === 'linux'
+        ? 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE'
+        : 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE'),
+    );
+    await assert.rejects(
+      call_orix_tool('orix.rizin_functions', {
+        path: file, executable, executable_args, isolation: 'required', sandbox_root: directory,
+      }, { roots: [directory] }),
+      /Unknown tool argument: sandbox_root/,
+    );
+  } finally {
+    if (previous_root === undefined) delete process.env.ORIX_PROVIDER_SANDBOX_ROOT;
+    else process.env.ORIX_PROVIDER_SANDBOX_ROOT = previous_root;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
