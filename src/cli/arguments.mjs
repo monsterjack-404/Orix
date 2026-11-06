@@ -67,7 +67,10 @@ export function parse_arguments(argv) {
           throw new OrixError('ORIX_CLI_BAD_ISOLATION', '--isolation must be none or required', { details: { value: raw }, recoverable: true });
         }
         result.flags.isolation = raw;
-      } else if (token === '--sandbox-root') result.flags.sandbox_root = raw;
+      } else if (token === '--sandbox-root') {
+        if (raw.trim() === '') throw new OrixError('ORIX_CLI_MISSING_VALUE', '--sandbox-root requires a non-empty path', { recoverable: true });
+        result.flags.sandbox_root = raw;
+      }
       else if (token === '--timeout-ms') result.flags.timeout_ms = positive_integer(raw, token, 1, 60_000);
       else if (token === '--max-output-kib') result.flags.max_output_bytes = positive_integer(raw, token, 1, 8_192) * 1024;
       else if (token === '--max-imports') result.flags.max_imports = positive_integer(raw, token, 0, 1_000_000);
