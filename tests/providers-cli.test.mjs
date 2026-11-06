@@ -236,7 +236,7 @@ test('provider help documents the opt-in provider commands and limits', () => {
   assert.match(HELP_TEXT, /providers rizin doctor/);
   assert.match(HELP_TEXT, /providers rizin imports/);
   assert.match(HELP_TEXT, /providers rizin functions/);
-  assert.match(HELP_TEXT, /not sandboxed by default/);
+  assert.match(HELP_TEXT, /not an OS sandbox by default/);
   assert.match(HELP_TEXT, /Required isolation uses Linux Bubblewrap only/);
   assert.match(HELP_TEXT, /does not enforce cgroup CPU, memory or task-count limits/);
 });
