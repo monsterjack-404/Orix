@@ -51,12 +51,15 @@ async function resolve_prlimit() {
  * use the root-owned sticky-directory exception (for example, /tmp).
  */
 export function assess_rootfs_directory_permissions(metadata, expected_uid, allow_root_sticky = false) {
-  const valid_expected_uid = Number.isSafeInteger(expected_uid) && expected_uid >= 0;
+  const valid_expected_uid = Number.isSafeInteger(expected_uid) &&
+    expected_uid >= 0 && expected_uid <= 0xffff_ffff;
   const valid = metadata !== null && typeof metadata === 'object' &&
-    Number.isSafeInteger(metadata.uid) && metadata.uid >= 0 &&
-    Number.isSafeInteger(metadata.mode) && metadata.mode >= 0;
-  const directory = valid && metadata.is_directory === true;
-  const symlink = !valid || metadata.is_symlink === true;
+    Number.isSafeInteger(metadata.uid) && metadata.uid >= 0 && metadata.uid <= 0xffff_ffff &&
+    Number.isSafeInteger(metadata.mode) && metadata.mode >= 0 && metadata.mode <= 0o177777 &&
+    typeof metadata.is_directory === 'boolean' &&
+    typeof metadata.is_symlink === 'boolean';
+  const directory = valid && metadata.is_directory;
+  const symlink = !valid || metadata.is_symlink;
   const owner_is_trusted = valid && valid_expected_uid &&
     (metadata.uid === 0 || metadata.uid === expected_uid);
   const group_or_other_writable = !valid || (metadata.mode & 0o022) !== 0;
