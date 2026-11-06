@@ -74,7 +74,7 @@ function entry_name_matches(buffer, offset, length, expected, utf8) {
 }
 
 /** Read only the trace JSONL member; never extracts archive resources to disk. */
-function read_trace_member(archive, entry, central_directory_offset, max_bytes) {
+function read_trace_member(archive, entry, central_directory_offset, max_bytes, archive_entries) {
   if (entry.unsafe_path || entry.is_symlink || entry.is_directory) {
     fail('ORIX_TRACE_UNSAFE_ENTRY', 'Playwright trace member has an unsafe archive path or file type', { name: 'trace.trace' });
   }
@@ -92,6 +92,17 @@ function read_trace_member(archive, entry, central_directory_offset, max_bytes) 
   const local = entry.local_header_offset;
   if (!Number.isSafeInteger(local) || local < 0 || local > archive.length - 30 || u32(archive, local) !== 0x04034b50) {
     fail('ORIX_TRACE_LOCAL_HEADER', 'Playwright trace member local header is invalid');
+  }
+  let member_boundary = central_directory_offset;
+  for (const other of archive_entries) {
+    if (other === entry) continue;
+    if (other.local_header_offset === local) {
+      fail('ORIX_TRACE_LOCAL_HEADER_SHARED', 'Another ZIP entry reuses the trace member local-header offset');
+    }
+    if (Number.isSafeInteger(other.local_header_offset) && other.local_header_offset > local &&
+        other.local_header_offset < member_boundary) {
+      member_boundary = other.local_header_offset;
+    }
   }
   const flags = u16(archive, local + 6);
   const method = u16(archive, local + 8);
@@ -115,9 +126,9 @@ function read_trace_member(archive, entry, central_directory_offset, max_bytes) 
     fail('ORIX_TRACE_LOCAL_NAME_MISMATCH', 'Trace local-header name does not match the central directory');
   }
   const data_offset = local + 30 + name_length + extra_length;
-  if (!Number.isSafeInteger(data_offset) || data_offset > central_directory_offset ||
-      entry.compressed_size > central_directory_offset - data_offset) {
-    fail('ORIX_TRACE_MEMBER_RANGE', 'Trace compressed data overlaps the central directory or exceeds archive bounds');
+  if (!Number.isSafeInteger(data_offset) || data_offset > member_boundary ||
+      entry.compressed_size > member_boundary - data_offset) {
+    fail('ORIX_TRACE_MEMBER_RANGE', 'Trace compressed data overlaps another ZIP entry or archive directory boundary');
   }
   if (!descriptor) {
     if (local_crc !== expected_crc || local_compressed_size !== entry.compressed_size ||
@@ -138,7 +149,7 @@ function read_trace_member(archive, entry, central_directory_offset, max_bytes) 
     const descriptor_width = zip64_descriptor ? 20 : 12;
     const has_valid_descriptor = (candidate, has_signature) => {
       const start = candidate + (has_signature ? 4 : 0);
-      if (start < candidate || start > central_directory_offset - descriptor_width) return false;
+      if (start < candidate || start > member_boundary - descriptor_width) return false;
       const descriptor_crc = u32(archive, start);
       const descriptor_compressed = zip64_descriptor
         ? u64_safe(archive, start + 4, central_directory_offset)
@@ -150,7 +161,7 @@ function read_trace_member(archive, entry, central_directory_offset, max_bytes) 
         descriptor_compressed === entry.compressed_size &&
         descriptor_uncompressed === entry.uncompressed_size;
     };
-    const signature_present = descriptor_offset <= central_directory_offset - 4 &&
+    const signature_present = descriptor_offset <= member_boundary - 4 &&
       u32(archive, descriptor_offset) === 0x08074b50;
     const descriptor_valid = has_valid_descriptor(descriptor_offset, false) ||
       (signature_present && has_valid_descriptor(descriptor_offset, true));
@@ -570,7 +581,7 @@ export function parse_playwright_trace(input, options = {}) {
     fail('ORIX_TRACE_MEMBER_MISSING', 'Archive must contain exactly one root trace.trace JSONL member', { matching_members: trace_entries.length });
   }
   const entry = trace_entries[0];
-  const trace_bytes = read_trace_member(input, entry, zip.archive.central_directory_offset, limits.max_trace_bytes);
+  const trace_bytes = read_trace_member(input, entry, zip.archive.central_directory_offset, limits.max_trace_bytes, zip.entries);
   const report = parse_trace_events(trace_bytes, limits);
   report.source.archive_entries = zip.archive.total_entries;
   report.source.bytes = input.length;
@@ -615,7 +626,14 @@ export async function analyze_playwright_trace_file(file_path, options = {}) {
       offset += bytesRead;
     }
     const after = await handle.stat();
-    const stable = opened.size === after.size && opened.mtimeMs === after.mtimeMs && opened.ctimeMs === after.ctimeMs;
+    const path_after_read = await fs.lstat(requested_path);
+    const path_stable = path_after_read.isFile() && !path_after_read.isSymbolicLink() &&
+      path_after_read.size === opened.size &&
+      String(path_after_read.ino) === String(opened.ino) &&
+      String(path_after_read.dev) === String(opened.dev);
+    const stable = path_stable && opened.size === after.size &&
+      opened.mtimeMs === after.mtimeMs && opened.ctimeMs === after.ctimeMs &&
+      String(opened.ino) === String(after.ino) && String(opened.dev) === String(after.dev);
     const report = parse_playwright_trace(input, options);
     report.source.path = absolute;
     report.source.name = path.basename(absolute);
