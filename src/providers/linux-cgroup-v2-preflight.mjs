@@ -191,8 +191,8 @@ export async function inspect_linux_cgroup_v2(options = {}) {
       supervisor_permissions.owner_matches_process;
     parent.supervisor_not_group_or_other_writable = supervisor_permissions.not_group_or_other_writable;
     parent.writable = await access(configured_parent, FS_CONSTANTS.W_OK | FS_CONSTANTS.X_OK).then(() => true, () => false);
-    parent.cgroup_events_available = await access(path.join(configured_parent, 'cgroup.events')).then(() => true, () => false);
-    parent.cgroup_kill_available = await access(path.join(configured_parent, 'cgroup.kill')).then(() => true, () => false);
+    parent.cgroup_events_available = await access(path.join(configured_parent, 'cgroup.events'), FS_CONSTANTS.R_OK).then(() => true, () => false);
+    parent.cgroup_kill_available = await access(path.join(configured_parent, 'cgroup.kill'), FS_CONSTANTS.W_OK).then(() => true, () => false);
   } catch (error) {
     report.reason = 'delegated-parent-inspection-failed:' + (error.code ?? error.name ?? 'unknown');
     return Object.freeze(report);
