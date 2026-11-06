@@ -37,6 +37,18 @@ async function main() {
   assert.match(launcherSource, /if \(!process\.WaitForExit\(10000\)\)[\s\S]*?process\.Kill\(\)[\s\S]*?process\.WaitForExit\(\)[\s\S]*?throw new TimeoutException/,
     'Timed-out icacls must be observed exited before helper cleanup can mutate its target');
 
+  const purgeStart = launcherSource.indexOf('static void PurgeTree(');
+  const deleteStart = launcherSource.indexOf('static void DeleteTreeNoReparse(', purgeStart);
+  assert.ok(purgeStart >= 0 && deleteStart > purgeStart,
+    'Native helper must retain an explicit AppContainer cleanup tree walker');
+  const purgeSource = launcherSource.slice(purgeStart, deleteStart);
+  assert.match(purgeSource, /File\.GetAttributes\(path\)/,
+    'Cleanup must inspect each directory entry before descending');
+  assert.doesNotMatch(purgeSource, /File\.Exists\(path\)|Directory\.Exists\(path\)/,
+    'Cleanup must not use path existence helpers that can follow a reparse target');
+  assert.match(purgeSource, /FileAttributes\.ReparsePoint[\s\S]*?ORIX_WINDOWS_CLEANUP_REPARSE_POINT[\s\S]*?throw new InvalidOperationException/,
+    'Cleanup must abort on reparse points instead of skipping them and continuing with descendant paths');
+
   assert.doesNotMatch(launcherSource, /Environment\.GetEnvironmentVariable\("SystemRoot"\)/,
     'Native helper must not resolve icacls.exe from inherited SystemRoot');
   const isolationSource = await readFile(new URL('../src/providers/windows-isolation.mjs', import.meta.url), 'utf8');
