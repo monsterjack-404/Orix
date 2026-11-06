@@ -3,7 +3,7 @@
 import { OrixError } from '../core/errors.mjs';
 import { DEFAULT_LIMITS } from '../core/limits.mjs';
 
-const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-nodes','--max-edges','--max-hotspots','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports','--max-functions','--address','--max-instructions','--max-packages','--max-advisories','--max-network-mib','--max-har-entries','--max-har-hosts']);
+const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-nodes','--max-edges','--max-hotspots','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--isolation','--sandbox-root','--timeout-ms','--max-output-kib','--max-imports','--max-functions','--address','--max-instructions','--max-packages','--max-advisories','--max-network-mib','--max-har-entries','--max-har-hosts','--cwd']);
 const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--osv','--decompile','--help','-h']);
 
 function positive_integer(value, option, minimum, maximum) {
@@ -62,6 +62,15 @@ export function parse_arguments(argv) {
       else if (token === '--concurrency') result.flags.max_scan_concurrency = positive_integer(raw, token, 1, 32);
       else if (token === '--strings-limit') result.flags.max_strings = positive_integer(raw, token, 0, 100_000);
       else if (token === '--executable') result.flags.provider_executable = raw;
+      else if (token === '--isolation') {
+        if (!['none', 'required'].includes(raw)) {
+          throw new OrixError('ORIX_CLI_BAD_ISOLATION', '--isolation must be none or required', { details: { value: raw }, recoverable: true });
+        }
+        result.flags.isolation = raw;
+      } else if (token === '--sandbox-root') {
+        if (raw.trim() === '') throw new OrixError('ORIX_CLI_MISSING_VALUE', '--sandbox-root requires a non-empty path', { recoverable: true });
+        result.flags.sandbox_root = raw;
+      } else if (token === '--cwd') result.flags.provider_cwd = raw;
       else if (token === '--timeout-ms') result.flags.timeout_ms = positive_integer(raw, token, 1, 60_000);
       else if (token === '--max-output-kib') result.flags.max_output_bytes = positive_integer(raw, token, 1, 8_192) * 1024;
       else if (token === '--max-imports') result.flags.max_imports = positive_integer(raw, token, 0, 1_000_000);
@@ -116,6 +125,13 @@ export function parse_arguments(argv) {
       }
     } else {
       throw new OrixError('ORIX_CLI_PROVIDER_UNKNOWN', 'Unknown provider: ' + result.provider_id, { recoverable: true });
+    }
+    if (result.provider_id !== 'rizin' &&
+        (result.flags.isolation !== undefined || result.flags.sandbox_root !== undefined || result.flags.provider_cwd !== undefined)) {
+      throw new OrixError('ORIX_CLI_PROVIDER_ISOLATION_SCOPE', '--isolation and --sandbox-root are supported only by the Rizin provider', { recoverable: true });
+    }
+    if (result.provider_id === 'rizin' && result.flags.sandbox_root !== undefined && result.flags.isolation !== 'required') {
+      throw new OrixError('ORIX_CLI_SANDBOX_ROOT_REQUIRES_ISOLATION', '--sandbox-root requires --isolation required', { recoverable: true });
     }
   }
   if (result.command === 'case') {

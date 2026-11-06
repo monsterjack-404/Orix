@@ -147,7 +147,7 @@ The adapter report contract is defined in [rizin-imports.v1.schema.json](../sche
 
 ### Opt-in Linux process isolation
 
-The Rizin JavaScript adapter functions \`analyze_rizin_imports\`, \`analyze_rizin_functions\`, and \`probe_rizin\` accept the same optional \`isolation\` and \`sandbox_root\` fields as \`run_static_provider\`. The default remains \`isolation: 'none'\`. On Linux, request the required Bubblewrap namespace/filesystem backend explicitly:
+The Rizin JavaScript adapter functions `analyze_rizin_imports`, `analyze_rizin_functions`, and `probe_rizin` accept the same optional `isolation` and `sandbox_root` fields as `run_static_provider`. The default remains `isolation: 'none'`. On Linux, request the required Bubblewrap namespace/filesystem backend explicitly:
 
 ~~~js
 const report = await analyze_rizin_imports({
@@ -158,9 +158,11 @@ const report = await analyze_rizin_imports({
 });
 ~~~
 
-The sandbox root must contain the selected Rizin executable, the configured working directory, and the adapter's private temporary snapshot. In required Linux isolation mode, ORIX stages this private snapshot in a temporary directory directly under \`sandbox_root\`, not under \`/tmp\`, because the Bubblewrap backend overlays \`/tmp\` with a fresh tmpfs. The root must also provide the required \`/proc\`, \`/dev\`, and \`/tmp\` mount points expected by the backend. The backend fails closed when the required Linux isolation setup is unavailable or any required path is outside the root. Windows and macOS do not currently have an enforced provider isolation backend, so \`isolation: 'required'\` fails closed there.
+The sandbox root must contain the selected Rizin executable, the configured working directory, and the adapter's private temporary snapshot. In required Linux isolation mode, ORIX stages this private snapshot in a temporary directory directly under `sandbox_root`, not under `/tmp`, because the Bubblewrap backend overlays `/tmp` with a fresh tmpfs. The root must also provide the required `/proc`, `/dev`, and `/tmp` mount points expected by the backend. The backend fails closed when the required Linux isolation setup is unavailable or any required path is outside the root. Windows and macOS do not currently have an enforced provider isolation backend, so `isolation: 'required'` fails closed there.
 
 This option supplies Bubblewrap namespace and filesystem isolation only. It does **not** enable cgroup CPU, memory, or process-count enforcement. The caller remains responsible for constructing and maintaining a safe root filesystem and for validating the deployment environment.
+
+The CLI exposes the same opt-in mode with `--isolation required --sandbox-root <path>`; the sandbox root can alternatively be supplied by the local operator through `ORIX_PROVIDER_SANDBOX_ROOT`. The MCP `orix.rizin_functions` tool accepts only the isolation mode, not an arbitrary filesystem path from the client. Its rootfs must be configured by the MCP server administrator through `ORIX_PROVIDER_SANDBOX_ROOT` as an absolute path. This keeps the sandbox boundary under server-operator control.
 
 ### Function inventory and bounded disassembly
 

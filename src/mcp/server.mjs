@@ -1,6 +1,7 @@
 // JavaScript, src/mcp/server.mjs, Node.js 20+, bounded static-analysis Model Context Protocol stdio server.
 
 import path from 'node:path';
+import { lstat } from 'node:fs/promises';
 import { inspect_file } from '../core/inspect.mjs';
 import { analyze_har_file } from '../network/har.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
@@ -11,7 +12,7 @@ import { build_capability_report } from '../capabilities/registry.mjs';
 import { verify_ledger, list_ledger, append_ledger } from '../evidence/ledger.mjs';
 import { create_case, list_cases, get_case, verify_case, add_case_artifact, record_case_analysis, add_case_finding, change_case_finding_status, add_case_note, add_case_relationship, change_case_status, export_case_bundle, import_case_bundle } from '../cases/store.mjs';
 import { compare_reports } from '../analyzer/compare.mjs';
-import { analyze_rizin_functions } from '../providers/rizin.mjs';
+import { analyze_rizin_imports, analyze_rizin_functions } from '../providers/rizin.mjs';
 import { normalize_error } from '../core/errors.mjs';
 import { TextDecoder } from 'node:util';
 import {
@@ -20,6 +21,18 @@ import {
   resolve_workspace_output,
   read_workspace_json,
 } from './security.mjs';
+
+async function default_isolation_working_directory(sandbox_root) {
+  // Let the isolation backend report a missing or invalid rootfs with its
+  // dedicated error code. Use the root as cwd only when it is already a real
+  // directory; never follow a symlink while making this preliminary choice.
+  try {
+    const info = await lstat(sandbox_root);
+    return info.isDirectory() && !info.isSymbolicLink() ? sandbox_root : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export const MCP_PROTOCOL_VERSION = '2025-03-26';
 export const MCP_MAX_LINE_BYTES = 4 * 1024 * 1024;
@@ -55,9 +68,29 @@ export const ORIX_MCP_TOOLS = Object.freeze([
     },
   },
   {
+    name: 'orix.rizin_imports',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    description: 'Use an explicitly selected Rizin executable to extract a bounded static import inventory. Optional Linux Bubblewrap namespace/filesystem isolation is administrator-configured with ORIX_PROVIDER_SANDBOX_ROOT; clients cannot choose the rootfs. The target is never executed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', minLength: 1 },
+        executable: { type: 'string', minLength: 1, maxLength: 4096 },
+        executable_args: { type: 'array', maxItems: 16, items: { type: 'string', maxLength: 32768 }, description: 'Optional literal argv prefix passed to the selected executable without shell evaluation.' },
+        max_imports: integer('Maximum imported symbols retained.', 100000, 1),
+        timeout_ms: integer('Total provider workflow deadline in milliseconds.', 60000, 1),
+        max_output_kib: integer('Aggregate stdout/stderr capture budget in KiB.', 8192, 1),
+        isolation: { type: 'string', enum: ['none', 'required'], description: 'Require Linux Bubblewrap namespace/filesystem isolation; the sandbox root is configured by the MCP server administrator.' },
+        cwd: { type: 'string', minLength: 1, maxLength: 4096, description: 'Optional provider working directory inside a configured MCP workspace; defaults to the administrator sandbox root when required isolation is selected.' },
+      },
+      required: ['path', 'executable'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'orix.rizin_functions',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    description: 'Use an explicitly selected Rizin executable to enumerate functions, disassemble a bounded instruction window and optionally request rz-ghidra pseudocode. The target is never executed; Rizin and its optional decompiler plugin must be installed separately.',
+    description: 'Use an explicitly selected Rizin executable to enumerate functions, disassemble a bounded instruction window and optionally request rz-ghidra pseudocode. The target is never executed. Required Linux Bubblewrap isolation is optional; its rootfs is administrator-configured with ORIX_PROVIDER_SANDBOX_ROOT.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -70,6 +103,8 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         decompile: { type: 'boolean', description: 'Request optional rz-ghidra pseudocode decompilation at the supplied function entry address.' },
         timeout_ms: integer('Total provider workflow deadline in milliseconds.', 60000, 1),
         max_output_kib: integer('Aggregate stdout/stderr capture budget in KiB.', 8192, 1),
+        isolation: { type: 'string', enum: ['none', 'required'], description: 'Require Linux Bubblewrap namespace/filesystem isolation. The sandbox root is configured by the server administrator with ORIX_PROVIDER_SANDBOX_ROOT.' },
+        cwd: { type: 'string', minLength: 1, maxLength: 4096, description: 'Optional provider working directory inside a configured MCP workspace; defaults to the administrator sandbox root when required isolation is selected.' },
       },
       required: ['path', 'executable'],
       additionalProperties: false,
@@ -299,6 +334,7 @@ function validate_arguments(name, value) {
         }
       }
     }
+    if (schema.enum && !schema.enum.includes(item)) throw new TypeError(key + ' must be one of: ' + schema.enum.join(', '));
     if (schema.type === 'boolean' && typeof item !== 'boolean') throw new TypeError(key + ' must be a boolean');
     if (schema.type === 'integer' && (!Number.isSafeInteger(item) || item < schema.minimum || item > schema.maximum)) {
       throw new TypeError(key + ' must be an integer between ' + schema.minimum + ' and ' + schema.maximum);
@@ -362,8 +398,38 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       return inspect_file(target.path, { limits, extract_strings: args.extract_strings });
     }
-    case 'orix.rizin_functions': {
+    case 'orix.rizin_imports': {
+      const isolation = args.isolation ?? 'none';
+      const sandbox_root = isolation === 'required' ? process.env.ORIX_PROVIDER_SANDBOX_ROOT : undefined;
+      if (isolation === 'required' && (!sandbox_root || !path.isAbsolute(sandbox_root))) {
+        throw new TypeError('MCP server administrator must configure ORIX_PROVIDER_SANDBOX_ROOT as an absolute path before required isolation can be requested');
+      }
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
+      const cwd = args.cwd === undefined
+        ? (isolation === 'required' ? await default_isolation_working_directory(sandbox_root) : undefined)
+        : (await resolve_workspace_path(args.cwd, roots, { kind: 'directory' })).path;
+      return analyze_rizin_imports({
+        input_path: target.path,
+        executable: args.executable,
+        executable_args: args.executable_args,
+        max_imports: args.max_imports ?? 10_000,
+        timeout_ms: args.timeout_ms ?? 30_000,
+        max_output_bytes: (args.max_output_kib ?? 2_048) * 1024,
+        isolation,
+        sandbox_root,
+        cwd,
+      });
+    }
+    case 'orix.rizin_functions': {
+      const isolation = args.isolation ?? 'none';
+      const sandbox_root = isolation === 'required' ? process.env.ORIX_PROVIDER_SANDBOX_ROOT : undefined;
+      if (isolation === 'required' && (!sandbox_root || !path.isAbsolute(sandbox_root))) {
+        throw new TypeError('MCP server administrator must configure ORIX_PROVIDER_SANDBOX_ROOT as an absolute path before required isolation can be requested');
+      }
+      const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
+      const cwd = args.cwd === undefined
+        ? (isolation === 'required' ? await default_isolation_working_directory(sandbox_root) : undefined)
+        : (await resolve_workspace_path(args.cwd, roots, { kind: 'directory' })).path;
       return analyze_rizin_functions({
         input_path: target.path,
         executable: args.executable,
@@ -374,6 +440,9 @@ export async function call_orix_tool(name, args = {}, options = {}) {
         decompile: args.decompile ?? false,
         timeout_ms: args.timeout_ms ?? 30_000,
         max_output_bytes: (args.max_output_kib ?? 2_048) * 1024,
+        isolation,
+        sandbox_root,
+        cwd,
       });
     }
     case 'orix.scan_directory': {
