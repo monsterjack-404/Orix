@@ -110,7 +110,10 @@ const PROFILE = `(version 1)
 (allow process-fork)
 (allow process-exec (subpath (param "ORIX_ROOT")))
 (allow file-read* (subpath (param "ORIX_ROOT")))
-(allow file-read* (subpath "/System/Library"))
+; macOS requires root-directory metadata and system runtime files (including
+; dyld shared-cache content below /System/Volumes/Preboot/Cryptexes).
+(allow file-read* (literal "/"))
+(allow file-read* (subpath "/System"))
 (allow file-read* (subpath "/usr/lib"))
 (allow file-read* (subpath "/usr/bin"))
 (allow file-read* (subpath "/bin"))
