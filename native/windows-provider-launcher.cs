@@ -167,6 +167,8 @@ namespace OrixWindowsSandbox {
     static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern uint GetSystemDirectoryW(StringBuilder buffer, uint size);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool TerminateProcess(IntPtr process, uint exitCode);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -414,10 +416,25 @@ namespace OrixWindowsSandbox {
       return pointer;
     }
 
+    static string TrustedSystemDirectory() {
+      // Do not resolve security-sensitive Windows utilities from inherited
+      // SystemRoot/WINDIR environment variables. Ask the OS for its system
+      // directory directly, then use only an absolute path beneath it.
+      StringBuilder buffer = new StringBuilder(32768);
+      uint length = GetSystemDirectoryW(buffer, (uint)buffer.Capacity);
+      if (length == 0 || length >= buffer.Capacity)
+        throw Win32("Resolve trusted Windows system directory");
+      string directory = Path.GetFullPath(buffer.ToString());
+      if (!Path.IsPathRooted(directory))
+        throw new InvalidOperationException("Windows returned a non-absolute system directory");
+      return directory;
+    }
+
     static void SetIntegrityLevel(string path, string level) {
-      string systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
-      if (String.IsNullOrEmpty(systemRoot)) throw new InvalidOperationException("SystemRoot is unavailable for integrity-label configuration");
-      string icacls = Path.Combine(systemRoot, "System32", "icacls.exe");
+      string icacls = Path.Combine(TrustedSystemDirectory(), "icacls.exe");
+      FileAttributes attributes = File.GetAttributes(icacls);
+      if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+        throw new InvalidOperationException("Trusted icacls utility is not a regular system file");
       ProcessStartInfo start = new ProcessStartInfo();
       start.FileName = icacls;
       start.Arguments = Quote(path) + " /setintegritylevel (OI)(CI)" + level;
