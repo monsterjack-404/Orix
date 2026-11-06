@@ -41,3 +41,9 @@ The Windows CI job now compiles this launcher through the checked-in .NET Framew
 The Windows CI job pins the .NET SDK to `10.0.100` through `global.json` and `actions/setup-dotnet`, and pins the .NET Framework reference-assemblies package to `1.0.3`. It performs two clean, non-incremental builds in the same runner job and requires the resulting executable SHA-256 values to match. This checks same-runner repeatability for the pinned SDK/package inputs; it does not establish independent-runner reproducibility, protect against a compromised runner/toolchain, or authenticate the binary for runtime use.
 
 The next acceptance steps are to review the produced binary, establish a reproducible/pinned toolchain and reviewed digest, admit the exact executable into the package, and switch runtime + hostile-process tests to that exact packaged binary. Do not treat the temporary CI artifact or its printed hash as a runtime trust anchor.
+
+## Artifact format validation
+
+The Windows CI job now inspects both clean-build outputs as PE/.NET artifacts before upload. The verifier checks the DOS/PE signatures, PE32 I386 managed-image shape, CLR header and metadata mapping, and IL-only AnyCPU flags. The project explicitly disables Prefer32Bit so the launcher is not marked as requiring or preferring a 32-bit process. The verifier also prints the SHA-256 digest and rejects malformed/truncated files.
+
+This validates the executable's managed/architecture-neutral format; it does not establish publisher identity, protect the CI runner, pin every transitive build input, or make a workflow artifact a runtime trust anchor. The exact binary still needs independent review, controlled release admission, package inclusion, source-pinned digest verification, and runtime adoption tests.
