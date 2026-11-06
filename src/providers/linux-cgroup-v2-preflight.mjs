@@ -1,4 +1,5 @@
 // Linux cgroup v2 deployment preflight. Read-only: this module never mutates cgroups.
+import { constants as FS_CONSTANTS } from 'node:fs';
 import { access, lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -36,7 +37,8 @@ export function parse_process_cgroup_path(contents) {
 }
 
 export function map_cgroup_path_to_mount(cgroup_path, mounts) {
-  if (typeof cgroup_path !== 'string' || !path.posix.isAbsolute(cgroup_path)) return null;
+  if (typeof cgroup_path !== 'string' || !path.posix.isAbsolute(cgroup_path) ||
+      path.posix.normalize(cgroup_path) !== cgroup_path) return null;
   const candidates = mounts
     .filter(mount => cgroup_path === mount.root || cgroup_path.startsWith(mount.root === '/' ? '/' : mount.root + '/'))
     .sort((a, b) => b.root.length - a.root.length);
@@ -146,7 +148,7 @@ export async function inspect_linux_cgroup_v2(options = {}) {
     parent.supervisor_exists = !supervisor_info.isSymbolicLink() && supervisor_info.isDirectory();
     parent.supervisor_contains_current_process = process_cgroup_path === parent_cgroup_path + '/supervisor' ||
       process_cgroup_path.startsWith(parent_cgroup_path + '/supervisor/');
-    parent.writable = await access(configured_parent, 2).then(() => true, () => false);
+    parent.writable = await access(configured_parent, FS_CONSTANTS.W_OK | FS_CONSTANTS.X_OK).then(() => true, () => false);
     parent.cgroup_kill_available = await access(path.join(configured_parent, 'cgroup.kill')).then(() => true, () => false);
   } catch (error) {
     report.reason = 'delegated-parent-inspection-failed:' + (error.code ?? error.name ?? 'unknown');
