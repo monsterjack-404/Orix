@@ -110,8 +110,20 @@ function make_data_descriptor_archive({ signature = true, corrupt = false } = {}
   result.writeUInt32LE(0, local + 18);
   result.writeUInt32LE(0, local + 22);
   const shifted_central_offset = central_offset + descriptor.length;
-  result.writeUInt16LE(result.readUInt16LE(shifted_central_offset + 8) | 0x0008, shifted_central_offset + 8);
   const shifted_eocd = result.length - 22;
+  const central_entries = result.readUInt16LE(shifted_eocd + 10);
+  let central_cursor = shifted_central_offset;
+  for (let index = 0; index < central_entries; index += 1) {
+    if (index === 0) {
+      result.writeUInt16LE(result.readUInt16LE(central_cursor + 8) | 0x0008, central_cursor + 8);
+    }
+    const local_offset = result.readUInt32LE(central_cursor + 42);
+    if (local_offset >= data_end) result.writeUInt32LE(local_offset + descriptor.length, central_cursor + 42);
+    const name_length = result.readUInt16LE(central_cursor + 28);
+    const extra_length = result.readUInt16LE(central_cursor + 30);
+    const comment_length = result.readUInt16LE(central_cursor + 32);
+    central_cursor += 46 + name_length + extra_length + comment_length;
+  }
   result.writeUInt32LE(shifted_central_offset, shifted_eocd + 16);
   return result;
 }
@@ -189,6 +201,19 @@ test('Playwright trace importer rejects a mismatched ZIP data descriptor', () =>
   assert.throws(
     () => parse_playwright_trace(make_data_descriptor_archive({ signature: true, corrupt: true })),
     error => error.code === 'ORIX_TRACE_DATA_DESCRIPTOR_MISMATCH',
+  );
+});
+
+test('Playwright trace importer rejects duplicate local-header offsets across ZIP members', () => {
+  const archive = make_archive();
+  const eocd = archive.length - 22;
+  const central = archive.readUInt32LE(eocd + 16);
+  const first_name_length = archive.readUInt16LE(central + 28);
+  const second_entry = central + 46 + first_name_length;
+  archive.writeUInt32LE(0, second_entry + 42);
+  assert.throws(
+    () => parse_playwright_trace(archive),
+    error => error.code === 'ORIX_TRACE_LOCAL_HEADER_SHARED',
   );
 });
 
