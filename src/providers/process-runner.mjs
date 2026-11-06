@@ -2,6 +2,7 @@
 
 import { constants as FS_CONSTANTS } from 'node:fs';
 import { access, lstat, realpath, stat } from 'node:fs/promises';
+import { prepare_linux_provider_isolation } from './linux-isolation.mjs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { OrixError } from '../core/errors.mjs';
@@ -35,7 +36,7 @@ function plain_options(value) {
   const allowed = new Set([
     'manifest', 'executable', 'args', 'cwd', 'env',
     'allowed_executables', 'allowed_working_directories', 'executable_args',
-    'timeout_ms', 'max_output_bytes', 'kill_grace_ms', 'signal',
+    'timeout_ms', 'max_output_bytes', 'kill_grace_ms', 'signal', 'isolation', 'sandbox_root',
   ]);
   for (const key of Reflect.ownKeys(value)) {
     if (typeof key !== 'string' || !allowed.has(key)) {
@@ -300,8 +301,8 @@ function signal_process(child, detached, signal) {
  * Run an explicitly declared read-only static provider.
  *
  * The child is started with an argument vector and shell:false. This function
- * bounds time and captured output; it does not create an OS sandbox or enforce
- * filesystem/network isolation for a provider that lies about its behavior.
+ * bounds time and captured output. OS isolation is opt-in and fail-closed;
+ * without isolation:'required', this remains process control rather than a sandbox.
  */
 export async function run_static_provider(options) {
   const descriptors = plain_options(options);
@@ -334,6 +335,27 @@ export async function run_static_provider(options) {
     max_output_bytes: descriptors.max_output_bytes?.value,
     kill_grace_ms: descriptors.kill_grace_ms?.value,
   });
+  const isolation = descriptors.isolation?.value ?? 'none';
+  if (isolation !== 'none' && isolation !== 'required') {
+    throw new TypeError('isolation must be either none or required');
+  }
+  let launch_executable = executable;
+  let launch_args = [...executable_args, ...args];
+  let launch_cwd = cwd;
+  let launch_env = minimal_environment(env);
+  if (isolation === 'required') {
+    const prepared = await prepare_linux_provider_isolation({
+      executable,
+      cwd,
+      sandbox_root: descriptors.sandbox_root?.value,
+      args: launch_args,
+      env,
+    });
+    launch_executable = prepared.executable;
+    launch_args = prepared.args;
+    launch_cwd = prepared.cwd;
+    launch_env = prepared.env;
+  }
   const signal = descriptors.signal?.value;
   if (signal !== undefined && !(signal instanceof AbortSignal)) {
     throw new TypeError('signal must be an AbortSignal');
@@ -348,7 +370,6 @@ export async function run_static_provider(options) {
   const started_clock = Date.now();
   const windows = process.platform === 'win32';
   const detached = !windows;
-  const launch_env = minimal_environment(env);
 
   return await new Promise((resolve, reject) => {
     let child;
@@ -418,8 +439,8 @@ export async function run_static_provider(options) {
     }
 
     try {
-      child = spawn(executable, [...executable_args, ...args], {
-        cwd,
+      child = spawn(launch_executable, launch_args, {
+        cwd: launch_cwd,
         env: launch_env,
         shell: false,
         windowsHide: true,
