@@ -69,6 +69,8 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         max_instructions: integer('Maximum instructions in the optional disassembly window.', 1000, 1),
         decompile: { type: 'boolean', description: 'Request optional rz-ghidra pseudocode decompilation at the supplied function entry address.' },
         timeout_ms: integer('Total provider workflow deadline in milliseconds.', 60000, 1),
+        isolation: { type: 'string', enum: ['none', 'required'], description: 'Opt into required Linux Bubblewrap isolation; defaults to none.' },
+        sandbox_root: { type: 'string', minLength: 1, maxLength: 4096, description: 'Existing provider rootfs directory inside a configured MCP workspace; required when isolation is required.' },
         max_output_kib: integer('Aggregate stdout/stderr capture budget in KiB.', 8192, 1),
       },
       required: ['path', 'executable'],
@@ -363,6 +365,16 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       return inspect_file(target.path, { limits, extract_strings: args.extract_strings });
     }
     case 'orix.rizin_functions': {
+      const isolation = args.isolation ?? 'none';
+      if (isolation === 'required' && !args.sandbox_root) {
+        throw new TypeError('Required Rizin isolation needs sandbox_root inside a configured workspace');
+      }
+      if (isolation !== 'required' && args.sandbox_root !== undefined) {
+        throw new TypeError('sandbox_root is only valid when isolation is required');
+      }
+      const sandbox_root = isolation === 'required'
+        ? (await resolve_workspace_path(args.sandbox_root, roots, { kind: 'directory' })).path
+        : undefined;
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       return analyze_rizin_functions({
         input_path: target.path,
@@ -374,6 +386,8 @@ export async function call_orix_tool(name, args = {}, options = {}) {
         decompile: args.decompile ?? false,
         timeout_ms: args.timeout_ms ?? 30_000,
         max_output_bytes: (args.max_output_kib ?? 2_048) * 1024,
+        isolation,
+        sandbox_root,
       });
     }
     case 'orix.scan_directory': {
