@@ -4,7 +4,9 @@
 
 import { access, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { OrixError } from '../core/errors.mjs';
+import { prepare_linux_provider_cgroup } from './linux-cgroup-v2-manager.mjs';
 
 function isolation_error(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
@@ -185,10 +187,15 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
     bwrapArgs.push('--setenv', key, value);
   }
   bwrapArgs.push('--', sandboxExecutable, ...args);
+  const cgroup = await prepare_linux_provider_cgroup();
+  const bootstrap = fileURLToPath(new URL('./linux-cgroup-v2-bootstrap.mjs', import.meta.url));
   return Object.freeze({
-    executable: bwrap,
-    args: Object.freeze(bwrapArgs),
+    executable: process.execPath,
+    args: Object.freeze([bootstrap, '--attach-fd=3', '--', bwrap, ...bwrapArgs]),
     cwd: '/',
     env: Object.freeze({}),
+    stdio: cgroup.stdio,
+    close_parent_fd: cgroup.close_attach_fd,
+    cleanup: cgroup.cleanup,
   });
 }

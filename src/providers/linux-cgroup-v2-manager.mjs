@@ -282,6 +282,14 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
           if (attach_open) {
             try { close_attach_fd(); } catch { /* preserve cleanup failure */ }
           }
+          if (child_fd !== undefined) {
+            try { closeSync(child_fd); } catch { /* preserve cleanup failure */ }
+            child_fd = undefined;
+          }
+          if (parent_fd !== undefined) {
+            try { closeSync(parent_fd); } catch { /* preserve cleanup failure */ }
+            parent_fd = undefined;
+          }
         }
       })();
       return cleanup_promise;

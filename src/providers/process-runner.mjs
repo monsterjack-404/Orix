@@ -363,6 +363,10 @@ export async function run_static_provider(options) {
   let launch_args = [...executable_args, ...args];
   let launch_cwd = cwd;
   let launch_env = minimal_environment(env);
+  let launch_stdio = ['ignore', 'pipe', 'pipe'];
+  let close_parent_fd = null;
+  let isolation_cleanup = null;
+  let isolation_cleanup_on_terminate = true;
   if (isolation === 'required') {
     const prepared = await prepare_linux_provider_isolation({
       executable,
@@ -375,12 +379,18 @@ export async function run_static_provider(options) {
     launch_args = prepared.args;
     launch_cwd = prepared.cwd;
     launch_env = prepared.env;
+    launch_stdio = prepared.stdio ?? launch_stdio;
+    close_parent_fd = prepared.close_parent_fd ?? null;
+    isolation_cleanup = prepared.cleanup ?? null;
+    isolation_cleanup_on_terminate = prepared.cleanup_on_terminate !== false;
   }
   const signal = descriptors.signal?.value;
   if (signal !== undefined && !(signal instanceof AbortSignal)) {
     throw new TypeError('signal must be an AbortSignal');
   }
   if (signal?.aborted) {
+    try { close_parent_fd?.(); } catch { /* cleanup below remains authoritative */ }
+    if (isolation_cleanup) await isolation_cleanup();
     runner_error('ORIX_PROVIDER_CANCELLED', 'Provider process was cancelled before launch', {
       provider_id: manifest.id,
     });
@@ -411,6 +421,11 @@ export async function run_static_provider(options) {
     let process_group_cleanup_verified = windows ? null : false;
     let process_group_cleanup_failed = false;
     let process_group_force_kill_sent = false;
+    let isolation_cleanup_complete = !isolation_cleanup;
+    let isolation_cleanup_started = false;
+    let isolation_cleanup_failed = false;
+    let isolation_cleanup_error = null;
+    let isolation_cleanup_promise = null;
     let close_result = null;
 
     function cleanup() {
@@ -421,14 +436,16 @@ export async function run_static_provider(options) {
     }
 
     function finish_close() {
-      if (settled || close_result === null || !process_group_cleanup_complete) return;
+      if (settled || close_result === null || !process_group_cleanup_complete || !isolation_cleanup_complete) return;
       settled = true;
       cleanup();
       const { exit_code, exit_signal } = close_result;
       const completed_at = new Date().toISOString();
-      const termination_reason = process_group_cleanup_failed
-        ? 'process-group-cleanup-failed'
-        : timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
+      const termination_reason = isolation_cleanup_failed
+        ? 'isolation-cleanup-failed'
+        : process_group_cleanup_failed
+          ? 'process-group-cleanup-failed'
+          : timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
       const success = exit_code === 0 && termination_reason === null;
       const stdout = Buffer.concat(stdout_chunks).toString('utf8');
       const stderr = Buffer.concat(stderr_chunks).toString('utf8');
@@ -453,6 +470,12 @@ export async function run_static_provider(options) {
           verified_empty: process_group_cleanup_verified,
           failed: process_group_cleanup_failed,
         },
+        isolation_cleanup: {
+          attempted: isolation_cleanup_started,
+          complete: isolation_cleanup_complete,
+          failed: isolation_cleanup_failed,
+          reason: isolation_cleanup_error?.code ?? null,
+        },
         ok: success,
         output: {
           stdout,
@@ -475,6 +498,28 @@ export async function run_static_provider(options) {
           kill_grace_ms: limits.kill_grace_ms,
         },
       });
+    }
+
+    function start_isolation_cleanup(on_terminate) {
+      if (!isolation_cleanup || (on_terminate && !isolation_cleanup_on_terminate)) {
+        isolation_cleanup_complete = true;
+        finish_close();
+        return Promise.resolve();
+      }
+      if (isolation_cleanup_promise) return isolation_cleanup_promise;
+      isolation_cleanup_started = true;
+      isolation_cleanup_complete = false;
+      isolation_cleanup_promise = Promise.resolve()
+        .then(() => isolation_cleanup())
+        .catch(error => {
+          isolation_cleanup_failed = true;
+          isolation_cleanup_error = error;
+        })
+        .finally(() => {
+          isolation_cleanup_complete = true;
+          finish_close();
+        });
+      return isolation_cleanup_promise;
     }
 
     function start_process_group_cleanup() {
@@ -533,15 +578,18 @@ export async function run_static_provider(options) {
       if (settled) return;
       settled = true;
       cleanup();
-      reject(new OrixError('ORIX_PROVIDER_SPAWN_FAILED', 'Provider process could not be started', {
-        details: {
-          provider_id: manifest.id,
-          executable,
-          reason: error?.code ?? error?.name ?? 'spawn-error',
-        },
-        cause: error,
-        recoverable: true,
-      }));
+      Promise.resolve(start_isolation_cleanup(false)).then(() => {
+        const final_error = isolation_cleanup_error ?? error;
+        reject(new OrixError('ORIX_PROVIDER_SPAWN_FAILED', 'Provider process could not be started or cleaned up safely', {
+          details: {
+            provider_id: manifest.id,
+            executable,
+            reason: final_error?.code ?? final_error?.name ?? 'spawn-error',
+          },
+          cause: final_error,
+          recoverable: true,
+        }));
+      });
     }
 
     function terminate() {
@@ -551,8 +599,10 @@ export async function run_static_provider(options) {
         signal_process(child, detached, 'SIGTERM');
         kill_timer = setTimeout(() => signal_process(child, detached, 'SIGKILL'), limits.kill_grace_ms);
         kill_timer.unref?.();
+        start_isolation_cleanup(true);
         return;
       }
+      start_isolation_cleanup(true);
       start_process_group_cleanup();
     }
 
@@ -579,6 +629,7 @@ export async function run_static_provider(options) {
       }
     }
 
+    if (signal) signal.addEventListener('abort', on_abort, { once: true });
     try {
       child = spawn(launch_executable, launch_args, {
         cwd: launch_cwd,
@@ -586,9 +637,13 @@ export async function run_static_provider(options) {
         shell: false,
         windowsHide: true,
         detached,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: launch_stdio,
       });
+      close_parent_fd?.();
+      close_parent_fd = null;
     } catch (error) {
+      try { close_parent_fd?.(); } catch { /* preserve the spawn/close error */ }
+      close_parent_fd = null;
       finish_error(error);
       return;
     }
@@ -601,6 +656,7 @@ export async function run_static_provider(options) {
       timeout_timer = null;
       if (signal) signal.removeEventListener('abort', on_abort);
       if (!termination_started) termination_started = true;
+      start_isolation_cleanup(false);
       start_process_group_cleanup();
     });
     child.once('close', (exit_code, exit_signal) => {
@@ -609,7 +665,7 @@ export async function run_static_provider(options) {
       finish_close();
     });
 
-    if (signal) signal.addEventListener('abort', on_abort, { once: true });
+    if (cancelled || signal?.aborted) on_abort();
     timeout_timer = setTimeout(() => {
       timed_out = true;
       terminate();
