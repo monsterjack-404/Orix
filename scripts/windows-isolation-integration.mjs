@@ -49,6 +49,14 @@ async function main() {
     'Cleanup must not use path existence helpers that can follow a reparse target');
   assert.match(purgeSource, /FileAttributes\.ReparsePoint[\s\S]*?throw new InvalidOperationException\("ORIX_WINDOWS_CLEANUP_REPARSE_POINT/,
     'Cleanup must abort on reparse points instead of skipping them and continuing with descendant paths');
+  const cleanupStart = launcherSource.indexOf('public static void Cleanup(');
+  assert.ok(cleanupStart >= 0, 'Native helper must expose the explicit profile cleanup path');
+  const cleanupSource = launcherSource.slice(cleanupStart);
+  assert.match(cleanupSource, /DeriveAppContainerSidFromAppContainerName\(profileName, out sid\)[\s\S]*?if \(hr != 0\) Marshal\.ThrowExceptionForHR\(hr\)/,
+    'AppContainer SID lookup errors must fail cleanup instead of being treated as profile absence');
+  assert.doesNotMatch(cleanupSource, /ORIX_CLEANUP:NO_PROFILE/,
+    'Cleanup must not silently report success for an arbitrary SID lookup failure');
+
 
   assert.doesNotMatch(launcherSource, /Environment\.GetEnvironmentVariable\("SystemRoot"\)/,
     'Native helper must not resolve icacls.exe from inherited SystemRoot');
@@ -336,6 +344,34 @@ async function main() {
 
       await rmdir(packagesRoot);
       junctionInstalled = false;
+
+      // A malformed profile name must not be mistaken for an absent profile.
+      // DeriveAppContainerSidFromAppContainerName documents invalid arguments
+      // as failures; the launcher must return non-zero instead of claiming that
+      // cleanup succeeded and discarding its diagnostics.
+      const invalidProfileConfig = path.join(base, 'invalid-appcontainer-profile.json');
+      await writeFile(invalidProfileConfig, JSON.stringify({
+        sandboxRoot: root,
+        profileName: 'x'.repeat(65),
+        logPath: path.join(base, 'invalid-appcontainer-profile.log'),
+      }), 'utf8');
+      let invalidCleanupError = null;
+      try {
+        execFileSync(reparsePrepared.executable, ['cleanup', invalidProfileConfig], {
+          cwd: reparsePrepared.cwd,
+          env: reparsePrepared.env,
+          encoding: 'utf8',
+          windowsHide: true,
+        });
+      } catch (error) { invalidCleanupError = error; }
+      assert.ok(invalidCleanupError, 'Invalid AppContainer profile names must not be reported as successful cleanup');
+      assert.equal(invalidCleanupError.status, 125,
+        'Invalid AppContainer profile name should fail closed with exit code 125');
+      assert.match(String(invalidCleanupError.stderr), /ORIX_WINDOWS_ISOLATION_ERROR=/,
+        'Invalid AppContainer profile name did not surface a native cleanup diagnostic');
+      assert.equal((String(invalidCleanupError.stderr).match(/ORIX_WINDOWS_ISOLATION_ERROR=/g) ?? []).length, 1,
+        'Explicit cleanup failure must not trigger a duplicate cleanup attempt');
+
       await reparsePrepared.cleanup();
       preparedCleanupComplete = true;
       await access(externalSentinel);
