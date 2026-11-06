@@ -178,8 +178,10 @@ export async function inspect_linux_cgroup_v2(options = {}) {
     parent.required_controllers_enabled = REQUIRED_CONTROLLERS.every(item => parent.enabled_controllers.includes(item));
     parent.domain_type = type === 'domain';
     parent.supervisor_exists = !supervisor_info.isSymbolicLink() && supervisor_info.isDirectory();
-    parent.supervisor_contains_current_process = process_cgroup_path === parent_cgroup_path + '/supervisor' ||
-      process_cgroup_path.startsWith(parent_cgroup_path + '/supervisor/');
+    // The runtime manager validates membership in supervisor/cgroup.procs
+    // through a retained directory FD, so preflight must require the exact
+    // sibling rather than reporting nested descendants as ready.
+    parent.supervisor_contains_current_process = process_cgroup_path === parent_cgroup_path + '/supervisor';
 
     const expected_uid = process.geteuid();
     const parent_permissions = assess_cgroup_directory_permissions(parent_info, expected_uid);

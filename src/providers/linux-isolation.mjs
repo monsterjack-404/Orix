@@ -4,7 +4,9 @@
 
 import { access, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { OrixError } from '../core/errors.mjs';
+import { prepare_linux_provider_cgroup } from './linux-cgroup-v2-manager.mjs';
 
 function isolation_error(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
@@ -16,8 +18,8 @@ function within(root, candidate) {
     !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
 }
 
-async function resolve_bwrap() {
-  for (const candidate of ['/usr/bin/bwrap', '/bin/bwrap']) {
+async function resolve_trusted_executable(candidates, label) {
+  for (const candidate of candidates) {
     try {
       const info = await lstat(candidate);
       if (info.isSymbolicLink() || !info.isFile()) continue;
@@ -25,14 +27,22 @@ async function resolve_bwrap() {
       await access(canonical, 1);
       return canonical;
     } catch {
-      // Try the next fixed system location; never resolve through PATH.
+      // Only fixed system locations are considered; never search PATH.
     }
   }
   isolation_error(
     'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
-    'Bubblewrap is not installed at a trusted system path; required isolation cannot start',
-    { platform: process.platform, backend: 'bubblewrap' },
+    label + ' is not installed at a trusted system path; required isolation cannot start',
+    { platform: process.platform, backend: label },
   );
+}
+
+async function resolve_bwrap() {
+  return resolve_trusted_executable(['/usr/bin/bwrap', '/bin/bwrap'], 'bubblewrap');
+}
+
+async function resolve_prlimit() {
+  return resolve_trusted_executable(['/usr/bin/prlimit', '/bin/prlimit'], 'prlimit');
 }
 
 /**
@@ -41,11 +51,17 @@ async function resolve_bwrap() {
  * use the root-owned sticky-directory exception (for example, /tmp).
  */
 export function assess_rootfs_directory_permissions(metadata, expected_uid, allow_root_sticky = false) {
+  const valid_expected_uid = Number.isSafeInteger(expected_uid) &&
+    expected_uid >= 0 && expected_uid <= 0xffff_ffff;
   const valid = metadata !== null && typeof metadata === 'object' &&
-    Number.isSafeInteger(metadata.uid) && Number.isSafeInteger(metadata.mode);
-  const directory = valid && metadata.is_directory === true;
-  const symlink = !valid || metadata.is_symlink === true;
-  const owner_is_trusted = valid && (metadata.uid === 0 || metadata.uid === expected_uid);
+    Number.isSafeInteger(metadata.uid) && metadata.uid >= 0 && metadata.uid <= 0xffff_ffff &&
+    Number.isSafeInteger(metadata.mode) && metadata.mode >= 0 && metadata.mode <= 0o177777 &&
+    typeof metadata.is_directory === 'boolean' &&
+    typeof metadata.is_symlink === 'boolean';
+  const directory = valid && metadata.is_directory;
+  const symlink = !valid || metadata.is_symlink;
+  const owner_is_trusted = valid && valid_expected_uid &&
+    (metadata.uid === 0 || metadata.uid === expected_uid);
   const group_or_other_writable = !valid || (metadata.mode & 0o022) !== 0;
   const sticky_root_exception = valid && allow_root_sticky &&
     metadata.uid === 0 && (metadata.mode & 0o1000) !== 0;
@@ -121,6 +137,24 @@ async function validate_rootfs(value) {
     isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID', 'Provider sandbox root must be a non-symlink directory');
   }
   const root = await realpath(value);
+  let canonical_info;
+  let path_after_resolve;
+  try {
+    canonical_info = await lstat(root);
+    path_after_resolve = await lstat(value);
+  } catch (error) {
+    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_CHANGED',
+      'Provider sandbox root changed while its canonical identity was being resolved', {
+        reason: error.code ?? 'filesystem-error',
+      });
+  }
+  if (canonical_info.isSymbolicLink() || !canonical_info.isDirectory() ||
+      path_after_resolve.isSymbolicLink() || !path_after_resolve.isDirectory() ||
+      canonical_info.dev !== info.dev || canonical_info.ino !== info.ino ||
+      path_after_resolve.dev !== canonical_info.dev || path_after_resolve.ino !== canonical_info.ino) {
+    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_CHANGED',
+      'Provider sandbox root identity changed during canonical path resolution');
+  }
   await validate_rootfs_path_trust(root);
   for (const required of ['proc', 'dev', 'tmp']) {
     let entry;
@@ -136,7 +170,11 @@ async function validate_rootfs(value) {
       });
     }
   }
-  return root;
+  return Object.freeze({
+    path: root,
+    dev: canonical_info.dev,
+    ino: canonical_info.ino,
+  });
 }
 
 function sandbox_path(root, host_path, label) {
@@ -155,10 +193,12 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
       { platform: process.platform },
     );
   }
-  const root = await validate_rootfs(sandbox_root);
+  const rootfs_identity = await validate_rootfs(sandbox_root);
+  const root = rootfs_identity.path;
   const sandboxExecutable = sandbox_path(root, executable, 'executable');
   const sandboxCwd = sandbox_path(root, cwd, 'cwd');
   const bwrap = await resolve_bwrap();
+  const prlimit = await resolve_prlimit();
   const bwrapArgs = [
     '--die-with-parent',
     '--new-session',
@@ -185,10 +225,47 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
     bwrapArgs.push('--setenv', key, value);
   }
   bwrapArgs.push('--', sandboxExecutable, ...args);
+  // These per-process RLIMITs complement aggregate cgroup CPU/memory/task quotas.
+  const limitArgs = [
+    '--cpu=60:60',
+    '--fsize=67108864:67108864',
+    '--nofile=256:256',
+    '--core=0:0',
+    '--',
+    bwrap,
+    ...bwrapArgs,
+  ];
+  const cgroup = await prepare_linux_provider_cgroup();
+  const bootstrap = fileURLToPath(new URL('./linux-cgroup-v2-bootstrap.mjs', import.meta.url));
+
+  // Revalidate the rootfs after cgroup setup and immediately before handing
+  // the launch plan to the process runner. This narrows, but cannot eliminate,
+  // the validation-to-spawn race. A failed check must not leak an empty cgroup.
+  try {
+    const final_rootfs_identity = await validate_rootfs(sandbox_root);
+    if (final_rootfs_identity.path !== rootfs_identity.path ||
+        final_rootfs_identity.dev !== rootfs_identity.dev ||
+        final_rootfs_identity.ino !== rootfs_identity.ino) {
+      isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_CHANGED',
+        'Provider sandbox root identity changed while its launch plan was being prepared');
+    }
+  } catch (error) {
+    try {
+      await cgroup.cleanup();
+    } catch (cleanup_error) {
+      throw new AggregateError([error, cleanup_error],
+        'Provider sandbox root changed and the prepared cgroup could not be cleaned up');
+    }
+    throw error;
+  }
+
   return Object.freeze({
-    executable: bwrap,
-    args: Object.freeze(bwrapArgs),
+    executable: process.execPath,
+    args: Object.freeze([bootstrap, '--attach-fd=3', '--', prlimit, ...limitArgs]),
     cwd: '/',
     env: Object.freeze({}),
+    stdio: cgroup.stdio,
+    close_parent_fd: cgroup.close_attach_fd,
+    cleanup: cgroup.cleanup,
   });
 }

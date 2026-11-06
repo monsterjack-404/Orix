@@ -34,7 +34,7 @@ src/index.mjs exposes the supported programmatic surface, including SARIF and Ri
 
 `src/providers/process-runner.mjs` launches an explicitly selected static provider through an absolute executable path and an argument vector with `shell: false`. It validates argument/environment data, avoids inheriting the full parent environment, and bounds runtime, cancellation and captured output. `src/providers/rizin.mjs` is the first concrete adapter: it probes Rizin's version, requests JSON import metadata, records an input SHA-256 and checks the input identity after analysis. Its report schema is `schemas/rizin-imports.v1.schema.json`.
 
-These features do not constitute a plugin loader, installer, automatic provider discovery or operating-system sandbox. The manifest is a declaration, not proof of executable behavior. ORIX cannot enforce a provider's filesystem/network restrictions; Windows process-tree teardown is not guaranteed. The Rizin adapter uses an external installation and does not execute the inspected target. See [PROVIDERS.md](PROVIDERS.md) for its API and limitations.
+These features do not constitute a plugin loader, installer or automatic provider discovery. A manifest is a declaration, not proof of executable behavior. The process runner is unsandboxed by default; on Linux, the explicit `isolation: 'required'` path applies Bubblewrap plus cgroup v2 resource isolation. Windows and macOS have no enforced backend, and Windows process-tree teardown is not guaranteed. The Rizin adapter uses an external installation and does not execute the inspected target. See [PROVIDERS.md](PROVIDERS.md) for its API and limitations.
  
 ## 3. Ownership rules
 
@@ -163,4 +163,4 @@ This is a local report explorer, not a server-side workspace, desktop shell, liv
 
 The static process runner supports exact canonical executable allowlists and working-directory root allowlists. When omitted, the selected absolute executable and cwd are each treated as a one-entry allowlist for backward compatibility. Final symlink entries, sparse/accessor-backed lists, and paths outside the allowed roots are rejected. Environment inheritance is disabled; explicit overrides reject command-search and runtime-loader injection keys. The result preserves the Rizin adapter fields and adds a versioned `orix.provider-execution.v1` receipt with applied limits and a normalized termination reason.
 
-These checks do not provide OS-level file, process or network isolation. Windows descendant-process cleanup remains a documented limitation.
+Allowlist and environment checks alone do not provide OS-level file, process or network isolation. The Linux `isolation: 'required'` backend separately applies Bubblewrap and cgroup v2 controls; it is opt-in and depends on administrator-delegated host configuration. Windows descendant-process cleanup remains a documented limitation.
