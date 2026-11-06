@@ -225,9 +225,13 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
     }
 
     supervisor_fd = open_directory_at(parent_fd, 'supervisor');
+    assert_cgroup2_filesystem(supervisor_fd);
     assert_service_owned_directory(supervisor_fd, 'Delegated supervisor child');
-    closeSync(supervisor_fd);
-    supervisor_fd = undefined;
+    const supervisor_processes = read_control(supervisor_fd, 'cgroup.procs').split(/\\s+/).filter(Boolean);
+    if (!supervisor_processes.includes(String(process.pid))) {
+      cgroup_error('ORIX_CGROUP_SUPERVISOR_MEMBERSHIP_INVALID',
+        'The current ORIX manager process must remain in the delegated supervisor sibling');
+    }
 
     child_name = 'orix-provider-' + randomUUID();
     mkdirSync(fd_path(parent_fd, child_name), { mode: 0o700 });
@@ -259,6 +263,15 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
       if (kill_probe_fd !== undefined) try { closeSync(kill_probe_fd); } catch { /* no provider launched yet */ }
     }
     attach_fd = open_attach_descriptor(child_fd);
+    // Re-check the descriptor-anchored supervisor membership after child setup,
+    // not only during the earlier path-based deployment preflight.
+    const supervisor_processes_after_setup = read_control(supervisor_fd, 'cgroup.procs').split(/\\s+/).filter(Boolean);
+    if (!supervisor_processes_after_setup.includes(String(process.pid))) {
+      cgroup_error('ORIX_CGROUP_SUPERVISOR_MEMBERSHIP_INVALID',
+        'The ORIX manager moved out of the delegated supervisor during cgroup setup');
+    }
+    closeSync(supervisor_fd);
+    supervisor_fd = undefined;
     const attach_fd_value = attach_fd;
     let attach_open = true;
     let cleanup_promise = null;
