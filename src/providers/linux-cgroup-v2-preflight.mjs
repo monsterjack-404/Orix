@@ -61,11 +61,20 @@ async function read_text(file) {
 }
 
 async function no_symlink_components(target, boundary) {
+  if (!path.isAbsolute(target) || !path.isAbsolute(boundary) ||
+      path.resolve(target) !== target || path.resolve(boundary) !== boundary) return false;
+  const root = path.parse(boundary).root;
+  const boundary_relative = path.relative(root, boundary);
+  let current = root;
+  for (const component of boundary_relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, component);
+    const details = await lstat(current);
+    if (details.isSymbolicLink() || !details.isDirectory()) return false;
+  }
+
   const relative = path.relative(boundary, target);
   if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) return false;
-  let current = boundary;
-  const boundaryInfo = await lstat(current);
-  if (boundaryInfo.isSymbolicLink() || !boundaryInfo.isDirectory()) return false;
+  current = boundary;
   for (const component of relative.split(path.sep).filter(Boolean)) {
     current = path.join(current, component);
     const details = await lstat(current);
