@@ -122,7 +122,20 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
   const launcher = path.join(temporary, 'orix-windows-provider-launcher.exe');
   const source = fileURLToPath(new URL('../../native/windows-provider-launcher.cs', import.meta.url));
   const profileName = 'ORIX-' + randomUUID().replaceAll('-', '');
-  const providerEnvironment = { ...env, HOME: root, USERPROFILE: root, APPDATA: root, LOCALAPPDATA: root, TEMP: root, TMP: root };
+  const providerEnvironment = Object.create(null);
+  for (const key of ['SystemRoot', 'WINDIR']) {
+    const value = process.env[key];
+    if (typeof value === 'string' && value.length > 0) providerEnvironment[key] = value;
+  }
+  for (const [key, value] of Object.entries(env)) providerEnvironment[key] = value;
+  Object.assign(providerEnvironment, {
+    HOME: root,
+    USERPROFILE: root,
+    APPDATA: root,
+    LOCALAPPDATA: root,
+    TEMP: root,
+    TMP: root,
+  });
   try {
     await writeFile(configPath, JSON.stringify({
       executable: provider, args, cwd: work, sandboxRoot: root, profileName, logPath, environment: providerEnvironment,
