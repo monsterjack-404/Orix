@@ -106,7 +106,7 @@ function same_file_identity(left, right) {
     left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 }
 
-async function shay_file_bounded(source, destination, maximum_bytes, signal, expected_info) {
+async function copy_file_bounded(source, destination, maximum_bytes, signal, expected_info) {
   let handle;
   const hash = createHash('sha256');
   let bytes_copied = 0;
