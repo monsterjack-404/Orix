@@ -17,6 +17,7 @@ jobs:
   test:
     name: Node.js ${{ matrix.node-version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -31,12 +32,13 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Audit locked dependencies
+        run: npm audit --audit-level=low
       - name: Validate JavaScript syntax
         run: npm run check
       - name: Run tests
         run: npm test
       - name: Generate coverage summary
-        if: matrix.node-version == 22
         run: npm run test:coverage
 
   platform-smoke:
