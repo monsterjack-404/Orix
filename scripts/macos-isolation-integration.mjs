@@ -90,7 +90,7 @@ async function main() {
       catch (error) { result.root_write = error.code || 'blocked'; }
       try { fs.writeFileSync(path.join(os.tmpdir(), 'provider-write-probe'), 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
-      result.tmp_inside_root = path.relative(${JSON.stringify(path.join(root, 'tmp'))}, os.tmpdir()) === '';
+      result.tmp_inside_root = fs.realpathSync(os.tmpdir()) === fs.realpathSync(${JSON.stringify(path.join(root, 'tmp'))});
       result.host_network = await new Promise(resolve => {
         const socket = net.createConnection({ host: '127.0.0.1', port: ${port} });
         let settled = false;
