@@ -226,21 +226,25 @@ test('Rizin adapter and doctor reject manifests that exclude the current runtime
 });
 
 
-test('Rizin import adapter forwards the isolation mode to the process runner', async () => {
+test('Rizin import adapter validates isolation mode before input filesystem access', async () => {
   await assert.rejects(
-    analyze_rizin_imports({ input_path: '/not/opened/file', executable: '/not/launched/rizin', isolation: 'invalid-isolation-mode' }),
-      }),
-      /isolation must be either none or required/,
-    );
+    analyze_rizin_imports({
+      input_path: '/not/opened/file',
+      executable: '/not/launched/rizin',
+      isolation: 'invalid-isolation-mode',
+    }),
+    /isolation must be either none or required/,
   );
 });
 
-test('Rizin function adapter forwards the isolation mode to the process runner', async () => {
+test('Rizin function adapter validates isolation mode before input filesystem access', async () => {
   await assert.rejects(
-    analyze_rizin_functions({ input_path: '/not/opened/file', executable: '/not/launched/rizin', isolation: 'invalid-isolation-mode' }),
-      }),
-      /isolation must be either none or required/,
-    );
+    analyze_rizin_functions({
+      input_path: '/not/opened/file',
+      executable: '/not/launched/rizin',
+      isolation: 'invalid-isolation-mode',
+    }),
+    /isolation must be either none or required/,
   );
 });
 
