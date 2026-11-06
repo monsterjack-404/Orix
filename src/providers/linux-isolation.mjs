@@ -41,11 +41,14 @@ async function resolve_bwrap() {
  * Ancestors may use the root-owned sticky-directory exception (for example /tmp).
  */
 export function assess_rootfs_directory_permissions(metadata, expected_uid, allow_root_sticky = false) {
+  const valid_expected_uid = Number.isSafeInteger(expected_uid) && expected_uid >= 0;
   const valid = metadata !== null && typeof metadata === 'object' &&
-    Number.isSafeInteger(metadata.uid) && Number.isSafeInteger(metadata.mode);
+    Number.isSafeInteger(metadata.uid) && metadata.uid >= 0 &&
+    Number.isSafeInteger(metadata.mode) && metadata.mode >= 0;
   const directory = valid && metadata.is_directory === true;
   const symlink = !valid || metadata.is_symlink === true;
-  const owner_is_trusted = valid && (metadata.uid === 0 || metadata.uid === expected_uid);
+  const owner_is_trusted = valid && valid_expected_uid &&
+    (metadata.uid === 0 || metadata.uid === expected_uid);
   const group_or_other_writable = !valid || (metadata.mode & 0o022) !== 0;
   const sticky_root_exception = valid && allow_root_sticky &&
     metadata.uid === 0 && (metadata.mode & 0o1000) !== 0;
