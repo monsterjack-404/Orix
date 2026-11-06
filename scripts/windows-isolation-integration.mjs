@@ -68,6 +68,8 @@ async function main() {
   try {
     await mkdir(path.join(root, 'work'), { recursive: true });
     await mkdir(path.join(root, 'tmp'), { recursive: true });
+    // The normal rootfs runtime must exist before both negative ACL probes.
+    await copyFile(process.execPath, path.join(root, 'node.exe'));
 
     // An ACL that lets every local principal modify the provider rootfs must
     // be rejected by the native launcher before the AppContainer is created.
@@ -126,7 +128,6 @@ async function main() {
       ], { encoding: 'utf8', windowsHide: true });
     }
 
-    await copyFile(process.execPath, path.join(root, 'node.exe'));
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
 
     server = net.createServer();
