@@ -78,18 +78,16 @@ int main(int argc, char **argv) {
     return 125;
   }
 
-  size_t root_size = strlen(root) + 16;
-  size_t tmp_size = strlen(tmp) + 16;
-  char *root_parameter = (char *)malloc(root_size);
-  char *tmp_parameter = (char *)malloc(tmp_size);
-  if (!root_parameter || !tmp_parameter) {
-    free(profile); free(root_parameter); free(tmp_parameter);
-    fprintf(stderr, "ORIX_MACOS_LAUNCHER_ERROR=parameter-allocation\n");
-    return 125;
-  }
-  snprintf(root_parameter, root_size, "ORIX_ROOT=%s", root);
-  snprintf(tmp_parameter, tmp_size, "ORIX_TMP=%s", tmp);
-  const char *parameters[] = { root_parameter, tmp_parameter, NULL };
+  /*
+   * sandbox_init_with_parameters expects NULL-terminated key/value pairs,
+   * not "KEY=value" strings. Keep path values separate so the profile's
+   * (param ...) expressions resolve to strings rather than booleans.
+   */
+  const char *parameters[] = {
+    "ORIX_ROOT", root,
+    "ORIX_TMP", tmp,
+    NULL
+  };
 
   char *error_buffer = NULL;
 #pragma clang diagnostic push
@@ -98,13 +96,11 @@ int main(int argc, char **argv) {
   if (error_buffer) sandbox_free_error(error_buffer);
 #pragma clang diagnostic pop
   free(profile);
-  free(root_parameter);
-  free(tmp_parameter);
   if (sandbox_result != 0) {
     fprintf(stderr, "ORIX_MACOS_SEATBELT_ERROR=profile-apply-failed\n");
     return 125;
   }
-  if (sandbox_check(getpid(), NULL, 0) != 1) {
+  if (sandbox_check(getpid(), NULL, SANDBOX_FILTER_NONE) != 1) {
     fprintf(stderr, "ORIX_MACOS_SEATBELT_ERROR=kernel-sandbox-verification-failed\n");
     return 125;
   }
