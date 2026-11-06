@@ -124,6 +124,11 @@ jobs:
           $secondHash = (Get-FileHash -LiteralPath $second -Algorithm SHA256).Hash
           if ($firstHash -ne $secondHash) { throw "Windows launcher builds are not byte-for-byte reproducible: $firstHash != $secondHash" }
           Write-Output "Reproducible Windows launcher SHA-256: $firstHash"
+      - name: Validate Windows launcher PE and CLR metadata
+        if: runner.os == 'Windows'
+        run: |
+          node scripts/verify-windows-launcher.mjs artifacts/windows-helper-first/orix-windows-provider-launcher.exe
+          node scripts/verify-windows-launcher.mjs artifacts/windows-helper-second/orix-windows-provider-launcher.exe
       - name: Upload Windows launcher build artifact (not a runtime trust anchor)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
