@@ -316,7 +316,7 @@ namespace OrixWindowsSandbox {
       }
     }
 
-    static string PrepareScratch(string root, IntPtr sid, IDictionary environment) {
+    static string PrepareScratch(string root, IntPtr sid, string profileName, IDictionary environment) {
       string temp = Path.Combine(root, "tmp");
       if (!Directory.Exists(temp)) throw new DirectoryNotFoundException("sandbox_root/tmp is required for provider scratch writes");
       DirectorySecurity security = Directory.GetAccessControl(temp, AccessControlSections.Access);
@@ -326,6 +326,19 @@ namespace OrixWindowsSandbox {
         PropagationFlags.None, AccessControlType.Allow));
       Directory.SetAccessControl(temp, security);
       SetIntegrityLevel(temp, "L");
+
+      // AppContainer redirects Win32 temporary-file APIs into a package-specific
+      // AC\\Temp directory beneath TEMP. Provision only that private redirected
+      // path and grant the package SID the same bounded scratch permissions.
+      string appContainerTemp = Path.Combine(temp, "Packages", profileName.ToLowerInvariant(), "AC", "Temp");
+      Directory.CreateDirectory(appContainerTemp);
+      DirectorySecurity redirectedSecurity = Directory.GetAccessControl(appContainerTemp, AccessControlSections.Access);
+      redirectedSecurity.AddAccessRule(new FileSystemAccessRule(identity, FileSystemRights.Modify,
+        InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+        PropagationFlags.None, AccessControlType.Allow));
+      Directory.SetAccessControl(appContainerTemp, redirectedSecurity);
+      SetIntegrityLevel(appContainerTemp, "L");
+
       environment["TEMP"] = temp;
       environment["TMP"] = temp;
       environment["HOME"] = temp;
@@ -376,7 +389,7 @@ namespace OrixWindowsSandbox {
         SecurityIdentifier identity = new SecurityIdentifier(sid);
         GrantTree(root, identity, FileSystemRights.ReadAndExecute, true);
         Log("RUN:ROOT_ACL_GRANTED");
-        PrepareScratch(root, sid, environment);
+        PrepareScratch(root, sid, profileName, environment);
         Log("RUN:PRIVATE_TEMP_READY");
 
         job = CreateJobObject(IntPtr.Zero, null);
