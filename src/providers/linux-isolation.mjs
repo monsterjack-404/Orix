@@ -115,8 +115,11 @@ async function validate_rootfs(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
     throw new TypeError('sandbox_root must be an absolute filesystem path');
   }
+  // Strip trailing separators and resolve dot segments before lstat. On Linux,
+  // lstat("symlink/") follows the final symlink because of the trailing slash.
+  const requested_root = path.resolve(value);
   let info;
-  try { info = await lstat(value); }
+  try { info = await lstat(requested_root); }
   catch (error) {
     isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE', 'Provider sandbox root cannot be inspected', {
       reason: error.code ?? 'filesystem-error',
@@ -125,7 +128,7 @@ async function validate_rootfs(value) {
   if (info.isSymbolicLink() || !info.isDirectory()) {
     isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID', 'Provider sandbox root must be a non-symlink directory');
   }
-  const root = await realpath(value);
+  const root = await realpath(requested_root);
   let resolved_info;
   try {
     resolved_info = await lstat(root);
