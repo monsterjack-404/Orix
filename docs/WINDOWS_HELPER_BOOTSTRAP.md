@@ -33,3 +33,9 @@ This is an architectural blocker, not a completed fix. The repository currently 
 - Do not substitute a different environment variable, PATH lookup, registry lookup, or PowerShell command for the current compiler lookup; these are not equivalent to a source-pinned executable trust anchor.
 - Do not claim that a hash stored only beside the binary authenticates the binary.
 - Do not weaken Windows integration tests or silently skip them when the helper is absent.
+
+## Build-pipeline progress
+
+The Windows CI job now compiles this launcher through the checked-in .NET Framework 4.8 project definition and retains the resulting executable as a short-lived Actions artifact for inspection. This is a compile-validation milestone only: the artifact is built from the PR checkout, is not included in the npm package, is not authenticated by a source-pinned digest, and is not used by runtime provider setup. The existing runtime compiler path and its trust limitation therefore remain unchanged.
+
+The next acceptance steps are to review the produced binary, establish a reproducible/pinned toolchain and reviewed digest, admit the exact executable into the package, and switch runtime + hostile-process tests to that exact packaged binary. Do not treat the temporary CI artifact or its printed hash as a runtime trust anchor.
