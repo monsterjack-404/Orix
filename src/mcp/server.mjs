@@ -57,7 +57,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   {
     name: 'orix.rizin_functions',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    description: 'Use an explicitly selected Rizin executable to enumerate functions, disassemble a bounded instruction window and optionally request rz-ghidra pseudocode. The target is never executed; Rizin and its optional decompiler plugin must be installed separately.',
+    description: 'Use an explicitly selected Rizin executable to enumerate functions, disassemble a bounded instruction window and optionally request rz-ghidra pseudocode. The target is never executed. Required Linux Bubblewrap isolation is optional; its rootfs is administrator-configured with ORIX_PROVIDER_SANDBOX_ROOT.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -70,6 +70,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         decompile: { type: 'boolean', description: 'Request optional rz-ghidra pseudocode decompilation at the supplied function entry address.' },
         timeout_ms: integer('Total provider workflow deadline in milliseconds.', 60000, 1),
         max_output_kib: integer('Aggregate stdout/stderr capture budget in KiB.', 8192, 1),
+        isolation: { type: 'string', enum: ['none', 'required'], description: 'Require Linux Bubblewrap namespace/filesystem isolation. The sandbox root is configured by the server administrator with ORIX_PROVIDER_SANDBOX_ROOT.' },
       },
       required: ['path', 'executable'],
       additionalProperties: false,
@@ -299,6 +300,7 @@ function validate_arguments(name, value) {
         }
       }
     }
+    if (schema.enum && !schema.enum.includes(item)) throw new TypeError(key + ' must be one of: ' + schema.enum.join(', '));
     if (schema.type === 'boolean' && typeof item !== 'boolean') throw new TypeError(key + ' must be a boolean');
     if (schema.type === 'integer' && (!Number.isSafeInteger(item) || item < schema.minimum || item > schema.maximum)) {
       throw new TypeError(key + ' must be an integer between ' + schema.minimum + ' and ' + schema.maximum);
@@ -363,6 +365,11 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       return inspect_file(target.path, { limits, extract_strings: args.extract_strings });
     }
     case 'orix.rizin_functions': {
+      const isolation = args.isolation ?? 'none';
+      const sandbox_root = isolation === 'required' ? process.env.ORIX_PROVIDER_SANDBOX_ROOT : undefined;
+      if (isolation === 'required' && (!sandbox_root || !path.isAbsolute(sandbox_root))) {
+        throw new TypeError('MCP server administrator must configure ORIX_PROVIDER_SANDBOX_ROOT as an absolute path before required isolation can be requested');
+      }
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       return analyze_rizin_functions({
         input_path: target.path,
@@ -374,6 +381,8 @@ export async function call_orix_tool(name, args = {}, options = {}) {
         decompile: args.decompile ?? false,
         timeout_ms: args.timeout_ms ?? 30_000,
         max_output_bytes: (args.max_output_kib ?? 2_048) * 1024,
+        isolation,
+        sandbox_root,
       });
     }
     case 'orix.scan_directory': {
