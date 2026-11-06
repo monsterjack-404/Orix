@@ -410,9 +410,9 @@ test('required provider isolation refuses executable and cwd paths outside its r
         isolation: 'required',
         sandbox_root: root,
       }),
-      error => process.platform === 'linux'
-        ? error.code === 'ORIX_PROVIDER_SANDBOX_PATH_DENIED'
-        : error.code === 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+      error => process.platform === 'darwin'
+        ? error.code === 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE'
+        : error.code === 'ORIX_PROVIDER_SANDBOX_PATH_DENIED',
     );
   });
 });
