@@ -64,6 +64,13 @@ async function main() {
     'Native helper lifecycle must use close, not exit, before temporary-directory cleanup');
   assert.match(isolationSource, /timedOut = true;[\s\S]*?child\.kill\(\);[\s\S]*?child\.once\('close'/,
     'Native helper timeout must terminate the helper and defer rejection until close');
+  const timeoutRequest = isolationSource.indexOf('timedOut = true;');
+  const killRequest = isolationSource.indexOf('child.kill();', timeoutRequest);
+  const closeHandler = isolationSource.indexOf("child.once('close', async (code, signal) => {", killRequest);
+  const timeoutFailure = isolationSource.indexOf('ORIX_PROVIDER_WINDOWS_HELPER_TIMEOUT', closeHandler);
+  assert.ok(timeoutRequest >= 0 && killRequest > timeoutRequest &&
+    closeHandler > killRequest && timeoutFailure > closeHandler,
+  'Windows helper timeout must wait for stdio close before caller cleanup and log collection');
   // Keep the rootfs outside the broadly writable GitHub Actions workspace; its
   // ancestors are part of the native trust check, not just the leaf ACL.
   // Use a protected system directory, not the GitHub workspace or user profile.
