@@ -84,7 +84,10 @@ async function main() {
       import { spawnSync } from 'node:child_process';
       const result = { namespace_pid: process.pid, namespace_parent_pid: process.ppid, host_pid: Number(process.env.ORIX_HOST_PID) };
       const nested_userns = spawnSync('/usr/bin/unshare', ['--user', '--map-root-user', '/usr/bin/node', '-e', 'process.exit(0)'], { encoding: 'utf8', timeout: 1500 });
-      result.nested_userns = nested_userns.error?.code === 'ENOENT' ? 'probe-missing' : nested_userns.status === 0 ? 'allowed' : 'blocked';
+      result.nested_userns = nested_userns.error || nested_userns.status === null
+        ? 'probe-error'
+        : nested_userns.status === 0 ? 'allowed' : 'blocked';
+      result.nested_userns_diagnostic = nested_userns.error?.code ?? nested_userns.signal ?? null;
       try { fs.readFileSync(${JSON.stringify(hostSecret)}, 'utf8'); result.host_file = 'readable'; }
       catch (error) { result.host_file = error.code || 'blocked'; }
       try { fs.writeFileSync('/work/host-write-probe', 'escape'); result.root_write = 'writable'; }
@@ -115,7 +118,11 @@ async function main() {
     assert.equal(execution.ok, true, execution.stderr || 'Sandboxed provider failed');
     const result = JSON.parse(execution.stdout);
     assert.notEqual(result.namespace_pid, result.host_pid, 'Provider PID was not remapped into a private PID namespace');
-    assert.equal(result.nested_userns, 'blocked', 'Provider can still create nested user namespaces');
+    assert.equal(
+      result.nested_userns,
+      'blocked',
+      `Nested user-namespace probe must exit non-zero; provider may still create nested user namespaces (diagnostic: ${result.nested_userns_diagnostic ?? 'none'})`,
+    );
     assert.equal(result.namespace_parent_pid, 1, 'Provider is not contained under the private PID namespace init process');
     assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
