@@ -53,7 +53,8 @@ namespace OrixWindowsSandbox {
         return exitCode;
       } catch (Exception error) {
         Console.Error.WriteLine("ORIX_WINDOWS_ISOLATION_ERROR=" + error.Message);
-        if (!String.IsNullOrEmpty(root) && !String.IsNullOrEmpty(profileName)) {
+        bool explicitCleanup = args != null && args.Length > 0 && args[0] == "cleanup";
+        if (!explicitCleanup && !String.IsNullOrEmpty(root) && !String.IsNullOrEmpty(profileName)) {
           try { Cleanup(root, profileName); }
           catch (Exception cleanupError) {
             Console.Error.WriteLine("ORIX_WINDOWS_CLEANUP_ERROR=" + cleanupError.Message);
