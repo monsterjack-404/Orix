@@ -377,6 +377,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       return analyze_rizin_functions({
         input_path: target.path,
+        reject_hardlinks: true,
         executable: args.executable,
         executable_args: args.executable_args,
         max_functions: args.max_functions ?? 1000,
@@ -421,7 +422,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
     }
     case 'orix.analyze_har': {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-      return analyze_har_file(target.path, { max_entries: args.max_entries, max_hosts: args.max_hosts });
+      return analyze_har_file(target.path, { max_entries: args.max_entries, max_hosts: args.max_hosts, reject_hardlinks: true });
     }
     case 'orix.formats':
       return { schema_version: 'orix.formats.v1', formats: list_format_capabilities() };
