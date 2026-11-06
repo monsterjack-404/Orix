@@ -60,6 +60,52 @@ export function assess_rootfs_directory_permissions(metadata, expected_uid, allo
   });
 }
 
+async function validate_rootfs_path_trust(root) {
+  if (root === path.parse(root).root) {
+    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID',
+      'The filesystem root cannot be used as a provider sandbox root');
+  }
+
+  const expected_uid = process.geteuid();
+  let current = root;
+  let is_rootfs = true;
+  for (;;) {
+    let info;
+    try {
+      info = await lstat(current);
+    } catch (error) {
+      isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+        'A provider sandbox root path component cannot be inspected', {
+          reason: error.code ?? 'filesystem-error',
+        });
+    }
+    const assessment = assess_rootfs_directory_permissions({
+      uid: info.uid,
+      mode: info.mode,
+      is_directory: info.isDirectory(),
+      is_symlink: info.isSymbolicLink(),
+    }, expected_uid, !is_rootfs);
+
+    if (!assessment.trusted) {
+      isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_UNTRUSTED',
+        is_rootfs
+          ? 'Provider sandbox root must be owned by root or the ORIX service account and not group/other writable'
+          : 'Provider sandbox root ancestors must be trusted and not group/other writable (except root-owned sticky directories)',
+        {
+          component: current,
+          owner_uid: info.uid,
+          expected_uid,
+          mode: info.mode & 0o7777,
+          rootfs_component: is_rootfs,
+        });
+    }
+
+    if (current === path.parse(current).root) break;
+    current = path.dirname(current);
+    is_rootfs = false;
+  }
+}
+
 async function validate_rootfs(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
     throw new TypeError('sandbox_root must be an absolute filesystem path');
