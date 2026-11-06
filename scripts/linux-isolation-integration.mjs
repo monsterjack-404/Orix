@@ -79,6 +79,7 @@ async function main() {
   const cgroupParent = path.join('/sys/fs/cgroup', 'orix-integration-' + process.pid);
   let server;
   let cgroupParentCreated = false;
+  const rootControllersEnabledByTest = [];
   try {
     await mkdir(root);
     await make_minimal_rootfs(root);
@@ -89,6 +90,7 @@ async function main() {
     }
     const rootEnabled = (await readFile(path.join(cgroupRoot, 'cgroup.subtree_control'), 'utf8')).trim().split(/\s+/);
     const rootMissing = ['cpu', 'memory', 'pids'].filter(controller => !rootEnabled.includes(controller));
+    rootControllersEnabledByTest.push(...rootMissing);
     if (rootMissing.length) await writeFile(path.join(cgroupRoot, 'cgroup.subtree_control'), rootMissing.map(item => '+' + item).join(' '));
     await mkdir(cgroupParent);
     cgroupParentCreated = true;
@@ -246,7 +248,23 @@ async function main() {
     assert.deepEqual(result.rlimits.file_size_bytes, ['67108864', '67108864'], 'File-size RLIMIT was not inherited');
     assert.deepEqual(result.rlimits.open_files, ['256', '256'], 'Open-file RLIMIT was not inherited');
     assert.equal(await readFile(hostSecret, 'utf8'), hostSecretValue, 'Host secret changed unexpectedly');
-    process.stdout.write('Linux Bubblewrap hostile-process checks passed: filesystem, PID/network namespaces, private tmp, inherited RLIMITs, and cgroup-v2 CPU/memory/swap/PID limits.\\n');
+
+    // A second provider deliberately exceeds memory.max. memory.oom.group=1
+    // should kill the complete provider cgroup, while the outer test process survives.
+    const oomExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: nodePath,
+      args: ['-e', 'const block = Buffer.alloc(700 * 1024 * 1024); for (let offset = 0; offset < block.length; offset += 4096) block[offset] = 0x5a; setTimeout(() => process.exit(0), 1000)'],
+      cwd: path.join(root, 'work'),
+      allowed_executables: [nodePath],
+      allowed_working_directories: [path.join(root, 'work')],
+      timeout_ms: 10_000,
+      isolation: 'required',
+      sandbox_root: root,
+      sandbox_cgroup_parent: cgroupParent,
+    });
+    assert.equal(oomExecution.signal, 'SIGKILL', 'memory.max did not terminate the provider cgroup when its aggregate memory budget was exceeded');
+    process.stdout.write('Linux Bubblewrap hostile-process checks passed: filesystem, PID/network namespaces, private tmp, inherited RLIMITs, cgroup CPU throttling, PID ceiling, and aggregate memory OOM enforcement.\\n');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await rm(hostSecret, { force: true });
@@ -266,6 +284,10 @@ async function main() {
       assert.match(parentState.events, /populated 0/);
       assert.equal(parentState.controllers, '', 'Delegated cgroup controllers were not disabled');
       await rmdir(cgroupParent);
+    }
+    if (rootControllersEnabledByTest.length) {
+      const restore = rootControllersEnabledByTest.map(item => '-' + item).join(' ');
+      await writeFile(path.join('/sys/fs/cgroup', 'cgroup.subtree_control'), restore);
     }
   }
 }
