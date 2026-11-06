@@ -138,6 +138,7 @@ import { analyze_rizin_imports } from '@orix/cli';
 const report = await analyze_rizin_imports({
   executable: '/opt/rizin/bin/rizin',
   input_path: '/evidence/sample.elf',
+  isolation: 'none', // explicit unsandboxed process-control mode
 });
 
 console.log(report.provider.engine_version);
@@ -183,6 +184,7 @@ const report = await analyze_rizin_functions({
   address: '0x401000',
   max_instructions: 100,
   decompile: true, // optional; requires rz-ghidra to be installed in Rizin
+  isolation: 'none', // explicit unsandboxed process-control mode
 });
 
 console.log(report.functions);
@@ -216,7 +218,7 @@ node src/cli.mjs providers rizin imports ./sample.elf \
   --format json \
   --timeout-ms 30000 \
   --max-output-kib 4096 \
-  --max-imports 100000 \\
+  --max-imports 100000 \
   --isolation none
 ~~~
 
