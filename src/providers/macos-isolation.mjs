@@ -24,12 +24,12 @@ async function validate_directory(value, label) {
   let info;
   try { info = await lstat(value); }
   catch (error) {
-    isolation_error('ORIX_PROVIDER_SANDBOX_PATH_UNAVAILABLE', label + ' cannot be inspected', {
-      reason: error.code ?? 'filesystem-error',
-    });
+    const code = label === 'sandbox_root' ? 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE' : 'ORIX_PROVIDER_SANDBOX_PATH_UNAVAILABLE';
+    isolation_error(code, label + ' cannot be inspected', { reason: error.code ?? 'filesystem-error' });
   }
   if (info.isSymbolicLink() || !info.isDirectory()) {
-    isolation_error('ORIX_PROVIDER_SANDBOX_PATH_INVALID', label + ' must be a real non-symlink directory');
+    const code = label === 'sandbox_root' ? 'ORIX_PROVIDER_SANDBOX_ROOT_INVALID' : 'ORIX_PROVIDER_SANDBOX_PATH_INVALID';
+    isolation_error(code, label + ' must be a real non-symlink directory');
   }
   return realpath(value);
 }
