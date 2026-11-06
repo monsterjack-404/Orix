@@ -115,6 +115,7 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   const rizin_schema = response.result.tools.find(tool => tool.name === 'orix.rizin_functions').inputSchema;
   assert.deepEqual(rizin_schema.properties.isolation.enum, ['none', 'required']);
   assert.match(rizin_schema.properties.sandbox_root.description, /inside a configured MCP workspace root/);
+  assert.equal(rizin_schema.properties.cwd.type, 'string');
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.readOnlyHint, false);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
 });
@@ -162,6 +163,28 @@ test('MCP Rizin required isolation rejects a missing sandbox root before launchi
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('MCP Rizin working directory must remain inside configured workspace roots', async () => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-cwd-workspace-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-cwd-outside-'));
+  try {
+    const file = path.join(workspace, 'sample.elf');
+    await writeFile(file, Buffer.from('MCP native fixture'));
+    await assert.rejects(
+      call_orix_tool('orix.rizin_functions', {
+        path: file,
+        executable: process.execPath,
+        isolation: 'required',
+        sandbox_root: workspace,
+        cwd: outside,
+      }, { roots: [workspace] }),
+      /outside configured workspace roots/,
+    );
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
   }
 });
 
