@@ -1,7 +1,7 @@
 // JavaScript, src/providers/rizin.mjs, Node.js 20+, read-only Rizin import metadata adapter.
 
 import { createHash } from 'node:crypto';
-import { constants as FS_CONSTANTS, createReadStream, createWriteStream } from 'node:fs';
+import { constants as FS_CONSTANTS, createWriteStream } from 'node:fs';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
@@ -106,30 +106,7 @@ function same_file_identity(left, right) {
     left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 }
 
-async function sha256_file(file_path, maximum_bytes, signal) {
-  const hash = createHash('sha256');
-  let bytes_read = 0;
-  try {
-    for await (const chunk of createReadStream(file_path, { signal })) {
-      bytes_read += chunk.length;
-      if (bytes_read > maximum_bytes) {
-        provider_error('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin input grew beyond its manifest byte limit while hashing', {
-          bytes_read, maximum_bytes,
-        });
-      }
-      hash.update(chunk);
-    }
-  } catch (error) {
-    if (error instanceof OrixError) throw error;
-    if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled while hashing its input');
-    provider_error('ORIX_RIZIN_INPUT_READ_FAILED', 'Rizin input could not be hashed before analysis', {
-      reason: error.code ?? 'read-error',
-    });
-  }
-  return { digest: hash.digest('hex'), bytes_read };
-}
-
-async function copy_file_bounded(source, destination, maximum_bytes, signal, expected_info) {
+async function shay_file_bounded(source, destination, maximum_bytes, signal, expected_info) {
   let handle;
   const hash = createHash('sha256');
   let bytes_copied = 0;
