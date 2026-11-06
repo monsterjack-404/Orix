@@ -42,7 +42,28 @@ export async function resolve_workspace_path(input_path, roots = configured_work
   if (options.kind === 'directory' && !stats.isDirectory()) fail('ORIX_MCP_NOT_DIRECTORY', 'MCP operation requires a directory', { path: absolute });
   const real = await fs.realpath(absolute);
   const allowed = await real_roots(roots);
-  if (!allowed.some(root => within_root(real, root))) fail('ORIX_MCP_PATH_OUTSIDE_WORKSPACE', 'MCP path is outside configured workspace roots', { path: real, roots: allowed });
+  const allowed_root = allowed.find(root => within_root(real, root));
+  if (!allowed_root) fail('ORIX_MCP_PATH_OUTSIDE_WORKSPACE', 'MCP path is outside configured workspace roots', { path: real, roots: allowed });
+
+  // Require the caller's path to be expressed beneath the canonical workspace
+  // root, then inspect every component. Checking only the leaf with lstat()
+  // misses an intermediate directory symlink that resolves back inside root.
+  if (!within_root(absolute, allowed_root)) {
+    fail('ORIX_MCP_SYMLINK_REJECTED', 'MCP paths must not traverse symbolic links', { path: absolute });
+  }
+  const relative = path.relative(allowed_root, absolute);
+  let current = allowed_root;
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, segment);
+    let component;
+    try { component = await fs.lstat(current); }
+    catch (error) {
+      fail('ORIX_MCP_PATH_UNAVAILABLE', 'MCP path component does not exist or cannot be accessed', { path: current, system_code: error.code }, error);
+    }
+    if (component.isSymbolicLink()) {
+      fail('ORIX_MCP_SYMLINK_REJECTED', 'MCP does not follow symbolic links in workspace paths', { path: current });
+    }
+  }
   return { path: real, stats };
 }
 export async function resolve_workspace_output(input_path, roots = configured_workspace_roots()) {
