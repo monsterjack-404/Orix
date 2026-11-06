@@ -1,6 +1,6 @@
 // macOS Seatbelt hostile-process integration gate.
 import assert from 'node:assert/strict';
-import { chmod, copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
@@ -69,6 +69,7 @@ async function main() {
     await mkdir(path.join(root, 'work'), { recursive: true });
     await mkdir(path.join(root, 'tmp'), { recursive: true });
     const executable = await copy_node_runtime(root);
+    const canonicalScratch = await realpath(path.join(root, 'tmp'));
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
 
     server = net.createServer();
@@ -90,7 +91,7 @@ async function main() {
       catch (error) { result.root_write = error.code || 'blocked'; }
       try { fs.writeFileSync(path.join(os.tmpdir(), 'provider-write-probe'), 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
-      result.tmp_inside_root = fs.realpathSync(os.tmpdir()) === fs.realpathSync(${JSON.stringify(path.join(root, 'tmp'))});
+      result.tmp_inside_root = path.resolve(os.tmpdir()) === ${JSON.stringify(canonicalScratch)};
       result.host_network = await new Promise(resolve => {
         const socket = net.createConnection({ host: '127.0.0.1', port: ${port} });
         let settled = false;
