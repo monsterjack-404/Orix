@@ -167,6 +167,32 @@ test('static provider runner supports AbortSignal cancellation', async () => {
   }
 });
 
+test('static provider runner observes aborts that race with listener registration', async () => {
+  const controller = new AbortController();
+  const signal = controller.signal;
+  const nativeAddEventListener = signal.addEventListener.bind(signal);
+  Object.defineProperty(signal, 'addEventListener', {
+    configurable: true,
+    value(type, listener, options) {
+      if (type === 'abort') controller.abort();
+      return nativeAddEventListener(type, listener, options);
+    },
+  });
+
+  const result = await run_static_provider({
+    manifest: manifest(),
+    executable: await node_executable(),
+    args: ['-e', 'setTimeout(() => {}, 5000)'],
+    signal,
+    timeout_ms: 2000,
+    kill_grace_ms: 20,
+  });
+  assert.equal(result.cancelled, true);
+  assert.equal(result.termination_reason, 'cancelled');
+  assert.equal(result.timed_out, false);
+  assert.equal(result.ok, false);
+});
+
 test('static provider runner rejects dynamic, write-capable, network and authorization-required manifests', async () => {
   const dynamic = manifest({
     execution: {
