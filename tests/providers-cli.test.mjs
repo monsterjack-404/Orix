@@ -295,3 +295,15 @@ test('Rizin CLI forwards required isolation and sandbox root to the adapter and 
     );
   });
 });
+
+
+test('provider CLI rejects Rizin isolation flags outside the Rizin provider command', () => {
+  assert.throws(
+    () => parse_arguments(['providers', 'list', '--isolation', 'required']),
+    error => error.code === 'ORIX_CLI_PROVIDER_ISOLATION_SCOPE',
+  );
+  assert.throws(
+    () => parse_arguments(['providers', 'list', '--sandbox-root', '/opt/orix/rootfs']),
+    error => error.code === 'ORIX_CLI_PROVIDER_ISOLATION_SCOPE',
+  );
+});
