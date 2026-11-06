@@ -443,6 +443,18 @@ namespace OrixWindowsSandbox {
       start.RedirectStandardOutput = true;
       start.RedirectStandardError = true;
       using (Process process = Process.Start(start)) {
+        StringBuilder output = new StringBuilder();
+        StringBuilder error = new StringBuilder();
+        process.OutputDataReceived += (sender, eventArgs) => {
+          if (eventArgs.Data != null && output.Length < 8192)
+            output.AppendLine(eventArgs.Data.Substring(0, Math.Min(eventArgs.Data.Length, 8192 - output.Length)));
+        };
+        process.ErrorDataReceived += (sender, eventArgs) => {
+          if (eventArgs.Data != null && error.Length < 8192)
+            error.AppendLine(eventArgs.Data.Substring(0, Math.Min(eventArgs.Data.Length, 8192 - error.Length)));
+        };
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
         if (!process.WaitForExit(10000)) {
           // Do not begin AppContainer/profile cleanup while icacls may still be
           // changing the scratch ACL. Kill and synchronously observe process exit.
@@ -450,10 +462,12 @@ namespace OrixWindowsSandbox {
           process.WaitForExit();
           throw new TimeoutException("icacls integrity-label operation timed out");
         }
-        string output = process.StandardOutput.ReadToEnd();
-        string error = process.StandardError.ReadToEnd();
+        // The parameterless wait also drains completion of asynchronous output
+        // handlers on .NET Framework before the process object is disposed.
+        process.WaitForExit();
         if (process.ExitCode != 0)
-          throw new InvalidOperationException("Could not set " + level + " integrity on scratch directory: " + error + output);
+          throw new InvalidOperationException("Could not set " + level + " integrity on scratch directory: " +
+            error.ToString() + output.ToString());
       }
     }
 
