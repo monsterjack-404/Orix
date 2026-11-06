@@ -118,7 +118,7 @@ async function main() {
       catch (error) { result.root_write = error.code || 'blocked'; }
       try { fs.writeFileSync('/tmp/provider-write-probe', 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
-      const orphan = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
+      const orphan = spawn('/usr/bin/sleep', ['60'], { detached: true, stdio: 'ignore' });
       result.orphan_spawned = Number.isInteger(orphan.pid) && orphan.pid > 0;
       result.external_network = await new Promise(resolve => {
         const socket = net.createConnection({ host: '1.1.1.1', port: 443 }, () => {
@@ -231,7 +231,7 @@ async function main() {
     const throttledPeriods = Number(cpuStat.match(/^nr_throttled (\d+)$/m)?.[1] || 0);
     process.stdout.write('CPU quota probe: ' + JSON.stringify({ throttledPeriods, cpuStat }));
     const execution = await executionPromise;
-    assert.equal(execution.ok, true, execution.stderr || 'Sandboxed provider failed');
+    assert.equal(execution.ok, true, JSON.stringify({ exit_code: execution.exit_code, signal: execution.signal, termination_reason: execution.termination_reason, stderr: execution.stderr, stdout: execution.stdout.slice(0, 500) }));
     const result = JSON.parse(execution.stdout);
     assert.ok(observed, 'Live cgroup state was not captured');
     assert.equal(observed.memory, '536870912');
