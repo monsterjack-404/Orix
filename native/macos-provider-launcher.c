@@ -99,8 +99,8 @@ static int check_ancestor_acls(const char *root) {
     if (strcmp(path, "/") == 0) break;
     char *slash = strrchr(path, '/');
     if (!slash) { free(path); errno = EINVAL; return -1; }
-    if (slash == path) path[1] = '\\0';
-    else *slash = '\\0';
+    if (slash == path) path[1] = '\0';
+    else *slash = '\0';
   }
   free(path);
   return 0;
