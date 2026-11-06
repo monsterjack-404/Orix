@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
 
@@ -33,7 +32,13 @@ async function main() {
   assert.equal(process.platform, 'win32', 'This integration gate must run on Windows');
   // Keep the rootfs outside the broadly writable GitHub Actions workspace; its
   // ancestors are part of the native trust check, not just the leaf ACL.
-  const base = await mkdtemp(path.join(os.homedir(), '.orix-appcontainer-integration-'));
+  // Use a protected system directory, not the GitHub workspace or user profile.
+  // The native trust check intentionally examines every ancestor: a writable
+  // parent would let another local principal replace the sandbox rootfs.
+  const trustedParent = process.env.ProgramFiles;
+  assert.ok(trustedParent && path.isAbsolute(trustedParent),
+    'ProgramFiles must identify the protected Windows installation directory');
+  const base = await mkdtemp(path.join(trustedParent, 'ORIX-AppContainer-'));
   const root = path.join(base, 'rootfs');
   // GitHub-hosted Windows runners grant BUILTIN\\Users write access to the
   // workspace. The sandbox must not inherit that broad ACL: make the rootfs
