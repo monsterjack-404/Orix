@@ -42,3 +42,10 @@ The cleanup walk now inspects each directory entry with File.GetAttributes befor
 On this error, cleanup intentionally stops before deleting the profile-specific redirected temp tree or removing the AppContainer profile. Some earlier non-reparse entries may already have had their profile ACLs purged, but no path traversal through the reparse point is attempted. The leftover state is safer to investigate than to follow an attacker-controlled target.
 
 The Windows integration gate asserts the cleanup walker checks entry attributes, avoids File.Exists / Directory.Exists path-following prechecks, and throws on reparse points. It also creates a real Windows directory junction at the AppContainer tmp/Packages ancestor while a controlled provider process is alive, then requires native cleanup to fail with ORIX_WINDOWS_CLEANUP_REPARSE_POINT while preserving an external sentinel file. After removing the junction, the test retries cleanup and verifies that the external target remains accessible. This is an end-to-end CI test definition; it is not considered verified until the exact PR head's Windows job completes successfully.
+
+
+## AppContainer SID lookup errors fail closed
+
+Cleanup no longer interprets every nonzero HRESULT from DeriveAppContainerSidFromAppContainerName as proof that a profile is absent. It now raises the HRESULT and reports cleanup failure. The Windows API contract documents S_OK and E_INVALIDARG for SID derivation; it does not define arbitrary failures as an absent-profile signal. DeleteAppContainerProfile is documented as idempotent when the named profile does not exist, so a failed SID lookup is not silently converted into success.
+
+The Windows integration gate checks that the cleanup path propagates SID derivation failures and runs the compiled helper with an invalid overlength profile name, requiring nonzero exit code 125 and a native error diagnostic. It then runs normal cleanup for the valid profile to ensure the negative probe does not prevent subsequent recovery.
