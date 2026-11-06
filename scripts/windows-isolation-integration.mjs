@@ -31,7 +31,7 @@ function manifest() {
 
 async function main() {
   assert.equal(process.platform, 'win32', 'This integration gate must run on Windows');
-  const base = await mkdtemp(path.join(os.tmpdir(), 'orix-appcontainer-integration-'));
+  const base = await mkdtemp(path.join(process.cwd(), '.orix-appcontainer-integration-'));
   const root = path.join(base, 'rootfs');
   const hostSecret = path.join(base, 'host-only-secret.txt');
   const hostSecretValue = 'host-only-secret-' + process.pid;
