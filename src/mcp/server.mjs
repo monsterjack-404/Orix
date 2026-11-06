@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { inspect_file } from '../core/inspect.mjs';
 import { analyze_har_file } from '../network/har.mjs';
+import { analyze_playwright_trace_file } from '../network/playwright-trace.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project } from '../project/intelligence.mjs';
 import { analyze_project_architecture } from '../project/architecture.mjs';
@@ -137,6 +138,22 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         path: { type: 'string', minLength: 1 },
         max_entries: integer('Maximum HAR transactions analyzed.', 100000, 1),
         max_hosts: integer('Maximum distinct hosts returned.', 10000, 1),
+      },
+      required: ['path'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'orix.analyze_playwright_trace',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    description: 'Analyze a workspace-confined Playwright trace ZIP offline. Returns bounded action, request, console and timing metadata only; never executes pages, replays requests, or exports secrets, DOM snapshots, screenshots or resource files.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', minLength: 1 },
+        max_events: integer('Maximum JSONL events analyzed.', 50000, 1),
+        max_actions: integer('Maximum action records retained.', 10000, 1),
+        max_requests: integer('Maximum network request records retained.', 20000, 1),
       },
       required: ['path'],
       additionalProperties: false,
@@ -411,6 +428,14 @@ export async function call_orix_tool(name, args = {}, options = {}) {
     case 'orix.analyze_har': {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       return analyze_har_file(target.path, { max_entries: args.max_entries, max_hosts: args.max_hosts });
+    }
+    case 'orix.analyze_playwright_trace': {
+      const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
+      return analyze_playwright_trace_file(target.path, {
+        max_events: args.max_events ?? 10000,
+        max_actions: args.max_actions ?? 2000,
+        max_requests: args.max_requests ?? 5000,
+      });
     }
     case 'orix.formats':
       return { schema_version: 'orix.formats.v1', formats: list_format_capabilities() };

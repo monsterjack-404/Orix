@@ -27,6 +27,7 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | `orix.scan_project` | `path`, optional file/entry/depth limits | Project inventory, manifests, imports and symbol candidates |
 | `orix.analyze_architecture` | `path`, optional inventory and graph limits | Static source-import graph with entry-point candidates, cycles, reachability, hotspots and explicit limitations |
 | `orix.analyze_har` | `path`, optional `max_entries` and `max_hosts` | Offline HAR 1.2 request metadata, bounded host/status/timing summaries and evidence-linked review findings |
+| `orix.analyze_playwright_trace` | Workspace-confined `path`, optional `max_events`, `max_actions`, `max_requests` | Offline Playwright trace ZIP v8/v9 action timeline, network/console metadata, media-presence counts and SHA-256 provenance; no page execution, request replay, DOM/media extraction or payload export |
 | `orix.formats` | No arguments | Recognized signatures and parser capability metadata |
 | `orix.capabilities` | No arguments | Source-backed implemented/partial/planned inventory, format registry, provider declarations and explicit boundaries |
 | `orix.compare_reports` | `baseline_path`, `current_path` | Deterministic artifact/scan comparison, SHA-256 deltas and indicator changes |
@@ -48,7 +49,7 @@ Tool definitions also publish MCP safety annotations. Inspection, inventory, com
 
 ## Security boundary
 
-- Static analysis tools do not execute target code. Case creation, case mutations and bundle exchange are explicit workspace-confined writes; HAR analysis remains offline and does not replay requests or export payload/header/query values. The Rizin tool is marked as an external-process operation: it starts the user-selected executable with fixed arguments, which has the same OS permissions as the account and is not sandboxed. Use only trusted Rizin/plugin installations. The inspected target file and project code are not executed.
+- Static analysis tools do not execute target code. Case creation, case mutations and bundle exchange are explicit workspace-confined writes; HAR and Playwright trace analysis read user-supplied local captures only; neither replays network requests, starts a browser, executes pages or exports payload/header/cookie/query values, DOM snapshots or media bytes. The Rizin tool is marked as an external-process operation: it starts the user-selected executable with fixed arguments, which has the same OS permissions as the account and is not sandboxed. Use only trusted Rizin/plugin installations. The inspected target file and project code are not executed.
 - No shell command-string, arbitrary command-argument, remote URL or network-request tool is exposed. `orix.rizin_functions` is the explicit exception that launches a user-selected Rizin executable with fixed adapter arguments; it is not a sandbox and has the same OS permissions as its account.
 - Symlinks are not followed by the underlying scanners.
 - Existing parser, traversal and file-size limits remain active.
