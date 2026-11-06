@@ -127,7 +127,7 @@ This runner is a process-control boundary, **not an operating-system sandbox**. 
 
 ## 5. Rizin import adapter
 
-`analyze_rizin_imports` is the first concrete optional adapter. It probes the installed Rizin version, invokes the documented command-line JSON import command, normalizes import name/library/binding/type/ordinal/PLT fields, hashes the input, and rejects an input whose identity or metadata changes during the run.
+`analyze_rizin_imports` is the first concrete optional adapter. It probes the installed Rizin version, invokes the documented command-line JSON import command, normalizes import name/library/binding/type/ordinal/PLT fields, hashes the input, and rejects an input whose identity or metadata changes during the run. Before hashing or snapshot creation, it re-checks the original path after canonical resolution and requires the initial path metadata, resolved file identity, and post-resolution path identity to agree; symbolic-link inputs are rejected.
 
 ~~~js
 import { analyze_rizin_imports } from '@orix/cli';
