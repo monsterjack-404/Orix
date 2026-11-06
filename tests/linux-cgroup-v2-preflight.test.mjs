@@ -137,27 +137,41 @@ test('cgroup directory permission assessment rejects invalid UID and mode metada
   );
 });
 
-async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode = 0o700, events_mode = 0o600, kill_mode = 0o600, mountpoint_symlink_ancestor = false, parent_symlink_component = false } = {}) {
+async function create_fake_delegated_host({
+  parent_mode = 0o700,
+  supervisor_mode = 0o700,
+  events_mode = 0o600,
+  kill_mode = 0o600,
+  mountpoint_symlink_ancestor = false,
+  parent_symlink_component = false,
+} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'orix-cgroup-preflight-'));
   const actual_mountpoint = path.join(root, 'cgroup2');
-  const mountpoint = mountpoint_symlink_ancestor ? path.join(root, 'mount-alias') : actual_mountpoint;
+  const mountpoint = mountpoint_symlink_ancestor
+    ? path.join(root, 'mount-alias')
+    : actual_mountpoint;
   const actual_parent = path.join(actual_mountpoint, 'tenant');
   const parent_name = parent_symlink_component ? 'tenant-alias' : 'tenant';
-  const parent = path.join(actual_parent, 'supervisor');
+  const supervisor = path.join(actual_parent, 'supervisor');
   const proc_self = path.join(root, 'proc', 'self');
-  await mkdir(parent, { recursive: true });
+
+  await mkdir(supervisor, { recursive: true });
   if (mountpoint_symlink_ancestor) await symlink(actual_mountpoint, mountpoint);
-  if (parent_symlink_component) await symlink(actual_parent, path.join(actual_mountpoint, parent_name));
+  if (parent_symlink_component) {
+    await symlink(actual_parent, path.join(actual_mountpoint, parent_name));
+  }
   await mkdir(proc_self, { recursive: true });
-  const configured_parent = path.join(mountpoint, parent_name);\n  await chmod(actual_parent, parent_mode);
-  await chmod(parent, supervisor_mode);
+
+  const configured_parent = path.join(mountpoint, parent_name);
+  await chmod(actual_parent, parent_mode);
+  await chmod(supervisor, supervisor_mode);
 
   const files = {
-    'cgroup.controllers': 'cpu memory pids\n',
-    'cgroup.subtree_control': '+cpu +memory +pids\n',
+    'cgroup.controllers': 'cpu memory pids\\n',
+    'cgroup.subtree_control': '+cpu +memory +pids\\n',
     'cgroup.procs': '',
-    'cgroup.type': 'domain\n',
-    'cgroup.events': 'populated 0\nfrozen 0\n',
+    'cgroup.type': 'domain\\n',
+    'cgroup.events': 'populated 0\\nfrozen 0\\n',
     'cgroup.kill': '',
   };
   await Promise.all(Object.entries(files).map(([name, contents]) =>
@@ -166,10 +180,13 @@ async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode
   await chmod(path.join(actual_parent, 'cgroup.kill'), kill_mode);
   await writeFile(
     path.join(proc_self, 'mountinfo'),
-    '29 23 0:26 / ' + mountpoint + ' rw,nosuid,nodev - cgroup2 cgroup rw\n',
+    '29 23 0:26 / ' + mountpoint + ' rw,nosuid,nodev - cgroup2 cgroup rw\\n',
   );
-  await writeFile(path.join(proc_self, 'cgroup'), '0::/tenant/supervisor/orix\n');
-  return { root, parent: path.join(mountpoint, 'tenant') };
+  await writeFile(
+    path.join(proc_self, 'cgroup'),
+    '0::/' + parent_name + '/supervisor/orix\\n',
+  );
+  return { root, parent: configured_parent };
 }
 
 if (process.platform === 'linux') {
