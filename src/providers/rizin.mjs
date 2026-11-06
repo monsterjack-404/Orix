@@ -1,11 +1,11 @@
 // JavaScript, src/providers/rizin.mjs, Node.js 20+, read-only Rizin import metadata adapter.
 
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { constants as FS_CONSTANTS, createReadStream, createWriteStream } from 'node:fs';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
-import { chmod, lstat, mkdtemp, realpath, rm, stat } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, open, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { OrixError } from '../core/errors.mjs';
 import { validate_provider_manifest } from './manifest.mjs';
@@ -129,7 +129,9 @@ async function sha256_file(file_path, maximum_bytes, signal) {
   return { digest: hash.digest('hex'), bytes_read };
 }
 
-async function copy_file_bounded(source, destination, maximum_bytes, signal) {
+async function copy_file_bounded(source, destination, maximum_bytes, signal, expected_info) {
+  let handle;
+  const hash = createHash('sha256');
   let bytes_copied = 0;
   const limiter = new Transform({
     transform(chunk, encoding, callback) {
@@ -141,16 +143,33 @@ async function copy_file_bounded(source, destination, maximum_bytes, signal) {
         }));
         return;
       }
+      hash.update(chunk);
       callback(null, chunk);
     },
   });
   try {
+    // Open once, then hash and snapshot through this descriptor. A later path
+    // replacement cannot redirect either read to a different inode.
+    handle = await open(source, FS_CONSTANTS.O_RDONLY | (FS_CONSTANTS.O_NOFOLLOW ?? 0));
+    const opened = await handle.stat();
+    if (!opened.isFile() || !same_file_identity(expected_info, opened)) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input identity changed before its private snapshot was opened');
+    }
+    const path_after_open = await lstat(source);
+    if (path_after_open.isSymbolicLink() || !path_after_open.isFile() ||
+        !same_file_identity(path_after_open, opened)) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input path changed while its private snapshot was opened');
+    }
     await pipeline(
-      createReadStream(source, { signal }),
+      handle.createReadStream({ autoClose: false, start: 0 }),
       limiter,
       createWriteStream(destination, { flags: 'wx', mode: 0o400 }),
       { signal },
     );
+    const after = await handle.stat();
+    if (!same_file_identity(opened, after)) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input changed while its private snapshot was created');
+    }
   } catch (error) {
     if (error instanceof OrixError) throw error;
     if (signal?.aborted) {
@@ -159,8 +178,10 @@ async function copy_file_bounded(source, destination, maximum_bytes, signal) {
     provider_error('ORIX_RIZIN_SNAPSHOT_CREATE_FAILED', 'A bounded private Rizin input snapshot could not be created', {
       reason: error.code ?? 'snapshot-error',
     });
+  } finally {
+    await handle?.close().catch(() => {});
   }
-  return bytes_copied;
+  return { bytes_copied, digest: hash.digest('hex') };
 }
 
 function parse_engine_version(output) {
@@ -259,23 +280,18 @@ export async function analyze_rizin_imports(options = {}) {
   if (!Number.isSafeInteger(maximum_imports) || maximum_imports < 0 || maximum_imports > 1_000_000) {
     throw new TypeError('max_imports must be an integer between 0 and 1000000');
   }
-  if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled before input hashing');
-  const input_hash = await sha256_file(before.canonical_path, maximum_bytes, signal);
-  if (input_hash.bytes_read !== before.info.size) {
-    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input size changed while it was hashed', {
-      expected_size_bytes: before.info.size, actual_size_bytes: input_hash.bytes_read,
-    });
-  }
+  if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled before input snapshot creation');
   // Analyze a private copy so the external tool never receives the caller's original path.
-  // The copy is private to this process, read-only by default, and checked before and after use.
+  // Hashing and copying share one already-open descriptor to avoid path re-resolution.
   const snapshot_directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-'));
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
-    const snapshot_bytes = await copy_file_bounded(before.canonical_path, snapshot_path, maximum_bytes, signal);
-    if (snapshot_bytes !== input_hash.bytes_read) {
+    const copied_input = await copy_file_bounded(before.canonical_path, snapshot_path, maximum_bytes, signal, before.info);
+    const input_hash = { digest: copied_input.digest, bytes_read: copied_input.bytes_copied };
+    if (input_hash.bytes_read !== before.info.size) {
       provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input size changed while its private analysis snapshot was created', {
-        expected_size_bytes: input_hash.bytes_read, actual_size_bytes: snapshot_bytes,
+        expected_size_bytes: before.info.size, actual_size_bytes: input_hash.bytes_read,
       });
     }
     await chmod(snapshot_path, 0o400);
@@ -568,22 +584,17 @@ export async function analyze_rizin_functions(options = {}) {
 
   const analysis_started_at = Date.now();
   const before = await file_snapshot(input_path, manifest.limits.max_input_bytes);
-  if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin function analysis was cancelled before input hashing');
-  const input_hash = await sha256_file(before.canonical_path, manifest.limits.max_input_bytes, signal);
-  if (input_hash.bytes_read !== before.info.size) {
-    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input size changed while it was hashed', {
-      expected_size_bytes: before.info.size, actual_size_bytes: input_hash.bytes_read,
-    });
-  }
+  if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin function analysis was cancelled before input snapshot creation');
 
   const snapshot_directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-functions-'));
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
-    const snapshot_bytes = await copy_file_bounded(before.canonical_path, snapshot_path, manifest.limits.max_input_bytes, signal);
-    if (snapshot_bytes !== input_hash.bytes_read) {
+    const copied_input = await copy_file_bounded(before.canonical_path, snapshot_path, manifest.limits.max_input_bytes, signal, before.info);
+    const input_hash = { digest: copied_input.digest, bytes_read: copied_input.bytes_copied };
+    if (input_hash.bytes_read !== before.info.size) {
       provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input size changed while its private function-analysis snapshot was created', {
-        expected_size_bytes: input_hash.bytes_read, actual_size_bytes: snapshot_bytes,
+        expected_size_bytes: before.info.size, actual_size_bytes: input_hash.bytes_read,
       });
     }
     await chmod(snapshot_path, 0o400);
