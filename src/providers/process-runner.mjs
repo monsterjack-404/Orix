@@ -301,8 +301,8 @@ function signal_process(child, detached, signal) {
  * Run an explicitly declared read-only static provider.
  *
  * The child is started with an argument vector and shell:false. This function
- * bounds time and captured output. OS isolation is opt-in and fail-closed;
- * without isolation:'required', this remains process control rather than a sandbox.
+ * bounds time and captured output. Callers must explicitly choose isolation:'required'
+ * or the visibly unsandboxed legacy mode isolation:'none'.
  */
 export async function run_static_provider(options) {
   const descriptors = plain_options(options);
@@ -335,7 +335,10 @@ export async function run_static_provider(options) {
     max_output_bytes: descriptors.max_output_bytes?.value,
     kill_grace_ms: descriptors.kill_grace_ms?.value,
   });
-  const isolation = descriptors.isolation?.value ?? 'none';
+  const isolation = descriptors.isolation?.value;
+  if (isolation === undefined) {
+    throw new TypeError('isolation must be explicitly set to required or none; none is unsandboxed legacy process control');
+  }
   if (isolation !== 'none' && isolation !== 'required') {
     throw new TypeError('isolation must be either none or required');
   }
@@ -367,6 +370,19 @@ export async function run_static_provider(options) {
     launch_cwd = prepared.cwd;
     launch_env = prepared.env;
     isolation_cleanup = prepared.cleanup;
+  }
+  if (signal?.aborted) {
+    try { if (isolation_cleanup) await isolation_cleanup(); }
+    catch (error) {
+      runner_error('ORIX_PROVIDER_ISOLATION_CLEANUP_FAILED',
+        'Provider cancellation occurred during isolation setup and cleanup failed', {
+          provider_id: manifest.id,
+          reason: error?.code ?? error?.name ?? 'cleanup-failed',
+        });
+    }
+    runner_error('ORIX_PROVIDER_CANCELLED', 'Provider process was cancelled before launch', {
+      provider_id: manifest.id,
+    });
   }
 
   const started_at = new Date().toISOString();
@@ -450,6 +466,7 @@ export async function run_static_provider(options) {
       }
     }
 
+    if (signal) signal.addEventListener('abort', on_abort, { once: true });
     try {
       child = spawn(launch_executable, launch_args, {
         cwd: launch_cwd,
@@ -464,6 +481,7 @@ export async function run_static_provider(options) {
       return;
     }
 
+    if (signal?.aborted) on_abort();
     child.stdout.on('data', chunk => capture('stdout', chunk));
     child.stderr.on('data', chunk => capture('stderr', chunk));
     child.once('error', finish_error);
@@ -487,6 +505,8 @@ export async function run_static_provider(options) {
       resolve({
         schema_version: 'orix.provider-execution.v1',
         provider: { id: manifest.id, version: manifest.version },
+        isolation,
+        isolation_enforced: isolation === 'required',
         executable,
         args_count: executable_args.length + args.length,
         started_at,
@@ -523,7 +543,6 @@ export async function run_static_provider(options) {
       });
     });
 
-    if (signal) signal.addEventListener('abort', on_abort, { once: true });
     timeout_timer = setTimeout(() => {
       timed_out = true;
       terminate();
