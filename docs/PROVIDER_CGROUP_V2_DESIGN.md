@@ -37,6 +37,31 @@ The selected design therefore uses a small trusted bootstrap process:
 
 The helper must not accept provider-controlled configuration. Its input is a single bounded, schema-checked host-generated record. It must not invoke a shell, resolve commands through PATH, or inherit the provider’s environment. The host must use the validated absolute Node executable and the packaged helper path.
 
+## Required delegated hierarchy layout
+
+The delegated parent must be an **empty inner cgroup** when domain controllers are enabled for its children. Linux cgroup v2 enforces the no-internal-process constraint: a non-root domain cgroup cannot distribute domain resources to children while it still contains processes of its own. Therefore, ORIX must not leave its long-lived supervisor process in the delegated parent and then create provider children underneath it.
+
+The administrator-provisioned layout must place the ORIX manager and provider runs in sibling cgroups:
+
+```text
+<delegated-parent>/        # empty; cpu, memory and pids already enabled
+├── supervisor/            # long-lived ORIX host process(es)
+├── provider-<run-id>/     # one leaf cgroup per provider execution
+└── provider-<run-id>/     # another independent leaf
+```
+
+Requirements:
+
+- The parent is a dedicated, administrator-delegated subtree, not an arbitrary systemd-managed cgroup or the cgroup filesystem root.
+- Before child resource controllers are enabled, the manager must be moved to an administrator-provisioned `supervisor/` child. The parent must have no direct processes.
+- The administrator enables `cpu`, `memory` and `pids` for the parent’s children before ORIX starts. ORIX verifies the exact controller state; it does not modify parent `cgroup.subtree_control` or parent resource limits at runtime.
+- ORIX is the single writer for its delegated subtree while running. Multiple independent ORIX managers must not concurrently manage the same subtree.
+- The host manager must verify the parent is empty and that the expected sibling layout and ownership/permissions are valid. If not, required isolation fails closed.
+- Each provider run is a leaf cgroup. The trusted bootstrap process is moved from `supervisor/` into that leaf before Bubblewrap is spawned; all later descendants inherit the leaf membership.
+- The provider-visible rootfs must not expose the host cgroup hierarchy or the delegated parent.
+
+This layout follows the kernel’s no-internal-process constraint and systemd’s delegation guidance. See the [Linux kernel cgroup v2 documentation](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#no-internal-process-constraint) and [systemd cgroup delegation guidance](https://github.com/systemd/systemd/blob/main/docs/CGROUP_DELEGATION.md).
+
 ## Parent and child cgroup validation
 
 Before creating a child, implementation must:
@@ -73,6 +98,19 @@ Provider manifests may request a stricter limit only if policy explicitly allows
 - Do not resolve the provider result as successful until teardown has completed and the child cgroup has been removed.
 - Ensure a failed setup cleans up an empty child cgroup without ever launching the provider.
 - Do not rely on process groups for descendant cleanup: Bubblewrap’s session behavior can separate process groups, while cgroup membership remains the authoritative grouping.
+
+## Existing process-runner lifecycle constraints
+
+The current `run_static_provider()` implementation directly spawns the prepared executable, owns stdout/stderr capture, starts a wall-clock timer, and settles its result from child-process `close`. Timeout, abort and output overflow currently signal the POSIX process group (or the direct child on Windows). A cgroup-backed implementation must change this lifecycle rather than bolting a PID move onto the existing spawn call.
+
+Required integration behavior:
+
+- Spawn only the trusted bootstrap helper as the initial child. The provider executable is passed to it as validated, bounded host-generated configuration; the helper must join the run cgroup before launching Bubblewrap.
+- Keep the existing argument, environment, wall-clock and captured-output validation. The bootstrap must not inherit provider-controlled environment values or execute a shell.
+- Route timeout, abort, output overflow, bootstrap failure, child spawn error and normal child completion through one idempotent finalization path.
+- On every terminal path, kill any remaining tasks in the run cgroup, wait for `cgroup.events` to report `populated 0`, and remove the run cgroup only after emptiness is proven. Normal provider exit also requires this check because descendants may outlive the first process.
+- Do not settle a successful result on the initial child `close` event alone. A descendant may retain inherited stdout/stderr descriptors, and the cgroup’s populated state is the authority for process cleanup.
+- Preserve separate diagnostics for provider exit status, termination reason and cgroup cleanup failure. Cleanup failure must never be reported as successful provider execution.
 
 ## Required test plan
 
