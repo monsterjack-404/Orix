@@ -503,7 +503,12 @@ export async function run_static_provider(options) {
       });
     });
 
-    if (signal) signal.addEventListener('abort', on_abort, { once: true });
+    if (signal) {
+      signal.addEventListener('abort', on_abort, { once: true });
+      // Abort may race with listener registration after the pre-launch check.
+      // Re-check after subscribing so an abort in that gap cannot be lost.
+      if (signal.aborted) on_abort();
+    }
     timeout_timer = setTimeout(() => {
       timed_out = true;
       terminate();
