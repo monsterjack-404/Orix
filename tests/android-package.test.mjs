@@ -408,7 +408,7 @@ test('android CLI writes a JSON APK report and refuses to overwrite output', asy
   try {
     const input = path.join(directory, 'sample.apk');
     const output = path.join(directory, 'android-report.json');
-    await writeFile(input, make_apk());
+    await writeFile(input, make_apk(), { flag: 'wx', mode: 0o600 });
     const result = spawnSync(process.execPath, [cli_path, 'android', input, '--json', '--max-archive-entries', '1', '--out', output], {
       cwd: repository_root, encoding: 'utf8', timeout: 15000,
     });
