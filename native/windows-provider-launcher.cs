@@ -326,9 +326,10 @@ namespace OrixWindowsSandbox {
         PropagationFlags.None, AccessControlType.Allow));
       Directory.SetAccessControl(temp, security);
       SetIntegrityLevel(temp, "L");
-      // Windows AppContainer redirects TEMP beneath the package-specific AC\\Temp
-      // directory even when TEMP points at the explicit scratch root. Provision
-      // that exact redirected location before the provider starts.
+
+      // AppContainer redirects Win32 temporary-file APIs into a package-specific
+      // AC\\Temp directory beneath TEMP. Provision only that private redirected
+      // path and grant the package SID the same bounded scratch permissions.
       string appContainerTemp = Path.Combine(temp, "Packages", profileName.ToLowerInvariant(), "AC", "Temp");
       Directory.CreateDirectory(appContainerTemp);
       DirectorySecurity redirectedSecurity = Directory.GetAccessControl(appContainerTemp, AccessControlSections.Access);
@@ -337,6 +338,7 @@ namespace OrixWindowsSandbox {
         PropagationFlags.None, AccessControlType.Allow));
       Directory.SetAccessControl(appContainerTemp, redirectedSecurity);
       SetIntegrityLevel(appContainerTemp, "L");
+
       environment["TEMP"] = temp;
       environment["TMP"] = temp;
       environment["HOME"] = temp;
