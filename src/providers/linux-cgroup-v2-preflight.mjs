@@ -69,40 +69,39 @@ function unsafe_control_file(file, reason) {
 }
 
 async function read_control_text(file) {
-  let before;
-  try { before = await lstat(file); }
-  catch (error) { throw error; }
-  if (before.isSymbolicLink() || !before.isFile()) {
-    throw unsafe_control_file(file, before.isSymbolicLink() ? 'symlink' : 'not-regular-file');
+  const nofollow = FS_CONSTANTS.O_NOFOLLOW;
+  const nonblocking = FS_CONSTANTS.O_NONBLOCK;
+  if (typeof nofollow !== 'number' || typeof nonblocking !== 'number') {
+    throw unsafe_control_file(file, 'required-no-follow-open-flags-unavailable');
   }
-  const nofollow = FS_CONSTANTS.O_NOFOLLOW ?? 0;
-  const nonblocking = FS_CONSTANTS.O_NONBLOCK ?? 0;
   let handle;
   try {
+    // Make the security decision on the opened descriptor, not a prior path stat.
+    // O_NOFOLLOW rejects a final symlink; O_NONBLOCK prevents a swapped FIFO from hanging.
     handle = await open(file, FS_CONSTANTS.O_RDONLY | nofollow | nonblocking);
     const opened = await handle.stat();
-    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
-      throw unsafe_control_file(file, 'identity-changed-before-open');
-    }
+    if (!opened.isFile()) throw unsafe_control_file(file, 'opened-object-is-not-a-regular-file');
     return (await handle.readFile('utf8')).trim();
+  } catch (error) {
+    if (error.code === 'ELOOP' || error.code === 'ENOTDIR') {
+      throw unsafe_control_file(file, 'open-rejected-symlink-or-non-directory');
+    }
+    throw error;
   } finally {
     await handle?.close().catch(() => {});
   }
 }
 
 async function can_open_control_file(file, access_mode) {
-  let before;
-  try { before = await lstat(file); }
-  catch { return false; }
-  if (before.isSymbolicLink() || !before.isFile()) return false;
-
-  const nofollow = FS_CONSTANTS.O_NOFOLLOW ?? 0;
-  const nonblocking = FS_CONSTANTS.O_NONBLOCK ?? 0;
+  const nofollow = FS_CONSTANTS.O_NOFOLLOW;
+  const nonblocking = FS_CONSTANTS.O_NONBLOCK;
+  if (typeof nofollow !== 'number' || typeof nonblocking !== 'number') return false;
   let handle;
   try {
+    // Probe the capability on the descriptor itself; never follow a control-file symlink.
     handle = await open(file, access_mode | nofollow | nonblocking);
     const opened = await handle.stat();
-    return opened.isFile() && opened.dev === before.dev && opened.ino === before.ino;
+    return opened.isFile();
   } catch {
     return false;
   } finally {
