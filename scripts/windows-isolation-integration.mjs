@@ -47,7 +47,7 @@ async function main() {
     'Cleanup must inspect each directory entry before descending');
   assert.doesNotMatch(purgeSource, /File\.Exists\(path\)|Directory\.Exists\(path\)/,
     'Cleanup must not use path existence helpers that can follow a reparse target');
-  assert.match(purgeSource, /FileAttributes\.ReparsePoint[\s\S]*?ORIX_WINDOWS_CLEANUP_REPARSE_POINT[\s\S]*?throw new InvalidOperationException/,
+  assert.match(purgeSource, /FileAttributes\.ReparsePoint[\s\S]*?throw new InvalidOperationException\("ORIX_WINDOWS_CLEANUP_REPARSE_POINT/,
     'Cleanup must abort on reparse points instead of skipping them and continuing with descendant paths');
 
   assert.doesNotMatch(launcherSource, /Environment\.GetEnvironmentVariable\("SystemRoot"\)/,
