@@ -521,7 +521,52 @@ async function main() {
       assert.equal(command.includes('/usr/bin/sleep'), false, 'Timed-out provider descendant survived cgroup.kill');
     }
 
-    process.stdout.write('Linux cgroup v2 integration passed: FD attach-before-exec, rootfs/network isolation, RLIMITs, cpu.max throttling, memory.max OOM, pids.max rejection, descendant teardown and empty-cgroup removal.\\n');
+    // Verify captured-output overflow also tears down every task in the run cgroup.
+    const outputLimitMarker = 'ORIX_CGROUP_OUTPUT_LIMIT_PROBE_' + process.pid;
+    const outputLimitProbe = `
+      import { spawn } from 'node:child_process';
+      const marker = ${JSON.stringify(outputLimitMarker)};
+      const child = spawn('/usr/bin/sleep', ['30'], { stdio: 'ignore' });
+      child.unref();
+      process.stdout.write(marker + 'x'.repeat(64 * 1024));
+      setInterval(() => {}, 1000);
+    `;
+    const outputLimitPromise = run_static_provider({
+      manifest: manifest(),
+      executable: nodePath,
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      args: ['--input-type=module', '-e', outputLimitProbe],
+      timeout_ms: 8_000,
+      max_output_bytes: 1_024,
+    });
+    let outputLimitSample = null;
+    for (let attempt = 0; attempt < 250; attempt += 1) {
+      outputLimitSample = await sample_cgroup(delegated.parent, outputLimitMarker).catch(error => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (outputLimitSample?.provider_seen && outputLimitSample.sleep_pids.length > 0) break;
+      await delay(20);
+    }
+    assert.ok(outputLimitSample?.provider_seen, 'Output-limit provider never became visible in its run cgroup');
+    assert.ok(outputLimitSample.sleep_pids.length > 0, 'Output-limit probe did not create a descendant');
+    const outputLimitedExecution = await outputLimitPromise;
+    assert.equal(outputLimitedExecution.output_limited, true, 'Captured-output overflow was not reported');
+    assert.equal(outputLimitedExecution.termination_reason, 'output-limit');
+    assert.equal(outputLimitedExecution.isolation_cleanup.complete, true);
+    assert.equal(outputLimitedExecution.isolation_cleanup.failed, false);
+    assert.equal(outputLimitedExecution.isolation_cleanup.report.removed, true);
+    for (const pid of outputLimitSample.sleep_pids) {
+      const command = await readFile('/proc/' + pid + '/cmdline', 'utf8').catch(error => {
+        if (error.code === 'ENOENT') return '';
+        throw error;
+      });
+      assert.equal(command.includes('/usr/bin/sleep'), false, 'Output-limited provider descendant survived cgroup.kill');
+    }
+
+    process.stdout.write('Linux cgroup v2 integration passed: FD attach-before-exec, rootfs/network isolation, RLIMITs, cpu.max throttling, memory.max OOM, pids.max rejection, normal/cancel/timeout/output-limit descendant teardown and empty-cgroup removal.\\n');
   } finally {
     const cleanupErrors = [];
     try {
