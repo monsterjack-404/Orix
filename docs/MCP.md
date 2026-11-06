@@ -6,7 +6,7 @@ ORIX includes a dependency-free Model Context Protocol server using the standard
 
 
 
-The `orix.rizin_functions` tool accepts an optional `executable_args` array (up to 16 literal strings) for explicitly selected wrapper executables. Values are prepended to Rizin's argv without shell evaluation and remain subject to the bounded provider process runner. It also accepts `isolation: 'required'` and `sandbox_root` to opt into Linux Bubblewrap namespace/filesystem isolation. The sandbox root must be an existing directory inside a configured MCP workspace root; isolation defaults to `none`.
+The `orix.rizin_functions` and `orix.rizin_imports` tools accept an optional `executable_args` array (up to 16 literal strings) for explicitly selected wrapper executables. Values are prepended to Rizin's argv without shell evaluation and remain subject to the bounded provider process runner. Both tools accept `isolation: 'required'` and `sandbox_root` to opt into Linux Bubblewrap namespace/filesystem isolation. The sandbox root must be an existing directory inside a configured MCP workspace root; isolation defaults to `none`.
 ## Start
 
 From the repository root:
@@ -22,6 +22,7 @@ Configure an MCP client with command `node`, one argument containing the absolut
 | Tool | Input | Result |
 |---|---|---|
 | `orix.inspect_file` | `path`, optional read/file MiB and string limits | Versioned artifact report with complete-file SHA-256 |
+| `orix.rizin_imports` | Workspace-confined `path`, explicit `executable`, optional `max_imports`/time/output limits, `isolation: none|required`, workspace-confined `sandbox_root` | Bounded static imported-symbol inventory with SHA-256 provenance; explicit Linux Bubblewrap isolation when requested |
 | `orix.rizin_functions` | Workspace-confined `path`, explicit `executable`, optional function/address/instruction/decompile/time/output limits, `isolation: none|required`, workspace-confined `sandbox_root` | Rizin function inventory, address-scoped assembly disassembly and optional rz-ghidra pseudocode with SHA-256 provenance; explicit Linux Bubblewrap isolation when requested |
 | `orix.scan_directory` | `path`, optional file/entry/depth/concurrency limits | Bounded directory scan and artifact reports |
 | `orix.scan_project` | `path`, optional file/entry/depth limits | Project inventory, manifests, imports and symbol candidates |
