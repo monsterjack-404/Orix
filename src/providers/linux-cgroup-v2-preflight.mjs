@@ -91,6 +91,16 @@ export function assess_cgroup_directory_permissions(metadata, expected_uid) {
 }
 
 /**
+ * Node's access(2)-backed checks use real IDs. They are only suitable for this
+ * effective-UID preflight when real/effective UID and GID are identical.
+ */
+export function access_credentials_match(real_uid, effective_uid, real_gid, effective_gid) {
+  const valid = [real_uid, effective_uid, real_gid, effective_gid]
+    .every(value => Number.isSafeInteger(value) && value >= 0);
+  return valid && real_uid === effective_uid && real_gid === effective_gid;
+}
+
+/**
  * Read-only deployment diagnostic. It does not create directories, move tasks,
  * write controller files, or claim kernel enforcement.
  */
@@ -197,8 +207,9 @@ export async function inspect_linux_cgroup_v2(options = {}) {
 
     // access(2) checks real IDs. Do not claim readiness from those checks if
     // the process is running with different effective credentials.
-    parent.access_credentials_match = process.getuid() === process.geteuid() &&
-      process.getgid() === process.getegid();
+    parent.access_credentials_match = access_credentials_match(
+      process.getuid(), process.geteuid(), process.getgid(), process.getegid(),
+    );
     parent.writable = parent.access_credentials_match &&
       await access(configured_parent, FS_CONSTANTS.W_OK | FS_CONSTANTS.X_OK).then(() => true, () => false);
     parent.cgroup_events_available = parent.access_credentials_match &&
