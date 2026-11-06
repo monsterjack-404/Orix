@@ -32,7 +32,7 @@ ORIX is designed around one simple rule: **a conclusion should never lose the ev
 
 It is not a claim that one parser replaces every specialist tool. ORIX provides a coherent local workflow and integrates selected specialist capabilities through explicit, optional adapters.
 
-> **Current release line: 0.5.0 — Artifact, Project, Evidence, Interchange + MCP Intelligence**  
+> Current release line: **0.5.0 — Artifact, Project, Evidence, Interchange + MCP Intelligence**  
 > **Runtime:** Node.js 20.11+ · **Runtime dependencies:** Node.js built-ins only · **Core mode:** local, static analysis
 
 Product direction and release scope are intentionally separated. The [Product Charter](docs/PRODUCT_CHARTER.md), [Capability Matrix](docs/CAPABILITY_MATRIX.md), and [Implementation Backlog](docs/IMPLEMENTATION_BACKLOG.md) describe the target and planned work; they are not proof that every planned capability is already available.
@@ -101,7 +101,7 @@ flowchart LR
     D --> F["Cases · Evidence ledger"]
     G["CLI · JavaScript API · MCP stdio"] --> B
     H["Optional Rizin / OSV enrichment"] -. "explicit opt-in" .-> C
-    I["Local report explorer"] --> E
+    J["Saved ORIX JSON report"] --> I["Local report explorer"]
 ~~~
 
 The report explorer reads an exported report locally. Optional enrichment is separate from the offline core path and must be explicitly requested.
