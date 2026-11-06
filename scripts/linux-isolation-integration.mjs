@@ -84,7 +84,7 @@ async function main() {
       import { spawnSync } from 'node:child_process';
       const result = { namespace_pid: process.pid, namespace_parent_pid: process.ppid, host_pid: Number(process.env.ORIX_HOST_PID) };
       const nested_userns = spawnSync('/usr/bin/unshare', ['--user', '--map-root-user', '/usr/bin/node', '-e', 'process.exit(0)'], { encoding: 'utf8', timeout: 1500 });
-      const nested_userns_denied = /(?:operation not permitted|permission denied)/i.test(nested_userns.stderr || '');
+      const nested_userns_denied = /(?:operation not permitted|permission denied|no space left on device)/i.test(nested_userns.stderr || '');
       result.nested_userns = nested_userns.error || nested_userns.status === null
         ? 'probe-error'
         : nested_userns.status === 0 ? 'allowed'
