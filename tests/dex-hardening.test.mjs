@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parse_dex } from '../src/formats/dex.mjs';
+import { analyze_known_format } from '../src/formats/index.mjs';
 
 function create_dex_fixture() {
   const buffer = Buffer.alloc(140);
@@ -72,6 +73,14 @@ function create_dex_class_fixture() {
   buffer.writeUInt32LE(188, 52);
   return buffer;
 }
+
+test('DEX signature dispatch invokes the hardened parser', () => {
+  const fixture = create_dex_fixture();
+  const result = analyze_known_format(fixture);
+  assert.equal(result.detection.format, 'DEX');
+  assert.equal(result.parser_status, 'parsed');
+  assert.equal(result.parsed.version, '035');
+});
 
 test('DEX parser supports only the explicitly listed versions', () => {
   for (const version of ['035', '037', '038', '039']) {
