@@ -57,7 +57,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   {
     name: 'orix.rizin_functions',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    description: 'Use an explicitly selected Rizin executable to enumerate functions, disassemble a bounded instruction window and optionally request rz-ghidra pseudocode. The target is never executed; Rizin and its optional decompiler plugin must be installed separately.',
+    description: 'Use an explicitly selected Rizin executable to enumerate functions, disassemble a bounded instruction window and optionally request rz-ghidra pseudocode. Optional Linux Bubblewrap isolation can be requested explicitly with a workspace-contained sandbox root; isolation is disabled by default. The target is never executed; Rizin and its optional decompiler plugin must be installed separately.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -70,6 +70,9 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         decompile: { type: 'boolean', description: 'Request optional rz-ghidra pseudocode decompilation at the supplied function entry address.' },
         timeout_ms: integer('Total provider workflow deadline in milliseconds.', 60000, 1),
         max_output_kib: integer('Aggregate stdout/stderr capture budget in KiB.', 8192, 1),
+        isolation: { type: 'string', enum: ['none', 'required'], description: 'Explicitly opt into Linux Bubblewrap isolation; defaults to none.' },
+        sandbox_root: { type: 'string', minLength: 1, maxLength: 4096, description: 'Existing directory inside a configured MCP workspace root used as the Bubblewrap root filesystem.' },
+        cwd: { type: 'string', minLength: 1, maxLength: 4096, description: 'Optional provider working directory inside a configured MCP workspace; defaults to sandbox_root when required isolation is selected.' },
       },
       required: ['path', 'executable'],
       additionalProperties: false,
@@ -279,6 +282,9 @@ function validate_arguments(name, value) {
   for (const [key, item] of Object.entries(value)) {
     const schema = properties[key];
     if (!schema) throw new TypeError('Unknown tool argument: ' + key);
+    if (schema.enum && !schema.enum.includes(item)) {
+      throw new TypeError(key + ' must be one of: ' + schema.enum.join(', '));
+    }
     if (schema.type === 'string') {
       if (typeof item !== 'string' || item.length < (schema.minLength ?? 0) || item.length > (schema.maxLength ?? Infinity)) {
         throw new TypeError(key + ' must be a string within its declared length bounds');
@@ -363,7 +369,16 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       return inspect_file(target.path, { limits, extract_strings: args.extract_strings });
     }
     case 'orix.rizin_functions': {
+      if (args.isolation === 'required' && args.sandbox_root === undefined) {
+        throw new TypeError('sandbox_root is required when isolation is required');
+      }
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
+      const sandbox_root = args.sandbox_root === undefined
+        ? undefined
+        : (await resolve_workspace_path(args.sandbox_root, roots, { kind: 'directory' })).path;
+      const cwd = args.cwd === undefined
+        ? (args.isolation === 'required' ? sandbox_root : undefined)
+        : (await resolve_workspace_path(args.cwd, roots, { kind: 'directory' })).path;
       return analyze_rizin_functions({
         input_path: target.path,
         executable: args.executable,
@@ -374,6 +389,9 @@ export async function call_orix_tool(name, args = {}, options = {}) {
         decompile: args.decompile ?? false,
         timeout_ms: args.timeout_ms ?? 30_000,
         max_output_bytes: (args.max_output_kib ?? 2_048) * 1024,
+        isolation: args.isolation,
+        sandbox_root,
+        cwd,
       });
     }
     case 'orix.scan_directory': {

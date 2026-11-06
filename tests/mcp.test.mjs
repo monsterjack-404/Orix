@@ -112,11 +112,24 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   }
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.inspect_file').annotations.readOnlyHint, true);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_functions').annotations.readOnlyHint, true);
+  const rizin_schema = response.result.tools.find(tool => tool.name === 'orix.rizin_functions').inputSchema;
+  assert.deepEqual(rizin_schema.properties.isolation.enum, ['none', 'required']);
+  assert.match(rizin_schema.properties.sandbox_root.description, /inside a configured MCP workspace root/);
+  assert.equal(rizin_schema.properties.cwd.type, 'string');
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.readOnlyHint, false);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
 });
 
 test('MCP Rizin tool validates executable argument prefixes before resolving workspace paths', async () => {
+  await assert.rejects(
+    call_orix_tool('orix.rizin_functions', {
+      path: '/not/used/sample.elf',
+      executable: '/not/used/rizin',
+      isolation: 'required-but-not-supported',
+    }),
+    /isolation must be one of: none, required/,
+  );
+
   await assert.rejects(
     call_orix_tool('orix.rizin_functions', {
       path: '/not/used/sample.elf',
@@ -133,6 +146,67 @@ test('MCP Rizin tool validates executable argument prefixes before resolving wor
     }),
     /executable_args must be an array/,
   );
+});
+
+test('MCP Rizin required isolation rejects a missing sandbox root before launching a provider', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-required-root-'));
+  try {
+    const file = path.join(directory, 'sample.elf');
+    await writeFile(file, Buffer.from('MCP native fixture'));
+    await assert.rejects(
+      call_orix_tool('orix.rizin_functions', {
+        path: file,
+        executable: process.execPath,
+        isolation: 'required',
+      }, { roots: [directory] }),
+      /sandbox_root is required when isolation is required/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('MCP Rizin working directory must remain inside configured workspace roots', async () => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-cwd-workspace-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-cwd-outside-'));
+  try {
+    const file = path.join(workspace, 'sample.elf');
+    await writeFile(file, Buffer.from('MCP native fixture'));
+    await assert.rejects(
+      call_orix_tool('orix.rizin_functions', {
+        path: file,
+        executable: process.execPath,
+        isolation: 'required',
+        sandbox_root: workspace,
+        cwd: outside,
+      }, { roots: [workspace] }),
+      /outside configured workspace roots/,
+    );
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('MCP Rizin isolation root must remain inside configured workspace roots', async () => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-workspace-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-outside-'));
+  try {
+    const file = path.join(workspace, 'sample.elf');
+    await writeFile(file, Buffer.from('MCP native fixture'));
+    await assert.rejects(
+      call_orix_tool('orix.rizin_functions', {
+        path: file,
+        executable: process.execPath,
+        isolation: 'required',
+        sandbox_root: outside,
+      }, { roots: [workspace] }),
+      /outside configured workspace roots/,
+    );
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
 });
 
 test('MCP Rizin function tool runs an explicit provider through a bounded argv prefix', async () => {
