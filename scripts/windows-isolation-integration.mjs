@@ -1,11 +1,12 @@
 // Windows AppContainer + Job Object hostile-process integration gate.
 import assert from 'node:assert/strict';
-import { access, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { access, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
+import { execFileSync, spawn } from 'node:child_process';
 import net from 'node:net';
 import os_host from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
+import { prepare_windows_provider_isolation } from '../src/providers/windows-isolation.mjs';
 
 function manifest() {
   return {
@@ -256,7 +257,98 @@ async function main() {
     });
     assert.deepEqual(remainingPackageScratch, [],
       'Per-profile AppContainer temp files must be removed after provider teardown');
-    process.stdout.write('Windows AppContainer hostile-process checks passed: token, filesystem ACLs, private temp, network isolation and Job Object quotas.\\n');
+
+    // Exercise the cleanup traversal with a real directory junction. The
+    // provider process waits while the host replaces its writable Packages
+    // directory with a junction to an external sentinel tree. Cleanup must
+    // stop at the reparse point and leave the external sentinel untouched.
+    const cleanupReady = path.join(root, 'tmp', 'cleanup-reparse-ready-' + process.pid);
+    const cleanupContinue = path.join(root, 'tmp', 'cleanup-reparse-continue-' + process.pid);
+    const reparsePrepared = await prepare_windows_provider_isolation({
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      args: ['-e', [
+        'const fs = require("node:fs");',
+        'fs.writeFileSync(' + JSON.stringify(cleanupReady) + ', "ready");',
+        'const go = ' + JSON.stringify(cleanupContinue) + ';',
+        'const cell = new Int32Array(new SharedArrayBuffer(4));',
+        'const deadline = Date.now() + 15000;',
+        'while (!fs.existsSync(go) && Date.now() < deadline) Atomics.wait(cell, 0, 0, 25);',
+        'if (!fs.existsSync(go)) { console.error("cleanup injection host timed out"); process.exitCode = 88; }',
+      ].join('\n')],
+      env: {},
+    });
+    let reparseChild = null;
+    let reparseClosed = null;
+    let junctionInstalled = false;
+    let preparedCleanupComplete = false;
+    const packagesRoot = path.join(root, 'tmp', 'Packages');
+    try {
+      reparseChild = spawn(reparsePrepared.executable, reparsePrepared.args, {
+        cwd: reparsePrepared.cwd,
+        env: reparsePrepared.env,
+        shell: false,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let helperStdout = '';
+      let helperStderr = '';
+      reparseChild.stdout.on('data', chunk => { helperStdout += chunk.toString('utf8'); });
+      reparseChild.stderr.on('data', chunk => { helperStderr += chunk.toString('utf8'); });
+      reparseClosed = new Promise((resolve, reject) => {
+        reparseChild.once('error', reject);
+        reparseChild.once('close', (code, signal) => resolve({ code, signal, stdout: helperStdout, stderr: helperStderr }));
+      });
+
+      const readyDeadline = Date.now() + 15000;
+      let providerReady = false;
+      while (Date.now() < readyDeadline) {
+        try { await access(cleanupReady); providerReady = true; break; }
+        catch { await new Promise(resolve => setTimeout(resolve, 25)); }
+      }
+      assert.equal(providerReady, true, 'Provider did not enter the controlled cleanup-junction test');
+
+      const [profileName] = await readdir(packagesRoot);
+      assert.ok(profileName, 'AppContainer redirected Packages profile directory was not created');
+      const externalRoot = path.join(base, 'external-cleanup-target');
+      const externalProfile = path.join(externalRoot, profileName);
+      const externalSentinel = path.join(externalProfile, 'must-survive-cleanup.txt');
+      await mkdir(path.join(externalProfile, 'AC', 'Temp'), { recursive: true });
+      await writeFile(externalSentinel, 'external-data-must-survive', 'utf8');
+
+      await rm(packagesRoot, { recursive: true, force: true });
+      await symlink(externalRoot, packagesRoot, 'junction');
+      junctionInstalled = true;
+      const junctionInfo = await lstat(packagesRoot);
+      assert.equal(junctionInfo.isSymbolicLink(), true, 'Test fixture did not create a Windows junction/reparse point');
+
+      await writeFile(cleanupContinue, 'continue', 'utf8');
+      const reparseResult = await reparseClosed;
+      reparseChild = null;
+      assert.equal(reparseResult.code, 125,
+        'Cleanup must fail closed when an AppContainer cleanup ancestor is a reparse point: ' +
+        JSON.stringify({ stdout: reparseResult.stdout, stderr: reparseResult.stderr }));
+      assert.match(reparseResult.stderr, /ORIX_WINDOWS_CLEANUP_REPARSE_POINT/,
+        'Native cleanup did not report the rejected reparse-point path');
+      assert.equal(await readFile(externalSentinel, 'utf8'), 'external-data-must-survive',
+        'Cleanup traversed the junction and deleted data outside the sandbox root');
+
+      await rmdir(packagesRoot);
+      junctionInstalled = false;
+      await reparsePrepared.cleanup();
+      preparedCleanupComplete = true;
+      await access(externalSentinel);
+    } finally {
+      if (reparseChild) {
+        try { reparseChild.kill(); } catch { /* process may already have exited */ }
+        if (reparseClosed) await reparseClosed.catch(() => {});
+      }
+      if (junctionInstalled) await rmdir(packagesRoot).catch(() => {});
+      if (!preparedCleanupComplete) await reparsePrepared.cleanup().catch(() => {});
+    }
+
+    process.stdout.write('Windows AppContainer hostile-process checks passed: token, filesystem ACLs, private temp, network isolation, Job Object quotas and reparse-safe cleanup.\\n');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await rm(base, { recursive: true, force: true });
