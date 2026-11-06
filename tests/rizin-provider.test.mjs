@@ -286,20 +286,22 @@ test('Rizin adapter forwards sandbox_root when required isolation is requested',
 });
 
 
-if (process.platform === 'linux') {
-  test('required Linux Rizin isolation stages private snapshots inside sandbox_root, outside the /tmp overlay', async () => {
-    const sandbox_root = await mkdtemp(path.join(tmpdir(), 'orix-rizin-rootfs-'));
-    let snapshot_directory;
-    try {
-      snapshot_directory = await create_rizin_snapshot_directory('.orix-rizin-test-', {
-        isolation: 'required',
-        sandbox_root,
-      });
-      assert.equal(path.dirname(snapshot_directory), sandbox_root);
-      assert.notEqual(path.dirname(snapshot_directory), path.join(sandbox_root, 'tmp'));
-    } finally {
-      if (snapshot_directory) await rm(snapshot_directory, { recursive: true, force: true });
-      await rm(sandbox_root, { recursive: true, force: true });
-    }
-  });
-}
+test('required Rizin isolation stages private snapshots in the backend-visible rootfs location', async () => {
+  const sandbox_root = await mkdtemp(path.join(tmpdir(), 'orix-rizin-rootfs-'));
+  let snapshot_directory;
+  try {
+    const scratch = path.join(sandbox_root, 'tmp');
+    if (process.platform !== 'linux') await import('node:fs/promises').then(fs => fs.mkdir(scratch));
+    snapshot_directory = await create_rizin_snapshot_directory('.orix-rizin-test-', {
+      isolation: 'required',
+      sandbox_root,
+    });
+    assert.equal(
+      path.dirname(snapshot_directory),
+      process.platform === 'linux' ? sandbox_root : scratch,
+    );
+  } finally {
+    if (snapshot_directory) await rm(snapshot_directory, { recursive: true, force: true });
+    await rm(sandbox_root, { recursive: true, force: true });
+  }
+});
