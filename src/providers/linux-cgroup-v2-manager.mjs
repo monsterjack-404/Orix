@@ -1,6 +1,6 @@
 // JavaScript, src/providers/linux-cgroup-v2-manager.mjs, Linux-only delegated cgroup v2 lease manager.
 import { constants as FS_CONSTANTS, closeSync, openSync } from 'node:fs';
-import { open, lstat, mkdir, readFile, realpath, rmdir, stat, unlink, writeFile } from 'node:fs/promises';
+import { open, lstat, mkdir, readFile, realpath, rmdir, stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { OrixError } from '../core/errors.mjs';
@@ -134,6 +134,9 @@ async function write_control_value(leaf_fd_path, name, value) {
         file: name, expected: String(value), actual,
       });
     }
+  }
+  if (test_adapter?.after_control_write) {
+    await test_adapter.after_control_write({ leaf_fd_path, name, value: String(value) });
   }
 }
 
