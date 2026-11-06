@@ -72,17 +72,16 @@ async function run_native_helper(executable, args, cwd, environment, logPath, ti
     let stdout = '';
     let stderr = '';
     let settled = false;
+    let timedOut = false;
     const child = spawn(executable, args, { cwd, env: environment, shell: false, windowsHide: true, detached: false, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', chunk => { if (stdout.length < 8192) stdout += chunk.toString('utf8').slice(0, 8192 - stdout.length); });
     child.stderr.on('data', chunk => { if (stderr.length < 8192) stderr += chunk.toString('utf8').slice(0, 8192 - stderr.length); });
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => {
       if (settled) return;
-      settled = true;
+      timedOut = true;
+      // Wait for stdio closure as well as process exit before the caller removes
+      // the helper's working directory or reads its final diagnostic log.
       child.kill();
-      const helperLog = logPath ? await readFile(logPath, 'utf8').catch(() => '') : '';
-      reject(new OrixError('ORIX_PROVIDER_WINDOWS_HELPER_TIMEOUT', 'Windows native provider helper exceeded its time limit', {
-        details: { timeout_ms: timeoutMs, stdout, stderr, helper_log: helperLog.slice(-8192) }, recoverable: true,
-      }));
     }, timeoutMs);
     child.once('error', error => {
       if (settled) return;
@@ -91,11 +90,15 @@ async function run_native_helper(executable, args, cwd, environment, logPath, ti
         details: { reason: error.code ?? error.name, stdout, stderr }, cause: error, recoverable: true,
       }));
     });
-    child.once('exit', (code, signal) => {
+    child.once('close', async (code, signal) => {
       if (settled) return;
       settled = true; clearTimeout(timer);
-      child.stdout.destroy(); child.stderr.destroy();
-      if (code === 0) resolve({ stdout, stderr });
+      if (timedOut) {
+        const helperLog = logPath ? await readFile(logPath, 'utf8').catch(() => '') : '';
+        reject(new OrixError('ORIX_PROVIDER_WINDOWS_HELPER_TIMEOUT', 'Windows native provider helper exceeded its time limit', {
+          details: { timeout_ms: timeoutMs, exit_code: code, signal, stdout, stderr, helper_log: helperLog.slice(-8192) }, recoverable: true,
+        }));
+      } else if (code === 0) resolve({ stdout, stderr });
       else reject(new OrixError('ORIX_PROVIDER_WINDOWS_HELPER_FAILED', 'Windows native provider helper returned a failure status', {
         details: { exit_code: code, signal, stdout, stderr }, recoverable: true,
       }));
