@@ -204,9 +204,22 @@ async function create_delegated_parent() {
 }
 async function remove_delegated_parent(state) {
   const { root, parent, supervisor, added } = state;
-  // All run cgroups must have been removed by the provider manager before this point.
+  // The parent is unique to this invocation. If a provider cleanup regressed,
+  // kill only its direct ORIX run cgroups and verify they are empty before rmdir.
   const remaining = (await child_directories(parent)).filter(name => name !== 'supervisor');
-  assert.deepEqual(remaining, [], 'Provider cgroups remain after integration cleanup');
+  for (const name of remaining) {
+    assert.ok(name.startsWith('orix-provider-'), 'Refusing to clean an unknown delegated child cgroup: ' + name);
+    const cgroup = path.join(parent, name);
+    await write_control(path.join(cgroup, 'cgroup.kill'), '1');
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      if (/^populated 0$/m.test(await read_control(path.join(cgroup, 'cgroup.events')))) break;
+      await delay(25);
+    }
+    assert.match(await read_control(path.join(cgroup, 'cgroup.events')), /^populated 0$/m,
+      'Provider cgroup remained populated during integration cleanup: ' + name);
+    await rmdir(cgroup);
+  }
   await write_control(path.join(root, 'cgroup.procs'), String(process.pid));
   await rmdir(supervisor);
   await write_control(path.join(parent, 'cgroup.subtree_control'), '-' + REQUIRED.join(' -'));
@@ -398,6 +411,101 @@ async function main() {
     assert.equal(oomExecution.isolation_cleanup.report.removed, true);
     assert.ok(Number(oomExecution.isolation_cleanup.report.memory_events.match(/^oom_kill (\d+)$/m)?.[1] || 0) > 0,
       'memory.max did not produce a kernel OOM kill event');
+
+    // Verify asynchronous cancellation kills the whole provider cgroup,
+    // including a descendant that outlives the Node provider process.
+    const cancellationMarker = 'ORIX_CGROUP_CANCEL_PROBE_' + process.pid;
+    const cancellationController = new AbortController();
+    const cancellationProbe = `
+      import { spawn } from 'node:child_process';
+      const marker = ${JSON.stringify(cancellationMarker)};
+      const child = spawn('/usr/bin/sleep', ['30'], { stdio: 'ignore' });
+      child.unref();
+      process.stdout.write(marker);
+      setInterval(() => {}, 1000);
+    `;
+    const cancellationPromise = run_static_provider({
+      manifest: manifest(),
+      executable: nodePath,
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      args: ['-e', cancellationProbe],
+      signal: cancellationController.signal,
+      timeout_ms: 8_000,
+      max_output_bytes: 4_096,
+    });
+    let cancellationSample = null;
+    for (let attempt = 0; attempt < 250; attempt += 1) {
+      cancellationSample = await sample_cgroup(delegated.parent, cancellationMarker).catch(error => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (cancellationSample?.provider_seen && cancellationSample.sleep_pids.length > 0) break;
+      await delay(20);
+    }
+    assert.ok(cancellationSample?.provider_seen, 'Cancellation provider never became visible in its run cgroup');
+    assert.ok(cancellationSample.sleep_pids.length > 0, 'Cancellation probe did not create a descendant');
+    cancellationController.abort();
+    const cancelledExecution = await cancellationPromise;
+    assert.equal(cancelledExecution.cancelled, true, 'AbortSignal cancellation was not reported');
+    assert.equal(cancelledExecution.termination_reason, 'cancelled');
+    assert.equal(cancelledExecution.isolation_cleanup.complete, true);
+    assert.equal(cancelledExecution.isolation_cleanup.failed, false);
+    assert.equal(cancelledExecution.isolation_cleanup.report.removed, true);
+    for (const pid of cancellationSample.sleep_pids) {
+      const command = await readFile('/proc/' + pid + '/cmdline', 'utf8').catch(error => {
+        if (error.code === 'ENOENT') return '';
+        throw error;
+      });
+      assert.equal(command.includes('/usr/bin/sleep'), false, 'Cancelled provider descendant survived cgroup.kill');
+    }
+
+    // Exercise the timeout path separately; its cleanup contract must be the
+    // same as explicit cancellation and must not leave a detached descendant.
+    const timeoutMarker = 'ORIX_CGROUP_TIMEOUT_PROBE_' + process.pid;
+    const timeoutProbe = `
+      import { spawn } from 'node:child_process';
+      const marker = ${JSON.stringify(timeoutMarker)};
+      const child = spawn('/usr/bin/sleep', ['30'], { stdio: 'ignore' });
+      child.unref();
+      process.stdout.write(marker);
+      setInterval(() => {}, 1000);
+    `;
+    const timeoutPromise = run_static_provider({
+      manifest: manifest(),
+      executable: nodePath,
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      args: ['-e', timeoutProbe],
+      timeout_ms: 5_000,
+      max_output_bytes: 4_096,
+    });
+    let timeoutSample = null;
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      timeoutSample = await sample_cgroup(delegated.parent, timeoutMarker).catch(error => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (timeoutSample?.provider_seen && timeoutSample.sleep_pids.length > 0) break;
+      await delay(20);
+    }
+    assert.ok(timeoutSample?.provider_seen, 'Timeout provider never became visible in its run cgroup');
+    assert.ok(timeoutSample.sleep_pids.length > 0, 'Timeout probe did not create a descendant');
+    const timedOutExecution = await timeoutPromise;
+    assert.equal(timedOutExecution.timed_out, true, 'Provider timeout was not reported');
+    assert.equal(timedOutExecution.termination_reason, 'timeout');
+    assert.equal(timedOutExecution.isolation_cleanup.complete, true);
+    assert.equal(timedOutExecution.isolation_cleanup.failed, false);
+    assert.equal(timedOutExecution.isolation_cleanup.report.removed, true);
+    for (const pid of timeoutSample.sleep_pids) {
+      const command = await readFile('/proc/' + pid + '/cmdline', 'utf8').catch(error => {
+        if (error.code === 'ENOENT') return '';
+        throw error;
+      });
+      assert.equal(command.includes('/usr/bin/sleep'), false, 'Timed-out provider descendant survived cgroup.kill');
+    }
 
     process.stdout.write('Linux cgroup v2 integration passed: FD attach-before-exec, rootfs/network isolation, RLIMITs, cpu.max throttling, memory.max OOM, pids.max rejection, descendant teardown and empty-cgroup removal.\\n');
   } finally {
