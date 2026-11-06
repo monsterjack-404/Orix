@@ -42,8 +42,10 @@ async function validate_tree(root) {
   }
   await walk(root, 0);
 }
-async function resolve_csc(environment) {
-  const systemRoot = environment.SystemRoot ?? environment.WINDIR ?? process.env.SystemRoot ?? process.env.WINDIR;
+async function resolve_csc() {
+  // The compiler runs in the trusted host context, not inside the AppContainer.
+  // Never derive its path from caller-controlled provider environment values.
+  const systemRoot = process.env.SystemRoot ?? process.env.WINDIR;
   if (!systemRoot) isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'SystemRoot is required to locate the trusted .NET Framework compiler');
   for (const candidate of [
     path.join(systemRoot, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe'),
@@ -103,14 +105,14 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
   const provider = await realpath(executable);
   if (!within(root, provider) || !within(root, work)) isolation_error('ORIX_PROVIDER_SANDBOX_PATH_DENIED', 'Windows provider executable and working directory must be inside sandbox_root');
   await validate_tree(root);
-  const compiler = await resolve_csc(env);
+  const compiler = await resolve_csc();
   const temporary = await mkdtemp(path.join(tmpdir(), 'orix-provider-win-'));
   const configPath = path.join(temporary, 'provider.json');
   const logPath = path.join(temporary, 'provider.log');
   const launcher = path.join(temporary, 'orix-windows-provider-launcher.exe');
   const source = fileURLToPath(new URL('../../native/windows-provider-launcher.cs', import.meta.url));
   const profileName = 'ORIX-' + randomUUID().replaceAll('-', '');
-  const providerEnvironment = { ...env, HOME: root, USERPROFILE: root, APPDATA: root, LOCALAPPDATA: root, TEMP: root, TMP: root };
+  const providerEnvironment = { ...env, SystemRoot: process.env.SystemRoot ?? process.env.WINDIR, WINDIR: process.env.WINDIR ?? process.env.SystemRoot, HOME: root, USERPROFILE: root, APPDATA: root, LOCALAPPDATA: root, TEMP: root, TMP: root };
   try {
     await writeFile(configPath, JSON.stringify({
       executable: provider, args, cwd: work, sandboxRoot: root, profileName, logPath, environment: providerEnvironment,
