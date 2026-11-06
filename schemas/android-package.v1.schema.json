@@ -1,0 +1,693 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orix.dev/schemas/android-package.v1.schema.json",
+  "title": "ORIX Android APK/AAB Inventory Report v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "format",
+    "detected",
+    "archive",
+    "archive_entries",
+    "summary",
+    "manifests",
+    "dex",
+    "native_libraries",
+    "signatures",
+    "limitations",
+    "warnings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "orix.android-package.v1"
+    },
+    "format": {
+      "enum": [
+        "APK",
+        "AAB",
+        "Android package candidate"
+      ]
+    },
+    "detected": {
+      "type": "boolean"
+    },
+    "archive": {
+      "type": "object",
+      "required": [
+        "entry_count",
+        "safe_entry_count",
+        "unsafe_or_symlink_entries",
+        "entries_reported",
+        "entries_omitted",
+        "zip64"
+      ],
+      "properties": {
+        "entry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "safe_entry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unsafe_or_symlink_entries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entries_reported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entries_omitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "zip64": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "dex_entries",
+        "dex_metadata_parsed",
+        "dex_entries_not_inspected",
+        "native_libraries",
+        "resources_table_present",
+        "manifest_entries",
+        "v1_signature_files",
+        "dex_entries_reported",
+        "dex_entries_omitted",
+        "native_libraries_reported",
+        "native_libraries_omitted",
+        "manifest_entries_reported",
+        "manifest_entries_omitted",
+        "v1_signature_files_reported",
+        "v1_signature_files_omitted"
+      ],
+      "properties": {
+        "dex_entries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dex_metadata_parsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dex_entries_not_inspected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "native_libraries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resources_table_present": {
+          "type": "boolean"
+        },
+        "manifest_entries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "v1_signature_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dex_entries_reported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dex_entries_omitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "native_libraries_reported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "native_libraries_omitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "manifest_entries_reported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "manifest_entries_omitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "v1_signature_files_reported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "v1_signature_files_omitted": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "manifests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "status",
+          "binary_xml",
+          "path_truncated",
+          "path_original_length"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "decoded",
+              "binary-xml-header",
+              "unknown-or-invalid-header",
+              "manifest-size-limit",
+              "malformed-binary-xml",
+              "invalid-local-range",
+              "encrypted",
+              "compressed",
+              "invalid-local-header",
+              "local-header-mismatch"
+            ]
+          },
+          "binary_xml": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "chunk_type": {
+            "type": "string"
+          },
+          "header_size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "declared_size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "path_truncated": {
+            "type": "boolean"
+          },
+          "path_original_length": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "decoded": {
+            "type": "boolean"
+          },
+          "package_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version_code": {
+            "type": [
+              "integer",
+              "string",
+              "null"
+            ]
+          },
+          "version_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "maxSdkVersion"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "maxSdkVersion": {
+                  "type": [
+                    "integer",
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "name",
+                "exported",
+                "permission",
+                "process",
+                "authorities",
+                "targetActivity"
+              ],
+              "properties": {
+                "type": {
+                  "enum": [
+                    "activity",
+                    "activity-alias",
+                    "service",
+                    "receiver",
+                    "provider"
+                  ]
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exported": {
+                  "type": [
+                    "boolean",
+                    "integer",
+                    "string",
+                    "null"
+                  ]
+                },
+                "permission": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "process": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "authorities": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "targetActivity": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "application": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "label": {
+                "type": [
+                  "string",
+                  "integer",
+                  "null"
+                ]
+              },
+              "icon": {
+                "type": [
+                  "string",
+                  "integer",
+                  "null"
+                ]
+              },
+              "debuggable": {
+                "type": [
+                  "boolean",
+                  "integer",
+                  "string",
+                  "null"
+                ]
+              },
+              "allowBackup": {
+                "type": [
+                  "boolean",
+                  "integer",
+                  "string",
+                  "null"
+                ]
+              },
+              "usesCleartextTraffic": {
+                "type": [
+                  "boolean",
+                  "integer",
+                  "string",
+                  "null"
+                ]
+              },
+              "networkSecurityConfig": {
+                "type": [
+                  "string",
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "counts": {
+            "type": "object",
+            "required": [
+              "chunks",
+              "strings",
+              "elements",
+              "attributes",
+              "resource_map_entries"
+            ],
+            "properties": {
+              "chunks": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "strings": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "elements": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "attributes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "resource_map_entries": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "output_truncated": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "uncompressed_size": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "dex": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "status",
+          "uncompressed_size",
+          "path_truncated",
+          "path_original_length"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "metadata-parsed",
+              "entry-limit",
+              "entry-size-limit",
+              "aggregate-size-limit",
+              "invalid-local-range",
+              "encrypted",
+              "compressed",
+              "invalid-local-header",
+              "local-header-mismatch",
+              "size-mismatch",
+              "rejected"
+            ]
+          },
+          "uncompressed_size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "version": {
+            "type": "string"
+          },
+          "file_size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "counts": {
+            "type": "object"
+          },
+          "strings": {
+            "type": "array"
+          },
+          "types": {
+            "type": "array"
+          },
+          "classes": {
+            "type": "array"
+          },
+          "map_items": {
+            "type": "array"
+          },
+          "output_truncated": {
+            "type": "boolean"
+          },
+          "integrity": {
+            "type": "object"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "path_truncated": {
+            "type": "boolean"
+          },
+          "path_original_length": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "native_libraries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "compressed_size",
+          "uncompressed_size",
+          "path_truncated",
+          "path_original_length"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "compressed_size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "uncompressed_size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "path_truncated": {
+            "type": "boolean"
+          },
+          "path_original_length": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "signatures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "reason"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "name",
+        "size_bytes",
+        "sha256",
+        "stable_during_read"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "stable_during_read": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "archive_entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "path_truncated",
+          "path_original_length",
+          "kind",
+          "compression_method",
+          "encrypted",
+          "compressed_size",
+          "uncompressed_size",
+          "crc32",
+          "local_header_valid",
+          "local_data_range_valid",
+          "unix_mode"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "path_truncated": {
+            "type": "boolean"
+          },
+          "path_original_length": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "kind": {
+            "enum": [
+              "file",
+              "directory"
+            ]
+          },
+          "compression_method": {
+            "type": "string"
+          },
+          "encrypted": {
+            "type": "boolean"
+          },
+          "compressed_size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "uncompressed_size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "crc32": {
+            "type": "string",
+            "pattern": "^0x[a-f0-9]{8}$"
+          },
+          "local_header_valid": {
+            "type": "boolean"
+          },
+          "local_data_range_valid": {
+            "type": "boolean"
+          },
+          "unix_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
