@@ -158,7 +158,7 @@ const report = await analyze_rizin_imports({
 });
 ~~~
 
-The sandbox root must contain the selected Rizin executable, the configured working directory, and the adapter's private temporary snapshot path (including the host temporary directory used by Node). It must also provide the required \`/proc\`, \`/dev\`, and \`/tmp\` mount points expected by the Bubblewrap backend. The backend fails closed when the required Linux isolation setup is unavailable or any required path is outside the root. Windows and macOS do not currently have an enforced provider isolation backend, so \`isolation: 'required'\` fails closed there.
+The sandbox root must contain the selected Rizin executable, the configured working directory, and the adapter's private temporary snapshot. In required Linux isolation mode, ORIX stages this private snapshot in a temporary directory directly under \`sandbox_root\`, not under \`/tmp\`, because the Bubblewrap backend overlays \`/tmp\` with a fresh tmpfs. The root must also provide the required \`/proc\`, \`/dev\`, and \`/tmp\` mount points expected by the backend. The backend fails closed when the required Linux isolation setup is unavailable or any required path is outside the root. Windows and macOS do not currently have an enforced provider isolation backend, so \`isolation: 'required'\` fails closed there.
 
 This option supplies Bubblewrap namespace and filesystem isolation only. It does **not** enable cgroup CPU, memory, or process-count enforcement. The caller remains responsible for constructing and maintaining a safe root filesystem and for validating the deployment environment.
 
