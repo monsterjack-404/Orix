@@ -113,7 +113,7 @@ async function read_ledger_file(file_path, options = {}) {
     const after = await handle.stat();
     if (options.reject_hardlinks === true && after.nlink > 1) fail('ORIX_LEDGER_HARDLINK_REJECTED', 'Evidence ledger acquired a hard-link alias while being read', { path: absolute, link_count: after.nlink });
     if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) fail('ORIX_LEDGER_FILE_CHANGED', 'Evidence ledger changed while it was being read', { path: absolute });
-    return { absolute, buffer: Buffer.concat(chunks), limits, dev: opened.dev, ino: opened.ino };
+    return { absolute, buffer: Buffer.concat(chunks), limits, dev: opened.dev, ino: opened.ino, size: opened.size, mtime_ms: opened.mtimeMs, ctime_ms: opened.ctimeMs };
   } catch (error) {
     if (error instanceof OrixError) throw error;
     fail('ORIX_LEDGER_READ_FAILED', 'Cannot read evidence ledger', { path: absolute, reason: error.code }, error);
@@ -235,9 +235,12 @@ export async function append_evidence_event(file_path, event, payload, options =
     const handle = await fs.open(absolute, fs_constants.O_WRONLY | fs_constants.O_APPEND | nofollow);
     try {
       const opened = await handle.stat();
-      if (opened.dev !== current.dev || opened.ino !== current.ino) fail('ORIX_LEDGER_FILE_CHANGED', 'Evidence ledger identity changed after chain verification', { path: absolute });
+      if (opened.dev !== current.dev || opened.ino !== current.ino || opened.mtimeMs !== current.mtime_ms || opened.ctimeMs !== current.ctime_ms) fail('ORIX_LEDGER_FILE_CHANGED', 'Evidence ledger identity or metadata changed after chain verification', { path: absolute });
       if (options.reject_hardlinks === true && opened.nlink > 1) fail('ORIX_LEDGER_HARDLINK_REJECTED', 'Evidence ledger must not have hard-link aliases before append', { path: absolute, link_count: opened.nlink });
       if (opened.size !== current.buffer.length) fail('ORIX_LEDGER_CONCURRENT_MODIFICATION', 'Ledger size changed after chain verification', { verified_size: current.buffer.length, current_size: opened.size });
+      const before_write = await handle.stat();
+      if (before_write.dev !== current.dev || before_write.ino !== current.ino || before_write.size !== current.buffer.length || before_write.mtimeMs !== current.mtime_ms || before_write.ctimeMs !== current.ctime_ms) fail('ORIX_LEDGER_CONCURRENT_MODIFICATION', 'Ledger changed immediately before append', { path: absolute });
+      if (options.reject_hardlinks === true && before_write.nlink > 1) fail('ORIX_LEDGER_HARDLINK_REJECTED', 'Evidence ledger acquired a hard-link alias immediately before append', { path: absolute, link_count: before_write.nlink });
       await handle.writeFile(line, 'utf8');
       await handle.sync();
     } finally { await handle.close(); }
