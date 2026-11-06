@@ -209,7 +209,7 @@ async function run_compiler(executable, args, cwd, env) {
     let settled = false;
     let timedOut = false;
     const child = spawn(executable, args, {
-      cwd, env, shell: false, windowsHide: true, detached: false,
+      cwd, env, shell: false, windowsHide: true, detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     child.stdout.on('data', chunk => { if (stdout.length < 8192) stdout += chunk.toString('utf8').slice(0, 8192 - stdout.length); });
@@ -217,9 +217,10 @@ async function run_compiler(executable, args, cwd, env) {
     const timer = setTimeout(() => {
       if (settled) return;
       timedOut = true;
-      // Do not let the caller remove the compiler's working directory while
-      // clang may still be writing into it. Wait for process exit and stdio close.
-      child.kill();
+      // clang may spawn cc1 or other compiler children. Kill the dedicated
+      // process group so no descendant can keep writing into the temp directory.
+      try { process.kill(-child.pid, 'SIGKILL'); }
+      catch { child.kill('SIGKILL'); }
     }, 30_000);
     child.once('error', error => {
       if (settled) return;
