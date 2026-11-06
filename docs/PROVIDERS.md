@@ -162,6 +162,8 @@ The sandbox root must contain the selected Rizin executable, the configured work
 
 This option supplies Bubblewrap namespace and filesystem isolation only. It does **not** enable cgroup CPU, memory, or process-count enforcement. The caller remains responsible for constructing and maintaining a safe root filesystem and for validating the deployment environment.
 
+The CLI exposes the same opt-in mode with \`--isolation required --sandbox-root <path>\`; the sandbox root can alternatively be supplied by the local operator through \`ORIX_PROVIDER_SANDBOX_ROOT\`. The MCP \`orix.rizin_functions\` tool accepts only the isolation mode, not an arbitrary filesystem path from the client. Its rootfs must be configured by the MCP server administrator through \`ORIX_PROVIDER_SANDBOX_ROOT\` as an absolute path. This keeps the sandbox boundary under server-operator control.
+
 ### Function inventory and bounded disassembly
 
 `analyze_rizin_functions` uses Rizin's `-A` automatic-analysis option and `aflj` JSON output to return a bounded function inventory. Pass `address` to request a bounded instruction window from one exact function-entry address; the adapter confirms that the address is present in the returned function inventory before using Rizin's `pdj` JSON disassembly command. Add `decompile: true` to request optional pseudocode from Rizin's `pdg` command.
