@@ -86,14 +86,17 @@ async function main() {
   assert.equal(process.platform, 'darwin', 'This integration gate must run on macOS');
   const isolationSource = await readFile(new URL('../src/providers/macos-isolation.mjs', import.meta.url), 'utf8');
   const timeoutRequest = isolationSource.indexOf('timedOut = true;');
-  const processGroupKill = isolationSource.indexOf("process.kill(-child.pid, 'SIGKILL')", timeoutRequest);
-  const closeHandler = isolationSource.indexOf("child.once('close', (code, signal) => {", processGroupKill);
-  const timeoutFailure = isolationSource.indexOf('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', closeHandler);
+  const groupCleanupCall = isolationSource.indexOf('cleanup_macos_compiler_process_group(child.pid)', timeoutRequest);
+  const closeHandler = isolationSource.indexOf("child.once('close', (code, signal) => {", timeoutRequest);
+  const compilerTimeout = isolationSource.indexOf('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', closeHandler);
+  const groupKill = isolationSource.indexOf("process.kill(-pid, 'SIGKILL')");
+  const groupVerification = isolationSource.indexOf('await wait_until_empty(Date.now() + verify_timeout_ms)');
   assert.match(isolationSource, /detached: true/,
     'Compiler must run in its own process group for descendant teardown');
-  assert.ok(timeoutRequest >= 0 && processGroupKill > timeoutRequest &&
-    closeHandler > processGroupKill && timeoutFailure > closeHandler,
-  'Compiler timeout must kill its process group and wait for closure before temporary-directory cleanup');
+  assert.ok(timeoutRequest >= 0 && groupCleanupCall > timeoutRequest &&
+    closeHandler > timeoutRequest && compilerTimeout > closeHandler &&
+    groupKill > 0 && groupVerification > groupKill,
+  'Compiler timeout/exit must await TERM/KILL process-group teardown and a final empty-group verification');
   const base = await mkdtemp(path.join(os.tmpdir(), 'orix-seatbelt-integration-'));
   const root = path.join(base, 'rootfs');
   const hostSecret = path.join(base, 'host-only-secret.txt');
