@@ -162,7 +162,7 @@ async function create_fake_delegated_host({
   mountpoint_symlink_ancestor = false,
   parent_symlink_component = false,
   writable_mountpoint_ancestor = false,
-  control_file_symlink = false,
+  control_file_symlink = null,
 } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'orix-cgroup-preflight-'));
   const actual_mountpoint = path.join(root, 'cgroup2');
@@ -198,10 +198,13 @@ async function create_fake_delegated_host({
   await chmod(path.join(actual_parent, 'cgroup.events'), events_mode);
   await chmod(path.join(actual_parent, 'cgroup.kill'), kill_mode);
   if (control_file_symlink) {
-    const external_control = path.join(root, 'external-cgroup-controllers');
+    const control_name = typeof control_file_symlink === 'string'
+      ? control_file_symlink
+      : 'cgroup.controllers';
+    const external_control = path.join(root, 'external-' + control_name);
     await writeFile(external_control, 'cpu memory pids\\n');
-    await rm(path.join(actual_parent, 'cgroup.controllers'));
-    await symlink(external_control, path.join(actual_parent, 'cgroup.controllers'));
+    await rm(path.join(actual_parent, control_name));
+    await symlink(external_control, path.join(actual_parent, control_name));
   }
   if (writable_mountpoint_ancestor) await chmod(root, 0o777);
   await writeFile(
@@ -233,18 +236,25 @@ if (process.platform === 'linux') {
     }
   });
 
-  test('read-only preflight rejects a symlinked cgroup control file leaf', { timeout: 10_000 }, async () => {
-    const fixture = await create_fake_delegated_host({ control_file_symlink: true });
-    try {
-      const report = await inspect_linux_cgroup_v2({
-        proc_root: path.join(fixture.root, 'proc'),
-        parent_path: fixture.parent,
-      });
-      assert.equal(report.ready, false);
-      assert.equal(report.parent.path_components_trusted, true);
-      assert.match(report.reason, /ORIX_CGROUP_CONTROL_FILE_UNSAFE/);
-    } finally {
-      await rm(fixture.root, { recursive: true, force: true });
+  test('read-only preflight rejects symlinked cgroup control-file leaves without following them', { timeout: 10_000 }, async () => {
+    for (const control_file_symlink of ['cgroup.controllers', 'cgroup.events', 'cgroup.kill']) {
+      const fixture = await create_fake_delegated_host({ control_file_symlink });
+      try {
+        const report = await inspect_linux_cgroup_v2({
+          proc_root: path.join(fixture.root, 'proc'),
+          parent_path: fixture.parent,
+        });
+        assert.equal(report.ready, false, control_file_symlink);
+        assert.equal(report.parent.path_components_trusted, true, control_file_symlink);
+        if (control_file_symlink === 'cgroup.controllers') {
+          assert.match(report.reason, /ORIX_CGROUP_CONTROL_FILE_UNSAFE/);
+        } else {
+          assert.equal(report.parent.cgroup_events_available, control_file_symlink !== 'cgroup.events');
+          assert.equal(report.parent.cgroup_kill_available, control_file_symlink !== 'cgroup.kill');
+        }
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true });
+      }
     }
   });
 
