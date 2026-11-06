@@ -416,3 +416,98 @@ test('required provider isolation refuses executable and cwd paths outside its r
     );
   });
 });
+
+
+if (process.platform !== 'win32') {
+  test('static provider runner terminates same-process-group descendants after the provider exits', { timeout: 10_000 }, async () => {
+    await with_directory(async directory => {
+      const counter_path = path.join(directory, 'grandchild-counter');
+      const grandchild_script = [
+        "const fs = require('node:fs');",
+        "const counter = process.argv[1];",
+        "let count = 0;",
+        "fs.writeFileSync(counter, '0');",
+        "process.on('SIGTERM', () => {});",
+        "setInterval(() => fs.writeFileSync(counter, String(++count)), 10);",
+      ].join(' ');
+      const parent_script = [
+        "const { spawn } = require('node:child_process');",
+        "const child = spawn(process.execPath, ['-e', " + JSON.stringify(grandchild_script) + ", " + JSON.stringify(counter_path) + "], { stdio: 'ignore' });",
+        "child.once('spawn', () => setTimeout(() => process.exit(0), 80));",
+      ].join(' ');
+
+      const result = await run_static_provider({
+        manifest: manifest(),
+        executable: await node_executable(),
+        args: ['-e', parent_script],
+        timeout_ms: 3_000,
+        kill_grace_ms: 120,
+      });
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.process_group_cleanup, {
+        attempted: true,
+        force_kill_sent: true,
+        verified_empty: true,
+        failed: false,
+      });
+
+      const fs = await import('node:fs/promises');
+      const counter_after_cleanup = await fs.readFile(counter_path, 'utf8');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const counter_later = await fs.readFile(counter_path, 'utf8');
+      assert.equal(counter_later, counter_after_cleanup, 'Same-process-group descendant continued running after provider completion');
+    });
+  });
+}
+
+
+if (process.platform !== 'win32') {
+  test('static provider runner kills ignored-SIGTERM descendants when cancellation interrupts the provider', { timeout: 10_000 }, async () => {
+    await with_directory(async directory => {
+      const counter_path = path.join(directory, 'cancelled-grandchild-counter');
+      const grandchild_script = [
+        "const fs = require('node:fs');",
+        "const counter = process.argv[1];",
+        "let count = 0;",
+        "fs.writeFileSync(counter, '0');",
+        "process.on('SIGTERM', () => {});",
+        "setInterval(() => fs.writeFileSync(counter, String(++count)), 10);",
+      ].join(' ');
+      const parent_script = [
+        "const { spawn } = require('node:child_process');",
+        "const child = spawn(process.execPath, ['-e', " + JSON.stringify(grandchild_script) + ", " + JSON.stringify(counter_path) + "], { stdio: 'ignore' });",
+        "child.once('spawn', () => { process.stdout.write('grandchild-started'); setInterval(() => {}, 1000); });",
+      ].join(' ');
+      const controller = new AbortController();
+      const abort_timer = setTimeout(() => controller.abort(), 1_500);
+      try {
+        const result = await run_static_provider({
+          manifest: manifest(),
+          executable: await node_executable(),
+          args: ['-e', parent_script],
+          signal: controller.signal,
+          timeout_ms: 5_000,
+          kill_grace_ms: 120,
+        });
+        assert.equal(result.cancelled, true);
+        assert.equal(result.termination_reason, 'cancelled');
+        assert.equal(result.ok, false);
+        assert.equal(result.stdout, 'grandchild-started');
+        assert.deepEqual(result.process_group_cleanup, {
+          attempted: true,
+          force_kill_sent: true,
+          verified_empty: true,
+          failed: false,
+        });
+        const fs = await import('node:fs/promises');
+        const counter_after_cleanup = await fs.readFile(counter_path, 'utf8');
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const counter_later = await fs.readFile(counter_path, 'utf8');
+        assert.equal(counter_later, counter_after_cleanup, 'Cancelled process-group descendant continued running');
+      } finally {
+        clearTimeout(abort_timer);
+      }
+    });
+  });
+}

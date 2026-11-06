@@ -282,6 +282,26 @@ function minimal_environment(overrides) {
   return result;
 }
 
+function process_group_exists(pid) {
+  if (process.platform === 'win32' || !Number.isSafeInteger(pid) || pid < 1) return false;
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code !== 'ESRCH';
+  }
+}
+
+function signal_process_group(pid, signal) {
+  if (process.platform === 'win32' || !Number.isSafeInteger(pid) || pid < 1) return false;
+  try {
+    process.kill(-pid, signal);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function signal_process(child, detached, signal) {
   if (!child.pid) return;
   if (detached && process.platform !== 'win32') {
@@ -385,11 +405,128 @@ export async function run_static_provider(options) {
     const stderr_chunks = [];
     let timeout_timer = null;
     let kill_timer = null;
+    let process_group_cleanup_timer = null;
+    let process_group_cleanup_started = false;
+    let process_group_cleanup_complete = windows;
+    let process_group_cleanup_verified = windows ? null : false;
+    let process_group_cleanup_failed = false;
+    let process_group_force_kill_sent = false;
+    let close_result = null;
 
     function cleanup() {
       if (timeout_timer) clearTimeout(timeout_timer);
       if (kill_timer) clearTimeout(kill_timer);
+      if (process_group_cleanup_timer) clearTimeout(process_group_cleanup_timer);
       if (signal) signal.removeEventListener('abort', on_abort);
+    }
+
+    function finish_close() {
+      if (settled || close_result === null || !process_group_cleanup_complete) return;
+      settled = true;
+      cleanup();
+      const { exit_code, exit_signal } = close_result;
+      const completed_at = new Date().toISOString();
+      const termination_reason = process_group_cleanup_failed
+        ? 'process-group-cleanup-failed'
+        : timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
+      const success = exit_code === 0 && termination_reason === null;
+      const stdout = Buffer.concat(stdout_chunks).toString('utf8');
+      const stderr = Buffer.concat(stderr_chunks).toString('utf8');
+      resolve({
+        schema_version: 'orix.provider-execution.v1',
+        provider: { id: manifest.id, version: manifest.version },
+        executable,
+        args_count: executable_args.length + args.length,
+        started_at,
+        completed_at,
+        duration_ms: Math.max(0, Date.now() - started_clock),
+        exit_code,
+        signal: exit_signal,
+        termination_reason,
+        success,
+        timed_out,
+        cancelled,
+        output_limited,
+        process_group_cleanup: {
+          attempted: process_group_cleanup_started,
+          force_kill_sent: process_group_force_kill_sent,
+          verified_empty: process_group_cleanup_verified,
+          failed: process_group_cleanup_failed,
+        },
+        ok: success,
+        output: {
+          stdout,
+          stderr,
+          stdout_bytes,
+          stderr_bytes,
+          bytes_observed: stdout_bytes + stderr_bytes,
+          bytes_captured: captured_bytes,
+          truncated: output_limited,
+        },
+        stdout,
+        stderr,
+        stdout_bytes,
+        stderr_bytes,
+        captured_bytes,
+        output_truncated: output_limited,
+        limits: {
+          timeout_ms: limits.timeout_ms,
+          max_output_bytes: limits.max_output_bytes,
+          kill_grace_ms: limits.kill_grace_ms,
+        },
+      });
+    }
+
+    function start_process_group_cleanup() {
+      if (process_group_cleanup_started || process_group_cleanup_complete) return;
+      if (windows || !detached || !child?.pid) {
+        process_group_cleanup_complete = true;
+        finish_close();
+        return;
+      }
+
+      if (!process_group_exists(child.pid)) {
+        process_group_cleanup_verified = true;
+        process_group_cleanup_complete = true;
+        finish_close();
+        return;
+      }
+
+      process_group_cleanup_started = true;
+      signal_process_group(child.pid, 'SIGTERM');
+      let phase = 'term';
+      let deadline = Date.now() + limits.kill_grace_ms;
+
+      function check_process_group() {
+        if (!process_group_exists(child.pid)) {
+          process_group_cleanup_verified = true;
+          process_group_cleanup_complete = true;
+          process_group_cleanup_timer = null;
+          finish_close();
+          return;
+        }
+        if (Date.now() >= deadline) {
+          if (phase === 'term') {
+            // Escalate only while the original process-group id is still present.
+            process_group_force_kill_sent = signal_process_group(child.pid, 'SIGKILL');
+            phase = 'verify';
+            deadline = Date.now() + 5_000;
+          } else {
+            // Do not report success when the kernel still reports the group alive.
+            process_group_cleanup_failed = true;
+            process_group_cleanup_complete = true;
+            process_group_cleanup_timer = null;
+            finish_close();
+            return;
+          }
+        }
+        process_group_cleanup_timer = setTimeout(
+          check_process_group,
+          Math.min(20, Math.max(1, deadline - Date.now())),
+        );
+      }
+
+      check_process_group();
     }
 
     function finish_error(error) {
@@ -410,9 +547,13 @@ export async function run_static_provider(options) {
     function terminate() {
       if (termination_started || !child || settled) return;
       termination_started = true;
-      signal_process(child, detached, 'SIGTERM');
-      kill_timer = setTimeout(() => signal_process(child, detached, 'SIGKILL'), limits.kill_grace_ms);
-      kill_timer.unref?.();
+      if (windows) {
+        signal_process(child, detached, 'SIGTERM');
+        kill_timer = setTimeout(() => signal_process(child, detached, 'SIGKILL'), limits.kill_grace_ms);
+        kill_timer.unref?.();
+        return;
+      }
+      start_process_group_cleanup();
     }
 
     function on_abort() {
@@ -455,52 +596,17 @@ export async function run_static_provider(options) {
     child.stdout.on('data', chunk => capture('stdout', chunk));
     child.stderr.on('data', chunk => capture('stderr', chunk));
     child.once('error', finish_error);
+    child.once('exit', () => {
+      if (timeout_timer) clearTimeout(timeout_timer);
+      timeout_timer = null;
+      if (signal) signal.removeEventListener('abort', on_abort);
+      if (!termination_started) termination_started = true;
+      start_process_group_cleanup();
+    });
     child.once('close', (exit_code, exit_signal) => {
       if (settled) return;
-      settled = true;
-      cleanup();
-      const completed_at = new Date().toISOString();
-      const termination_reason = timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
-      const success = exit_code === 0 && termination_reason === null;
-      const stdout = Buffer.concat(stdout_chunks).toString('utf8');
-      const stderr = Buffer.concat(stderr_chunks).toString('utf8');
-      resolve({
-        schema_version: 'orix.provider-execution.v1',
-        provider: { id: manifest.id, version: manifest.version },
-        executable,
-        args_count: executable_args.length + args.length,
-        started_at,
-        completed_at,
-        duration_ms: Math.max(0, Date.now() - started_clock),
-        exit_code,
-        signal: exit_signal,
-        termination_reason,
-        success,
-        timed_out,
-        cancelled,
-        output_limited,
-        ok: success,
-        output: {
-          stdout,
-          stderr,
-          stdout_bytes,
-          stderr_bytes,
-          bytes_observed: stdout_bytes + stderr_bytes,
-          bytes_captured: captured_bytes,
-          truncated: output_limited,
-        },
-        stdout,
-        stderr,
-        stdout_bytes,
-        stderr_bytes,
-        captured_bytes,
-        output_truncated: output_limited,
-        limits: {
-          timeout_ms: limits.timeout_ms,
-          max_output_bytes: limits.max_output_bytes,
-          kill_grace_ms: limits.kill_grace_ms,
-        },
-      });
+      close_result = { exit_code, exit_signal };
+      finish_close();
     });
 
     if (signal) signal.addEventListener('abort', on_abort, { once: true });
