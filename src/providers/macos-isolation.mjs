@@ -207,6 +207,7 @@ async function run_compiler(executable, args, cwd, env) {
     let stdout = '';
     let stderr = '';
     let settled = false;
+    let timedOut = false;
     const child = spawn(executable, args, {
       cwd, env, shell: false, windowsHide: true, detached: false,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -215,11 +216,10 @@ async function run_compiler(executable, args, cwd, env) {
     child.stderr.on('data', chunk => { if (stderr.length < 8192) stderr += chunk.toString('utf8').slice(0, 8192 - stderr.length); });
     const timer = setTimeout(() => {
       if (settled) return;
-      settled = true;
+      timedOut = true;
+      // Do not let the caller remove the compiler's working directory while
+      // clang may still be writing into it. Wait for process exit and stdio close.
       child.kill();
-      reject(new OrixError('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', 'macOS isolation launcher compilation exceeded 30 seconds', {
-        details: { stdout, stderr }, recoverable: true,
-      }));
     }, 30_000);
     child.once('error', error => {
       if (settled) return;
@@ -233,7 +233,11 @@ async function run_compiler(executable, args, cwd, env) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (code === 0) resolve();
+      if (timedOut) {
+        reject(new OrixError('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', 'macOS isolation launcher compilation exceeded 30 seconds', {
+          details: { stdout, stderr, exit_code: code, signal }, recoverable: true,
+        }));
+      } else if (code === 0) resolve();
       else reject(new OrixError('ORIX_PROVIDER_MACOS_COMPILER_FAILED', 'Could not compile the macOS Seatbelt launcher', {
         details: { exit_code: code, signal, stdout, stderr }, recoverable: true,
       }));
