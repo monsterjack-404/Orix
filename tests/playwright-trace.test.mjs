@@ -81,35 +81,53 @@ function make_archive(events = make_events(), method = 8) {
     { name: 'resources/private.bin', contents: Buffer.from('never extract this') },
   ]);
 }
-function make_data_descriptor_archive({ signature = true, corrupt = false } = {}) {
+function make_data_descriptor_archive({ signature = true, corrupt = false, zip64 = false } = {}) {
   const archive = make_archive();
   const eocd = archive.length - 22;
   const central_offset = archive.readUInt32LE(eocd + 16);
   const local = 0;
   const name_length = archive.readUInt16LE(local + 26);
-  const extra_length = archive.readUInt16LE(local + 28);
+  const original_extra_length = archive.readUInt16LE(local + 28);
   const compressed_size = archive.readUInt32LE(local + 18);
-  const data_end = local + 30 + name_length + extra_length + compressed_size;
-  const descriptor = Buffer.alloc(signature ? 16 : 12);
-  let offset = 0;
+  const uncompressed_size = archive.readUInt32LE(local + 22);
+  const original_data_offset = local + 30 + name_length + original_extra_length;
+  const data_end = original_data_offset + compressed_size;
+  const extra = zip64 ? Buffer.alloc(20) : Buffer.alloc(0);
+  if (zip64) {
+    extra.writeUInt16LE(0x0001, 0);
+    extra.writeUInt16LE(16, 2);
+    extra.writeBigUInt64LE(BigInt(uncompressed_size), 4);
+    extra.writeBigUInt64LE(BigInt(compressed_size), 12);
+  }
+  const descriptor = Buffer.alloc((signature ? 4 : 0) + (zip64 ? 20 : 12));
+  let descriptor_offset = 0;
   if (signature) {
-    descriptor.writeUInt32LE(0x08074b50, offset);
-    offset += 4;
+    descriptor.writeUInt32LE(0x08074b50, descriptor_offset);
+    descriptor_offset += 4;
   }
   const crc = archive.readUInt32LE(local + 14);
-  descriptor.writeUInt32LE(corrupt ? (crc ^ 1) >>> 0 : crc, offset);
-  descriptor.writeUInt32LE(compressed_size, offset + 4);
-  descriptor.writeUInt32LE(archive.readUInt32LE(local + 22), offset + 8);
+  descriptor.writeUInt32LE(corrupt ? (crc ^ 1) >>> 0 : crc, descriptor_offset);
+  if (zip64) {
+    descriptor.writeBigUInt64LE(BigInt(compressed_size), descriptor_offset + 4);
+    descriptor.writeBigUInt64LE(BigInt(uncompressed_size), descriptor_offset + 12);
+  } else {
+    descriptor.writeUInt32LE(compressed_size, descriptor_offset + 4);
+    descriptor.writeUInt32LE(uncompressed_size, descriptor_offset + 8);
+  }
   const result = Buffer.concat([
-    archive.subarray(0, data_end),
+    archive.subarray(0, original_data_offset),
+    extra,
+    archive.subarray(original_data_offset, data_end),
     descriptor,
     archive.subarray(data_end),
   ]);
   result.writeUInt16LE(result.readUInt16LE(local + 6) | 0x0008, local + 6);
   result.writeUInt32LE(0, local + 14);
-  result.writeUInt32LE(0, local + 18);
-  result.writeUInt32LE(0, local + 22);
-  const shifted_central_offset = central_offset + descriptor.length;
+  result.writeUInt32LE(zip64 ? 0xffffffff : 0, local + 18);
+  result.writeUInt32LE(zip64 ? 0xffffffff : 0, local + 22);
+  result.writeUInt16LE(original_extra_length + extra.length, local + 28);
+  const shift = extra.length + descriptor.length;
+  const shifted_central_offset = central_offset + shift;
   const shifted_eocd = result.length - 22;
   const central_entries = result.readUInt16LE(shifted_eocd + 10);
   let central_cursor = shifted_central_offset;
@@ -118,11 +136,11 @@ function make_data_descriptor_archive({ signature = true, corrupt = false } = {}
       result.writeUInt16LE(result.readUInt16LE(central_cursor + 8) | 0x0008, central_cursor + 8);
     }
     const local_offset = result.readUInt32LE(central_cursor + 42);
-    if (local_offset >= data_end) result.writeUInt32LE(local_offset + descriptor.length, central_cursor + 42);
-    const name_length = result.readUInt16LE(central_cursor + 28);
-    const extra_length = result.readUInt16LE(central_cursor + 30);
+    if (local_offset >= data_end) result.writeUInt32LE(local_offset + shift, central_cursor + 42);
+    const entry_name_length = result.readUInt16LE(central_cursor + 28);
+    const entry_extra_length = result.readUInt16LE(central_cursor + 30);
     const comment_length = result.readUInt16LE(central_cursor + 32);
-    central_cursor += 46 + name_length + extra_length + comment_length;
+    central_cursor += 46 + entry_name_length + entry_extra_length + comment_length;
   }
   result.writeUInt32LE(shifted_central_offset, shifted_eocd + 16);
   return result;
@@ -193,6 +211,13 @@ test('Playwright trace importer validates signed and unsigned ZIP data descripto
   for (const signature of [false, true]) {
     const report = parse_playwright_trace(make_data_descriptor_archive({ signature }));
     assert.equal(report.trace.version, 9);
+    assert.equal(report.summary.events_analyzed, 9);
+  }
+});
+
+test('Playwright trace importer validates ZIP64 data descriptors with 64-bit sizes', () => {
+  for (const signature of [false, true]) {
+    const report = parse_playwright_trace(make_data_descriptor_archive({ signature, zip64: true }));
     assert.equal(report.summary.events_analyzed, 9);
   }
 });
