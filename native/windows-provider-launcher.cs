@@ -444,7 +444,10 @@ namespace OrixWindowsSandbox {
       start.RedirectStandardError = true;
       using (Process process = Process.Start(start)) {
         if (!process.WaitForExit(10000)) {
-          try { process.Kill(); } catch { }
+          // Do not begin AppContainer/profile cleanup while icacls may still be
+          // changing the scratch ACL. Kill and synchronously observe process exit.
+          try { process.Kill(); } catch { /* it may have exited between timeout and Kill */ }
+          process.WaitForExit();
           throw new TimeoutException("icacls integrity-label operation timed out");
         }
         string output = process.StandardOutput.ReadToEnd();
