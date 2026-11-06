@@ -242,6 +242,22 @@ test('Playwright trace importer rejects duplicate local-header offsets across ZI
   );
 });
 
+test('Playwright trace importer rejects payload ranges overlapping the next ZIP local header', () => {
+  const archive = make_archive();
+  const eocd = archive.length - 22;
+  const central = archive.readUInt32LE(eocd + 16);
+  const local_name_length = archive.readUInt16LE(0x1a);
+  const local_extra_length = archive.readUInt16LE(0x1c);
+  const trace_data_offset = 30 + local_name_length + local_extra_length;
+  const first_name_length = archive.readUInt16LE(central + 28);
+  const second_entry = central + 46 + first_name_length;
+  archive.writeUInt32LE(trace_data_offset + 1, second_entry + 42);
+  assert.throws(
+    () => parse_playwright_trace(archive),
+    error => error.code === 'ORIX_TRACE_MEMBER_RANGE',
+  );
+});
+
 test('Playwright trace importer accepts stored and raw-DEFLATE trace members', () => {
   for (const method of [0, 8]) {
     const report = parse_playwright_trace(make_archive(make_events(), method));
