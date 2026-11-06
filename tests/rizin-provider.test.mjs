@@ -130,6 +130,26 @@ test('Rizin adapter rejects symlink input paths before creating a private snapsh
   });
 });
 
+test('Rizin import adapter rejects original input replacement during provider execution', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({ replace_original_path: input_path });
+    await assert.rejects(
+      analyze_rizin_imports({ input_path, executable, executable_args }),
+      error => error.code === 'ORIX_RIZIN_INPUT_CHANGED',
+    );
+  });
+});
+
+test('Rizin function adapter rejects original input replacement during provider execution', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({ replace_original_path: input_path });
+    await assert.rejects(
+      analyze_rizin_functions({ input_path, executable, executable_args }),
+      error => error.code === 'ORIX_RIZIN_INPUT_CHANGED',
+    );
+  });
+});
+
 test('Rizin adapter validates import limits before launching the external process', async () => {
   await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     await assert.rejects(
