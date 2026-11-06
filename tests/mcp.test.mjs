@@ -8,7 +8,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PassThrough } from 'node:stream';
 import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool, start_mcp_server } from '../src/mcp/server.mjs';
-import { append_ledger } from '../src/evidence/ledger.mjs';
+import { inspect_file } from '../src/core/inspect.mjs';
+import { append_ledger, verify_ledger } from '../src/evidence/ledger.mjs';
 
 test('MCP case tools create, mutate, verify, export and import a workspace-confined case', async t => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-'));
@@ -604,6 +605,49 @@ test('MCP rejects hard-linked files to prevent workspace aliases to external fil
       call_orix_tool('orix.inspect_file', { path: alias }, { roots: [root] }),
       error => error.code === 'ORIX_MCP_HARDLINK_REJECTED',
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('MCP inspector can enforce hard-link rejection at its opened-file boundary', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-inspector-hardlink-root-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-inspector-hardlink-outside-'));
+  try {
+    const external = path.join(outside, 'external.bin');
+    const alias = path.join(root, 'alias.bin');
+    const { link } = await import('node:fs/promises');
+    await writeFile(external, 'protected external content');
+    await link(external, alias);
+    await assert.rejects(
+      inspect_file(alias, { reject_hardlinks: true }),
+      error => error.code === 'ORIX_HARDLINK_REJECTED',
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('Evidence-ledger read and append reject hard-link aliases when requested by MCP', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-ledger-hardlink-root-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-ledger-hardlink-outside-'));
+  try {
+    const external = path.join(outside, 'external-ledger.jsonl');
+    const alias = path.join(root, 'alias-ledger.jsonl');
+    await append_ledger(external, { type: 'test.created', payload: { safe: true } });
+    const { link, readFile } = await import('node:fs/promises');
+    await link(external, alias);
+    await assert.rejects(
+      verify_ledger(alias, { reject_hardlinks: true }),
+      error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+    );
+    await assert.rejects(
+      append_ledger(alias, { type: 'test.appended', payload: {} }, { reject_hardlinks: true }),
+      error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+    );
+    assert.equal((await readFile(external, 'utf8')).split('\\n').length, 2);
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
