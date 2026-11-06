@@ -66,7 +66,8 @@ async function main() {
       const relativeTemp = path.relative(scratchRoot, actualTemp);
       result.scratch_root = scratchRoot;
       result.temp_path = actualTemp;
-      result.tmp_inside_root = relativeTemp === '' || (relativeTemp !== '..' && !relativeTemp.startsWith('..' + path.sep) && !path.isAbsolute(relativeTemp));      result.host_network = await new Promise(resolve => {
+      result.tmp_inside_root = relativeTemp === '' || (relativeTemp !== '..' && !relativeTemp.startsWith('..' + path.sep) && !path.isAbsolute(relativeTemp));
+      result.host_network = await new Promise(resolve => {
         const socket = net.createConnection({ host: '127.0.0.1', port: ${port} });
         let settled = false;
         const finish = value => {
