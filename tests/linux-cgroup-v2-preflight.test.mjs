@@ -4,6 +4,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  access_credentials_match,
   assess_cgroup_directory_permissions,
   inspect_linux_cgroup_v2,
   map_cgroup_path_to_mount,
@@ -80,6 +81,14 @@ test('cgroup directory permission gate requires effective-UID ownership and no g
     assess_cgroup_directory_permissions(null, 1000),
     { owner_matches_process: false, not_group_or_other_writable: false },
   );
+});
+
+test('cgroup access checks fail closed when real and effective credentials differ', () => {
+  assert.equal(access_credentials_match(1000, 1000, 1000, 1000), true);
+  assert.equal(access_credentials_match(1000, 0, 1000, 0), false);
+  assert.equal(access_credentials_match(1000, 1000, 1000, 0), false);
+  assert.equal(access_credentials_match(-1, 0, 0, 0), false);
+  assert.equal(access_credentials_match(0, Number.NaN, 0, 0), false);
 });
 
 test('cgroup directory permission assessment rejects invalid UID and mode metadata', () => {
