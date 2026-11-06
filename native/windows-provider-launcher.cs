@@ -278,6 +278,13 @@ namespace OrixWindowsSandbox {
           volumeRoot.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
         if (volumeRootComponent) continue;
 
+        // The volume root has no parent directory that can replace it. Its
+        // operating-system-managed ACL may include broad create/write ACEs
+        // for the volume namespace; validate its owner and reparse status above,
+        // but evaluate replacement/write grants only on the rootfs and the
+        // directories that can replace it.
+        if (current.Parent == null) continue;
+
         AuthorizationRuleCollection rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier));
         foreach (FileSystemAccessRule rule in rules) {
           if (rule.AccessControlType != AccessControlType.Allow) continue;
