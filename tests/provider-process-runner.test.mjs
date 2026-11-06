@@ -358,9 +358,12 @@ test('static provider runner rejects symlinks inside executable and working-dire
   });
 });
 
-test('static provider runner rejects PATH and executable-loader environment overrides', async () => {
+test('static provider runner rejects command, loader and Windows bootstrap environment overrides', async () => {
   const executable = await node_executable();
-  for (const key of ['PATH', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES']) {
+  for (const key of [
+    'PATH', 'PATHEXT', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES',
+    'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'COMSPEC',
+  ]) {
     await assert.rejects(
       run_static_provider({
         manifest: manifest(),
@@ -369,8 +372,22 @@ test('static provider runner rejects PATH and executable-loader environment over
         env: { [key]: 'attacker-controlled-value' },
       }),
       /enumerable string data properties with valid names/,
+      key + ' must not be overridden',
     );
   }
+});
+
+test('static provider runner rejects case-insensitive duplicate environment keys', async () => {
+  const executable = await node_executable();
+  await assert.rejects(
+    run_static_provider({
+      manifest: manifest(),
+      executable,
+      args: [],
+      env: { ORIX_PROVIDER_MODE: 'safe', orix_provider_mode: 'ambiguous' },
+    }),
+    /enumerable string data properties with valid names/,
+  );
 });
 
 
