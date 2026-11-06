@@ -26,6 +26,9 @@ extern int sandbox_check(pid_t pid, const char *operation, int type, ...);
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <sys/acl.h>
+#include <fts.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -56,6 +59,86 @@ static char *read_profile(const char *path) {
   return buffer;
 }
 
+
+/*
+ * macOS ACL entries are independent of the POSIX mode bits checked by the
+ * JavaScript preflight. Reject every non-empty extended ACL in the rootfs
+ * and on its ancestors before entering Seatbelt. ENOENT means no extended
+ * ACL is attached on current macOS filesystems; unsupported ACL filesystems
+ * are safe only insofar as they cannot represent these entries.
+ */
+static int check_extended_acl(const char *path) {
+  errno = 0;
+  acl_t acl = acl_get_file(path, ACL_TYPE_EXTENDED);
+  if (acl == NULL) {
+    if (errno == ENOENT || errno == EOPNOTSUPP) return 0;
+    fprintf(stderr, "ORIX_MACOS_ACL_CHECK_ERROR=%s:%s\\n", path, strerror(errno));
+    return -1;
+  }
+  acl_entry_t entry;
+  int result = acl_get_entry(acl, ACL_FIRST_ENTRY, &entry);
+  int saved_errno = errno;
+  acl_free(acl);
+  if (result > 0) {
+    fprintf(stderr, "ORIX_MACOS_ACL_DENIED=%s\\n", path);
+    return 1;
+  }
+  if (result < 0) {
+    fprintf(stderr, "ORIX_MACOS_ACL_CHECK_ERROR=%s:%s\\n", path, strerror(saved_errno));
+    return -1;
+  }
+  return 0;
+}
+
+static int check_ancestor_acls(const char *root) {
+  char *path = strdup(root);
+  if (!path) return -1;
+  for (;;) {
+    int result = check_extended_acl(path);
+    if (result != 0) { free(path); return result; }
+    if (strcmp(path, "/") == 0) break;
+    char *slash = strrchr(path, '/');
+    if (!slash) { free(path); errno = EINVAL; return -1; }
+    if (slash == path) path[1] = '\\0';
+    else *slash = '\\0';
+  }
+  free(path);
+  return 0;
+}
+
+static int check_rootfs_acls(const char *root) {
+  int ancestors = check_ancestor_acls(root);
+  if (ancestors != 0) return ancestors;
+
+  char *paths[] = { (char *)root, NULL };
+  FTS *tree = fts_open(paths, FTS_PHYSICAL | FTS_NOCHDIR, NULL);
+  if (!tree) {
+    fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=%s\\n", strerror(errno));
+    return -1;
+  }
+  int result = 0;
+  FTSENT *entry;
+  while ((entry = fts_read(tree)) != NULL) {
+    if (entry->fts_info == FTS_DP) continue;
+    if (entry->fts_info != FTS_D && entry->fts_info != FTS_F) {
+      fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=unexpected-rootfs-entry:%s\\n", entry->fts_path);
+      result = -1;
+      break;
+    }
+    int acl_result = check_extended_acl(entry->fts_accpath);
+    if (acl_result != 0) { result = acl_result; break; }
+  }
+  if (errno != 0 && result == 0) {
+    fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=%s\\n", strerror(errno));
+    result = -1;
+  }
+  if (fts_close(tree) != 0 && result == 0) {
+    fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=close:%s\\n", strerror(errno));
+    result = -1;
+  }
+  return result;
+}
+
 int main(int argc, char **argv) {
   if (argc < 5) {
     fprintf(stderr, "ORIX_MACOS_LAUNCHER_ERROR=invalid-arguments\n");
@@ -71,6 +154,15 @@ int main(int argc, char **argv) {
       set_limit(RLIMIT_FSIZE, 67108864, "file-size") != 0 ||
       set_limit(RLIMIT_NOFILE, 256, "open-files") != 0 ||
       set_limit(RLIMIT_CORE, 0, "core") != 0) return 125;
+
+  int acl_result = check_rootfs_acls(root);
+  if (acl_result != 0) {
+    if (acl_result > 0)
+      fprintf(stderr, "ORIX_MACOS_ACL_DENIED=provider-rootfs-or-ancestor\\n");
+    else
+      fprintf(stderr, "ORIX_MACOS_ACL_CHECK_FAILED=fail-closed\\n");
+    return 125;
+  }
 
   char *profile = read_profile(profile_path);
   if (!profile) {
