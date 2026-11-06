@@ -4,6 +4,7 @@ import { constants as FS_CONSTANTS } from 'node:fs';
 import { access, lstat, realpath, stat } from 'node:fs/promises';
 import { prepare_linux_provider_isolation } from './linux-isolation.mjs';
 import { prepare_windows_provider_isolation } from './windows-isolation.mjs';
+import { prepare_macos_provider_isolation } from './macos-isolation.mjs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { OrixError } from '../core/errors.mjs';
@@ -360,7 +361,9 @@ export async function run_static_provider(options) {
       ? prepare_linux_provider_isolation
       : process.platform === 'win32'
         ? prepare_windows_provider_isolation
-        : null;
+        : process.platform === 'darwin'
+          ? prepare_macos_provider_isolation
+          : null;
     if (!prepare) {
       runner_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
         'Required provider isolation has no enforced backend for this operating system', {
