@@ -1,6 +1,6 @@
 // Windows AppContainer + Job Object hostile-process integration gate.
 import assert from 'node:assert/strict';
-import { access, copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import os_host from 'node:os';
@@ -31,6 +31,11 @@ function manifest() {
 
 async function main() {
   assert.equal(process.platform, 'win32', 'This integration gate must run on Windows');
+  const launcherSource = await readFile(new URL('../native/windows-provider-launcher.cs', import.meta.url), 'utf8');
+  assert.match(launcherSource, /GetSystemDirectoryW/,
+    'Native helper must resolve security-sensitive Windows utilities through the OS API');
+  assert.doesNotMatch(launcherSource, /Environment\.GetEnvironmentVariable\("SystemRoot"\)/,
+    'Native helper must not resolve icacls.exe from inherited SystemRoot');
   // Keep the rootfs outside the broadly writable GitHub Actions workspace; its
   // ancestors are part of the native trust check, not just the leaf ACL.
   // Use a protected system directory, not the GitHub workspace or user profile.
