@@ -279,7 +279,12 @@ function minimal_environment(overrides) {
       if (typeof process.env[key] === 'string') result[key] = process.env[key];
     }
   }
-  for (const [key, value] of Object.entries(overrides)) result[key] = value;
+  for (const [key, value] of Object.entries(overrides)) {
+    // These variables identify trusted Windows system tooling. Provider-supplied
+    // overrides must never redirect host-side compiler or ACL helper execution.
+    if (process.platform === 'win32' && ['SYSTEMROOT', 'WINDIR'].includes(key.toUpperCase())) continue;
+    result[key] = value;
+  }
   return result;
 }
 
