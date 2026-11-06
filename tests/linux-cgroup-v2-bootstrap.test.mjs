@@ -62,7 +62,7 @@ if (process.platform === 'linux') {
         "let leaked = false;",
         "try { leaked = readlinkSync('/proc/self/fd/3').includes(marker); }",
         "catch (error) { if (error.code !== 'ENOENT') throw error; }",
-        "process.stdout.write(/^\\\\d+\\\\n$/.test(membership) && !leaked ? 'attached-and-closed' : 'failed');",
+        "process.stdout.write(/^\\d+\\n$/.test(membership) && !leaked ? 'attached-and-closed' : 'failed');",
       ].join(' ');
       const result = await run_bootstrap_with_fd(fd, [
         '--attach-fd=3', '--', process.execPath, '-e', provider_code, attach_file,
