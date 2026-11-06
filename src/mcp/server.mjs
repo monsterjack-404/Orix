@@ -71,6 +71,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         timeout_ms: integer('Total provider workflow deadline in milliseconds.', 60000, 1),
         max_output_kib: integer('Aggregate stdout/stderr capture budget in KiB.', 8192, 1),
         isolation: { type: 'string', enum: ['none', 'required'], description: 'Require Linux Bubblewrap namespace/filesystem isolation. The sandbox root is configured by the server administrator with ORIX_PROVIDER_SANDBOX_ROOT.' },
+        cwd: { type: 'string', minLength: 1, maxLength: 4096, description: 'Optional provider working directory inside a configured MCP workspace; defaults to the administrator sandbox root when required isolation is selected.' },
       },
       required: ['path', 'executable'],
       additionalProperties: false,
@@ -371,6 +372,9 @@ export async function call_orix_tool(name, args = {}, options = {}) {
         throw new TypeError('MCP server administrator must configure ORIX_PROVIDER_SANDBOX_ROOT as an absolute path before required isolation can be requested');
       }
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
+      const cwd = args.cwd === undefined
+        ? (isolation === 'required' ? sandbox_root : undefined)
+        : (await resolve_workspace_path(args.cwd, roots, { kind: 'directory' })).path;
       return analyze_rizin_functions({
         input_path: target.path,
         executable: args.executable,
@@ -383,6 +387,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
         max_output_bytes: (args.max_output_kib ?? 2_048) * 1024,
         isolation,
         sandbox_root,
+        cwd,
       });
     }
     case 'orix.scan_directory': {
