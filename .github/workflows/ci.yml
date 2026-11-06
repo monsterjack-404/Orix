@@ -100,21 +100,30 @@ jobs:
         run: npm run check
       - name: Run tests
         run: npm test
-      - name: Build Windows native launcher (compile validation only)
-        if: runner.os == 'Windows'
-        run: dotnet build native/windows-provider-launcher.csproj --configuration Release --output artifacts/windows-helper
-      - name: Verify Windows launcher build output
+      - name: Build Windows native launcher twice (compile reproducibility check only)
         if: runner.os == 'Windows'
         run: |
-          $launcher = Join-Path $env:GITHUB_WORKSPACE 'artifacts/windows-helper/orix-windows-provider-launcher.exe'
-          if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) { throw 'Windows launcher build output is missing' }
-          Get-FileHash -LiteralPath $launcher -Algorithm SHA256 | Format-List
+          dotnet clean native/windows-provider-launcher.csproj --configuration Release
+          dotnet build native/windows-provider-launcher.csproj --configuration Release --no-incremental --output artifacts/windows-helper-first
+          dotnet clean native/windows-provider-launcher.csproj --configuration Release
+          dotnet build native/windows-provider-launcher.csproj --configuration Release --no-incremental --output artifacts/windows-helper-second
+      - name: Verify Windows launcher build outputs match
+        if: runner.os == 'Windows'
+        run: |
+          $first = Join-Path $env:GITHUB_WORKSPACE 'artifacts/windows-helper-first/orix-windows-provider-launcher.exe'
+          $second = Join-Path $env:GITHUB_WORKSPACE 'artifacts/windows-helper-second/orix-windows-provider-launcher.exe'
+          if (-not (Test-Path -LiteralPath $first -PathType Leaf)) { throw 'First Windows launcher build output is missing' }
+          if (-not (Test-Path -LiteralPath $second -PathType Leaf)) { throw 'Second Windows launcher build output is missing' }
+          $firstHash = (Get-FileHash -LiteralPath $first -Algorithm SHA256).Hash
+          $secondHash = (Get-FileHash -LiteralPath $second -Algorithm SHA256).Hash
+          if ($firstHash -ne $secondHash) { throw "Windows launcher builds are not byte-for-byte reproducible: $firstHash != $secondHash" }
+          Write-Output "Reproducible Windows launcher SHA-256: $firstHash"
       - name: Upload Windows launcher build artifact (not a runtime trust anchor)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: orix-windows-launcher-build
-          path: artifacts/windows-helper/orix-windows-provider-launcher.exe
+          path: artifacts/windows-helper-first/orix-windows-provider-launcher.exe
           if-no-files-found: error
           retention-days: 7
       - name: Run Windows AppContainer hostile-process isolation checks
