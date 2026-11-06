@@ -2,6 +2,8 @@
 
 **Status: research/design only — no cgroup resource enforcement is implemented by this document or the current provider runner.**
 
+An internal host-side lease-manager prototype now exists in \`src/providers/linux-cgroup-v2-manager.mjs\`. It validates explicit limits, creates and configures one child cgroup under a preflight-approved delegated parent, verifies limit read-back, provides a write-only attach descriptor for the trusted bootstrap, and implements idempotent kill / populated-zero / remove teardown. Deterministic tests use an ordinary temporary filesystem adapter to exercise the manager state machine only. The module is not wired into \`run_static_provider()\`, does not yet have a real delegated-cgroup integration test, and does not establish kernel enforcement. The status above therefore remains unchanged.
+
 ## Goal
 
 Add a Linux-only, opt-in resource-control layer to the existing required Bubblewrap provider sandbox. The initial enforced controls are:
