@@ -36,7 +36,6 @@ jobs:
       - name: Run tests
         run: npm test
       - name: Generate coverage summary
-        if: matrix.node-version == 22
         run: npm run test:coverage
 
   platform-smoke:
