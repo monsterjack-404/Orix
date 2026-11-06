@@ -51,7 +51,7 @@ async function validate_tree(root) {
 async function resolve_csc(environment) {
   // environment must be assembled only from the trusted host process, never
   // from provider-supplied environment overrides.
-  const systemRoot = environment.SystemRoot ?? environment.WINDIR;
+  const systemRoot = [environment.SystemRoot, environment.WINDIR].find(value => typeof value === 'string' && value.trim().length > 0);
   if (!systemRoot) isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'SystemRoot is required to locate the trusted .NET Framework compiler');
   for (const candidate of [
     path.join(systemRoot, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe'),
@@ -139,8 +139,8 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
     if (normalizedKey === 'systemroot' || normalizedKey === 'windir') continue;
     providerEnvironment[key] = value;
   }
-  const trustedSystemRoot = process.env.SystemRoot ?? process.env.WINDIR;
-  if (typeof trustedSystemRoot === 'string' && trustedSystemRoot.length > 0) {
+  const trustedSystemRoot = [process.env.SystemRoot, process.env.WINDIR].find(value => typeof value === 'string' && value.trim().length > 0);
+  if (typeof trustedSystemRoot === 'string') {
     providerEnvironment.SystemRoot = trustedSystemRoot;
     providerEnvironment.WINDIR = trustedSystemRoot;
   }
