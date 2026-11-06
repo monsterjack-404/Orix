@@ -23,6 +23,7 @@ import { read_json_report } from '../core/read-report.mjs';
 import { hash_buffer } from '../core/hash.mjs';
 import { render_cyclonedx } from '../reports/cyclonedx.mjs';
 import { analyze_har_file, render_har_markdown } from '../network/har.mjs';
+import { analyze_android_package_file, render_android_package_markdown } from '../android/package.mjs';
 import { RIZIN_PROVIDER_MANIFEST, analyze_rizin_imports, analyze_rizin_functions, probe_rizin } from '../providers/rizin.mjs';
 import { render_rizin_imports_markdown, render_rizin_functions_markdown } from '../reports/rizin.mjs';
 import { audit_project_dependencies, render_vulnerability_audit_markdown } from '../vulnerability/osv.mjs';
@@ -49,6 +50,7 @@ function validate_command_flags(command, flags) {
     providers: ['format', 'out', 'provider_executable', 'provider_executable_args', 'timeout_ms', 'max_output_bytes', 'max_imports', 'max_functions', 'rizin_address', 'max_instructions', 'rizin_decompile'],
     audit: ['format', 'out', 'max_scan_files', 'max_scan_entries', 'max_scan_depth', 'osv_lookup', 'max_osv_packages', 'max_osv_advisories', 'max_osv_response_bytes', 'timeout_ms'],
     har: ['format', 'out', 'max_har_entries', 'max_har_hosts'],
+    android: ['format', 'out', 'max_file_bytes', 'max_archive_entries'],
   }[command];
   if (!allowed) return;
   const unsupported = Object.keys(flags).filter(key => !allowed.includes(key));
@@ -205,6 +207,14 @@ export async function main(argv=process.argv.slice(2), dependencies = {}) {
     const output=parsed.flags.format==='json'
       ? render_json(report)
       : render_vulnerability_audit_markdown(report);
+    await write_or_print(output,parsed.flags.out);
+    return 0;
+  }
+  if(parsed.command==='android'){
+    if(!parsed.target)throw new Error('android requires an APK or AAB file path');
+    if(parsed.flags.format&&!['json','markdown'].includes(parsed.flags.format))throw new Error('android output supports JSON or Markdown only');
+    const report=await analyze_android_package_file(parsed.target,{max_file_bytes:parsed.flags.max_file_bytes,max_archive_entries:parsed.flags.max_archive_entries});
+    const output=parsed.flags.format==='json'?render_json(report):render_android_package_markdown(report);
     await write_or_print(output,parsed.flags.out);
     return 0;
   }
