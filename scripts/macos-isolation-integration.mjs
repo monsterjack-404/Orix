@@ -59,6 +59,29 @@ async function copy_node_runtime(root) {
   return destination;
 }
 
+async function assert_extended_acl_denied(target, label, executable, root) {
+  execFileSync('/bin/chmod', ['+a', 'everyone allow write', target]);
+  try {
+    const execution = await run_static_provider({
+      manifest: manifest(),
+      executable,
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      env: {},
+      args: ['-e', 'process.exit(0)'],
+      timeout_ms: 12_000,
+      max_output_bytes: 4_096,
+    });
+    assert.equal(execution.ok, false,
+      'macOS isolation accepted an extended ACL on ' + label);
+    assert.match(execution.stderr, /ORIX_MACOS_ACL_DENIED=/,
+      'Native launcher did not report extended ACL rejection for ' + label);
+  } finally {
+    execFileSync('/bin/chmod', ['-N', target]);
+  }
+}
+
 async function main() {
   assert.equal(process.platform, 'darwin', 'This integration gate must run on macOS');
   const isolationSource = await readFile(new URL('../src/providers/macos-isolation.mjs', import.meta.url), 'utf8');
@@ -146,30 +169,16 @@ async function main() {
 
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
 
-    // POSIX mode bits do not reveal macOS extended ACL entries. The native
-    // launcher must reject an ACL-granted writer even when mode bits look safe.
+    // POSIX mode bits do not reveal macOS extended ACL entries. Exercise
+    // every native scan boundary: ancestors, rootfs root, nested directories,
+    // and regular files. The native helper must reject all before exec.
     const aclProbe = path.join(root, 'work', 'extended-acl-probe.txt');
     await writeFile(aclProbe, 'ACL must be rejected', { mode: 0o600 });
-    execFileSync('/bin/chmod', ['+a', 'everyone allow write', aclProbe]);
-    try {
-      const aclExecution = await run_static_provider({
-        manifest: manifest(),
-        executable,
-        cwd: path.join(root, 'work'),
-        sandbox_root: root,
-        isolation: 'required',
-        env: {},
-        args: ['-e', 'process.exit(0)'],
-        timeout_ms: 12_000,
-        max_output_bytes: 4_096,
-      });
-      assert.equal(aclExecution.ok, false, 'macOS isolation accepted a rootfs entry with an extended ACL');
-      assert.match(aclExecution.stderr, /ORIX_MACOS_ACL_DENIED=/,
-        'Native launcher did not report the extended ACL rejection');
-    } finally {
-      execFileSync('/bin/chmod', ['-N', aclProbe]);
-      await rm(aclProbe, { force: true });
-    }
+    await assert_extended_acl_denied(base, 'rootfs ancestor', executable, root);
+    await assert_extended_acl_denied(root, 'rootfs directory', executable, root);
+    await assert_extended_acl_denied(path.join(root, 'work'), 'nested rootfs directory', executable, root);
+    await assert_extended_acl_denied(aclProbe, 'regular rootfs file', executable, root);
+    await rm(aclProbe, { force: true });
 
     server = net.createServer();
     await new Promise((resolve, reject) => {
