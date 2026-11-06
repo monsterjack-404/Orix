@@ -31,6 +31,8 @@ test('cgroup path mapping honors mount roots and the most specific matching moun
   assert.equal(map_cgroup_path_to_mount('/tenant/provider', mounts), '/run/delegated/provider');
   assert.equal(map_cgroup_path_to_mount('/other/provider', mounts), '/sys/fs/cgroup/other/provider');
   assert.equal(map_cgroup_path_to_mount('/outside', [{ root: '/tenant', mountpoint: '/run/delegated' }]), null);
+  assert.equal(map_cgroup_path_to_mount('/tenant/../outside', [{ root: '/tenant', mountpoint: '/run/delegated' }]), null);
+  assert.equal(map_cgroup_path_to_mount('/tenant//provider', [{ root: '/tenant', mountpoint: '/run/delegated' }]), null);
 });
 
 test('cgroup parser rejects non-string input', () => {
