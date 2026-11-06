@@ -54,6 +54,8 @@ async function main() {
       import os from 'node:os';
       import path from 'node:path';
       const result = {};
+      result.system_root = process.env.SystemRoot || '';
+      result.windir = process.env.WINDIR || '';
       try { fs.readFileSync(${JSON.stringify(hostSecret)}, 'utf8'); result.host_file = 'readable'; }
       catch (error) { result.host_file = error.code || 'blocked'; }
       try { fs.writeFileSync(path.join(process.cwd(), 'host-write-probe'), 'escape'); result.root_write = 'writable'; }
@@ -106,6 +108,8 @@ async function main() {
     assert.match(execution.stderr, /ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64/,
       'AppContainer token and Job Object limits were not confirmed by the native launcher');
     const result = JSON.parse(execution.stdout);
+    assert.ok(result.system_root, 'Provider did not receive the trusted SystemRoot required by the Windows runtime');
+    assert.equal(result.windir.toLowerCase(), result.system_root.toLowerCase(), 'WINDIR and SystemRoot disagree');
     assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.temp_exists, true, JSON.stringify(result));
