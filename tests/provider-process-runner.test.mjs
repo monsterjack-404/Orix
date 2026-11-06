@@ -44,15 +44,29 @@ async function node_executable() {
   return realpath(process.execPath);
 }
 
+test('static provider runner refuses an implicit unsandboxed execution policy', async () => {
+  await assert.rejects(
+    run_static_provider({
+      manifest: manifest(),
+      executable: await node_executable(),
+      args: ['-e', 'process.exit(0)'],
+    }),
+    /isolation must be explicitly set/,
+  );
+});
+
 test('static provider runner uses argv without shell interpolation and returns bounded diagnostics', async () => {
   const result = await run_static_provider({
     manifest: manifest(),
+    isolation: 'none',
     executable: await node_executable(),
     args: ['-e', 'process.stdout.write(process.argv[1]); process.stderr.write("diagnostic");', 'literal $(not-a-shell) value'],
     env: { ORIX_CHILD_TEST: 'present' },
     timeout_ms: 1000,
   });
   assert.equal(result.ok, true);
+  assert.equal(result.isolation, 'none');
+  assert.equal(result.isolation_enforced, false);
   assert.equal(result.schema_version, 'orix.provider-execution.v1');
   assert.equal(result.success, true);
   assert.equal(result.termination_reason, null);
@@ -77,6 +91,7 @@ test('static provider runner uses argv without shell interpolation and returns b
 test('static provider runner prepends bounded executable arguments without shell evaluation', async () => {
   const result = await run_static_provider({
     manifest: manifest(),
+    isolation: 'none',
     executable: await node_executable(),
     executable_args: ['-e', 'process.stdout.write(process.argv.slice(1).join("|"))'],
     args: ['first literal', 'second $(not-a-shell) literal'],
@@ -93,6 +108,7 @@ test('static provider runner does not inherit the parent environment by default'
   try {
     const result = await run_static_provider({
       manifest: manifest(),
+    isolation: 'none',
       executable: await node_executable(),
       args: ['-e', 'process.stdout.write(process.env.ORIX_PROCESS_RUNNER_PARENT_SECRET || "absent")'],
     });
@@ -107,6 +123,7 @@ test('static provider runner does not inherit the parent environment by default'
 test('static provider runner reports non-zero exit status instead of hiding it', async () => {
   const result = await run_static_provider({
     manifest: manifest(),
+    isolation: 'none',
     executable: await node_executable(),
     args: ['-e', 'process.stderr.write("failure"); process.exitCode = 7;'],
   });
@@ -118,6 +135,7 @@ test('static provider runner reports non-zero exit status instead of hiding it',
 test('static provider runner enforces the per-run output ceiling', async () => {
   const result = await run_static_provider({
     manifest: manifest(),
+    isolation: 'none',
     executable: await node_executable(),
     args: ['-e', 'process.stdout.write("x".repeat(8192))'],
     max_output_bytes: 1024,
@@ -133,6 +151,7 @@ test('static provider runner enforces the per-run output ceiling', async () => {
 test('static provider runner terminates providers at the configured deadline', async () => {
   const result = await run_static_provider({
     manifest: manifest(),
+    isolation: 'none',
     executable: await node_executable(),
     args: ['-e', 'setTimeout(() => {}, 5000)'],
     timeout_ms: 40,
@@ -152,6 +171,7 @@ test('static provider runner supports AbortSignal cancellation', async () => {
   try {
     const result = await run_static_provider({
       manifest: manifest(),
+    isolation: 'none',
       executable: await node_executable(),
       args: ['-e', 'setTimeout(() => {}, 5000)'],
       signal: controller.signal,
@@ -186,12 +206,14 @@ test('static provider runner rejects dynamic, write-capable, network and authori
 test('static provider runner rejects NUL, sparse, accessor-backed and custom-property argv arrays', async () => {
   const executable = await node_executable();
   await assert.rejects(
-    run_static_provider({ manifest: manifest(), executable, args: ['bad\0arg'] }),
+    run_static_provider({ manifest: manifest(),
+    isolation: 'none', executable, args: ['bad\0arg'] }),
     /without NUL bytes/,
   );
   const sparse = new Array(1);
   await assert.rejects(
-    run_static_provider({ manifest: manifest(), executable, args: sparse }),
+    run_static_provider({ manifest: manifest(),
+    isolation: 'none', executable, args: sparse }),
     /must not be sparse/,
   );
   const accessor = [];
@@ -201,13 +223,15 @@ test('static provider runner rejects NUL, sparse, accessor-backed and custom-pro
   });
   accessor.length = 1;
   await assert.rejects(
-    run_static_provider({ manifest: manifest(), executable, args: accessor }),
+    run_static_provider({ manifest: manifest(),
+    isolation: 'none', executable, args: accessor }),
     /data elements only/,
   );
   const custom = [];
   custom.extra = 'hidden';
   await assert.rejects(
-    run_static_provider({ manifest: manifest(), executable, args: custom }),
+    run_static_provider({ manifest: manifest(),
+    isolation: 'none', executable, args: custom }),
     /custom array properties/,
   );
 });
@@ -222,11 +246,13 @@ test('static provider runner rejects symlink executables and working directories
     await import('node:fs/promises').then(fs => fs.mkdir(cwd_target));
     await symlink(cwd_target, cwd_link, process.platform === 'win32' ? 'junction' : undefined);
     await assert.rejects(
-      run_static_provider({ manifest: manifest(), executable: executable_link, args: [] }),
+      run_static_provider({ manifest: manifest(),
+    isolation: 'none', executable: executable_link, args: [] }),
       error => error.code === 'ORIX_PROVIDER_EXECUTABLE_NOT_REGULAR',
     );
     await assert.rejects(
-      run_static_provider({ manifest: manifest(), executable, args: [], cwd: cwd_link }),
+      run_static_provider({ manifest: manifest(),
+    isolation: 'none', executable, args: [], cwd: cwd_link }),
       error => error.code === 'ORIX_PROVIDER_CWD_INVALID',
     );
   });
@@ -242,6 +268,7 @@ test('static provider runner rejects invalid environment accessors without invok
   await assert.rejects(
     run_static_provider({
       manifest: manifest(),
+    isolation: 'none',
       executable: await node_executable(),
       args: [],
       env,
@@ -253,7 +280,8 @@ test('static provider runner rejects invalid environment accessors without invok
 
 test('static provider runner rejects non-absolute executable paths before spawning', async () => {
   await assert.rejects(
-    run_static_provider({ manifest: manifest(), executable: 'node', args: [] }),
+    run_static_provider({ manifest: manifest(),
+    isolation: 'none', executable: 'node', args: [] }),
     /absolute filesystem path/,
   );
 });
@@ -264,6 +292,7 @@ test('static provider runner restricts executable launch to the exact canonical 
   await assert.rejects(
     run_static_provider({
       manifest: manifest(),
+    isolation: 'none',
       executable,
       allowed_executables: [],
       args: [],
@@ -273,6 +302,7 @@ test('static provider runner restricts executable launch to the exact canonical 
   await assert.rejects(
     run_static_provider({
       manifest: manifest(),
+    isolation: 'none',
       executable,
       allowed_executables: ['/definitely/not/the/node/executable'],
       args: [],
@@ -288,6 +318,7 @@ test('static provider runner confines its working directory to an explicit allow
       await assert.rejects(
         run_static_provider({
           manifest: manifest(),
+    isolation: 'none',
           executable: await node_executable(),
           args: [],
           cwd: outside,
@@ -313,6 +344,7 @@ test('static provider runner rejects symlinks inside executable and working-dire
     await assert.rejects(
       run_static_provider({
         manifest: manifest(),
+    isolation: 'none',
         executable,
         allowed_executables: [executable_link],
         args: [],
@@ -322,6 +354,7 @@ test('static provider runner rejects symlinks inside executable and working-dire
     await assert.rejects(
       run_static_provider({
         manifest: manifest(),
+    isolation: 'none',
         executable,
         args: [],
         cwd: root_target,
@@ -338,6 +371,7 @@ test('static provider runner rejects PATH and executable-loader environment over
     await assert.rejects(
       run_static_provider({
         manifest: manifest(),
+    isolation: 'none',
         executable,
         args: [],
         env: { [key]: 'attacker-controlled-value' },
@@ -353,6 +387,7 @@ test('static provider runner rejects NUL bytes in executable and working-directo
   await assert.rejects(
     run_static_provider({
       manifest: manifest(),
+    isolation: 'none',
       executable,
       allowed_executables: [executable + '\0suffix'],
       args: [],
@@ -362,6 +397,7 @@ test('static provider runner rejects NUL bytes in executable and working-directo
   await assert.rejects(
     run_static_provider({
       manifest: manifest(),
+    isolation: 'none',
       executable,
       cwd: process.cwd() + '\0suffix',
       args: [],
@@ -375,6 +411,7 @@ test('required provider isolation fails closed when no sandbox root is supplied'
   await assert.rejects(
     run_static_provider({
       manifest: manifest(),
+    isolation: 'none',
       executable: await node_executable(),
       args: [],
       isolation: 'required',
@@ -389,6 +426,7 @@ test('provider isolation rejects unknown isolation modes before launch', async (
   await assert.rejects(
     run_static_provider({
       manifest: manifest(),
+    isolation: 'none',
       executable: await node_executable(),
       args: [],
       isolation: 'best-effort',
@@ -405,6 +443,7 @@ test('required provider isolation refuses executable and cwd paths outside its r
     await assert.rejects(
       run_static_provider({
         manifest: manifest(),
+    isolation: 'none',
         executable,
         args: [],
         isolation: 'required',

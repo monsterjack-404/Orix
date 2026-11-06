@@ -274,6 +274,7 @@ export async function analyze_rizin_imports(options = {}) {
     }
 
     const common = {
+      isolation: 'none',
       manifest,
       executable: descriptors.executable?.value,
       executable_args: descriptors.executable_args?.value,
@@ -580,6 +581,7 @@ export async function analyze_rizin_functions(options = {}) {
     }
 
     const common = {
+      isolation: 'none',
       manifest,
       executable: descriptors.executable?.value,
       executable_args: descriptors.executable_args?.value,
@@ -783,6 +785,7 @@ export async function probe_rizin(options = {}) {
     cwd: descriptors.cwd?.value,
     env: descriptors.env?.value,
     args: ['-v'],
+    isolation: 'none',
     timeout_ms,
     max_output_bytes,
     signal: descriptors.signal?.value,
