@@ -183,6 +183,24 @@ test('MCP Rizin imports tool returns a bounded static import inventory', async (
   }
 });
 
+test('MCP Rizin imports requires a sandbox root when required isolation is selected', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-imports-required-root-'));
+  try {
+    const file = path.join(directory, 'sample.elf');
+    await writeFile(file, Buffer.from('MCP native import fixture'));
+    await assert.rejects(
+      call_orix_tool('orix.rizin_imports', {
+        path: file,
+        executable: process.execPath,
+        isolation: 'required',
+      }, { roots: [directory] }),
+      /sandbox_root is required when isolation is required/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('MCP Rizin imports isolation root cannot escape configured workspace roots', async () => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-imports-workspace-'));
   const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-imports-outside-'));
