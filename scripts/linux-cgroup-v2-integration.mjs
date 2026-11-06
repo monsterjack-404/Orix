@@ -1,5 +1,6 @@
 // Real-kernel cgroup v2 integration gate. Run as root on a writable cgroup2 host.
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rmdir, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
@@ -121,33 +122,86 @@ async function create_delegated_parent() {
   const mount = mounts.find(item => item.root === '/') ?? mounts[0];
   assert.ok(mount, 'No cgroup v2 mount was found');
   const root = mount.mountpoint;
-  const available = (await read_control(path.join(root, 'cgroup.controllers'))).split(/\s+/).filter(Boolean);
+  const available = (await read_control(path.join(root, 'cgroup.controllers'))).split(/\\s+/).filter(Boolean);
   for (const name of REQUIRED) assert.ok(available.includes(name), 'Host cgroup2 lacks controller: ' + name);
-  const enabledBefore = (await read_control(path.join(root, 'cgroup.subtree_control'))).split(/\s+/).filter(Boolean).map(item => item.replace(/^\+/, ''));
+  const enabledBefore = (await read_control(path.join(root, 'cgroup.subtree_control'))).split(/\\s+/).filter(Boolean).map(item => item.replace(/^\\+/, ''));
   const added = REQUIRED.filter(name => !enabledBefore.includes(name));
 
-  const parent = path.join(root, 'orix-ci-' + process.pid);
+  // A per-run random suffix prevents a stale PID-named cgroup from being
+  // mistaken for a directory created by this invocation.
+  const parent = path.join(root, 'orix-ci-' + process.pid + '-' + randomUUID());
   const supervisor = path.join(parent, 'supervisor');
+  let parentCreated = false;
+  let supervisorCreated = false;
+  let processMoved = false;
+  let rootEnableAttempted = false;
+
   try {
-    // Keep the root controller change inside the guarded setup transaction:
-    // even a parent-directory creation failure must restore what this test added.
-    if (added.length) await write_control(path.join(root, 'cgroup.subtree_control'), '+' + added.join(' +'));
+    // Track ownership before each mutation. Setup failures must restore only
+    // directories and controller changes made by this invocation.
+    if (added.length) {
+      rootEnableAttempted = true;
+      await write_control(path.join(root, 'cgroup.subtree_control'), '+' + added.join(' +'));
+    }
     await mkdir(parent, { mode: 0o755 });
+    parentCreated = true;
     await mkdir(supervisor, { mode: 0o755 });
+    supervisorCreated = true;
     await write_control(path.join(supervisor, 'cgroup.procs'), String(process.pid));
+    processMoved = true;
     await write_control(path.join(parent, 'cgroup.subtree_control'), '+' + REQUIRED.join(' +'));
-    const parentControllers = (await read_control(path.join(parent, 'cgroup.controllers'))).split(/\s+/);
+    const parentControllers = (await read_control(path.join(parent, 'cgroup.controllers'))).split(/\\s+/);
     for (const name of REQUIRED) assert.ok(parentControllers.includes(name), 'Delegated parent did not expose controller: ' + name);
     return { root, parent, supervisor, added };
-  } catch (error) {
-    try { await write_control(path.join(root, 'cgroup.procs'), String(process.pid)); } catch { /* best-effort recovery */ }
-    try { await rmdir(supervisor); } catch { /* preserve setup error */ }
-    try { await rmdir(parent); } catch { /* preserve setup error */ }
-    if (added.length) try { await write_control(path.join(root, 'cgroup.subtree_control'), '-' + added.join(' -')); } catch { /* preserve setup error */ }
-    throw error;
+  } catch (setupError) {
+    const cleanupErrors = [];
+
+    // Move only this process back, and only when the attach to our supervisor
+    // child completed. Never touch a pre-existing path after mkdir failed.
+    if (processMoved) {
+      try { await write_control(path.join(root, 'cgroup.procs'), String(process.pid)); }
+      catch (error) { cleanupErrors.push(error); }
+    }
+
+    // A controller write can partially succeed. Read actual state and disable
+    // only the required controllers that are currently enabled on our parent.
+    let parentRemoved = !parentCreated;
+    if (parentCreated) {
+      try {
+        const enabledNow = (await read_control(path.join(parent, 'cgroup.subtree_control')))
+          .split(/\\s+/).filter(Boolean).map(item => item.replace(/^\\+/, ''));
+        const ours = REQUIRED.filter(name => enabledNow.includes(name));
+        if (ours.length) await write_control(path.join(parent, 'cgroup.subtree_control'), '-' + ours.join(' -'));
+      } catch (error) { cleanupErrors.push(error); }
+    }
+    if (supervisorCreated) {
+      try { await rmdir(supervisor); }
+      catch (error) { cleanupErrors.push(error); }
+    }
+    if (parentCreated) {
+      try { await rmdir(parent); parentRemoved = true; }
+      catch (error) { cleanupErrors.push(error); }
+    }
+
+    // Restore root-level controllers only after our child hierarchy is gone.
+    // If removal failed, leaving controllers enabled is safer than disabling
+    // controls that a still-existing child hierarchy may require.
+    if (rootEnableAttempted && parentRemoved) {
+      try {
+        const rootEnabledNow = (await read_control(path.join(root, 'cgroup.subtree_control')))
+          .split(/\\s+/).filter(Boolean).map(item => item.replace(/^\\+/, ''));
+        const ours = added.filter(name => rootEnabledNow.includes(name));
+        if (ours.length) await write_control(path.join(root, 'cgroup.subtree_control'), '-' + ours.join(' -'));
+      } catch (error) { cleanupErrors.push(error); }
+    }
+
+    if (cleanupErrors.length) {
+      throw new AggregateError([setupError, ...cleanupErrors],
+        'Delegated cgroup setup failed and rollback was incomplete');
+    }
+    throw setupError;
   }
 }
-
 async function remove_delegated_parent(state) {
   const { root, parent, supervisor, added } = state;
   // All run cgroups must have been removed by the provider manager before this point.
@@ -189,7 +243,7 @@ async function main() {
       import net from 'node:net';
       import { spawn, spawnSync } from 'node:child_process';
       const marker = ${JSON.stringify(marker)};
-      const result = { marker, namespace_pid: process.pid, namespace_parent_pid: process.ppid };
+      const result = { marker, namespace_pid: process.pid, namespace_parent_pid: process.ppid, host_pid: Number(process.env.ORIX_HOST_PID) };
       const nested = spawnSync('/usr/bin/unshare', ['--user', '--map-root-user', '/usr/bin/node', '-e', 'process.exit(0)'], { encoding: 'utf8', timeout: 1500 });
       result.nested_userns = nested.error?.code === 'ENOENT' ? 'probe-missing' : nested.status === 0 ? 'allowed' : 'blocked';
       try { fs.readFileSync(${JSON.stringify(hostSecret)}, 'utf8'); result.host_file = 'readable'; }
@@ -242,6 +296,7 @@ async function main() {
       cwd: path.join(root, 'work'),
       sandbox_root: root,
       isolation: 'required',
+      env: { ORIX_HOST_PID: String(process.pid) },
       args: ['--input-type=module', '-e', probe],
       timeout_ms: 9_000,
       max_output_bytes: 8_192,
@@ -278,6 +333,8 @@ async function main() {
     assert.equal(execution.ok, true, execution.stderr || 'Cgroup-isolated provider failed');
     const result = JSON.parse(execution.stdout);
     assert.equal(providerSeen, true, 'Provider process was not observed in its run cgroup before execution completed');
+    assert.notEqual(result.namespace_pid, result.host_pid, 'Provider PID was not remapped into a private PID namespace');
+    assert.equal(result.memory_probe_ok, true, 'Provider could not complete the bounded memory allocation probe');
     assert.ok(peakMemory > 250 * 1024 * 1024, 'Kernel did not account the provider memory allocation in memory.current');
     assert.ok(throttledPeriods > 0, 'cpu.max did not throttle the busy provider');
     assert.ok(peakPids >= 32, 'pids.current did not reflect provider-created descendants');
