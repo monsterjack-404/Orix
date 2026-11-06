@@ -1,6 +1,6 @@
 // Windows AppContainer + Job Object hostile-process integration gate.
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import os_host from 'node:os';
@@ -97,19 +97,24 @@ async function main() {
     assert.match(unsafeExecution.stderr, /ORIX_WINDOWS_ROOTFS_UNTRUSTED/,
       'Native launcher did not report the rejected untrusted rootfs ACL');
     assert.equal(unsafeExecution.stdout, '', 'Provider executed despite the untrusted rootfs ACL');
+    await access(path.join(root, 'node.exe'));
 
-    // A protected root directory is insufficient if a nested entry has a
-    // broad writable ACL. The native launcher must inspect every descendant.
-    const unsafeNested = path.join(root, 'work');
+    // Keep the nested-ACL negative fixture independent from the positive rootfs:
+    // failed native preflight/cleanup must not affect another provider's files.
+    const unsafeNestedRoot = path.join(base, 'unsafe-nested-rootfs');
+    const unsafeNested = path.join(unsafeNestedRoot, 'work');
+    await mkdir(unsafeNested, { recursive: true });
+    await mkdir(path.join(unsafeNestedRoot, 'tmp'), { recursive: true });
+    await copyFile(process.execPath, path.join(unsafeNestedRoot, 'node.exe'));
     execFileSync(path.join(systemRoot, 'System32', 'icacls.exe'), [
       unsafeNested, '/grant', '*S-1-1-0:(OI)(CI)M',
     ], { encoding: 'utf8', windowsHide: true });
     try {
       const nestedUnsafeExecution = await run_static_provider({
         manifest: manifest(),
-        executable: path.join(root, 'node.exe'),
+        executable: path.join(unsafeNestedRoot, 'node.exe'),
         cwd: unsafeNested,
-        sandbox_root: root,
+        sandbox_root: unsafeNestedRoot,
         isolation: 'required',
         env: {},
         args: ['-e', 'process.stdout.write("must-not-run")'],
