@@ -16,7 +16,9 @@ test('public API exports provider metadata, registry, runner and Rizin adapter',
   assert.equal(typeof api.probe_rizin, 'function');
   assert.equal(api.RIZIN_PROVIDER_MANIFEST.id, 'rizin.static');
   assert.ok(api.RIZIN_PROVIDER_MANIFEST.capabilities.includes('binary.decompilation'));
-  assert.equal(api.RIZIN_ADAPTER_VERSION, '0.2.0');
+  assert.ok(api.RIZIN_PROVIDER_MANIFEST.capabilities.includes('binary.references'));
+  assert.ok(api.RIZIN_PROVIDER_MANIFEST.capabilities.includes('binary.call-graph'));
+  assert.equal(api.RIZIN_ADAPTER_VERSION, '0.3.0');
   assert.equal(api.RIZIN_PROVIDER_MANIFEST.license.spdx_id, 'NOASSERTION');
   assert.equal(api.RIZIN_PROVIDER_MANIFEST.license.redistribution, 'external-install');
 });
