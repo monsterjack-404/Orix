@@ -35,23 +35,6 @@ export function assess_linux_rootfs_directory_permissions(metadata, expected_uid
   });
 }
 
-function check_no_symlink_components(absolute_path) {
-  const parsed_root = path.parse(absolute_path).root;
-  const relative = path.relative(parsed_root, absolute_path);
-  let current = parsed_root;
-  for (const segment of relative.split(path.sep).filter(Boolean)) {
-    current = path.join(current, segment);
-    // The caller catches filesystem errors and reports a rootfs-specific error.
-    // This rejects an intermediate symlink as well as the final component.
-    const info = lstat(current);
-    if (info.isSymbolicLink()) {
-      rootfs_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID',
-        'Provider sandbox root path must not contain symbolic-link components',
-        { component: current });
-    }
-  }
-}
-
 async function assert_no_symlink_components(absolute_path) {
   const parsed_root = path.parse(absolute_path).root;
   const relative = path.relative(parsed_root, absolute_path);
