@@ -114,6 +114,8 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.inspect_file').annotations.readOnlyHint, true);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_imports').annotations.readOnlyHint, true);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_functions').annotations.readOnlyHint, true);
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_imports').inputSchema.properties.cwd.type, 'string');
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_functions').inputSchema.properties.cwd.type, 'string');
   const rizin_schema = response.result.tools.find(tool => tool.name === 'orix.rizin_functions').inputSchema;
   assert.deepEqual(rizin_schema.properties.isolation.enum, ['none', 'required']);
   assert.match(rizin_schema.properties.sandbox_root.description, /inside a configured MCP workspace root/);
@@ -198,6 +200,30 @@ test('MCP Rizin imports tool returns a bounded static import inventory', async (
     assert.equal(report.artifact.stable_during_analysis, true);
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('MCP Rizin imports and functions working directories are workspace-confined', async () => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-cwd-workspace-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-rizin-cwd-outside-'));
+  try {
+    const file = path.join(workspace, 'sample.elf');
+    await writeFile(file, Buffer.from('MCP native fixture'));
+    for (const name of ['orix.rizin_imports', 'orix.rizin_functions']) {
+      await assert.rejects(
+        call_orix_tool(name, {
+          path: file,
+          executable: process.execPath,
+          isolation: 'required',
+          sandbox_root: workspace,
+          cwd: outside,
+        }, { roots: [workspace] }),
+        /outside configured workspace roots/,
+      );
+    }
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
   }
 });
 
