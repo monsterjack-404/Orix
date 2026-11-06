@@ -66,7 +66,7 @@ function validate_input_path(input_path) {
 }
 
 
-function requested_isolation(value) {
+function requested_isolation(value, sandbox_root) {
   const isolation = value ?? 'none';
   if (isolation !== 'none' && isolation !== 'required') {
     throw new TypeError('isolation must be either none or required');
@@ -75,6 +75,10 @@ function requested_isolation(value) {
     provider_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
       'Required provider isolation currently has no enforced backend for this operating system',
       { platform: process.platform });
+  }
+  if (isolation === 'required' &&
+      (typeof sandbox_root !== 'string' || !path.isAbsolute(sandbox_root) || sandbox_root.includes('\\0'))) {
+    throw new TypeError('sandbox_root must be an absolute filesystem path when isolation is required');
   }
   return isolation;
 }
@@ -231,7 +235,7 @@ export async function analyze_rizin_imports(options = {}) {
     }
   }
 
-  const isolation = requested_isolation(descriptors.isolation?.value);
+  const isolation = requested_isolation(descriptors.isolation?.value, descriptors.sandbox_root?.value);
   const manifest = validate_provider_manifest(descriptors.manifest?.value ?? RIZIN_PROVIDER_MANIFEST);
   if (manifest.id !== 'rizin.static') {
     throw new TypeError('Rizin adapter requires the rizin.static provider manifest');
@@ -533,7 +537,7 @@ export async function analyze_rizin_functions(options = {}) {
     }
   }
 
-  const isolation = requested_isolation(descriptors.isolation?.value);
+  const isolation = requested_isolation(descriptors.isolation?.value, descriptors.sandbox_root?.value);
   const manifest = validate_provider_manifest(descriptors.manifest?.value ?? RIZIN_PROVIDER_MANIFEST);
   if (manifest.id !== 'rizin.static') {
     throw new TypeError('Rizin function analysis requires the rizin.static provider manifest');
@@ -787,7 +791,7 @@ export async function probe_rizin(options = {}) {
       throw new TypeError('Rizin probe options must use known enumerable data properties');
     }
   }
-  const isolation = requested_isolation(descriptors.isolation?.value);
+  const isolation = requested_isolation(descriptors.isolation?.value, descriptors.sandbox_root?.value);
   const manifest = validate_provider_manifest(descriptors.manifest?.value ?? RIZIN_PROVIDER_MANIFEST);
   if (manifest.id !== 'rizin.static') {
     throw new TypeError('Rizin probe requires the rizin.static provider manifest');
