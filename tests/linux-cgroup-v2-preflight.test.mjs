@@ -82,7 +82,7 @@ test('cgroup directory permission gate requires effective-UID ownership and no g
   );
 });
 
-async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode = 0o700, events_mode = 0o600, kill_mode = 0o600, process_cgroup = '0::/tenant/supervisor\\n' } = {}) {
+async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode = 0o700, events_mode = 0o600, kill_mode = 0o600, process_cgroup = '0::/tenant/supervisor\n' } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'orix-cgroup-preflight-'));
   const mountpoint = path.join(root, 'cgroup2');
   const parent = path.join(mountpoint, 'tenant');
@@ -134,7 +134,7 @@ if (process.platform === 'linux') {
   });
 
   test('read-only preflight rejects a manager nested below supervisor because runtime requires direct membership', { timeout: 10_000 }, async () => {
-    const fixture = await create_fake_delegated_host({ process_cgroup: '0::/tenant/supervisor/orix\\n' });
+    const fixture = await create_fake_delegated_host({ process_cgroup: '0::/tenant/supervisor/orix\n' });
     try {
       const report = await inspect_linux_cgroup_v2({
         proc_root: path.join(fixture.root, 'proc'),
