@@ -448,6 +448,8 @@ if (process.platform !== 'win32') {
       assert.deepEqual(result.process_group_cleanup, {
         attempted: true,
         force_kill_sent: true,
+        verified_empty: true,
+        failed: false,
       });
 
       const fs = await import('node:fs/promises');

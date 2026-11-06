@@ -408,6 +408,8 @@ export async function run_static_provider(options) {
     let process_group_cleanup_timer = null;
     let process_group_cleanup_started = false;
     let process_group_cleanup_complete = windows;
+    let process_group_cleanup_verified = windows ? null : false;
+    let process_group_cleanup_failed = false;
     let process_group_force_kill_sent = false;
     let close_result = null;
 
@@ -424,7 +426,9 @@ export async function run_static_provider(options) {
       cleanup();
       const { exit_code, exit_signal } = close_result;
       const completed_at = new Date().toISOString();
-      const termination_reason = timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
+      const termination_reason = process_group_cleanup_failed
+        ? 'process-group-cleanup-failed'
+        : timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
       const success = exit_code === 0 && termination_reason === null;
       const stdout = Buffer.concat(stdout_chunks).toString('utf8');
       const stderr = Buffer.concat(stderr_chunks).toString('utf8');
@@ -446,6 +450,8 @@ export async function run_static_provider(options) {
         process_group_cleanup: {
           attempted: process_group_cleanup_started,
           force_kill_sent: process_group_force_kill_sent,
+          verified_empty: process_group_cleanup_verified,
+          failed: process_group_cleanup_failed,
         },
         ok: success,
         output: {
@@ -487,22 +493,31 @@ export async function run_static_provider(options) {
 
       process_group_cleanup_started = true;
       signal_process_group(child.pid, 'SIGTERM');
-      const deadline = Date.now() + limits.kill_grace_ms;
+      let phase = 'term';
+      let deadline = Date.now() + limits.kill_grace_ms;
 
       function check_process_group() {
         if (!process_group_exists(child.pid)) {
+          process_group_cleanup_verified = true;
           process_group_cleanup_complete = true;
           process_group_cleanup_timer = null;
           finish_close();
           return;
         }
         if (Date.now() >= deadline) {
-          // The process-group id is checked immediately before escalation.
-          process_group_force_kill_sent = signal_process_group(child.pid, 'SIGKILL');
-          process_group_cleanup_complete = true;
-          process_group_cleanup_timer = null;
-          finish_close();
-          return;
+          if (phase === 'term') {
+            // Escalate only while the original process-group id is still present.
+            process_group_force_kill_sent = signal_process_group(child.pid, 'SIGKILL');
+            phase = 'verify';
+            deadline = Date.now() + 5_000;
+          } else {
+            // Do not report success when the kernel still reports the group alive.
+            process_group_cleanup_failed = true;
+            process_group_cleanup_complete = true;
+            process_group_cleanup_timer = null;
+            finish_close();
+            return;
+          }
         }
         process_group_cleanup_timer = setTimeout(
           check_process_group,
