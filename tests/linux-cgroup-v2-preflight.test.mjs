@@ -10,7 +10,7 @@ test('cgroup2 mount parser ignores other filesystem types and decodes escaped mo
   const input = [
     '29 23 0:26 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime - cgroup2 cgroup rw',
     '30 23 0:27 / /sys/fs/cgroup/cpu rw - cgroup cgroup rw,cpu',
-    '31 23 0:28 /tenant /run/orix\\\\040delegated rw - cgroup2 cgroup rw',
+    String.raw`31 23 0:28 /tenant /run/orix\\040delegated rw - cgroup2 cgroup rw`,
   ].join('\n');
   assert.deepEqual(parse_cgroup2_mounts(input), [
     { root: '/', mountpoint: '/sys/fs/cgroup' },
