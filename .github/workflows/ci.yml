@@ -93,3 +93,9 @@ jobs:
         run: npm run check
       - name: Run tests
         run: npm test
+      - name: Run Windows AppContainer hostile-process isolation checks
+        if: runner.os == 'Windows'
+        run: node scripts/windows-isolation-integration.mjs
+      - name: Run macOS Seatbelt hostile-process isolation checks
+        if: runner.os == 'macOS'
+        run: node scripts/macos-isolation-integration.mjs
