@@ -10,12 +10,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: orix-ci-\${{ github.workflow }}-\${{ github.ref }}
+  group: orix-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
-    name: Node.js \${{ matrix.node-version }}
+    name: Node.js ${{ matrix.node-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -29,7 +29,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: \${{ matrix.node-version }}
+          node-version: ${{ matrix.node-version }}
           cache: npm
       - name: Install locked dependencies
         run: npm ci
@@ -78,8 +78,8 @@ jobs:
         run: sudo node scripts/linux-cgroup-v2-integration.mjs
 
   windows-launcher-build:
-    name: Windows launcher build / \${{ matrix.os }}
-    runs-on: \${{ matrix.os }}
+    name: Windows launcher build / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -121,14 +121,14 @@ jobs:
       - name: Upload Windows launcher build artifact (not a runtime trust anchor)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: orix-windows-launcher-\${{ matrix.os }}
+          name: orix-windows-launcher-${{ matrix.os }}
           path: artifacts/windows-helper-first/orix-windows-provider-launcher.exe
           if-no-files-found: error
           retention-days: 7
 
   platform-smoke:
-    name: Platform smoke / \${{ matrix.os }}
-    runs-on: \${{ matrix.os }}
+    name: Platform smoke / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
