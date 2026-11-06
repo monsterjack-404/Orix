@@ -58,26 +58,30 @@ async function make_minimal_rootfs(root) {
   for (const directory of ['proc', 'dev', 'tmp', 'work', 'usr/bin']) {
     await mkdir(path.join(root, directory), { recursive: true });
   }
-  const binaries = [process.execPath, '/usr/bin/sleep'];
-  const paths = new Set(binaries);
+  const binaries = [
+    { source: process.execPath, target: path.join(root, 'usr/bin/node') },
+    { source: '/usr/bin/sleep', target: path.join(root, 'usr/bin/sleep') },
+    { source: '/usr/bin/unshare', target: path.join(root, 'usr/bin/unshare') },
+  ];
+  const paths = new Set();
   for (const binary of binaries) {
-    const dependencies = execFileSync('ldd', [binary], { encoding: 'utf8' });
-    for (const line of dependencies.split('\n')) {
-      const match = line.match(/(?:=>\s*)?(\/\S+)\s+\(/);
+    paths.add(binary.source);
+    const dependencies = execFileSync('ldd', [binary.source], { encoding: 'utf8' });
+    for (const line of dependencies.split('\\n')) {
+      const match = line.match(/(?:=>\\s*)?(\\/\\S+)\\s+\\(/);
       if (match) paths.add(match[1]);
     }
+    await copyFile(binary.source, binary.target);
+    await chmod(binary.target, 0o755);
   }
-  const nodePath = path.join(root, 'usr/bin/node');
-  await copyFile(process.execPath, nodePath);
-  await chmod(nodePath, 0o755);
   for (const source of paths) {
-    if (source === process.execPath) continue;
+    if (binaries.some(binary => binary.source === source)) continue;
     const destination = path.join(root, source.slice(1));
     await mkdir(path.dirname(destination), { recursive: true });
     await copyFile(source, destination);
     await chmod(destination, 0o755);
   }
-  return nodePath;
+  return binaries[0].target;
 }
 
 async function find_provider_cgroup(parent) {
@@ -178,9 +182,11 @@ async function main() {
     const probe = `
       import fs from 'node:fs';
       import net from 'node:net';
-      import { spawn } from 'node:child_process';
+      import { spawn, spawnSync } from 'node:child_process';
       const marker = ${JSON.stringify(marker)};
       const result = { marker, namespace_pid: process.pid, namespace_parent_pid: process.ppid };
+      const nested = spawnSync('/usr/bin/unshare', ['--user', '--map-root-user', '/usr/bin/node', '-e', 'process.exit(0)'], { encoding: 'utf8', timeout: 1500 });
+      result.nested_userns = nested.error?.code === 'ENOENT' ? 'probe-missing' : nested.status === 0 ? 'allowed' : 'blocked';
       try { fs.readFileSync(${JSON.stringify(hostSecret)}, 'utf8'); result.host_file = 'readable'; }
       catch (error) { result.host_file = error.code || 'blocked'; }
       try { fs.writeFileSync('/work/host-write-probe', 'escape'); result.root_write = 'writable'; }
@@ -273,6 +279,7 @@ async function main() {
     assert.ok(result.pids_limit_hits > 0, 'pids.max did not reject excess process creation');
     assert.ok(sleepPids.length > 0, 'Provider descendants were not observed inside the run cgroup');
     assert.equal(result.namespace_parent_pid, 1, 'Provider is not contained under the private PID namespace init process');
+    assert.equal(result.nested_userns, 'blocked', 'Provider can still create nested user namespaces');
     assert.notEqual(result.host_file, 'readable', 'Provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.tmp_write, 'allowed', 'Ephemeral /tmp should remain writable');

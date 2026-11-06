@@ -68,9 +68,7 @@ jobs:
         run: |
           test -x /usr/bin/bwrap
           /usr/bin/bwrap --version
-      - name: Run Bubblewrap hostile-process isolation checks
-        run: node scripts/linux-isolation-integration.mjs
-      - name: Run real delegated cgroup v2 resource-isolation checks
+      - name: Run real delegated cgroup v2 hostile-process and resource-isolation checks
         run: sudo node scripts/linux-cgroup-v2-integration.mjs
 
   platform-smoke:
