@@ -123,7 +123,7 @@ if (!result.ok) {
 }
 ~~~
 
-This runner is a process-control boundary, **not an operating-system sandbox**. It cannot force a declared-static executable to avoid network access, filesystem writes, or malicious behavior. POSIX process groups are signalled on timeout/cancellation. On Windows, the runner invokes the system `taskkill.exe` with `/T /F` to request termination of the provider and its descendants; if the utility cannot be started or reports failure, it falls back to terminating the direct child. Tree teardown is best-effort and is not an absolute guarantee. Do not run untrusted provider binaries on a sensitive host. Strong isolation requires an OS/container/VM policy supplied and verified separately.
+This runner is a process-control boundary, **not an operating-system sandbox**. It cannot force a declared-static executable to avoid network access, filesystem writes, or malicious behavior. POSIX process groups are signalled on timeout/cancellation. On Windows, the runner terminates only the direct child. It deliberately does not invoke `taskkill.exe` because Node's public child-process API does not provide the process HANDLE needed for Job Object ownership, and deriving the utility path from inherited `SystemRoot`/`WINDIR` would create an executable-path trust issue. Descendant teardown is not guaranteed on Windows until a trusted native launcher assigns the process to a Job Object at creation time. Do not run untrusted provider binaries on a sensitive host. Strong isolation requires an OS/container/VM policy supplied and verified separately.
 
 ## 5. Rizin import adapter
 
@@ -232,7 +232,7 @@ The current process runner is **not an OS sandbox on any supported platform**. I
 | Platform | Current process control | OS-level confinement in ORIX |
 | --- | --- | --- |
 | Linux | Detached process groups; timeout/cancellation signals the group. | Not implemented. No bubblewrap/mount namespace, user/PID/network namespace, seccomp or cgroup policy is applied. |
-| Windows | Timeout/cancellation requests best-effort `taskkill.exe /T /F` process-tree teardown. | Not implemented. No Job Object, restricted token, AppContainer, filesystem ACL boundary or network capability policy is assigned by ORIX. |
+| Windows | Timeout/cancellation terminates the direct child only. | Not implemented. No Job Object, restricted token, AppContainer, filesystem ACL boundary or network capability policy is assigned by ORIX. |
 | macOS | Detached process groups; timeout/cancellation signals the group. | Not implemented. No Seatbelt/sandbox profile or App Sandbox entitlement is applied. |
 
 A process group or process-tree kill is a lifecycle mechanism, not a containment boundary. In particular, Windows `taskkill /T` is not a substitute for assigning the process to a Job Object at creation time; a descendant may escape before the tree is enumerated. Likewise, a Linux namespace or a macOS sandbox must be configured before untrusted provider code starts.
@@ -276,6 +276,6 @@ The static runner accepts two optional allowlists:
 
 Allowlist arrays reject sparse entries, accessors and custom properties. The child does not inherit the full parent environment. Explicit overrides reject command-search and executable-loader keys including `PATH`, `PATHEXT`, `NODE_OPTIONS`, `NODE_PATH`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `PYTHONPATH`, `PERL5OPT` and `RUBYOPT`. Windows bootstrap variables (`SystemRoot`, `WINDIR`, `TEMP`, `TMP`, `COMSPEC`) cannot be overridden, and environment keys that differ only by letter case are rejected to avoid Windows case-insensitive collisions.
 
-Execution results include a versioned `orix.provider-execution.v1` receipt defined by [provider-execution.v1.schema.json](../schemas/provider-execution.v1.schema.json). Legacy result properties remain available for the current Rizin adapter. POSIX termination signals the detached process group. Windows uses the system `taskkill.exe` `/T /F` process-tree option and falls back to direct-child termination if tree termination fails.
+Execution results include a versioned `orix.provider-execution.v1` receipt defined by [provider-execution.v1.schema.json](../schemas/provider-execution.v1.schema.json). Legacy result properties remain available for the current Rizin adapter. POSIX termination signals the detached process group. Windows currently terminates only the direct child; descendant cleanup is deferred until a trusted native Job Object launcher is implemented.
 
 These path checks constrain the selected executable and working directory; they do not confine every file the child can read or write. Validation and process creation are separate filesystem operations, so the checks are not an atomic defense against a concurrent actor that can replace files or directories in the selected paths between validation and launch. Keep provider executables, allowlist roots, and their parent directories in locations that untrusted users cannot modify. The runner does not claim race-free path confinement or an OS sandbox. The manifest still cannot enforce provider behavior.
