@@ -118,7 +118,16 @@ static int check_rootfs_acls(const char *root) {
   }
   int result = 0;
   FTSENT *entry;
-  while ((entry = fts_read(tree)) != NULL) {
+  for (;;) {
+    errno = 0;
+    entry = fts_read(tree);
+    if (entry == NULL) {
+      if (errno != 0 && result == 0) {
+        fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=%s\\n", strerror(errno));
+        result = -1;
+      }
+      break;
+    }
     if (entry->fts_info == FTS_DP) continue;
     if (entry->fts_info != FTS_D && entry->fts_info != FTS_F) {
       fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=unexpected-rootfs-entry:%s\\n", entry->fts_path);
@@ -127,10 +136,6 @@ static int check_rootfs_acls(const char *root) {
     }
     int acl_result = check_extended_acl(entry->fts_accpath);
     if (acl_result != 0) { result = acl_result; break; }
-  }
-  if (errno != 0 && result == 0) {
-    fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=%s\\n", strerror(errno));
-    result = -1;
   }
   if (fts_close(tree) != 0 && result == 0) {
     fprintf(stderr, "ORIX_MACOS_ACL_SCAN_ERROR=close:%s\\n", strerror(errno));
