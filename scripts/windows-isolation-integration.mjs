@@ -61,7 +61,7 @@ async function main() {
       result.temp_dir = os.tmpdir(); result.temp_env = process.env.TEMP; result.tmp_env = process.env.TMP; result.temp_exists = fs.existsSync(os.tmpdir());
       try { fs.writeFileSync(path.join(os.tmpdir(), 'provider-write-probe'), 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
-      const scratchRoot = path.resolve(path.join(root, 'tmp'));
+      const scratchRoot = path.resolve(${JSON.stringify(path.join(root, 'tmp'))});
       const tempRelative = path.relative(scratchRoot, path.resolve(os.tmpdir()));
       result.tmp_inside_root = tempRelative === '' || (tempRelative !== '..' && !tempRelative.startsWith('..' + path.sep) && !path.isAbsolute(tempRelative));
       result.host_network = await new Promise(resolve => {
