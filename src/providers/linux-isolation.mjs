@@ -35,10 +35,10 @@ async function resolve_bwrap() {
   );
 }
 
+
 /**
- * Check the ownership/mode of one directory in the trusted rootfs path.
- * Only the rootfs itself must be non-writable by group/other. Ancestors may
- * use the root-owned sticky-directory exception (for example, /tmp).
+ * Check ownership and mode for one directory in the trusted rootfs path.
+ * Ancestors may use the root-owned sticky-directory exception (for example /tmp).
  */
 export function assess_rootfs_directory_permissions(metadata, expected_uid, allow_root_sticky = false) {
   const valid = metadata !== null && typeof metadata === 'object' &&
