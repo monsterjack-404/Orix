@@ -150,11 +150,20 @@ export async function prepare_macos_provider_isolation({
   const temporary = await mkdtemp(path.join(tmpdir(), 'orix-provider-macos-'));
   const profilePath = path.join(temporary, 'provider.sb');
   const launcher = path.join(temporary, 'orix-macos-provider-launcher');
+  // Compile only with the trusted service environment. Provider-supplied SDK,
+  // toolchain and temp variables must not influence this host-side compiler.
+  const hostEnvironment = Object.create(null);
+  for (const key of ['HOME', 'PATH', 'DEVELOPER_DIR', 'SDKROOT', 'TOOLCHAINS', 'LANG']) {
+    if (typeof process.env[key] === 'string') hostEnvironment[key] = process.env[key];
+  }
+  hostEnvironment.TMPDIR = temporary;
+  hostEnvironment.TMP = temporary;
+  hostEnvironment.TEMP = temporary;
   const source = fileURLToPath(new URL('../../native/macos-provider-launcher.c', import.meta.url));
   try {
     await writeFile(profilePath, PROFILE, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
     await run_compiler(compiler, ['-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', source, '-lsandbox', '-o', launcher],
-      temporary, env);
+      temporary, hostEnvironment);
   } catch (error) {
     await rm(temporary, { recursive: true, force: true }).catch(() => {});
     throw error;
