@@ -161,6 +161,53 @@ async function copy_file_bounded(source, destination, maximum_bytes, signal, exp
   return { bytes_copied, digest: hash.digest('hex') };
 }
 
+
+async function sha256_file(file_path, maximum_bytes, signal) {
+  let handle;
+  const hash = createHash('sha256');
+  let bytes_read = 0;
+  try {
+    // Verify the private snapshot through one no-follow descriptor. This
+    // avoids hashing a different file if its path is unexpectedly replaced.
+    handle = await open(file_path, FS_CONSTANTS.O_RDONLY | (FS_CONSTANTS.O_NOFOLLOW ?? 0));
+    const before = await handle.stat();
+    if (!before.isFile()) {
+      provider_error('ORIX_RIZIN_SNAPSHOT_INVALID', 'Rizin private snapshot is not a regular file');
+    }
+    if (!Number.isSafeInteger(before.size) || before.size < 0 || before.size > maximum_bytes) {
+      provider_error('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin private snapshot exceeds its manifest byte limit', {
+        size_bytes: before.size, maximum_bytes,
+      });
+    }
+    for await (const chunk of handle.createReadStream({ autoClose: false, signal })) {
+      bytes_read += chunk.length;
+      if (bytes_read > maximum_bytes) {
+        provider_error('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin private snapshot grew beyond its manifest byte limit while being verified', {
+          bytes_read, maximum_bytes,
+        });
+      }
+      hash.update(chunk);
+    }
+    const after = await handle.stat();
+    if (!same_file_identity(before, after) || bytes_read !== before.size) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin private snapshot changed while its digest was being verified', {
+        expected_size_bytes: before.size, actual_size_bytes: bytes_read,
+      });
+    }
+    return { digest: hash.digest('hex'), bytes_read };
+  } catch (error) {
+    if (error instanceof OrixError) throw error;
+    if (signal?.aborted) {
+      provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled while verifying its private input snapshot');
+    }
+    provider_error('ORIX_RIZIN_SNAPSHOT_VERIFY_FAILED', 'The private Rizin input snapshot could not be verified', {
+      reason: error.code ?? 'snapshot-verification-error',
+    });
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
 function parse_engine_version(output) {
   const match = /(?:^|\s)v?([0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)(?:\s|$)/m.exec(output);
   if (!match) {
