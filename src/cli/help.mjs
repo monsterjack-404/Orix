@@ -121,7 +121,7 @@ export const HELP_TEXT = [
   'SAFETY AND SCOPE',
   '  Built-in analysis is static and does not execute the inspected target. Optional',
   '  provider commands start an explicitly configured analysis tool, not the target.',
-  '  The provider process is time/output bounded but is not sandboxed by default.',
+  '  The provider process is time/output bounded but is not an OS sandbox by default.',
   '  Required isolation uses Linux Bubblewrap only; it fails closed when unavailable',
   '  and does not enforce cgroup CPU, memory or task-count limits. Project',
   '  intelligence does not run package scripts, build hooks or project code.',
