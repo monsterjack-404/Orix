@@ -369,6 +369,8 @@ async function main() {
         'Invalid AppContainer profile name should fail closed with exit code 125');
       assert.match(String(invalidCleanupError.stderr), /ORIX_WINDOWS_ISOLATION_ERROR=/,
         'Invalid AppContainer profile name did not surface a native cleanup diagnostic');
+      assert.equal((String(invalidCleanupError.stderr).match(/ORIX_WINDOWS_ISOLATION_ERROR=/g) ?? []).length, 1,
+        'Explicit cleanup failure must not trigger a duplicate cleanup attempt');
 
       await reparsePrepared.cleanup();
       preparedCleanupComplete = true;
