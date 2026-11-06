@@ -571,6 +571,28 @@ test('MCP confines artifact access to configured roots and rejects symlinks', as
   }
 });
 
+test('MCP rejects intermediate directory symlinks even when they resolve inside the workspace', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-intermediate-link-'));
+  try {
+    const real_directory = path.join(root, 'real-directory');
+    const linked_directory = path.join(root, 'linked-directory');
+    const file = path.join(real_directory, 'sample.bin');
+    const { symlink } = await import('node:fs/promises');
+    await mkdir(real_directory);
+    await writeFile(file, 'workspace content');
+    await symlink(real_directory, linked_directory);
+
+    await assert.rejects(
+      call_orix_tool('orix.inspect_file', { path: path.join(linked_directory, 'sample.bin') }, { roots: [root] }),
+      error => error.code === 'ORIX_MCP_SYMLINK_REJECTED',
+    );
+    const direct = await call_orix_tool('orix.inspect_file', { path: file }, { roots: [root] });
+    assert.equal(direct.schema_version, 'orix.artifact.v1');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('MCP exposes an explicit append operation for hash-chained evidence', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-ledger-'));
   try {
