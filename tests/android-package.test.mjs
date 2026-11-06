@@ -274,6 +274,17 @@ test('DEX entries are not trusted when the local filename differs from the centr
   assert.equal(report.summary.dex_metadata_parsed, 0);
 });
 
+test('stored DEX entries with mismatched content CRC32 are excluded from metadata parsing', () => {
+  const buffer = make_apk();
+  const signature = Buffer.from('dex\\n035\\0', 'ascii');
+  const offset = buffer.indexOf(signature);
+  assert.notEqual(offset, -1);
+  buffer[offset + 12] ^= 0xff;
+  const report = analyze_android_package(buffer);
+  assert.equal(report.dex[0].status, 'crc-mismatch');
+  assert.equal(report.summary.dex_metadata_parsed, 0);
+});
+
 test('DEX entries whose local data overlaps the central directory are not parsed', () => {
   const buffer = make_apk();
   const eocd_offset = buffer.length - 22;
