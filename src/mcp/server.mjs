@@ -11,7 +11,7 @@ import { build_capability_report } from '../capabilities/registry.mjs';
 import { verify_ledger, list_ledger, append_ledger } from '../evidence/ledger.mjs';
 import { create_case, list_cases, get_case, verify_case, add_case_artifact, record_case_analysis, add_case_finding, change_case_finding_status, add_case_note, add_case_relationship, change_case_status, export_case_bundle, import_case_bundle } from '../cases/store.mjs';
 import { compare_reports } from '../analyzer/compare.mjs';
-import { analyze_rizin_functions } from '../providers/rizin.mjs';
+import { analyze_rizin_imports, analyze_rizin_functions } from '../providers/rizin.mjs';
 import { normalize_error } from '../core/errors.mjs';
 import { TextDecoder } from 'node:util';
 import {
@@ -51,6 +51,27 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         extract_strings: { type: 'boolean' },
       },
       required: ['path'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'orix.rizin_imports',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    description: 'Use an explicitly selected Rizin executable to extract a bounded static import inventory. Optional Linux Bubblewrap namespace/filesystem isolation can be requested explicitly with a workspace-contained sandbox root; isolation is disabled by default. The target is never executed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', minLength: 1 },
+        executable: { type: 'string', minLength: 1, maxLength: 4096 },
+        executable_args: { type: 'array', maxItems: 16, items: { type: 'string', maxLength: 32768 }, description: 'Optional literal argv prefix passed to the selected executable without shell evaluation.' },
+        max_imports: integer('Maximum imported symbols retained.', 100000, 1),
+        timeout_ms: integer('Total provider workflow deadline in milliseconds.', 60000, 1),
+        max_output_kib: integer('Aggregate stdout/stderr capture budget in KiB.', 8192, 1),
+        isolation: { type: 'string', enum: ['none', 'required'], description: 'Explicitly opt into Linux Bubblewrap isolation; defaults to none.' },
+        sandbox_root: { type: 'string', minLength: 1, maxLength: 4096, description: 'Existing directory inside a configured MCP workspace root used as the Bubblewrap root filesystem.' },
+        cwd: { type: 'string', minLength: 1, maxLength: 4096, description: 'Optional provider working directory inside a configured MCP workspace; defaults to sandbox_root when required isolation is selected.' },
+      },
+      required: ['path', 'executable'],
       additionalProperties: false,
     },
   },
@@ -368,7 +389,30 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       return inspect_file(target.path, { limits, extract_strings: args.extract_strings });
     }
-    case 'orix.rizin_functions': {
+    case 'orix.rizin_imports': {
+      if (args.isolation === 'required' && args.sandbox_root === undefined) {
+        throw new TypeError('sandbox_root is required when isolation is required');
+      }
+      const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
+      const sandbox_root = args.sandbox_root === undefined
+        ? undefined
+        : (await resolve_workspace_path(args.sandbox_root, roots, { kind: 'directory' })).path;
+      const cwd = args.cwd === undefined
+        ? (args.isolation === 'required' ? sandbox_root : undefined)
+        : (await resolve_workspace_path(args.cwd, roots, { kind: 'directory' })).path;
+      return analyze_rizin_imports({
+        input_path: target.path,
+        executable: args.executable,
+        executable_args: args.executable_args,
+        max_imports: args.max_imports ?? 10_000,
+        timeout_ms: args.timeout_ms ?? 30_000,
+        max_output_bytes: (args.max_output_kib ?? 2_048) * 1024,
+        isolation: args.isolation,
+        sandbox_root,
+        cwd,
+      });
+    }
+
       if (args.isolation === 'required' && args.sandbox_root === undefined) {
         throw new TypeError('sandbox_root is required when isolation is required');
       }
