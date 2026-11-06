@@ -112,7 +112,13 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
   const launcher = path.join(temporary, 'orix-windows-provider-launcher.exe');
   const source = fileURLToPath(new URL('../../native/windows-provider-launcher.cs', import.meta.url));
   const profileName = 'ORIX-' + randomUUID().replaceAll('-', '');
-  const providerEnvironment = { ...env, SystemRoot: process.env.SystemRoot ?? process.env.WINDIR, WINDIR: process.env.WINDIR ?? process.env.SystemRoot, HOME: root, USERPROFILE: root, APPDATA: root, LOCALAPPDATA: root, TEMP: root, TMP: root };
+  const hostEnvironment = {
+    SystemRoot: process.env.SystemRoot ?? process.env.WINDIR,
+    WINDIR: process.env.WINDIR ?? process.env.SystemRoot,
+    TEMP: temporary,
+    TMP: temporary,
+  };
+  const providerEnvironment = { ...env, ...hostEnvironment, HOME: root, USERPROFILE: root, APPDATA: root, LOCALAPPDATA: root, TEMP: root, TMP: root };
   try {
     await writeFile(configPath, JSON.stringify({
       executable: provider, args, cwd: work, sandboxRoot: root, profileName, logPath, environment: providerEnvironment,
@@ -120,7 +126,7 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
     await run_native_helper(compiler, [
       '/nologo', '/target:exe', '/out:' + launcher,
       '/r:System.Core.dll', '/r:System.Security.dll', '/r:System.Web.Extensions.dll', source,
-    ], temporary, env, null, 30_000);
+    ], temporary, hostEnvironment, null, 30_000);
   } catch (error) {
     await rm(temporary, { recursive: true, force: true }).catch(() => {});
     throw new OrixError('ORIX_PROVIDER_WINDOWS_COMPILER_FAILED', 'Could not build the native Windows AppContainer launcher', {
@@ -131,7 +137,7 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
   const cleanup = () => {
     if (cleanupPromise) return cleanupPromise;
     cleanupPromise = (async () => {
-      try { await run_native_helper(launcher, ['cleanup', configPath], temporary, env, logPath, 30_000); }
+      try { await run_native_helper(launcher, ['cleanup', configPath], temporary, hostEnvironment, logPath, 30_000); }
       finally { cleanup.last_log = await readFile(logPath, 'utf8').catch(() => ''); }
       await rm(temporary, { recursive: true, force: true });
     })().catch(error => { cleanupPromise = null; throw error; });
