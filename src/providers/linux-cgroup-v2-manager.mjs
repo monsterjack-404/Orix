@@ -355,14 +355,49 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
       cleanup,
     });
   } catch (error) {
-    if (attach_fd !== undefined) try { closeSync(attach_fd); } catch { /* preserve setup failure */ }
-    if (supervisor_fd !== undefined) try { closeSync(supervisor_fd); } catch { /* preserve setup failure */ }
-    if (child_fd !== undefined) try { closeSync(child_fd); } catch { /* preserve setup failure */ }
+    const cleanup_errors = [];
+    const close_descriptor = (fd, label) => {
+      if (fd === undefined) return;
+      try { closeSync(fd); }
+      catch (close_error) {
+        close_error.message = label + ': ' + close_error.message;
+        cleanup_errors.push(close_error);
+      }
+    };
+
+    // No bootstrap has been launched during setup, so a newly-created leaf
+    // must still be empty. Verify that fact through a fresh descriptor before
+    // attempting rmdir; never silently leave an orphaned child behind.
+    close_descriptor(attach_fd, 'Could not close the unhanded attach capability');
+    close_descriptor(supervisor_fd, 'Could not close delegated supervisor descriptor');
+    close_descriptor(child_fd, 'Could not close partially prepared provider cgroup descriptor');
     if (child_created && parent_fd !== undefined && child_name !== null) {
-      try { rmdirSync(fd_path(parent_fd, child_name)); } catch { /* retain setup error; never remove a populated cgroup */ }
+      let rollback_child_fd;
+      try {
+        rollback_child_fd = open_directory_at(parent_fd, child_name);
+        if (!/^populated 0$/m.test(read_control(rollback_child_fd, 'cgroup.events'))) {
+          throw new Error('Refusing to remove a provider cgroup that is not empty after setup failure');
+        }
+        closeSync(rollback_child_fd);
+        rollback_child_fd = undefined;
+        rmdirSync(fd_path(parent_fd, child_name));
+        child_created = false;
+      } catch (cleanup_error) {
+        cleanup_errors.push(cleanup_error);
+      } finally {
+        if (rollback_child_fd !== undefined) {
+          try { closeSync(rollback_child_fd); }
+          catch (close_error) { cleanup_errors.push(close_error); }
+        }
+      }
     }
-    if (parent_fd !== undefined) try { closeSync(parent_fd); } catch { /* preserve setup failure */ }
-    if (mount_fd !== undefined) try { closeSync(mount_fd); } catch { /* preserve setup failure */ }
+    close_descriptor(parent_fd, 'Could not close delegated parent descriptor');
+    close_descriptor(mount_fd, 'Could not close cgroup mount descriptor');
+
+    if (cleanup_errors.length) {
+      throw new AggregateError([error, ...cleanup_errors],
+        'Could not prepare the delegated provider cgroup and rollback was incomplete');
+    }
     if (error instanceof OrixError) throw error;
     cgroup_error('ORIX_CGROUP_SETUP_FAILED', 'Could not prepare the delegated provider cgroup', {
       reason: error.code ?? error.name ?? 'setup-failed',
