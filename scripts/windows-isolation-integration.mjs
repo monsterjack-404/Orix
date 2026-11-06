@@ -34,6 +34,9 @@ async function main() {
   const launcherSource = await readFile(new URL('../native/windows-provider-launcher.cs', import.meta.url), 'utf8');
   assert.match(launcherSource, /GetSystemDirectoryW/,
     'Native helper must resolve security-sensitive Windows utilities through the OS API');
+  assert.match(launcherSource, /if \(!process\.WaitForExit\(10000\)\)[\s\S]*?process\.Kill\(\)[\s\S]*?process\.WaitForExit\(\)[\s\S]*?throw new TimeoutException/,
+    'Timed-out icacls must be observed exited before helper cleanup can mutate its target');
+
   assert.doesNotMatch(launcherSource, /Environment\.GetEnvironmentVariable\("SystemRoot"\)/,
     'Native helper must not resolve icacls.exe from inherited SystemRoot');
   const isolationSource = await readFile(new URL('../src/providers/windows-isolation.mjs', import.meta.url), 'utf8');
