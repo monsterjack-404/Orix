@@ -252,6 +252,13 @@ export async function read_provider_manifest(file_path, options = {}) {
     if (!opened.isFile() || !same_file_identity(before, opened)) {
       throw new OrixError('ORIX_PROVIDER_MANIFEST_REPLACED', 'Provider manifest identity changed before it was opened', { recoverable: true });
     }
+    // Re-check the pathname after open. On platforms without O_NOFOLLOW,
+    // this rejects a symlink/path swap that raced the initial lstat.
+    const path_after_open = await fs.lstat(absolute_path);
+    if (path_after_open.isSymbolicLink() || !path_after_open.isFile() ||
+        !same_file_identity(path_after_open, opened)) {
+      throw new OrixError('ORIX_PROVIDER_MANIFEST_REPLACED', 'Provider manifest path changed while it was being opened', { recoverable: true });
+    }
     const buffer = Buffer.alloc(maximum_bytes + 1);
     let total = 0;
     while (total < buffer.length) {
