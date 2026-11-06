@@ -367,6 +367,10 @@ export async function run_static_provider(options) {
   let close_parent_fd = null;
   let isolation_cleanup = null;
   let isolation_cleanup_on_terminate = true;
+  const signal = descriptors.signal?.value;
+  if (signal !== undefined && !(signal instanceof AbortSignal)) {
+    throw new TypeError('signal must be an AbortSignal');
+  }
   if (isolation === 'required') {
     const prepared = await prepare_linux_provider_isolation({
       executable,
@@ -383,10 +387,6 @@ export async function run_static_provider(options) {
     close_parent_fd = prepared.close_parent_fd ?? null;
     isolation_cleanup = prepared.cleanup ?? null;
     isolation_cleanup_on_terminate = prepared.cleanup_on_terminate !== false;
-  }
-  const signal = descriptors.signal?.value;
-  if (signal !== undefined && !(signal instanceof AbortSignal)) {
-    throw new TypeError('signal must be an AbortSignal');
   }
   if (signal?.aborted) {
     try { close_parent_fd?.(); } catch { /* cleanup below remains authoritative */ }
@@ -665,11 +665,11 @@ export async function run_static_provider(options) {
       finish_close();
     });
 
-    if (cancelled || signal?.aborted) on_abort();
-    timeout_timer = setTimeout(() => {
+    if (!termination_started) timeout_timer = setTimeout(() => {
       timed_out = true;
       terminate();
     }, limits.timeout_ms);
-    timeout_timer.unref?.();
+    timeout_timer?.unref?.();
+    if (cancelled || signal?.aborted) on_abort();
   });
 }

@@ -6,8 +6,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ATTACH_FD = 3;
-const MAX_ARGUMENTS = 256;
-const MAX_ARGUMENT_BYTES = 64 * 1024;
+const MAX_ARGUMENTS = 512;
+const MAX_ARGUMENT_BYTES = 96 * 1024;
 
 function fail(code, message, cause) {
   const error = new Error(message, cause === undefined ? undefined : { cause });

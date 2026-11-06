@@ -245,6 +245,19 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
       }
     }
 
+    if (!/^populated 0$/m.test(read_control(child_fd, 'cgroup.events'))) {
+      cgroup_error('ORIX_CGROUP_CHILD_INITIAL_STATE_INVALID', 'New provider cgroup must start unpopulated');
+    }
+    let kill_probe_fd;
+    try {
+      kill_probe_fd = openSync(fd_path(child_fd, 'cgroup.kill'), WRITE_FLAGS);
+    } catch (error) {
+      cgroup_error('ORIX_CGROUP_KILL_UNAVAILABLE', 'New provider cgroup does not expose a writable cgroup.kill control', {
+        reason: error.code ?? error.name ?? 'open-failed',
+      }, error);
+    } finally {
+      if (kill_probe_fd !== undefined) try { closeSync(kill_probe_fd); } catch { /* no provider launched yet */ }
+    }
     attach_fd = open_attach_descriptor(child_fd);
     const attach_fd_value = attach_fd;
     let attach_open = true;
