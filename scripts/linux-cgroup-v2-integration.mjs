@@ -68,7 +68,7 @@ async function make_minimal_rootfs(root) {
     paths.add(binary.source);
     const dependencies = execFileSync('ldd', [binary.source], { encoding: 'utf8' });
     for (const line of dependencies.split('\\n')) {
-      const match = line.match(/(?:=>\\s*)?(\\/\\S+)\\s+\\(/);
+      const match = line.match(/(?:=>\s*)?(\/\S+)\s+\(/);
       if (match) paths.add(match[1]);
     }
     await copyFile(binary.source, binary.target);
@@ -291,9 +291,9 @@ async function main() {
     assert.equal(execution.isolation_cleanup.complete, true);
     assert.equal(execution.isolation_cleanup.failed, false);
     assert.equal(execution.isolation_cleanup.report.removed, true);
-    assert.ok(Number(execution.isolation_cleanup.report.cpu_stat.match(/^nr_throttled (\\d+)$/m)?.[1] || 0) > 0,
+    assert.ok(Number(execution.isolation_cleanup.report.cpu_stat.match(/^nr_throttled (\d+)$/m)?.[1] || 0) > 0,
       'Final cgroup cpu.stat did not record quota throttling');
-    assert.ok(Number(execution.isolation_cleanup.report.pids_events.match(/^max (\\d+)$/m)?.[1] || 0) > 0,
+    assert.ok(Number(execution.isolation_cleanup.report.pids_events.match(/^max (\d+)$/m)?.[1] || 0) > 0,
       'Final cgroup pids.events did not record pids.max enforcement');
     for (const pid of sleepPids) {
       const command = await readFile('/proc/' + pid + '/cmdline', 'utf8').catch(error => {
@@ -331,7 +331,7 @@ async function main() {
     assert.equal(oomExecution.isolation_cleanup.complete, true);
     assert.equal(oomExecution.isolation_cleanup.failed, false);
     assert.equal(oomExecution.isolation_cleanup.report.removed, true);
-    assert.ok(Number(oomExecution.isolation_cleanup.report.memory_events.match(/^oom_kill (\\d+)$/m)?.[1] || 0) > 0,
+    assert.ok(Number(oomExecution.isolation_cleanup.report.memory_events.match(/^oom_kill (\d+)$/m)?.[1] || 0) > 0,
       'memory.max did not produce a kernel OOM kill event');
 
     process.stdout.write('Linux cgroup v2 integration passed: FD attach-before-exec, rootfs/network isolation, RLIMITs, cpu.max throttling, memory.max OOM, pids.max rejection, descendant teardown and empty-cgroup removal.\\n');
