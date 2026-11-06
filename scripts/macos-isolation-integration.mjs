@@ -115,7 +115,14 @@ async function main() {
       cwd: path.join(root, 'work'),
       sandbox_root: root,
       isolation: 'required',
-      env: { ORIX_HOST_PID: String(process.pid) },
+      // Host compiler must ignore caller-controlled SDK/toolchain/temp overrides.
+      env: {
+        ORIX_HOST_PID: String(process.pid),
+        SDKROOT: path.join(base, 'attacker-controlled-sdk'),
+        DEVELOPER_DIR: path.join(base, 'attacker-controlled-developer-dir'),
+        TMPDIR: path.join(base, 'attacker-controlled-tmp'),
+        TOOLCHAINS: path.join(base, 'attacker-controlled-toolchains'),
+      },
       args: ['--input-type=module', '-e', probe],
       timeout_ms: 12_000,
       max_output_bytes: 4_096,
