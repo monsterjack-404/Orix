@@ -371,7 +371,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       if (args.max_file_mib !== undefined) limits.max_file_bytes = args.max_file_mib * 1024 * 1024;
       if (args.max_strings !== undefined) limits.max_strings = args.max_strings;
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-      return inspect_file(target.path, { limits, extract_strings: args.extract_strings });
+      return inspect_file(target.path, { limits, extract_strings: args.extract_strings, reject_hardlinks: true });
     }
     case 'orix.rizin_functions': {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
@@ -437,15 +437,15 @@ export async function call_orix_tool(name, args = {}, options = {}) {
     }
     case 'orix.ledger.verify': {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-      return verify_ledger(target.path);
+      return verify_ledger(target.path, { reject_hardlinks: true });
     }
     case 'orix.ledger.list': {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-      return list_ledger(target.path);
+      return list_ledger(target.path, { reject_hardlinks: true });
     }
     case 'orix.ledger.append': {
       const target = await resolve_workspace_output(args.path, roots);
-      return append_ledger(target, { type: args.type, payload: args.payload });
+      return append_ledger(target, { type: args.type, payload: args.payload }, { reject_hardlinks: true });
     }
     default:
       throw new TypeError('Unknown ORIX tool: ' + name);
