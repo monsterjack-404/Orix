@@ -89,6 +89,33 @@ function single_component(value, label) {
   }
 }
 
+async function open_absolute_directory_nofollow(directory_path) {
+  const root = path.parse(directory_path).root;
+  let current = await open(root, DIRECTORY_FLAGS);
+  const components = path.relative(root, directory_path).split(path.sep).filter(Boolean);
+  try {
+    for (const component of components) {
+      single_component(component, 'Directory path component');
+      const next_path = '/proc/self/fd/' + String(current.fd) + '/' + component;
+      const next = await open(next_path, DIRECTORY_FLAGS);
+      await current.close();
+      current = next;
+    }
+    const descriptor_path = '/proc/self/fd/' + String(current.fd);
+    const canonical = await realpath(descriptor_path);
+    if (canonical !== directory_path) {
+      fail('ORIX_CGROUP_PARENT_PATH_CHANGED', 'The delegated directory path changed while it was opened');
+    }
+    return current;
+  } catch (error) {
+    await current.close().catch(() => {});
+    if (error instanceof OrixError) throw error;
+    fail('ORIX_CGROUP_PARENT_PATH_UNSAFE', 'The delegated parent path contains an unsafe or inaccessible directory component', {
+      parent_path: directory_path,
+    }, error);
+  }
+}
+
 async function read_text(file_path) {
   return (await readFile(file_path, 'utf8')).trim();
 }
@@ -235,12 +262,7 @@ export async function create_linux_provider_cgroup(options = {}, test_adapter = 
   }
 
   try {
-    const canonical_parent = await realpath(parent_path);
-    if (canonical_parent !== parent_path) {
-      fail('ORIX_CGROUP_PARENT_PATH_CHANGED', 'The delegated parent path changed after preflight');
-    }
-
-    parent_handle = await open(parent_path, DIRECTORY_FLAGS);
+    parent_handle = await open_absolute_directory_nofollow(parent_path);
     const parent_info = await parent_handle.stat();
     const parent_permissions = assess_cgroup_directory_permissions(parent_info, process.geteuid());
     if (!parent_info.isDirectory() || !parent_permissions.owner_matches_process ||
