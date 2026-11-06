@@ -82,7 +82,7 @@ async function main() {
   const rootControllersEnabledByTest = [];
   try {
     await mkdir(root);
-    await make_minimal_rootfs(root);
+    const nodePath = await make_minimal_rootfs(root);
     const cgroupRoot = '/sys/fs/cgroup';
     const available = (await readFile(path.join(cgroupRoot, 'cgroup.controllers'), 'utf8')).trim().split(/\s+/);
     for (const controller of ['cpu', 'memory', 'pids']) {
