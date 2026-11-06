@@ -652,10 +652,11 @@ namespace OrixWindowsSandbox {
         Console.Error.WriteLine("ORIX_CLEANUP:BEGIN");
         Log("CLEANUP:BEGIN");
         int hr = DeriveAppContainerSidFromAppContainerName(profileName, out sid);
-        if (hr != 0) {
-          Console.Error.WriteLine("ORIX_CLEANUP:NO_PROFILE:" + hr);
-          return;
-        }
+        // A failed SID lookup is not evidence that the profile is absent.
+        // The API documents E_INVALIDARG as a failure; treating every HRESULT
+        // as a successful no-op would hide invalid input and genuine cleanup
+        // failures. DeleteAppContainerProfile itself is idempotent for absence.
+        if (hr != 0) Marshal.ThrowExceptionForHR(hr);
         Console.Error.WriteLine("ORIX_CLEANUP:SID_DERIVED");
         Log("CLEANUP:SID_DERIVED");
         SecurityIdentifier identity = new SecurityIdentifier(sid);
