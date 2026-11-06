@@ -66,7 +66,7 @@ function validate_input_path(input_path) {
 }
 
 
-async function requested_isolation(value) {
+function requested_isolation(value) {
   const isolation = value ?? 'none';
   if (isolation !== 'none' && isolation !== 'required') {
     throw new TypeError('isolation must be either none or required');
@@ -79,7 +79,7 @@ async function requested_isolation(value) {
   return isolation;
 }
 
-function file_snapshot(input_path, maximum_bytes) {
+async function file_snapshot(input_path, maximum_bytes) {
   let link_info;
   try { link_info = await lstat(input_path); }
   catch (error) {
