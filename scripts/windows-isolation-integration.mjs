@@ -42,8 +42,10 @@ async function main() {
   const isolationSource = await readFile(new URL('../src/providers/windows-isolation.mjs', import.meta.url), 'utf8');
   assert.match(isolationSource, /normalizedKey === 'systemroot' \|\| normalizedKey === 'windir'/,
     'Provider environment overrides must not replace reserved Windows runtime identity keys');
-  assert.match(isolationSource, /const trustedSystemRoot = process\.env\.SystemRoot \?\? process\.env\.WINDIR;[\s\S]*?providerEnvironment\.SystemRoot = trustedSystemRoot;[\s\S]*?providerEnvironment\.WINDIR = trustedSystemRoot;/,
-    'Windows runtime identity must be restored from the trusted host environment after provider overrides');
+  assert.match(isolationSource, /const trustedSystemRoot = \[process\.env\.SystemRoot, process\.env\.WINDIR\]\.find\(value => typeof value === 'string' && value\.trim\(\)\.length > 0\);[\s\S]*?providerEnvironment\.SystemRoot = trustedSystemRoot;[\s\S]*?providerEnvironment\.WINDIR = trustedSystemRoot;/,
+    'Windows runtime identity must be restored from the first non-empty trusted host value after provider overrides');
+  assert.match(isolationSource, /const systemRoot = \[environment\.SystemRoot, environment\.WINDIR\]\.find\(value => typeof value === 'string' && value\.trim\(\)\.length > 0\);/,
+    'Compiler lookup must fall back to WINDIR when SystemRoot is empty');
   assert.match(isolationSource, /child\.once\('close'/,
     'Native helper timeout handling must wait until the helper process and stdio handles are closed');
   assert.doesNotMatch(isolationSource, /child\.once\('exit'/,
