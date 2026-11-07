@@ -167,7 +167,7 @@ function walk_fields(buffer, start, end, budget, label, visitor) {
 function opaque_message(buffer, value, budget, label, depth) {
   assert_depth(depth, budget, label);
   let field_count = 0;
-  walk_fields(buffer, value.start, value.end, budget, label, () => { field_count += 1; budget.unknown_fields += 1; });
+  walk_fields(buffer, value.start, value.end, budget, label, () => { field_count += 1; budget.opaque_fields_skipped += 1; });
   return { field_count };
 }
 
@@ -346,7 +346,10 @@ function parse_item(buffer, value, budget, limits, depth) {
       singular(seen, field, 'Item.oneof_value');
       const kinds = { 1: 'reference', 2: 'string', 3: 'raw_string', 4: 'styled_string', 5: 'file', 6: 'id', 7: 'primitive' };
       result.kind = kinds[field];
-      if (field === 1) result.value = parse_reference(buffer, raw, budget, limits, depth + 1);
+      if (field === 1) {
+        result.value = parse_reference(buffer, raw, budget, limits, depth + 1);
+        budget.counts.direct_references += 1;
+      }
       else if (field === 2 || field === 3) {
         const seen_string = new Set();
         let string_value = '';
@@ -434,10 +437,11 @@ function parse_value(buffer, value, budget, limits, depth) {
         result.item = item;
       } else {
         const names = { 1: 'attribute', 2: 'style', 3: 'styleable', 4: 'array', 5: 'plural', 6: 'macro' };
-        const nested_fields = opaque_message(buffer, raw, budget, 'CompoundValue', depth + 1).field_count;
+        let nested_fields = 0;
         const nested = [];
         let selected = null;
         walk_fields(buffer, raw.start, raw.end, budget, 'CompoundValue', (f, w, v) => {
+          nested_fields += 1;
           if (f >= 1 && f <= 6) {
             expect_wire('CompoundValue', f, w, 2);
             if (selected !== null) fail('ORIX_RESOURCE_ONEOF_DUPLICATE', 'CompoundValue has more than one concrete value', { first: selected, second: f });
@@ -448,6 +452,7 @@ function parse_value(buffer, value, budget, limits, depth) {
         result.kind = 'compound:' + (selected ?? 'unknown');
         result.compound_kind = selected;
         result.compound_field_count = nested_fields;
+        if (selected) budget.compound_value_kinds[selected] = (budget.compound_value_kinds[selected] ?? 0) + 1;
         result.compound_metadata = nested;
       }
     } else budget.unknown_fields += 1;
@@ -720,6 +725,18 @@ function parse_dynamic_ref_table(buffer, value, budget, limits, depth) {
       result.package_name = decode_string(buffer, raw, 'DynamicRefTable.package_name', budget, limits);
     } else budget.unknown_fields += 1;
   });
+  // Protobuf field order is arbitrary. Compute stable resource IDs only after
+  // the package and all type IDs have been parsed.
+  for (const type of result.types) {
+    for (const entry of type.entries) {
+      const package_id = result.package_id;
+      const type_id = type.type_id?.id ?? null;
+      const entry_id = entry.entry_id?.id ?? null;
+      if (package_id !== null && type_id !== null && entry_id !== null) {
+        entry.resource_id = '0x' + (((package_id << 24) | (type_id << 16) | entry_id) >>> 0).toString(16).padStart(8, '0');
+      }
+    }
+  }
   return result;
 }
 
@@ -752,8 +769,9 @@ export function parse_android_resource_table(buffer, options = {}) {
 
   const budget = {
     limits, fields_seen: 0, items_seen: 0, output_items: 0, items_omitted: 0,
-    string_bytes: 0, unknown_fields: 0, output_truncated: false,
-    counts: { packages: 0, types: 0, entries: 0, variants: 0, disabled_variants: 0, styled_spans: 0, overlay_policies: 0 },
+    string_bytes: 0, unknown_fields: 0, opaque_fields_skipped: 0, output_truncated: false,
+    compound_value_kinds: {},
+    counts: { packages: 0, types: 0, entries: 0, variants: 0, disabled_variants: 0, styled_spans: 0, overlay_policies: 0, direct_references: 0 },
   };
   const result = {
     schema_version: 'orix.android-resource-table.v1',
@@ -762,7 +780,7 @@ export function parse_android_resource_table(buffer, options = {}) {
     overlayables: [],
     tool_fingerprints: [],
     dynamic_ref_tables: [],
-    summary: { package_count: 0, type_count: 0, entry_count: 0, variant_count: 0, disabled_variant_count: 0, direct_references: 0, compound_value_kinds: {} },
+    summary: null,
     coverage: null,
     notes: [
       'Package, type, entry, ID, visibility, configuration variant and top-level value-kind metadata are decoded from AAPT2 ResourceTable.',
@@ -791,19 +809,6 @@ export function parse_android_resource_table(buffer, options = {}) {
     } else if (field === 2) {
       expect_wire('ResourceTable', field, wire, 2);
       const pkg = parse_package(buffer, raw, budget, limits, 1);
-      result.summary.package_count += 1;
-      result.summary.type_count += pkg.type_count;
-      for (const type of pkg.types) {
-        for (const entry of type.entries) {
-          result.summary.entry_count += 1;
-          result.summary.variant_count += entry.config_values.length;
-          result.summary.disabled_variant_count += entry.flag_disabled_config_values.length;
-          for (const [kind, count] of Object.entries(entry.value_kind_counts)) {
-            if (kind.startsWith('item:reference')) result.summary.direct_references += count;
-            if (kind.startsWith('compound:')) result.summary.compound_value_kinds[kind] = (result.summary.compound_value_kinds[kind] ?? 0) + count;
-          }
-        }
-      }
       add_output(result.packages, pkg, budget);
     } else if (field === 3) {
       expect_wire('ResourceTable', field, wire, 2);
@@ -820,12 +825,22 @@ export function parse_android_resource_table(buffer, options = {}) {
     } else budget.unknown_fields += 1;
   });
 
+  result.summary = {
+    package_count: budget.counts.packages,
+    type_count: budget.counts.types,
+    entry_count: budget.counts.entries,
+    variant_count: budget.counts.variants,
+    disabled_variant_count: budget.counts.disabled_variants,
+    direct_references: budget.counts.direct_references,
+    compound_value_kinds: budget.compound_value_kinds,
+  };
   result.coverage = {
     fields_seen: budget.fields_seen,
     items_seen: budget.items_seen,
     items_reported: budget.output_items,
     items_omitted: budget.items_omitted,
     unknown_fields: budget.unknown_fields,
+    opaque_fields_skipped: budget.opaque_fields_skipped,
     string_bytes: budget.string_bytes,
     output_truncated: budget.output_truncated,
     counts: budget.counts,
