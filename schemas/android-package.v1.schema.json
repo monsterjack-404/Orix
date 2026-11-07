@@ -39,7 +39,9 @@
         "unsafe_or_symlink_entries",
         "entries_reported",
         "entries_omitted",
-        "zip64"
+        "zip64",
+        "duplicate_path_names",
+        "duplicate_path_entries"
       ],
       "properties": {
         "entry_count": {
@@ -64,6 +66,14 @@
         },
         "zip64": {
           "type": "boolean"
+        },
+        "duplicate_path_names": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicate_path_entries": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "additionalProperties": false
@@ -85,7 +95,9 @@
         "manifest_entries_reported",
         "manifest_entries_omitted",
         "v1_signature_files_reported",
-        "v1_signature_files_omitted"
+        "v1_signature_files_omitted",
+        "duplicate_dex_paths",
+        "duplicate_manifest_paths"
       ],
       "properties": {
         "dex_entries": {
@@ -144,6 +156,14 @@
           "minimum": 0
         },
         "v1_signature_files_omitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicate_dex_paths": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicate_manifest_paths": {
           "type": "integer",
           "minimum": 0
         }
