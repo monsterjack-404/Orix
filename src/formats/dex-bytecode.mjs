@@ -103,24 +103,50 @@ function payloadInfo(buffer, base, pc, totalUnits, maxPayloadBytes) {
   if ((pc & 1) !== 0) {
     fail('ORIX_DEX_BYTECODE_PAYLOAD_ALIGNMENT', 'DEX payload pseudo-instructions must be four-byte aligned', { pc });
   }
+  if (pc > totalUnits - 2) {
+    fail('ORIX_DEX_BYTECODE_PAYLOAD_RANGE', 'DEX payload header is truncated', { pc, total_units: totalUnits });
+  }
   const first = atUnit(buffer, base, pc);
   const size = atUnit(buffer, base, pc + 1);
   if (first === 0x0100) {
     const units = 4 + size * 2;
-    if (!Number.isSafeInteger(units) || units > totalUnits - pc) {
+    if (units > totalUnits - pc) {
       fail('ORIX_DEX_BYTECODE_PAYLOAD_RANGE', 'DEX packed-switch payload exceeds the instruction array', { pc, size, units, total_units: totalUnits });
     }
-    return { kind: 'packed-switch', kind_id: 2, size, units, data_bytes: size * 4 };
+    const firstKey = buffer.readInt32LE(base + (pc + 2) * 2);
+    if (size > 0 && firstKey + size - 1 > 0x7fffffff) {
+      fail('ORIX_DEX_BYTECODE_SWITCH_KEY_RANGE', 'DEX packed-switch key range overflows signed 32-bit values', { pc, first_key: firstKey, size });
+    }
+    const dataBytes = size * 4;
+    if (dataBytes > maxPayloadBytes) {
+      fail('ORIX_DEX_BYTECODE_PAYLOAD_LIMIT', 'DEX packed-switch payload exceeds the configured byte budget', { pc, data_bytes: dataBytes, max_payload_bytes: maxPayloadBytes });
+    }
+    return { kind: 'packed-switch', kind_id: 2, size, units, data_bytes: dataBytes };
   }
   if (first === 0x0200) {
     const units = 2 + size * 4;
-    if (!Number.isSafeInteger(units) || units > totalUnits - pc) {
+    if (units > totalUnits - pc) {
       fail('ORIX_DEX_BYTECODE_PAYLOAD_RANGE', 'DEX sparse-switch payload exceeds the instruction array', { pc, size, units, total_units: totalUnits });
     }
-    return { kind: 'sparse-switch', kind_id: 3, size, units, data_bytes: size * 8 };
+    let previousKey = -1;
+    for (let index = 0; index < size; index += 1) {
+      const key = buffer.readInt32LE(base + (pc + 2 + index * 2) * 2);
+      if (index > 0 && key <= previousKey) {
+        fail('ORIX_DEX_BYTECODE_SWITCH_KEY_ORDER', 'DEX sparse-switch keys must be strictly increasing', { pc, index, key, previous_key: previousKey });
+      }
+      previousKey = key;
+    }
+    const dataBytes = size * 8;
+    if (dataBytes > maxPayloadBytes) {
+      fail('ORIX_DEX_BYTECODE_PAYLOAD_LIMIT', 'DEX sparse-switch payload exceeds the configured byte budget', { pc, data_bytes: dataBytes, max_payload_bytes: maxPayloadBytes });
+    }
+    return { kind: 'sparse-switch', kind_id: 3, size, units, data_bytes: dataBytes };
   }
   if (first === 0x0300) {
-    const width = atUnit(buffer, base, pc + 1);
+    if (totalUnits - pc < 4) {
+      fail('ORIX_DEX_BYTECODE_PAYLOAD_RANGE', 'DEX fill-array-data header is truncated', { pc, total_units: totalUnits });
+    }
+    const width = size;
     const elementCount = buffer.readUInt32LE(base + (pc + 2) * 2);
     if (![1, 2, 4, 8].includes(width)) {
       fail('ORIX_DEX_BYTECODE_ARRAY_WIDTH', 'DEX fill-array-data element_width must be 1, 2, 4 or 8 bytes', { pc, width });
@@ -130,7 +156,7 @@ function payloadInfo(buffer, base, pc, totalUnits, maxPayloadBytes) {
       fail('ORIX_DEX_BYTECODE_PAYLOAD_LIMIT', 'DEX fill-array-data payload exceeds the configured byte budget', { pc, width, element_count: elementCount, data_bytes: dataBytes, max_payload_bytes: maxPayloadBytes });
     }
     const units = 4 + Math.ceil(dataBytes / 2);
-    if (!Number.isSafeInteger(units) || units > totalUnits - pc) {
+    if (units > totalUnits - pc) {
       fail('ORIX_DEX_BYTECODE_PAYLOAD_RANGE', 'DEX fill-array-data payload exceeds the instruction array', { pc, units, total_units: totalUnits });
     }
     return { kind: 'fill-array-data', kind_id: 4, size: elementCount, element_width: width, units, data_bytes: dataBytes };
