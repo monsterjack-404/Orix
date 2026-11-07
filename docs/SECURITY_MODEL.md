@@ -140,6 +140,14 @@ Ancestors must not grant untrusted principals deletion/replacement, ownership
 or ACL-control rights; ordinary sibling-creation rights on an ancestor are
 not treated as permission to modify an existing rootfs child. Any inherited
 write-capable ACE effective on the rootfs is rejected at the rootfs itself.
+Before launch, the helper inspects the provider token for an enabled
+`SeChangeNotifyPrivilege` (Bypass traverse checking). This permits path traversal
+without granting directory enumeration or file content access; when enabled,
+the helper avoids redundant ancestor DACL writes. If the privilege is absent
+or disabled, a per-profile `FILE_TRAVERSE` ACE is considered only on a
+service-owned ancestor, never on OS/admin-owned paths. Deny ACEs are not
+overridden and provider process creation remains the actual fail-closed access
+check. See [Microsoft's privilege reference](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/bypass-traverse-checking).
 This is a conservative ACL preflight, not a defense against privileged host
 administrators or a subsequent trusted-host ACL/mount change. It grants the
 package SID read/execute access to the explicit provider rootfs and confines
