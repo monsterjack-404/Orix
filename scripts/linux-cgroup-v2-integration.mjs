@@ -105,10 +105,18 @@ async function sample_cgroup(parent, marker) {
     throw error;
   }
   if (!cgroup) return null;
-
+async function sample_cgroup(parent, marker) {
+  let cgroup;
+  try {
+    cgroup = await find_provider_cgroup(parent);
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENODEV') return null;
+    throw error;
+  }
+  if (!cgroup) return null;
   try {
     let provider_seen = false;
-    let sleep_pids = [];
+    const sleep_pids = [];
     const pids = (await read_control(path.join(cgroup, 'cgroup.procs'))).split('\n').filter(Boolean);
     for (const pid of pids) {
       try {
@@ -117,7 +125,6 @@ async function sample_cgroup(parent, marker) {
         if (command.includes('/usr/bin/sleep')) sleep_pids.push(Number(pid));
       } catch (error) {
         if (error.code !== 'ENOENT' && error.code !== 'ESRCH') throw error;
-        // The process may exit after cgroup.procs is sampled.
       }
     }
     const cpu = await read_control(path.join(cgroup, 'cpu.stat'));
@@ -128,12 +135,25 @@ async function sample_cgroup(parent, marker) {
     const oomKills = Number(memoryEvents.match(/^oom_kill (\d+)$/m)?.[1] || 0);
     return { cgroup, provider_seen, sleep_pids, throttled, memory, pidsCurrent, oomKills };
   } catch (error) {
-    // Kernel cgroup teardown can invalidate virtual control-file reads with
-    // ENODEV after a leaf was discovered. Treat it like a vanished snapshot;
-    // the integration assertions still require the live probes to be seen.
-    if (error.code === 'ENOENT' || error.code === 'ENODEV') return null;
+    if (error.code === 'ENOENT' || error.code === 'ENODEV') {
+      try {
+        await lstat(cgroup);
+      } catch (directoryError) {
+        if (directoryError.code === 'ENOENT' || directoryError.code === 'ENODEV') return null;
+        throw directoryError;
+      }
+    }
     throw error;
   }
+}
+  }
+  const cpu = await read_control(path.join(cgroup, 'cpu.stat'));
+  const throttled = Number(cpu.match(/^nr_throttled (\d+)$/m)?.[1] || 0);
+  const memory = Number(await read_control(path.join(cgroup, 'memory.current')));
+  const pidsCurrent = Number(await read_control(path.join(cgroup, 'pids.current')));
+  const memoryEvents = await read_control(path.join(cgroup, 'memory.events'));
+  const oomKills = Number(memoryEvents.match(/^oom_kill (\d+)$/m)?.[1] || 0);
+  return { cgroup, provider_seen, sleep_pids, throttled, memory, pidsCurrent, oomKills };
 }
 async function create_delegated_parent() {
   assert.equal(process.platform, 'linux');

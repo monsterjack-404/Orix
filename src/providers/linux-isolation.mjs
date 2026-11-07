@@ -3,6 +3,7 @@
 // No host home, project tree, credentials, or network namespace is exposed by default.
 
 import { access, lstat, realpath } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OrixError } from '../core/errors.mjs';
@@ -37,8 +38,57 @@ async function resolve_trusted_executable(candidates, label) {
   );
 }
 
+/**
+ * Bubblewrap versions before 0.12.0 are affected by GHSA-pxhw-h44j-8pfx
+ * (CVE-2026-87766), a symlink traversal during sandbox setup. Fail closed
+ * rather than running an older system-installed binary.
+ */
+export function assess_bubblewrap_version(output) {
+  if (typeof output !== 'string') {
+    return Object.freeze({ version: null, supported: false });
+  }
+  const match = /^bubblewrap\s+(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(output.trim());
+  if (!match) return Object.freeze({ version: null, supported: false });
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  const patch = Number(match[3]);
+  if (![major, minor, patch].every(Number.isSafeInteger)) {
+    return Object.freeze({ version: null, supported: false });
+  }
+  const supported = major > 0 || minor > 12 || (minor === 12 && patch >= 0);
+  return Object.freeze({ version: `${major}.${minor}.${patch}`, supported });
+}
+
 async function resolve_bwrap() {
-  return resolve_trusted_executable(['/usr/bin/bwrap', '/bin/bwrap'], 'bubblewrap');
+  const executable = await resolve_trusted_executable(
+    ['/usr/bin/bwrap', '/bin/bwrap'], 'bubblewrap',
+  );
+  let versionOutput;
+  try {
+    versionOutput = execFileSync(executable, ['--version'], {
+      encoding: 'utf8',
+      timeout: 5_000,
+      maxBuffer: 4_096,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+      'Could not verify the installed Bubblewrap version; required isolation is unavailable', {
+        executable,
+        reason: error.code ?? error.name,
+      });
+  }
+  const assessment = assess_bubblewrap_version(versionOutput);
+  if (!assessment.supported) {
+    isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+      'Bubblewrap >= 0.12.0 is required; versions below 0.12.0 are blocked due to GHSA-pxhw-h44j-8pfx (CVE-2026-87766)', {
+        executable,
+        installed_version: assessment.version ?? String(versionOutput).trim().slice(0, 128),
+        minimum_version: '0.12.0',
+      });
+  }
+  return executable;
 }
 
 async function resolve_prlimit() {

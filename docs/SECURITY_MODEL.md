@@ -65,40 +65,118 @@ Please use GitHub's private vulnerability reporting or Security Advisories for s
 
 The provider runner compares the canonical executable with an explicit allowlist (or uses the selected executable as its single-entry default) and validates the working directory against explicit canonical roots (or the exact cwd as its default). It rejects final symlink paths and malformed/accessor-backed allowlist arrays. The child does not inherit the full parent environment; explicit values reject PATH/search and runtime-loader variables such as NODE_OPTIONS, LD_PRELOAD, DYLD_INSERT_LIBRARIES, PYTHONPATH and RUBYOPT.
 
-These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. Windows currently terminates only the direct child.
+These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. In explicitly unsandboxed `isolation: "none"` mode, Windows process teardown can signal only the direct child; the required AppContainer backend instead places the provider in a Job Object before resuming it and applies kill-on-job-close to descendants.
 
 
-## Explicit provider execution policy and enforced isolation
+## Explicit provider policy and cross-platform enforced isolation
 
-The provider runner requires every caller to explicitly select an execution policy. Omitting `isolation` is rejected before launch. `isolation: "none"` is an explicitly unsandboxed process-control mode and does not confine filesystem access, networking or descendants. `isolation: "required"` is accepted only when an explicit Linux sandbox root and the host-configured `ORIX_CGROUP_PARENT` are available. The
-Linux backend uses Bubblewrap with an unshared network namespace, explicitly
-required user/PID/IPC/UTS namespaces, a read-only sandbox-root mount, fresh
-ephemeral `/tmp`, a private `/proc` and minimal `/dev`, and an explicit working
-directory. It also applies Bubblewrap's `--disable-userns` and
-`--assert-userns-disabled` controls so the provider cannot create nested user
-namespaces to rearrange mount isolation. Unsupported Bubblewrap versions fail
-closed before provider launch.
+The provider runner requires every caller to explicitly select an execution
+policy. Omitting `isolation` is rejected before launch. `isolation: "none"`
+is an explicitly unsandboxed legacy mode: it retains shell-free argv, an
+allowlisted executable, a reduced environment, a timeout and output ceiling,
+but it does not confine filesystem access, networking or descendants.
+Execution results report `isolation: "none"` and
+`isolation_enforced: false` for this mode.
 
-The trusted Node bootstrap receives only the leaf `cgroup.procs` write
-capability as child FD 3. It attaches itself before starting `prlimit` and
-Bubblewrap, closes the descriptor, and never passes it to provider code. The
-host configures and reads back the fixed per-run limits: 50% CPU bandwidth,
-512 MiB memory, zero swap, whole-cgroup OOM handling, and 64 tasks. Per-process
-RLIMITs cap CPU time at 60 seconds, file size at 64 MiB, open files at 256, and
-core dumps at zero. CPU bandwidth is not a total CPU-time budget. The provider
-executable and working directory must resolve inside the rootfs; the host
-project, home directories, credentials, and cgroup hierarchy are not mounted
-into the provider namespace.
+`isolation: "required"` is the enforced Linux path. It requires an explicit
+sandbox root and an administrator-provisioned delegated cgroup-v2 parent with
+the `cpu`, `memory` and `pids` controllers available. The adapter requires
+Bubblewrap **0.12.0 or newer** and checks the executable's reported version
+before use. Versions below 0.12.0 are rejected because of
+[GHSA-pxhw-h44j-8pfx / CVE-2026-87766](https://github.com/containers/bubblewrap/security/advisories/GHSA-pxhw-h44j-8pfx),
+a symlink traversal that can write outside the sandbox during setup when
+untrusted filesystem content is used. CI builds the upstream 0.12.0 release
+from its pinned upstream v0.12.0 tag object and commit SHA and runs its upstream Meson
+test suite before the ORIX hostile-process gate.
 
-The privileged Linux integration gate exercises real kernel cgroup membership,
-CPU throttling, memory OOM, PID ceiling, host-file/network denial, descendant
-cleanup, cancellation, timeout, and empty-leaf removal on the CI Ubuntu
-runner. The host operator must provision a dedicated delegated cgroup v2
-parent owned by the ORIX service UID, not group/other writable, empty, and with
-`cpu`, `memory`, and `pids` enabled for children. Its `supervisor/` sibling
-must contain the ORIX manager process. The runtime verifies this layout and
-fails closed; it does not enable parent controllers. Run
-`node scripts/linux-cgroup-v2-preflight.mjs` under the service identity before
-deployment.
+The adapter uses Bubblewrap with unshared network, PID, IPC, UTS and user
+namespaces, a read-only provider rootfs, a fresh ephemeral `/tmp`, private
+`/proc`, and minimal `/dev`. It disables nested user namespaces and fails
+closed if the installed Bubblewrap does not support the required controls.
+The provider executable and working directory must resolve inside the
+deliberately provisioned rootfs.
 
-This is the Linux enforced backend; it does not claim complete cross-platform isolation. Windows and macOS have no enforced backend and reject `isolation: "required"`. `isolation: "none"` is never an operating-system sandbox. Host-specific cgroup delegation, ACLs, kernel versions and distribution behavior still require operator validation.
+Before provider execution, a trusted bootstrap moves itself into the
+per-provider cgroup; the spawned Bubblewrap and provider descendants inherit
+membership. The cgroup enforces `cpu.max=50000 100000` (50% of one CPU),
+`memory.max=536870912` (512 MiB), `memory.swap.max=0`,
+`memory.oom.group=1` and `pids.max=64`. Per-process RLIMIT ceilings are
+60 CPU seconds, 64 MiB file size, 256 open descriptors and zero core-dump
+bytes. The lifecycle kills and verifies descendants, waits for
+`cgroup.events populated=0`, removes the per-run cgroup, and surfaces
+cleanup failures instead of reporting successful execution.
+
+The Linux hostile-process integration test exercises filesystem and network
+boundaries, nested-user-namespace denial, kernel CPU throttling, memory OOM,
+PID-limit rejection, RLIMIT values, and descendant teardown against a
+temporary delegated cgroup-v2 hierarchy. The caller must supply a correctly
+delegated, exclusively managed parent; ORIX does not change controllers on a
+parent it does not own. The production host must set `ORIX_CGROUP_PARENT` to a dedicated, empty cgroup v2 delegated parent owned by the ORIX service identity, not group/other writable, with `cpu`, `memory`, and `pids` enabled for children. A service-owned `supervisor/` sibling must contain the ORIX manager process. The runtime verifies this layout and does not enable parent controllers. Run `node scripts/linux-cgroup-v2-preflight.mjs` under the service identity before deployment. This is a risk-reduction boundary, not protection
+against privileged host administrators or kernel vulnerabilities.
+
+## Windows AppContainer + Job Object
+
+The Windows backend creates a unique AppContainer profile with no network
+capabilities. Before profile creation, the native launcher walks the canonical
+rootfs and its ancestors, rejects reparse points, and requires each owner to be
+the service identity, LocalSystem, local Administrators or TrustedInstaller.
+The rootfs itself must have no write-capable ACL grant to another principal.
+Ancestors must not grant untrusted principals deletion/replacement, ownership
+or ACL-control rights; ordinary sibling-creation rights on an ancestor are not
+treated as permission to modify an existing rootfs child. Any inherited
+write-capable ACE effective on the rootfs is rejected at the rootfs itself.
+This is a conservative ACL preflight, not a defense against privileged host
+administrators or a subsequent trusted-host ACL/mount change. It grants the package SID
+read/execute access to the explicit provider rootfs and confines writable
+scratch to `rootfs/tmp`, including the package-specific
+`Packages/<profile>/AC/Temp` location used by Windows temporary-file APIs. The native launcher creates the provider suspended,
+assigns it to a Job Object before resume, verifies the process token is an
+AppContainer token, and configures a 50% CPU hard cap, 512 MiB aggregate job
+memory limit, 64 active processes and kill-on-job-close. It terminates and
+waits for remaining descendants before cleanup. Windows does not expose the
+same per-process RLIMIT file-size/open-descriptor controls used by Linux and
+macOS; ORIX's parent runner still limits wall-clock time and captured output.
+The Windows hostile-process integration test checks host-file denial,
+read-only rootfs, confined writable temporary storage and loopback network
+denial, and the launcher confirms Job Object configuration.
+
+## macOS Seatbelt (experimental)
+
+The macOS backend applies a deny-by-default Seatbelt profile through a native
+launcher. The profile restricts provider reads/execution to the explicit
+rootfs and required system runtime files, allows writes only under
+`rootfs/tmp`, and denies network operations. The launcher verifies that the
+kernel sandbox is active before exec and applies inherited RLIMIT ceilings:
+60 CPU seconds, 64 MiB file size, 256 open descriptors and disabled core
+dumps. Before launch, the canonical rootfs and each ancestor must be owned by
+root or the ORIX service account and must not be group/other writable; only
+root-owned sticky ancestors (such as /tmp) are exempt, and the filesystem
+root itself is rejected. Every rootfs descendant is also checked: entries must
+be root/service-owned regular files or directories, cannot be group/other
+writable, setuid/setgid, symlinks, hard-linked files or special filesystem
+objects. The native launcher independently checks the rootfs and each
+ancestor for non-empty macOS extended ACL entries immediately before applying
+Seatbelt; it rejects ACL-bearing paths and fails closed when ACL inspection
+returns an unexpected error. The integration test adds an ACL-granted writer
+while leaving POSIX mode bits restrictive and verifies that the native
+launcher rejects it. This narrows the ACL gap but is not a race-free filesystem
+pin or protection against privileged host administrators and subsequent
+trusted-host mount/ACL changes. Hostile-process tests verify an outside-rootfs
+secret is unreadable, the rootfs cannot be modified, private temporary writes
+work and host loopback networking is blocked.
+
+macOS Seatbelt does not provide the aggregate memory/PID quotas enforced by
+Linux cgroup v2 or Windows Job Objects; ORIX does not claim those controls on
+macOS. The native integration uses Apple's reserved
+`sandbox_init_with_parameters` / `sandbox_check` interfaces rather than the
+supported signed App Sandbox entitlement model. Apple does not guarantee the
+long-term availability of these reserved interfaces, so this backend is
+experimental and must be revalidated against each supported macOS release.
+It fails closed if its compiler, Seatbelt API or policy setup is unavailable.
+
+Across all platforms, `isolation: "none"` remains explicit legacy process
+control, not an OS sandbox. `isolation: "required"` is reported as enforced
+only after the selected platform backend has successfully prepared its
+kernel-enforced restrictions. OS sandboxes are risk-reduction boundaries,
+not protection against privileged host administrators, kernel vulnerabilities
+or compromised OS security services.

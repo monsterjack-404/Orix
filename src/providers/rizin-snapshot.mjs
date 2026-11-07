@@ -16,17 +16,27 @@ export async function create_rizin_snapshot_directory(prefix, options = {}) {
   let parent_directory = tmpdir();
   const isolation = options.isolation;
   const sandbox_root = options.sandbox_root;
-  if (isolation === 'required' && process.platform === 'linux' &&
+  if (isolation === 'required' && ['linux', 'win32', 'darwin'].includes(process.platform) &&
       typeof sandbox_root === 'string' && path.isAbsolute(sandbox_root) && !sandbox_root.includes('\0')) {
     try {
       const root_info = await lstat(sandbox_root);
       if (!root_info.isSymbolicLink() && root_info.isDirectory()) {
-        // Bubblewrap overlays /tmp with a fresh tmpfs. Put the private snapshot
-        // elsewhere in the read-only root bind so the provider can read it.
-        parent_directory = sandbox_root;
+        if (process.platform === 'linux') {
+          // Bubblewrap overlays /tmp with a fresh tmpfs. Stage the snapshot
+          // outside that mount, but still inside the read-only provider rootfs.
+          parent_directory = sandbox_root;
+        } else {
+          // AppContainer and Seatbelt permit scratch writes only under rootfs/tmp.
+          // Keep the host-created artifact snapshot inside that same confined tree.
+          const scratch = path.join(sandbox_root, 'tmp');
+          const scratch_info = await lstat(scratch);
+          if (!scratch_info.isSymbolicLink() && scratch_info.isDirectory()) {
+            parent_directory = scratch;
+          }
+        }
       }
     } catch {
-      // Let the process runner report the canonical sandbox-root validation error.
+      // Let the process runner report the canonical sandbox-root/scratch validation error.
     }
   }
   try {
