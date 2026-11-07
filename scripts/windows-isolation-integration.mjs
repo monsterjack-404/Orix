@@ -419,7 +419,7 @@ async function main() {
       'let count = 0;',
       'fs.writeFileSync(counter, "0");',
       'setInterval(() => fs.writeFileSync(counter, String(++count)), 20);',
-    ].join('\\n');
+    ].join(String.fromCharCode(10));
     const parentScript = [
       'const { spawn } = require("node:child_process");',
       'const fs = require("node:fs");',
@@ -430,7 +430,7 @@ async function main() {
       'if (!fs.existsSync(' + JSON.stringify(descendantCounter) + ')) { console.error("provider descendant did not become ready"); process.exit(88); }',
       'process.stdout.write("provider-descendant-started");',
       'process.exit(0);',
-    ].join('\\n');
+    ].join(String.fromCharCode(10));
     const descendantExecution = await run_static_provider({
       manifest: manifest(),
       executable: path.join(root, 'node.exe'),
