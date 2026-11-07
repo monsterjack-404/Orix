@@ -1,7 +1,7 @@
 // JavaScript, tests/linux-cgroup-v2-bootstrap.test.mjs, Linux descriptor-handoff regression tests.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeSync, fstatSync, openSync, readSync, writeFileSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readFileSync, readSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
