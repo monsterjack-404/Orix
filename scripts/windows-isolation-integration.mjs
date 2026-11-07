@@ -39,6 +39,15 @@ async function main() {
     'Native helper must resolve security-sensitive Windows utilities through the OS API');
   assert.match(launcherSource, /if \(!process\.WaitForExit\(10000\)\)[\s\S]*?process\.Kill\(\)[\s\S]*?process\.WaitForExit\(\)[\s\S]*?throw new TimeoutException/,
     'Timed-out icacls must be observed exited before helper cleanup can mutate its target');
+  assert.match(launcherSource, /static void TerminateAndWaitForProvider[\s\S]*?WaitForSingleObject\(job, 5000\)/,
+    'Provider teardown must wait for the assigned Job Object to become empty');
+  assert.match(launcherSource, /static void TerminateAndWaitForProvider[\s\S]*?WaitForSingleObject\(processHandle, 5000\)/,
+    'A provider process created before Job Object assignment must be terminated and observed exited');
+  assert.ok(launcherSource.includes('RUN:TEARDOWN_INCOMPLETE') &&
+    launcherSource.includes('ProviderTeardownIncompleteException'),
+    'Unverified process teardown must be surfaced as a distinct fail-closed result');
+  assert.match(launcherSource, /catch \(ProviderTeardownIncompleteException error\)[\s\S]*?return 125/,
+    'Native Main must skip AppContainer cleanup when process-tree emptiness was not confirmed');
 
   const purgeStart = launcherSource.indexOf('static void PurgeTree(');
   const deleteStart = launcherSource.indexOf('static void DeleteTreeNoReparse(', purgeStart);
@@ -86,6 +95,8 @@ async function main() {
     'Windows runtime must not discover a compiler or compile native helper source');
   assert.match(isolationSource, /decodeWindowsProviderLauncher/,
     'Windows runtime must load the prebuilt source-pinned launcher');
+  assert.match(isolationSource, /RUN:TEARDOWN_INCOMPLETE[\s\S]*?ORIX_PROVIDER_WINDOWS_TEARDOWN_UNVERIFIED/,
+    'Host cleanup must refuse to traverse AppContainer state after unverified provider teardown');
   const packagedPayload = await readFile(new URL('../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
   const packagedLauncher = decodeWindowsProviderLauncher(packagedPayload);
   assert.equal(createHash('sha256').update(packagedLauncher).digest('hex'), WINDOWS_PROVIDER_LAUNCHER_SHA256,
@@ -142,6 +153,30 @@ async function main() {
     await mkdir(path.join(root, 'tmp'), { recursive: true });
     // The normal rootfs runtime must exist before both negative ACL probes.
     await copyFile(process.execPath, path.join(root, 'node.exe'));
+
+    // A failed native process-tree wait must block the later host-driven
+    // cleanup helper. Simulate the durable teardown marker before any profile
+    // has been created; cleanup must not launch a second helper or erase it.
+    const blockedTeardown = await prepare_windows_provider_isolation({
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      args: ['-e', 'process.exit(0)'],
+      env: {},
+    });
+    const blockedTeardownLog = path.join(blockedTeardown.cwd, 'provider.log');
+    const teardownMarker = 'RUN:TEARDOWN_INCOMPLETE:simulated wait failure\\n';
+    await writeFile(blockedTeardownLog, teardownMarker, 'utf8');
+    await assert.rejects(
+      blockedTeardown.cleanup(),
+      error => error.code === 'ORIX_PROVIDER_WINDOWS_TEARDOWN_UNVERIFIED',
+      'Host cleanup must refuse when the native helper could not confirm the provider Job Object is empty',
+    );
+    assert.equal(await readFile(blockedTeardownLog, 'utf8'), teardownMarker,
+      'The blocked cleanup path must not launch another helper or mutate the teardown log');
+    await access(path.join(blockedTeardown.cwd, 'orix-windows-provider-launcher.exe'),
+      'The cleanup guard must leave the helper workspace intact for recovery');
+    await rm(blockedTeardown.cwd, { recursive: true, force: true });
 
     // An ACL that lets every local principal modify the provider rootfs must
     // be rejected by the native launcher before the AppContainer is created.
