@@ -1,5 +1,5 @@
-// JavaScript, src/formats/dex.mjs, Node.js 20+, bounded DEX metadata parser.
-// This parser does not decode bytecode instructions or execute artifacts.
+// JavaScript, src/formats/dex.mjs, Node.js 20+, bounded DEX structural and bytecode parser.
+// This parser statically decodes instructions; it never executes artifact code.
 import { createHash } from 'node:crypto';
 import { OrixError } from '../core/errors.mjs';
 import { parse_dex_semantics } from './dex-semantics.mjs';
@@ -63,6 +63,10 @@ export function parse_dex(buffer,options={}){
   types:typeMeta, strings:stringMeta, map_items:mapItems,
   max_items:maxItems, max_output_items:maxOutput,
   max_instruction_units:options.max_instruction_units??20000000,
+  dex_version:version,
+  max_decoded_instructions:options.max_decoded_instructions??10000,
+  max_payload_bytes:options.max_payload_bytes??16777216,
+  max_switch_targets:options.max_switch_targets??1024,
  });
  const expectedAdler=buffer.readUInt32LE(8);
  let adlerA=1,adlerB=0;
@@ -83,12 +87,13 @@ export function parse_dex(buffer,options={}){
   checksum:expectedAdler,signature_sha1:expectedSha1,link:{size:linkSize,offset:linkOff},
   map_off:mapOff,data:{size:dataSize,offset:dataOff},counts,strings,types,classes,map_items:mapItems,
   ...semantics,integrity,
-  output_truncated:Object.values(counts).some(n=>n>maxOutput)||semantics.class_data_summary.output_truncated,
+  output_truncated:Object.values(counts).some(n=>n>maxOutput)||semantics.class_data_summary.output_truncated||semantics.class_data_summary.instruction_output_omitted>0,
   notes:[
    'DEX header, identifiers, prototypes, class data and code_item structure are validated within explicit limits.',
    'DEX Adler-32 and SHA-1 file-integrity fields are recomputed; these checks do not authenticate the APK publisher or replace APK signing verification.',
    ...semantics.notes,
-   'DEX bytecode opcodes, operands, control flow, annotations, debug programs and decompilation are not decoded.',
+   'DEX standard bytecode opcodes, operands, register/reference bounds, branch targets and inline data payloads are statically decoded within configured limits; code is never executed.',
+   'Complete verifier semantics, exception-aware control-flow graph reconstruction, annotation/debug-program decoding and decompilation are not implemented.',
    'APK ZIP containers and binary AndroidManifest.xml resources are not analyzed by this standalone parser.',
   ],
  };
