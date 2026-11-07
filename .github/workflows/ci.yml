@@ -102,21 +102,21 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install --yes build-essential meson ninja-build pkg-config libcap-dev curl xz-utils
-          archive="$RUNNER_TEMP/bubblewrap-\${BUBBLEWRAP_VERSION}.tar.xz"
-          source_dir="$RUNNER_TEMP/bubblewrap-\${BUBBLEWRAP_VERSION}"
+          archive="$RUNNER_TEMP/bubblewrap-${BUBBLEWRAP_VERSION}.tar.xz"
+          source_dir="$RUNNER_TEMP/bubblewrap-${BUBBLEWRAP_VERSION}"
           build_dir="$RUNNER_TEMP/bubblewrap-build"
           curl --fail --location --retry 3 --retry-delay 1 \
             --proto '=https' --proto-redir '=https' \
             --connect-timeout 20 --max-time 180 \
             --output "$archive" \
-            "https://github.com/containers/bubblewrap/releases/download/v\${BUBBLEWRAP_VERSION}/bubblewrap-\${BUBBLEWRAP_VERSION}.tar.xz"
+            "https://github.com/containers/bubblewrap/releases/download/v${BUBBLEWRAP_VERSION}/bubblewrap-${BUBBLEWRAP_VERSION}.tar.xz"
           printf '%s  %s\n' "$BUBBLEWRAP_SHA256" "$archive" | sha256sum --check --strict -
           mkdir -p "$source_dir"
           tar -xJf "$archive" -C "$source_dir" --strip-components=1
           meson setup "$build_dir" "$source_dir" --prefix=/usr/local --buildtype=release
           meson compile -C "$build_dir"
           sudo meson install -C "$build_dir"
-          test "$(/usr/local/bin/bwrap --version)" = "bubblewrap \${BUBBLEWRAP_VERSION}"
+          test "$(/usr/local/bin/bwrap --version)" = "bubblewrap ${BUBBLEWRAP_VERSION}"
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
