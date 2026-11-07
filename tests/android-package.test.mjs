@@ -693,6 +693,50 @@ test('AAB inventory recognizes BundleConfig and module manifest/DEX paths withou
 });
 
 
+
+test('AAB module inventory separates base and feature paths without decoding protobuf data', () => {
+  const report = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x0a, 0x00]) },
+    { name: 'base/manifest/AndroidManifest.xml', contents: Buffer.alloc(8) },
+    { name: 'base/dex/classes.dex', contents: create_dex_fixture() },
+    { name: 'base/resources.pb', contents: Buffer.from([0x0a, 0x00]) },
+    { name: 'base/res/drawable/icon.png', contents: Buffer.from([1]) },
+    { name: 'base/assets/config.json', contents: Buffer.from('{}') },
+    { name: 'base/root/etc/config.ini', contents: Buffer.from('safe=true') },
+    { name: 'base/lib/arm64-v8a/libbase.so', contents: Buffer.from([1]) },
+    { name: 'feature_camera/manifest/AndroidManifest.xml', contents: Buffer.alloc(8) },
+    { name: 'feature_camera/dex/classes2.dex', contents: create_dex_fixture() },
+    { name: 'feature_camera/res/drawable/camera.png', contents: Buffer.from([2]) },
+  ]));
+  assert.equal(report.bundle.status, 'recognized');
+  assert.equal(report.bundle.bundle_config_present, true);
+  assert.equal(report.bundle.module_count, 2);
+  assert.deepEqual(report.bundle.modules.map(module => module.name), ['base', 'feature_camera']);
+  assert.equal(report.bundle.modules[0].manifest_present, true);
+  assert.equal(report.bundle.modules[0].dex_entries, 1);
+  assert.equal(report.bundle.modules[0].native_libraries, 1);
+  assert.equal(report.bundle.modules[0].resources_pb_present, true);
+  assert.equal(report.bundle.modules[0].resource_paths, 1);
+  assert.equal(report.bundle.modules[0].asset_paths, 1);
+  assert.equal(report.bundle.modules[0].root_paths, 1);
+  assert.equal(report.bundle.modules[1].manifest_present, true);
+  assert.equal(report.bundle.modules[1].dex_entries, 1);
+  assert.equal(report.bundle.modules[1].resource_paths, 1);
+  assert.ok(report.limitations.some(note => note.includes('module names and manifest/DEX/native/resource/asset/root path counts')));
+});
+
+test('AAB module inventory reports omitted modules under a configured output ceiling', () => {
+  const report = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x0a, 0x00]) },
+    { name: 'base/manifest/AndroidManifest.xml', contents: Buffer.alloc(8) },
+    { name: 'feature_a/manifest/AndroidManifest.xml', contents: Buffer.alloc(8) },
+    { name: 'feature_b/manifest/AndroidManifest.xml', contents: Buffer.alloc(8) },
+  ]), { max_aab_modules: 2 });
+  assert.equal(report.bundle.module_count, 3);
+  assert.equal(report.bundle.modules_reported, 2);
+  assert.equal(report.bundle.modules_omitted, 1);
+});
+
 test('APK Signing Block inventory recognizes v2/v3/v3.1 IDs and retains unknown IDs without claiming verification', () => {
   const apk = add_apk_signing_block(make_apk(), [
     { id: 0x7109871a, value: Buffer.from([1, 2, 3]) },
