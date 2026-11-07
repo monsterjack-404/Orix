@@ -253,3 +253,83 @@ test('AAB protobuf XML decoder is exposed through the root API and package subpa
   assert.equal(public_api.parse_android_proto_xml, parse_android_proto_xml);
   assert.equal(package_subpath_parser, parse_android_proto_xml);
 });
+
+test('protobuf XML decoder rejects duplicate namespace prefixes and duplicate expanded attributes', () => {
+  const duplicate_namespace = xml_element('manifest', {
+    namespaces: [
+      { prefix: 'android', uri: ANDROID_NS },
+      { prefix: 'android', uri: ANDROID_NS },
+    ],
+  });
+  assert.throws(() => parse_android_proto_xml(xml_node(duplicate_namespace)), error =>
+    error.code === 'ORIX_PROTO_XML_DUPLICATE_NAMESPACE');
+
+  const duplicate_attribute = xml_element('manifest', {
+    attributes: [
+      { name: 'package', value: 'one.example' },
+      { name: 'package', value: 'two.example' },
+    ],
+  });
+  assert.throws(() => parse_android_proto_xml(xml_node(duplicate_attribute)), error =>
+    error.code === 'ORIX_PROTO_XML_DUPLICATE_ATTRIBUTE');
+});
+
+test('protobuf XML decoder enforces per-string, aggregate-string, namespace and element budgets', () => {
+  const input = proto_manifest();
+  assert.throws(() => parse_android_proto_xml(input, { max_string_bytes: 4 }), error =>
+    error.code === 'ORIX_PROTO_XML_STRING_LIMIT');
+  assert.throws(() => parse_android_proto_xml(input, { max_total_string_bytes: 8 }), error =>
+    error.code === 'ORIX_PROTO_XML_STRING_LIMIT');
+  assert.throws(() => parse_android_proto_xml(input, { max_elements: 1 }), error =>
+    error.code === 'ORIX_PROTO_XML_ELEMENT_LIMIT');
+
+  const multiple_namespaces = xml_node(xml_element('manifest', {
+    namespaces: [
+      { prefix: 'android', uri: ANDROID_NS },
+      { prefix: 'tools', uri: 'http://schemas.android.com/tools' },
+    ],
+  }));
+  assert.throws(() => parse_android_proto_xml(multiple_namespaces, { max_namespaces: 1 }), error =>
+    error.code === 'ORIX_PROTO_XML_NAMESPACE_LIMIT');
+});
+
+test('protobuf XML decoder validates wire types of skipped known metadata fields', () => {
+  // XmlNode.source is a length-delimited SourcePosition message (field 3).
+  const invalid_source_wire = Buffer.concat([proto_manifest(), Buffer.from([0x19, 0, 0, 0, 0, 0, 0, 0, 0])]);
+  assert.throws(() => parse_android_proto_xml(invalid_source_wire), error =>
+    error.code === 'ORIX_PROTO_XML_WIRE_MISMATCH');
+
+  // XmlAttribute.compiled_item is a length-delimited Item message (field 6).
+  const bad_attribute = Buffer.concat([
+    field_bytes(1, xml_element('manifest', {
+      attributes: [{ name: 'package', value: 'com.example.orix' }],
+    })),
+  ]);
+  const nested = bad_attribute;
+  assert.equal(parse_android_proto_xml(nested).package_name, 'com.example.orix');
+});
+
+test('protobuf XML decoder reports permission and component output truncation explicitly', () => {
+  const permissions = [
+    'android.permission.INTERNET',
+    'android.permission.CAMERA',
+  ].map(name => xml_element('uses-permission', {
+    attributes: [{ name: 'name', value: name, namespace_uri: ANDROID_NS }],
+  }));
+  const components = [
+    'com.example.First',
+    'com.example.Second',
+  ].map(name => xml_element('activity', {
+    attributes: [{ name: 'name', value: name, namespace_uri: ANDROID_NS }],
+  }));
+  const manifest = xml_node(xml_element('manifest', {
+    children: [
+      ...permissions,
+      xml_element('application', { children: components }),
+    ],
+  }));
+  const parsed = parse_android_proto_xml(manifest, { max_output_items: 1 });
+  assert.deepEqual(parsed.permissions.map(item => item.name), ['android.permission.INTERNET']);
+  assert.deepEqual(parsed.components.map(item => item.name), ['com.example.First']);
+  assert.equal(parsed.output_truncated, true);
+});
