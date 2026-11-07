@@ -409,6 +409,55 @@ async function main() {
     assert.deepEqual(remainingPackageScratch, [],
       'Per-profile AppContainer temp files must be removed after provider teardown');
 
+    // Prove that a provider's descendants are actually terminated when the
+    // provider leader exits. Configuration checks alone do not prove Job Object
+    // containment or descendant cleanup.
+    const descendantCounter = path.join(root, 'tmp', 'job-descendant-counter-' + process.pid);
+    const descendantScript = [
+      'const fs = require("node:fs");',
+      'const counter = ' + JSON.stringify(descendantCounter) + ';',
+      'let count = 0;',
+      'fs.writeFileSync(counter, "0");',
+      'setInterval(() => fs.writeFileSync(counter, String(++count)), 20);',
+    ].join('\\n');
+    const parentScript = [
+      'const { spawn } = require("node:child_process");',
+      'const fs = require("node:fs");',
+      'const cell = new Int32Array(new SharedArrayBuffer(4));',
+      'const child = spawn(process.execPath, ["-e", ' + JSON.stringify(descendantScript) + '], { detached: false, stdio: "ignore", windowsHide: true });',
+      'const deadline = Date.now() + 10000;',
+      'while (!fs.existsSync(' + JSON.stringify(descendantCounter) + ') && Date.now() < deadline) Atomics.wait(cell, 0, 0, 25);',
+      'if (!fs.existsSync(' + JSON.stringify(descendantCounter) + ')) { console.error("provider descendant did not become ready"); process.exit(88); }',
+      'process.stdout.write("provider-descendant-started");',
+      'process.exit(0);',
+    ].join('\\n');
+    const descendantExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      env: {},
+      args: ['-e', parentScript],
+      timeout_ms: 12_000,
+      max_output_bytes: 4_096,
+    });
+    assert.equal(descendantExecution.ok, true, JSON.stringify({
+      exit_code: descendantExecution.exit_code,
+      stdout: descendantExecution.stdout,
+      stderr: descendantExecution.stderr,
+      termination_reason: descendantExecution.termination_reason,
+    }));
+    assert.match(descendantExecution.stdout, /provider-descendant-started/,
+      'Provider leader must exit only after its child process has started');
+    assert.match(descendantExecution.stderr, /ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64/,
+      'Native launcher did not confirm AppContainer and Job Object limits for the descendant test');
+    const descendantCountAfterExit = await readFile(descendantCounter, 'utf8');
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const descendantCountLater = await readFile(descendantCounter, 'utf8');
+    assert.equal(descendantCountLater, descendantCountAfterExit,
+      'A provider-spawned descendant continued writing after its leader exited; the Job Object did not clean it up');
+
     // Exercise the cleanup traversal with a real directory junction. The
     // provider process waits while the host replaces its writable Packages
     // directory with a junction to an external sentinel tree. Cleanup must
