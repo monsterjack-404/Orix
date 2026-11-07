@@ -12,8 +12,11 @@ assert.ok(Array.isArray(results) && results.length === 1, 'npm pack did not retu
 const files = new Set((results[0].files ?? []).map(file => file.path));
 for (const required of [
   'src/providers/windows-launcher-integrity.mjs',
-  'native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz',
+  'native/bin/win32-anycpu/launcher-payload-01.b64',
+  'native/bin/win32-anycpu/launcher-payload-02.b64',
+  'native/bin/win32-anycpu/launcher-payload-03.b64',
+  'native/bin/win32-anycpu/launcher-payload-04.b64',
 ]) {
   assert.ok(files.has(required), 'npm package is missing required Windows launcher trust material: ' + required);
 }
-process.stdout.write('Windows launcher integrity module and compressed payload are included in npm pack.\n');
+process.stdout.write('Windows launcher integrity module and all payload segments are included in npm pack.\n');
