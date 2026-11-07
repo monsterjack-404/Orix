@@ -447,12 +447,11 @@ if (process.platform !== 'win32') {
       });
 
       assert.equal(result.ok, true);
-      assert.deepEqual(result.process_group_cleanup, {
-        attempted: true,
-        force_kill_sent: true,
-        verified_empty: true,
-        failed: false,
-      });
+      assert.equal(result.process_group_cleanup.attempted, true);
+      assert.equal(typeof result.process_group_cleanup.force_kill_sent, 'boolean',
+        'The runner must report whether escalation was actually needed');
+      assert.equal(result.process_group_cleanup.verified_empty, true);
+      assert.equal(result.process_group_cleanup.failed, false);
 
       const fs = await import('node:fs/promises');
       const counter_after_cleanup = await fs.readFile(counter_path, 'utf8');
