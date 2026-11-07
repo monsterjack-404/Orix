@@ -1,7 +1,7 @@
 // JavaScript, tests/linux-cgroup-v2-bootstrap.test.mjs, Linux descriptor-handoff regression tests.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeSync, openSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -59,15 +59,18 @@ if (process.platform === 'linux') {
       // retained descriptor instead of reopening a pathname after launch.
       const readback_fd = openSync(attach_file, 'r');
       try {
+        const attach_info = fstatSync(readback_fd);
         const provider_code = [
           "const { fstatSync } = require('node:fs');",
+          "const expectedDev = process.argv[1];",
+          "const expectedIno = process.argv[2];",
           "let leaked = false;",
-          "try { fstatSync(3); leaked = true; }",
+          "try { const actual = fstatSync(3); leaked = String(actual.dev) === expectedDev && String(actual.ino) === expectedIno; }",
           "catch (error) { if (error.code !== 'EBADF') throw error; }",
           "process.stdout.write(!leaked ? 'attached-and-closed' : 'failed');"
         ].join(' ');
         const result = await run_bootstrap_with_fd(fd, [
-          '--attach-fd=3', '--', process.execPath, '-e', provider_code,
+          '--attach-fd=3', '--', process.execPath, '-e', provider_code, String(attach_info.dev), String(attach_info.ino),
         ]);
 
         assert.equal(result.code, 0, result.stderr);
