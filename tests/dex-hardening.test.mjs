@@ -90,7 +90,7 @@ test('DEX parser is exported through the public API and package subpath', async 
 });
 
 test('DEX parser supports only the explicitly listed versions', () => {
-  for (const version of ['035', '037', '038', '039']) {
+  for (const version of ['035', '037', '038', '039', '040']) {
     const fixture = create_dex_fixture();
     fixture.write('dex\n' + version + '\0', 0, 'ascii');
     assert.equal(parse_dex(fixture).version, version);
@@ -98,6 +98,60 @@ test('DEX parser supports only the explicitly listed versions', () => {
   const unsupported = create_dex_fixture();
   unsupported.write('dex\n040\0', 0, 'ascii');
   assert.throws(() => parse_dex(unsupported), error => error.code === 'ORIX_DEX_UNSUPPORTED_VERSION');
+});
+
+test('DEX parser accepts a bounded link_data section after aligned data', () => {
+  const fixture = create_dex_fixture();
+  const linked = Buffer.concat([fixture, Buffer.from([0x11, 0x22, 0x33, 0x44])]);
+  linked.writeUInt32LE(linked.length, 32);
+  linked.writeUInt32LE(4, 44);
+  linked.writeUInt32LE(fixture.length, 48);
+  const parsed = parse_dex(linked);
+  assert.deepEqual(parsed.link, { size: 4, offset: fixture.length });
+  assert.deepEqual(parsed.data, { size: 28, offset: 112 });
+});
+
+test('DEX parser rejects a link_data range that overlaps the data section', () => {
+  const fixture = create_dex_fixture();
+  const linked = Buffer.concat([fixture, Buffer.from([0x11, 0x22, 0x33, 0x44])]);
+  linked.writeUInt32LE(linked.length, 32);
+  linked.writeUInt32LE(4, 44);
+  linked.writeUInt32LE(fixture.length - 1, 48);
+  assert.throws(() => parse_dex(linked), error => error.code === 'ORIX_DEX_LINK_RANGE');
+});
+
+test('DEX parser rejects data sections whose byte size is not four-byte aligned', () => {
+  const unaligned = Buffer.concat([create_dex_fixture(), Buffer.from([0])]);
+  unaligned.writeUInt32LE(unaligned.length, 32);
+  unaligned.writeUInt32LE(29, 104);
+  assert.throws(() => parse_dex(unaligned), error => error.code === 'ORIX_DEX_DATA_ALIGNMENT');
+});
+
+test('DEX parser rejects non-fixed map entries that point before data_off', () => {
+  const fixture = create_dex_class_fixture();
+  // The string_data_item map entry is the fifth map record, at offset 192 + 4*12.
+  fixture.writeUInt32LE(159, 192 + 4 * 12 + 8);
+  assert.throws(() => parse_dex(fixture), error => error.code === 'ORIX_DEX_MAP_DATA_RANGE');
+});
+
+test('DEX parser rejects call-site and method-handle map sections that overlap data', () => {
+  const fixture = create_dex_fixture();
+  // Add call_site_id_item after the existing fixed map record and before map_list.
+  const mapOffset = fixture.readUInt32LE(52);
+  const oldCount = fixture.readUInt32LE(mapOffset);
+  const enlarged = Buffer.concat([fixture.subarray(0, mapOffset), Buffer.alloc(12), fixture.subarray(mapOffset)]);
+  enlarged.writeUInt32LE(enlarged.length, 32);
+  enlarged.writeUInt32LE(oldCount + 1, mapOffset);
+  enlarged.writeUInt16LE(7, mapOffset + 4 + oldCount * 12);
+  enlarged.writeUInt32LE(1, mapOffset + 4 + oldCount * 12 + 4);
+  enlarged.writeUInt32LE(112, mapOffset + 4 + oldCount * 12 + 8);
+  enlarged.writeUInt32LE(mapOffset + 12, 52);
+  // Move the map_list map item's offset to its new location and make the
+  // call-site table extend into data, which must fail closed.
+  enlarged.writeUInt32LE(mapOffset + 12, mapOffset + 4 + 3 * 12 + 8);
+  enlarged.writeUInt32LE(112, mapOffset + 4 + oldCount * 12 + 8);
+  assert.throws(() => parse_dex(enlarged), error =>
+    error.code === 'ORIX_DEX_MAP_PRE_DATA_RANGE' || error.code === 'ORIX_DEX_MAP_INVALID');
 });
 
 test('DEX parser rejects trailing bytes not included in the declared file_size', () => {
