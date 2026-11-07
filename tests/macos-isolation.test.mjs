@@ -79,16 +79,21 @@ test('macOS compiler cleanup kills and verifies a same-group descendant after th
   const script = [
     "const { spawn } = require('node:child_process');",
     "spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { stdio: 'ignore' });",
+    "process.stdout.write('descendant-ready');",
     "process.on('SIGTERM', () => process.exit(0));",
     "setInterval(() => {}, 1000);",
   ].join('\n');
   const child = spawn(process.execPath, ['-e', script], {
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'ignore'],
   });
   try {
     await once(child, 'spawn');
+    const ready = once(child.stdout, 'data');
     const closed = once(child, 'close');
+    const [readyOutput] = await ready;
+    assert.match(readyOutput.toString('utf8'), /descendant-ready/,
+      'The descendant must be spawned before process-group cleanup begins');
     const report = await cleanup_macos_compiler_process_group(child.pid, {
       term_grace_ms: 50,
       verify_timeout_ms: 3000,
