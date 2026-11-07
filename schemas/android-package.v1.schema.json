@@ -212,6 +212,8 @@
           "status": {
             "enum": [
               "decoded",
+              "decoded-proto-xml",
+              "malformed-proto-xml",
               "binary-xml-header",
               "unknown-or-invalid-header",
               "manifest-size-limit",
@@ -236,6 +238,9 @@
               "boolean",
               "null"
             ]
+          },
+          "proto_xml": {
+            "type": "boolean"
           },
           "chunk_type": {
             "type": "string"
