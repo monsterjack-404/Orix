@@ -18,6 +18,8 @@ one(0x00, 'nop', '10x');
 range(0x01, ['move', 'move/from16', 'move/16', 'move-wide', 'move-wide/from16', 'move-wide/16', 'move-object', 'move-object/from16', 'move-object/16'], '12x');
 one(0x02, 'move/from16', '22x');
 one(0x03, 'move/16', '32x');
+one(0x08, 'move-object/from16', '22x');
+one(0x09, 'move-object/16', '32x');
 one(0x05, 'move-wide/from16', '22x');
 one(0x06, 'move-wide/16', '32x');
 range(0x0a, ['move-result', 'move-result-wide', 'move-result-object', 'move-exception'], '11x');
