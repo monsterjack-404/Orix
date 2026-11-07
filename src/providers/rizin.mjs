@@ -42,6 +42,22 @@ export const RIZIN_PROVIDER_MANIFEST = Object.freeze({
   documentation_url: 'https://book.rizin.re/',
 });
 
+function isolation_description(mode) {
+  if (mode !== 'required') {
+    return 'The explicitly selected none mode applies process controls only and is not an OS sandbox.';
+  }
+  if (process.platform === 'linux') {
+    return 'Required Linux isolation used Bubblewrap namespaces/filesystem isolation and delegated cgroup-v2 CPU, memory and process quotas.';
+  }
+  if (process.platform === 'win32') {
+    return 'Required Windows isolation used AppContainer filesystem/network restrictions and Job Object CPU, memory and process limits.';
+  }
+  if (process.platform === 'darwin') {
+    return 'Required macOS isolation used experimental Seatbelt filesystem/network restrictions and inherited RLIMIT ceilings; aggregate memory/PID quotas are not provided.';
+  }
+  return 'Required isolation was requested, but this platform has no documented enforced backend.';
+}
+
 function provider_error(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
 }
@@ -394,7 +410,7 @@ export async function analyze_rizin_imports(options = {}) {
         'Uses Rizin -N -q -c iij for static import metadata; the target is not executed.',
         'Rizin analyzes a private temporary copy; the original input path is never passed to the provider.',
         'Rizin remains an optional external installation and is not bundled by ORIX.',
-        descriptors.isolation?.value === 'required' ? 'Rizin was launched through Bubblewrap namespace/filesystem isolation with delegated cgroup-v2 CPU, memory and process quotas.' : 'The explicitly selected none mode applies process controls only and is not an OS sandbox.',
+        isolation_description(descriptors.isolation?.value),
       ],
     };
   } finally {
@@ -832,7 +848,7 @@ export async function probe_rizin(options = {}) {
     notes: [
       'The executable was invoked by its explicit absolute path; ORIX did not search PATH.',
       'This probe confirms version output only; it does not validate every Rizin command or supported binary format.',
-      descriptors.isolation?.value === 'required' ? 'The version probe used Bubblewrap namespace/filesystem isolation with delegated cgroup-v2 CPU, memory and process quotas.' : 'The explicitly selected none mode applies process controls only and is not an OS sandbox.',
+      isolation_description(descriptors.isolation?.value),
     ],
   };
 }
