@@ -3,10 +3,12 @@
 // No host home, project tree, credentials, or network namespace is exposed by default.
 
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { access, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { OrixError } from '../core/errors.mjs';
 import { validate_linux_rootfs_directory } from './linux-rootfs-trust.mjs';
+import { prepare_linux_provider_cgroup } from './linux-cgroup-v2-manager.mjs';
 
 function isolation_error(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
@@ -79,6 +81,25 @@ async function resolve_bwrap() {
   );
 }
 
+async function resolve_prlimit() {
+  for (const candidate of ['/usr/bin/prlimit', '/bin/prlimit']) {
+    try {
+      const info = await lstat(candidate);
+      if (info.isSymbolicLink() || !info.isFile()) continue;
+      const canonical = await realpath(candidate);
+      await access(canonical, 1);
+      return canonical;
+    } catch {
+      // Only fixed system locations are considered; never resolve through PATH.
+    }
+  }
+  isolation_error(
+    'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+    'prlimit is not installed at a trusted system path; required isolation cannot start',
+    { platform: process.platform, backend: 'prlimit' },
+  );
+}
+
 async function validate_rootfs(value) {
   return validate_linux_rootfs_directory(value);
 }
@@ -135,10 +156,25 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
     isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_CHANGED',
       'Provider sandbox root directory was replaced while its launch policy was being prepared');
   }
+  const prlimit = await resolve_prlimit();
+  const limitArgs = [
+    '--cpu=60:60',
+    '--fsize=67108864:67108864',
+    '--nofile=256:256',
+    '--core=0:0',
+    '--',
+    bwrap,
+    ...bwrapArgs,
+  ];
+  const cgroup = await prepare_linux_provider_cgroup();
+  const bootstrap = fileURLToPath(new URL('./linux-cgroup-v2-bootstrap.mjs', import.meta.url));
   return Object.freeze({
-    executable: bwrap,
-    args: Object.freeze(bwrapArgs),
+    executable: process.execPath,
+    args: Object.freeze([bootstrap, '--attach-fd=3', '--', prlimit, ...limitArgs]),
     cwd: '/',
     env: Object.freeze({}),
+    stdio: cgroup.stdio,
+    close_parent_fd: cgroup.close_attach_fd,
+    cleanup: cgroup.cleanup,
   });
 }
