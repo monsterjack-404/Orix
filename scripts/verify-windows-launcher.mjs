@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WINDOWS_PROVIDER_LAUNCHER_SHA256, decodeWindowsProviderLauncher } from '../src/providers/windows-launcher-integrity.mjs';
+import { WINDOWS_PROVIDER_LAUNCHER_SHA256, decodeWindowsProviderLauncher, decodeWindowsProviderLauncherBase64 } from '../src/providers/windows-launcher-integrity.mjs';
 
 function fail(message) {
   throw new Error('Windows launcher artifact validation failed: ' + message);
@@ -66,7 +66,6 @@ export function inspectWindowsLauncher(bytes) {
     });
   }
 
-  // Validate the complete declared CLR data-directory range, not just the fixed header prefix.
   const clrOffset = rvaToOffset(bytes, sections, clrRva, clrSize, 'CLR directory');
   const clrHeaderSize = u32(bytes, clrOffset, 'CLR header size');
   if (clrHeaderSize < 0x48 || clrHeaderSize > clrSize) fail('invalid CLR header size');
@@ -94,12 +93,22 @@ export function verifyWindowsLauncher(bytes, expectedSha256 = WINDOWS_PROVIDER_L
   return { sha256: sha256.toUpperCase(), ...metadata };
 }
 
+async function read_packaged_payload() {
+  const parts = [
+    new URL('../native/bin/win32-anycpu/launcher-payload-01.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-02.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-03.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-04.b64', import.meta.url),
+  ];
+  const encoded = (await Promise.all(parts.map(url => readFile(url, 'utf8')))).join('');
+  return decodeWindowsProviderLauncher(decodeWindowsProviderLauncherBase64(encoded));
+}
+
 async function main() {
   const input = process.argv[2];
   if (!input) fail('usage: node scripts/verify-windows-launcher.mjs <launcher.exe>');
   const bytes = await readFile(path.resolve(input));
-  const payload = await readFile(new URL('../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
-  const packaged = decodeWindowsProviderLauncher(payload);
+  const packaged = await read_packaged_payload();
   const packagedHash = createHash('sha256').update(packaged).digest('hex');
   if (packagedHash !== WINDOWS_PROVIDER_LAUNCHER_SHA256) fail('packaged launcher payload does not match the source-pinned digest');
   const metadata = verifyWindowsLauncher(bytes);
