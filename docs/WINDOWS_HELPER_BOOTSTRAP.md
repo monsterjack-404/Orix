@@ -29,7 +29,7 @@ a158b954393fd98ed638af1327123ec3dacca4c9e6fce02a370dc14380796f3d
 The source-pinned gzip SHA-256 is:
 
 ```text
-c566f86c6b5322f013c4ff26c21781dff5c8a8ed03030eca76ba6a0ac35dc25b
+fabe002f8dd9f665b92db1a548b3101fdbdaff62b9caacbf955ec048d4d3e7eb
 ```
 
 Both independent Windows CI runners built the launcher from the exact PR head. Their fresh executables were byte-for-byte identical and passed the PE/CLR metadata and IL-only AnyCPU checks. The exact matching binary was then packaged and its compressed and uncompressed hashes checked. The launcher creates a fresh hidden console without inheriting the runner's desktop, allowing contained descendants to use the approved standard handles. This artifact's GitHub Actions provenance is a CI build result, not a publisher signature.
@@ -52,7 +52,7 @@ Cleanup removes a per-profile ancestor ACE only when that exact explicit ACE was
 
 The native launcher now treats process termination as an operation that must be observed, not merely requested.
 
-Before launch, it sets `PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY` with `PROCESS_CREATION_CHILD_PROCESS_OVERRIDE` so the provider can spawn required descendants. The launcher is trusted and not itself an AppContainer; the provider's descendants inherit the provider's AppContainer token and remain inside the assigned non-breakaway Job Object.
+Before launch, it sets `PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY` with `PROCESS_CREATION_CHILD_PROCESS_OVERRIDE` so the provider can spawn required descendants. The launcher is trusted and not itself an AppContainer; the provider's descendants inherit the provider's AppContainer token and remain inside the assigned non-breakaway Job Object. The provider is created with a fresh hidden console (`CREATE_NEW_CONSOLE`, `SW_HIDE`) and an empty desktop selection rather than inheriting a runner/service desktop; it remains suspended until the Job Object assignment and AppContainer verification complete.
 
 - After the provider is assigned to its Job Object, teardown checks whether the job is already signaled; otherwise it calls `TerminateJobObject` and waits up to five seconds for the Job Object to become empty.
 - If process creation succeeded but Job Object assignment did not, teardown terminates the direct suspended process and waits for its process handle to become signaled.
