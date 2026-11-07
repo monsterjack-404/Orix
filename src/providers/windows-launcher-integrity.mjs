@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 
 export const WINDOWS_PROVIDER_LAUNCHER_SHA256 = 'a158b954393fd98ed638af1327123ec3dacca4c9e6fce02a370dc14380796f3d';
-export const WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256 = 'c566f86c6b5322f013c4ff26c21781dff5c8a8ed03030eca76ba6a0ac35dc25b';
+export const WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256 = 'fabe002f8dd9f665b92db1a548b3101fdbdaff62b9caacbf955ec048d4d3e7eb';
 export const WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES = 256 * 1024;
 export const WINDOWS_PROVIDER_LAUNCHER_MAX_BYTES = 1024 * 1024;
 
