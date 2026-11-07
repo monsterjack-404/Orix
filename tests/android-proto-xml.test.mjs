@@ -213,7 +213,7 @@ test('AAB package report labels malformed protobuf module manifests without bina
   assert.equal(report.manifests[0].binary_xml, false);
   assert.equal(report.manifests[0].proto_xml, true);
   assert.equal(report.manifests[0].decoded, false);
-  assert.equal(report.manifests[0].error.code, 'ORIX_PROTO_XML_LENGTH_RANGE');
+  assert.equal(report.manifests[0].error.code, 'ORIX_PROTO_XML_VARINT_TRUNCATED');
 });
 
 test('protobuf XML decoder rejects malformed varints, wire types and invalid UTF-8', () => {
