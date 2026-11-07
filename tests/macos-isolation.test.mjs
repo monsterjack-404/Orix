@@ -79,10 +79,14 @@ test('macOS compiler environment ignores inherited SDK and toolchain overrides',
   }
 });
 
-test('macOS compiler cleanup kills and verifies a same-group descendant after the leader exits', {
-  skip: process.platform === 'win32',
-  timeout: 10_000,
-}, async () => {
+// POSIX process-group signaling is not a Windows primitive. Register this
+// test only where negative-PID process-group teardown is supported; Windows
+// descendant cleanup is verified separately through the native Job Object and
+// Node/libuv integration probes in scripts/windows-isolation-integration.mjs.
+if (process.platform !== 'win32') {
+  test('macOS compiler cleanup kills and verifies a same-group descendant after the leader exits', {
+    timeout: 10_000,
+  }, async () => {
   const descendant_script = "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); process.stdout.write('descendant-ready');";
   const script = [
     "const { spawn } = require('node:child_process');",
@@ -115,7 +119,8 @@ test('macOS compiler cleanup kills and verifies a same-group descendant after th
       try { process.kill(-child.pid, 'SIGKILL'); } catch {}
     }
   }
-});
+  });
+}
 
 test('macOS compiler cleanup rejects invalid process-group identifiers and limits', async () => {
   await assert.rejects(
