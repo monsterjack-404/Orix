@@ -219,7 +219,8 @@ function validateRegisters(opcode, operands, registersSize, pc, format) {
     if ([0x04, 0x7d, 0x7e, 0x80, 0x86, 0x8b].includes(opcode)) { addWide(0); addWide(1); }
     if ([0x81, 0x83, 0x86, 0x88, 0x89, 0x8b].includes(opcode)) addWide(0);
     if ([0x84, 0x85, 0x86, 0x8a, 0x8b, 0x8c].includes(opcode)) addWide(1);
-    if (opcode >= 0xbb && opcode <= 0xc5) { addWide(0); addWide(1); }
+    if (opcode >= 0xbb && opcode <= 0xc2) { addWide(0); addWide(1); }
+    if (opcode >= 0xc3 && opcode <= 0xc5) addWide(0);
     if (opcode >= 0xcb && opcode <= 0xcf) { addWide(0); addWide(1); }
   } else if (format === '22x' && opcode === 0x05) { addWide(0); addWide(1); }
   else if (format === '32x' && opcode === 0x06) { addWide(0); addWide(1); }
