@@ -172,7 +172,7 @@ The PR #64 CI job requires a privileged Linux runner with a real cgroup v2 files
 - cancellation/timeout kills all descendants and the cgroup reaches `populated 0`;
 - the run cgroup is removed after successful cleanup.
 
-The integration job must not silently skip when the security gate is expected to run. The current workflow invokes the harness with `sudo`; missing controllers, unavailable `cgroup.kill`, or failed setup are hard failures. This proves behavior on the exact CI kernel/runner image only; it is not cross-distribution or cross-kernel certification. Deployments must run the read-only preflight and validate their own delegated hierarchy.
+The integration job must not silently skip when the security gate is expected to run. Before any host mutation, the harness requires both `GITHUB_ACTIONS=true` and the explicit `ORIX_CGROUP_TEST_ALLOW_ROOT_MUTATION=GITHUB_ACTIONS_DISPOSABLE_VM` opt-in supplied by the CI workflow. Running the script manually—even as root—fails closed without those markers. Workspace and `/tmp` placement preconditions are checked before the delegated hierarchy is created, so a rejected environment cannot strand test cgroups. The current workflow invokes the harness with `sudo`; missing controllers, unavailable `cgroup.kill`, or failed setup are hard failures. This proves behavior on the exact CI kernel/runner image only; it is not cross-distribution or cross-kernel certification. Deployments must run the read-only preflight and validate their own delegated hierarchy.
 
 ## Rollout and documentation rules
 
