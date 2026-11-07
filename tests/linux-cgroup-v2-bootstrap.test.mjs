@@ -75,7 +75,7 @@ if (process.platform === 'linux') {
         assert.equal(result.code, 0, result.stderr);
         assert.equal(result.signal, null);
         assert.equal(result.stdout, 'attached-and-closed');
-        assert.match(readFileSync(readback_fd, 'utf8'), /^\\d+\\n$/);
+        assert.match(readFileSync(readback_fd, 'utf8'), /^\d+\n$/);
       } finally {
         closeSync(readback_fd);
       }
