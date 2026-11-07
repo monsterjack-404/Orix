@@ -51,6 +51,58 @@ test('case artifacts are content-addressed, workspace-confined and deduplicated'
   } finally { await rm(outside, { recursive: true, force: true }); }
 });
 
+test('case ledger reads and mutations reject hard-linked event files when requested', async t => {
+  const root = await fixture(t);
+  const created = await create_case(root, { title: 'Ledger hard-link policy' });
+  const events = path.join(root, '.orix', 'cases', created.case.id, 'events.jsonl');
+  const alias = path.join(root, 'external-events-alias.jsonl');
+  const before = await readFile(events, 'utf8');
+  await link(events, alias);
+
+  await assert.rejects(
+    get_case(root, created.case.id, { reject_hardlinks: true }),
+    error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+  );
+  await assert.rejects(
+    verify_case(root, created.case.id, { reject_hardlinks: true }),
+    error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+  );
+  await assert.rejects(
+    add_case_note(root, created.case.id, 'must not append', {}, { reject_hardlinks: true }),
+    error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+  );
+  assert.equal(await readFile(events, 'utf8'), before);
+});
+
+test('case report verification and bundle intake reject hard-linked files when requested', async t => {
+  const root = await fixture(t);
+  const created = await create_case(root, { title: 'Report hard-link policy' });
+  const report = await record_case_analysis(root, created.case.id, {
+    report: { schema_version: 'orix.test-report.v1', integrity: { digest: 'a'.repeat(64) } },
+  });
+  const report_path = path.join(root, '.orix', 'cases', created.case.id, ...report.analysis.report_path.split('/'));
+  const report_alias = path.join(root, 'external-report-alias.json');
+  await link(report_path, report_alias);
+  await assert.rejects(
+    verify_case(root, created.case.id, { reject_hardlinks: true }),
+    error => error.code === 'ORIX_CASE_HARDLINK_REJECTED',
+  );
+
+  const clean_root = await fixture(t);
+  const clean_case = await create_case(clean_root, { title: 'Bundle source' });
+  const bundle = path.join(clean_root, 'bundle');
+  await export_case_bundle(clean_root, clean_case.case.id, bundle);
+  const manifest = path.join(bundle, 'manifest.json');
+  const manifest_alias = path.join(clean_root, 'manifest-alias.json');
+  await link(manifest, manifest_alias);
+  const import_root = await fixture(t);
+  await assert.rejects(
+    import_case_bundle(import_root, bundle, { reject_hardlinks: true }),
+    error => error.code === 'ORIX_CASE_HARDLINK_REJECTED',
+  );
+  assert.equal((await list_cases(import_root)).cases.length, 0);
+});
+
 test('case artifact intake enforces the opened-file hard-link policy when requested', async t => {
   const root = await fixture(t);
   const file = path.join(root, 'sample.bin');
