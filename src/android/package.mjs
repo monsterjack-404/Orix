@@ -809,6 +809,44 @@ export function render_android_package_markdown(report) {
       lines.push('| ' + markdown_cell(item.name) + ' | ' + String(item.manifest_present) + ' | ' + item.dex_entries + ' | ' + item.native_libraries + ' | ' + String(item.resources_pb_present) + ' | ' + item.resource_paths + ' | ' + item.asset_paths + ' | ' + item.root_paths + ' |');
     }
   } else lines.push('Not an Android App Bundle.');
+  lines.push('', '## Resource table metadata', '');
+  if (!report.resource_tables || report.resource_tables.length === 0) {
+    lines.push('No AAB module resources.pb tables were reported.');
+  }
+  for (const item of (report.resource_tables ?? [])) {
+    lines.push('- ' + markdown_cell(item.path) + ': ' + markdown_cell(item.status) +
+      ' (' + item.uncompressed_size + ' bytes)');
+    if (item.table) {
+      const summary = item.table.summary;
+      lines.push('  - Packages: ' + summary.package_count +
+        '; types: ' + summary.type_count +
+        '; entries: ' + summary.entry_count +
+        '; variants: ' + summary.variant_count +
+        '; disabled variants: ' + summary.disabled_variant_count);
+      lines.push('  - Direct Item references: ' + summary.direct_references +
+        '; compound value kinds: ' + Object.entries(summary.compound_value_kinds)
+          .map(([kind, count]) => markdown_cell(kind) + '=' + count).join(', '));
+      for (const pkg of item.table.packages) {
+        lines.push('  - Package ' + markdown_cell(pkg.name || 'unnamed') +
+          ' (ID ' + (pkg.package_id === null ? 'unknown' : pkg.package_id) + ')');
+        for (const type of pkg.types) {
+          lines.push('    - Type ' + markdown_cell(type.name || 'unnamed') +
+            ' (ID ' + (type.type_id?.id ?? 'unknown') + '): ' +
+            type.entry_count + ' entries');
+        }
+      }
+      if (item.table.source_pool) {
+        lines.push('  - StringPool: ' + item.table.source_pool.size_bytes +
+          ' bytes; SHA-256=' + (item.table.source_pool.sha256 ?? 'unavailable') +
+          '; binary string decoding not performed');
+      }
+      if (item.table.coverage.output_truncated) lines.push('  - ResourceTable output was truncated by configured limits.');
+      if (item.table.coverage.unknown_fields > 0) lines.push('  - Unknown protobuf fields skipped: ' + item.table.coverage.unknown_fields);
+      if (item.table.coverage.opaque_fields_skipped > 0) lines.push('  - Opaque nested fields not semantically expanded: ' + item.table.coverage.opaque_fields_skipped);
+    } else if (item.error) {
+      lines.push('  - Error: ' + markdown_cell(item.error.code) + ' — ' + markdown_cell(item.error.message));
+    }
+  }
   lines.push('', '## Native libraries', '');
   if (report.native_libraries.length === 0) lines.push('No native library paths were reported.');
   for (const item of report.native_libraries) {
