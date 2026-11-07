@@ -36,6 +36,17 @@ Both independent Windows CI runners built the launcher from the exact PR head. T
 
 CI also checks that `npm pack --dry-run --json` contains both the integrity module and the compressed launcher. The Windows hostile-process smoke test runs through the actual runtime path using the packaged executable, rather than treating a compiler-success step as proof of isolation.
 
+## Process-tree teardown and cleanup ordering
+
+The native launcher now treats process termination as an operation that must be observed, not merely requested.
+
+- After the provider is assigned to its Job Object, teardown checks whether the job is already signaled; otherwise it calls `TerminateJobObject` and waits up to five seconds for the Job Object to become empty.
+- If process creation succeeded but Job Object assignment did not, teardown terminates the direct suspended process and waits for its process handle to become signaled.
+- A failed or timed-out wait emits the durable `RUN:TEARDOWN_INCOMPLETE` marker and returns a distinct failure. The native `Main` path skips profile ACL, AppContainer scratch and profile deletion in that case.
+- The Node cleanup callback checks the helper log before starting a second cleanup helper. If the marker exists, it fails with `ORIX_PROVIDER_WINDOWS_TEARDOWN_UNVERIFIED` and leaves the staged helper workspace and AppContainer state untouched.
+
+This is deliberately fail-closed. It can leave a profile, ACL entries or temporary state behind when Windows does not confirm that the provider Job Object is empty. That residual state requires operator investigation/recovery; it must not be “fixed” by deleting paths while a provider descendant may still be alive. A Windows integration regression simulates the marker and verifies that the host cleanup path does not launch a second helper or mutate the log/workspace.
+
 ## Security limits
 
 - The checksum is a source-pinned integrity control, not a cryptographic publisher signature. A malicious change that alters both the payload and trusted source digest in the same reviewed branch could replace the trust anchor.
