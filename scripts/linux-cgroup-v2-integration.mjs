@@ -123,6 +123,9 @@ async function create_delegated_parent() {
   const mounts = parse_cgroup2_mounts(mountinfo);
   const mount = mounts.find(item => item.root === '/') ?? mounts[0];
   assert.ok(mount, 'No cgroup v2 mount was found');
+  // Test-only: this harness runs as root on a disposable hosted CI VM. It
+  // creates and restores a temporary hierarchy below the cgroup mount root;
+  // production ORIX must use an administrator/systemd-delegated subtree.
   const root = mount.mountpoint;
   const available = (await read_control(path.join(root, 'cgroup.controllers'))).split(/\s+/).filter(Boolean);
   for (const name of REQUIRED) assert.ok(available.includes(name), 'Host cgroup2 lacks controller: ' + name);
