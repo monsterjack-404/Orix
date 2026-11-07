@@ -23,16 +23,16 @@ Runtime no longer discovers a compiler, invokes `csc.exe`, or compiles C# source
 The source-pinned executable SHA-256 is:
 
 ```text
-cc8ec9a48fbf9753af55c225576383f0306f645a3cda92dc3b1402c1cae8d27f
+a158b954393fd98ed638af1327123ec3dacca4c9e6fce02a370dc14380796f3d
 ```
 
 The source-pinned gzip SHA-256 is:
 
 ```text
-e31f89cc4557498daf274da97488dd724b93dfa138e627e2ec9b6de2602d1819
+c566f86c6b5322f013c4ff26c21781dff5c8a8ed03030eca76ba6a0ac35dc25b
 ```
 
-Both independent Windows CI runners built the launcher from the exact PR head. Their fresh executables were byte-for-byte identical and passed the PE/CLR metadata and IL-only AnyCPU checks. The exact matching binary was then packaged and its compressed and uncompressed hashes checked. This artifact's GitHub Actions provenance is a CI build result, not a publisher signature.
+Both independent Windows CI runners built the launcher from the exact PR head. Their fresh executables were byte-for-byte identical and passed the PE/CLR metadata and IL-only AnyCPU checks. The exact matching binary was then packaged and its compressed and uncompressed hashes checked. The launcher creates a fresh hidden console without inheriting the runner's desktop, allowing contained descendants to use the approved standard handles. This artifact's GitHub Actions provenance is a CI build result, not a publisher signature.
 
 CI also checks that `npm pack --dry-run --json` contains the integrity module and all four payload segments. The Windows hostile-process smoke test runs through the actual runtime path using the packaged executable, rather than treating a compiler-success step as proof of isolation.
 
