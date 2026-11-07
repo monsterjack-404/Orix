@@ -220,7 +220,12 @@
               "encrypted",
               "compressed",
               "invalid-local-header",
-              "local-header-mismatch"
+              "local-header-mismatch",
+              "unsupported-compression",
+              "output-size-limit",
+              "size-mismatch",
+              "decompression-failed",
+              "crc-mismatch"
             ]
           },
           "binary_xml": {
@@ -503,6 +508,10 @@
               "compressed",
               "invalid-local-header",
               "local-header-mismatch",
+              "unsupported-compression",
+              "output-size-limit",
+              "decompression-failed",
+              "crc-mismatch",
               "size-mismatch",
               "rejected",
               "duplicate-path"
