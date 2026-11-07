@@ -95,6 +95,36 @@ function requested_isolation(value, sandbox_root) {
   return value;
 }
 
+async function validate_required_sandbox_root(isolation, sandbox_root) {
+  if (isolation !== 'required') return;
+  let info;
+  try {
+    info = await lstat(sandbox_root);
+  } catch (error) {
+    provider_error('ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE',
+      'Provider sandbox root cannot be inspected', {
+        reason: error.code ?? 'filesystem-error',
+      });
+  }
+  if (info.isSymbolicLink() || !info.isDirectory()) {
+    provider_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID',
+      'Provider sandbox root must be a non-symlink directory');
+  }
+}
+
+async function default_required_isolation_cwd(requested_cwd, isolation, sandbox_root) {
+  if (requested_cwd !== undefined) return requested_cwd;
+  if (isolation !== 'required') return undefined;
+  try {
+    const info = await lstat(sandbox_root);
+    if (!info.isSymbolicLink() && info.isDirectory()) return sandbox_root;
+  } catch {
+    // Preserve the process runner's canonical missing-root error instead of
+    // reporting a working-directory error for an absent sandbox root.
+  }
+  return undefined;
+}
+
 // Translate host-side snapshot paths into the provider's mount namespace.
 // Bubblewrap mounts sandbox_root at /, so host paths must never cross that
 // boundary unchanged when the provider is launched with required Linux isolation.
@@ -278,6 +308,7 @@ export async function analyze_rizin_imports(options = {}) {
   }
   assert_rizin_platform(manifest);
   const isolation = requested_isolation(descriptors.isolation?.value, descriptors.sandbox_root?.value);
+  await validate_required_sandbox_root(isolation, descriptors.sandbox_root?.value);
   const input_path = descriptors.input_path?.value;
   validate_input_path(input_path);
   const signal = descriptors.signal?.value;
@@ -339,7 +370,7 @@ export async function analyze_rizin_imports(options = {}) {
       manifest,
       executable: descriptors.executable?.value,
       executable_args: descriptors.executable_args?.value,
-      cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
+      cwd: await default_required_isolation_cwd(descriptors.cwd?.value, isolation, descriptors.sandbox_root?.value),
       env: descriptors.env?.value,
       timeout_ms,
       max_output_bytes,
@@ -584,6 +615,7 @@ export async function analyze_rizin_functions(options = {}) {
   }
   assert_rizin_platform(manifest);
   const isolation = requested_isolation(descriptors.isolation?.value, descriptors.sandbox_root?.value);
+  await validate_required_sandbox_root(isolation, descriptors.sandbox_root?.value);
   const input_path = descriptors.input_path?.value;
   validate_input_path(input_path);
   const signal = descriptors.signal?.value;
@@ -655,7 +687,7 @@ export async function analyze_rizin_functions(options = {}) {
       manifest,
       executable: descriptors.executable?.value,
       executable_args: descriptors.executable_args?.value,
-      cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
+      cwd: await default_required_isolation_cwd(descriptors.cwd?.value, isolation, descriptors.sandbox_root?.value),
       env: descriptors.env?.value,
       signal,
       isolation,
@@ -855,7 +887,7 @@ export async function probe_rizin(options = {}) {
     manifest,
     executable: descriptors.executable?.value,
     executable_args: descriptors.executable_args?.value,
-    cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
+    cwd: await default_required_isolation_cwd(descriptors.cwd?.value, isolation, descriptors.sandbox_root?.value),
     env: descriptors.env?.value,
     args: ['-v'],
     timeout_ms,
