@@ -447,25 +447,70 @@ function rizin_reference_address(value, label, index) {
   provider_error('ORIX_RIZIN_REFERENCE_ADDRESS_INVALID', 'Rizin cross-reference contains an invalid or unsafe ' + label + ' address', { index });
 }
 
-function function_at_address(functions, address) {
-  let low = 0;
-  let high = functions.length - 1;
-  let candidate = null;
-  while (low <= high) {
-    const middle = (low + high) >> 1;
-    const current = functions[middle];
-    if (current.offset <= address) {
-      candidate = current;
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
+function function_heap_precedes(left, right) {
+  return left.offset > right.offset || (left.offset === right.offset && left.index > right.index);
+}
+
+function function_heap_push(heap, item) {
+  let index = heap.length;
+  heap.push(item);
+  while (index > 0) {
+    const parent = (index - 1) >> 1;
+    if (function_heap_precedes(heap[parent], item)) break;
+    heap[index] = heap[parent];
+    index = parent;
   }
-  if (!candidate) return null;
-  if (candidate.size === null) return candidate.offset === address ? candidate : null;
-  return address >= candidate.offset && address - candidate.offset < Math.max(candidate.size, 1)
-    ? candidate
-    : null;
+  heap[index] = item;
+}
+
+function function_heap_pop(heap) {
+  const first = heap[0];
+  const last = heap.pop();
+  if (heap.length > 0) {
+    let index = 0;
+    while (true) {
+      const left = index * 2 + 1;
+      const right = left + 1;
+      if (left >= heap.length) break;
+      let child = left;
+      if (right < heap.length && function_heap_precedes(heap[right], heap[left])) child = right;
+      if (function_heap_precedes(last, heap[child])) break;
+      heap[index] = heap[child];
+      index = child;
+    }
+    heap[index] = last;
+  }
+  return first;
+}
+
+function reference_function_membership(references, functions) {
+  const ordered = functions.map((fn, index) => {
+    const size = Math.max(fn.size ?? 0, 1);
+    const end = fn.offset > Number.MAX_SAFE_INTEGER - size
+      ? Number.POSITIVE_INFINITY
+      : fn.offset + size;
+    return { fn, index, offset: fn.offset, end };
+  }).sort((left, right) => left.offset - right.offset || left.index - right.index);
+  const queries = [];
+  references.forEach((item, index) => {
+    queries.push({ address: item.from, index, side: 'from' });
+    queries.push({ address: item.to, index, side: 'to' });
+  });
+  queries.sort((left, right) =>
+    left.address - right.address || left.index - right.index || (left.side < right.side ? -1 : left.side > right.side ? 1 : 0));
+  const result = references.map(() => ({ from: null, to: null }));
+  const active = [];
+  let next_function = 0;
+  for (const query of queries) {
+    while (next_function < ordered.length && ordered[next_function].offset <= query.address) {
+      function_heap_push(active, ordered[next_function]);
+      next_function++;
+    }
+    while (active.length > 0 && active[0].end <= query.address) function_heap_pop(active);
+    const member = active[0]?.fn ?? null;
+    result[query.index][query.side] = member;
+  }
+  return result;
 }
 
 function normalize_rizin_references(source, maximum, functions) {
@@ -476,7 +521,7 @@ function normalize_rizin_references(source, maximum, functions) {
     provider_error('ORIX_RIZIN_REFERENCE_SHAPE_INVALID', 'Rizin cross-reference JSON must be an array');
   }
   const ordered_functions = [...functions].sort((left, right) => left.offset - right.offset);
-  const references = parsed.slice(0, maximum).map((entry, index) => {
+  const raw_references = parsed.slice(0, maximum).map((entry, index) => {
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry) ||
         Object.getPrototypeOf(entry) !== Object.prototype) {
       provider_error('ORIX_RIZIN_REFERENCE_ENTRY_INVALID', 'Rizin cross-reference entry must be an object', { index });
@@ -485,16 +530,14 @@ function normalize_rizin_references(source, maximum, functions) {
     const to = rizin_reference_address(entry.to ?? entry.to_addr, 'target', index);
     const type = bounded_text(entry.type ?? entry.kind, 64);
     if (!type) provider_error('ORIX_RIZIN_REFERENCE_TYPE_INVALID', 'Rizin cross-reference entry has no type', { index });
-    const from_function = function_at_address(ordered_functions, from);
-    const to_function = function_at_address(ordered_functions, to);
-    return {
-      from,
-      to,
-      type: type.toUpperCase(),
-      from_function_offset: from_function?.offset ?? null,
-      to_function_offset: to_function?.offset ?? null,
-    };
+    return { from, to, type: type.toUpperCase() };
   });
+  const membership = reference_function_membership(raw_references, ordered_functions);
+  const references = raw_references.map((item, index) => ({
+    ...item,
+    from_function_offset: membership[index].from?.offset ?? null,
+    to_function_offset: membership[index].to?.offset ?? null,
+  }));
   const edges = references
     .filter(item => item.type === 'CALL' && item.from_function_offset !== null)
     .map(item => ({
