@@ -1,5 +1,5 @@
 // Windows provider isolation through AppContainer and Job Objects.
-import { lstat, mkdtemp, open, readFile, readdir, realpath, rm, writeFile, chmod } from 'node:fs/promises';
+import { lstat, mkdtemp, open, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -54,29 +54,22 @@ function same_file_identity(left, right) {
 }
 async function load_windows_launcher_payload() {
   const payloadPath = fileURLToPath(new URL('../../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
-  let before;
-  try { before = await lstat(payloadPath); }
-  catch (error) {
-    isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The source-pinned Windows AppContainer launcher payload is unavailable', { reason: error.code ?? error.name });
-  }
-  if (before.isSymbolicLink() || !before.isFile() || before.size <= 0 ||
-      before.size > WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES) {
-    isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The packaged Windows AppContainer launcher payload is not a bounded regular file');
-  }
   let handle;
   try {
+    // Open first, then inspect the opened object. All bytes are read from this
+    // retained handle, so a later path replacement cannot redirect the read.
     handle = await open(payloadPath, 'r');
     const opened = await handle.stat();
-    if (!opened.isFile() || !same_file_identity(before, opened)) {
-      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The Windows launcher payload changed during open');
+    const pathEntry = await lstat(payloadPath);
+    if (pathEntry.isSymbolicLink() || !pathEntry.isFile() ||
+        !opened.isFile() || !same_file_identity(opened, pathEntry) ||
+        opened.size <= 0 || opened.size > WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES) {
+      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The packaged Windows AppContainer launcher payload is not a stable bounded regular file');
     }
     const compressed = await handle.readFile();
     const afterHandle = await handle.stat();
-    const afterPath = await lstat(payloadPath);
-    if (afterPath.isSymbolicLink() || !afterPath.isFile() ||
-        !same_file_identity(opened, afterHandle) || !same_file_identity(afterHandle, afterPath) ||
-        compressed.length !== afterPath.size) {
-      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The Windows launcher payload changed while being read');
+    if (!same_file_identity(opened, afterHandle) || compressed.length !== afterHandle.size) {
+      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The opened Windows launcher payload changed while being read');
     }
     try {
       const launcherBytes = decodeWindowsProviderLauncher(compressed);
@@ -184,16 +177,31 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
     await writeFile(configPath, JSON.stringify({
       executable: provider, args, cwd: work, sandboxRoot: root, profileName, logPath, environment: providerEnvironment,
     }), { encoding: 'utf8', flag: 'wx', mode: 0o600 });
-    await writeFile(launcher, launcherBytes, { flag: 'wx', mode: 0o500 });
-    await chmod(launcher, 0o500);
-    const stagedInfo = await lstat(launcher);
-    if (stagedInfo.isSymbolicLink() || !stagedInfo.isFile() || stagedInfo.size !== launcherBytes.length) {
-      throw new Error('Staged Windows launcher is not a stable regular file');
-    }
-    const stagedBytes = await readFile(launcher);
-    if (!stagedBytes.equals(launcherBytes) ||
-        createHash('sha256').update(stagedBytes).digest('hex') !== WINDOWS_PROVIDER_LAUNCHER_SHA256) {
-      throw new Error('Staged Windows launcher failed its source-pinned integrity check');
+    // Create exclusively and verify through the same open handle. Do not
+    // lstat/readFile the path after creation: the descriptor pins the object
+    // while it is written, chmodded and read back.
+    const stagedHandle = await open(launcher, 'wx+', 0o500);
+    try {
+      await stagedHandle.writeFile(launcherBytes);
+      await stagedHandle.sync();
+      await stagedHandle.chmod(0o500);
+      const stagedInfo = await stagedHandle.stat();
+      const stagedBytes = Buffer.alloc(launcherBytes.length);
+      let stagedOffset = 0;
+      while (stagedOffset < stagedBytes.length) {
+        const { bytesRead } = await stagedHandle.read(
+          stagedBytes, stagedOffset, stagedBytes.length - stagedOffset, stagedOffset,
+        );
+        if (bytesRead === 0) throw new Error('Staged Windows launcher read-back was truncated');
+        stagedOffset += bytesRead;
+      }
+      if (!stagedInfo.isFile() || stagedInfo.size !== launcherBytes.length ||
+          !stagedBytes.equals(launcherBytes) ||
+          createHash('sha256').update(stagedBytes).digest('hex') !== WINDOWS_PROVIDER_LAUNCHER_SHA256) {
+        throw new Error('Staged Windows launcher failed its source-pinned integrity check');
+      }
+    } finally {
+      await stagedHandle.close();
     }
   } catch (error) {
     await rm(temporary, { recursive: true, force: true }).catch(() => {});
