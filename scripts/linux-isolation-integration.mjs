@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { analyze_rizin_functions, analyze_rizin_imports } from '../src/providers/rizin.mjs';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
+import { create_delegated_parent, remove_delegated_parent } from './linux-cgroup-v2-fixture.mjs';
 
 function manifest() {
   return {
@@ -234,6 +235,8 @@ async function verify_rizin_adapter_under_bubblewrap(root, node_path, base) {
 async function main() {
   assert.equal(process.platform, 'linux', 'This integration gate must run on Linux');
   const base = await mkdtemp(path.join(os.tmpdir(), 'orix-bwrap-integration-'));
+  const delegated = await create_delegated_parent();
+  process.env.ORIX_CGROUP_PARENT = delegated.parent;
   const root = path.join(base, 'rootfs');
   const hostSecret = path.join(os.tmpdir(), 'orix-host-secret-' + process.pid);
   const hostSecretValue = 'host-only-secret-' + process.pid;
@@ -300,8 +303,12 @@ async function main() {
     await verify_real_upstream_rizin_under_bubblewrap(root, base);
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
-    await rm(hostSecret, { force: true });
-    await rm(base, { recursive: true, force: true });
+    try {
+      await rm(hostSecret, { force: true });
+      await rm(base, { recursive: true, force: true });
+    } finally {
+      await remove_delegated_parent(delegated);
+    }
   }
 }
 
