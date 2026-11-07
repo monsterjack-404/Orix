@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   parse_android_proto_xml,
 } from '../src/android/proto-xml.mjs';
-import { analyze_android_package } from '../src/android/package.mjs';
+import { analyze_android_package, render_android_package_markdown } from '../src/android/package.mjs';
 import * as public_api from '../src/index.mjs';
 import { parse_android_proto_xml as package_subpath_parser } from '@orix/cli/android/proto-xml';
 
@@ -191,6 +191,9 @@ test('AAB package report decodes stored protobuf module manifests', () => {
   assert.equal(report.manifests[0].binary_xml, false);
   assert.equal(report.manifests[0].package_name, 'com.example.orix');
   assert.equal(report.manifests[0].components[0].exported, false);
+  assert.deepEqual(report.manifests[0].sdk, { min_version: 23, target_version: 35, max_version: null });
+  const markdown = render_android_package_markdown(report);
+  assert.match(markdown, /SDK: min=23, target=35, max=unspecified/);
   assert.ok(!report.limitations.some(item => item.includes('AAB protobuf manifests') && item.includes('not decoded')));
 });
 
