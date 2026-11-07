@@ -48,7 +48,8 @@ function create_semantic_dex() {
   const field_ids_off = proto_ids_off + 12;
   const method_ids_off = field_ids_off + 8;
   const class_defs_off = method_ids_off + 8;
-  const data_off = class_defs_off + 32;
+  const method_handles_off = class_defs_off + 32;
+  const data_off = method_handles_off + 8;
 
   const encoded_strings = strings.map(value => {
     const bytes = Buffer.from(value, 'ascii');
@@ -71,6 +72,7 @@ function create_semantic_dex() {
     [0x0004, 1, field_ids_off],
     [0x0005, 1, method_ids_off],
     [0x0006, 1, class_defs_off],
+    [0x0008, 1, method_handles_off],
     [0x2002, strings.length, data_off],
     [0x2000, 1, class_data_off],
     [0x2001, 1, code_off],
@@ -123,6 +125,12 @@ function create_semantic_dex() {
   buffer.writeUInt32LE(0, class_defs_off + 20);
   buffer.writeUInt32LE(class_data_off, class_defs_off + 24);
   buffer.writeUInt32LE(0, class_defs_off + 28);
+
+  // DEX 038+ method_handle_item: static-put targeting field_id_item #0.
+  buffer.writeUInt16LE(0, method_handles_off);
+  buffer.writeUInt16LE(0, method_handles_off + 2);
+  buffer.writeUInt16LE(0, method_handles_off + 4);
+  buffer.writeUInt16LE(0, method_handles_off + 6);
 
   let item = class_data_off;
   for (const value of [1, 0, 1, 0, 0, 2, 0, 1]) item = write_uleb(buffer, item, value);
@@ -193,6 +201,33 @@ test('DEX semantic parser enforces a total instruction-unit budget', () => {
   assert.throws(() => parse_dex(fixture, { max_instruction_units: 1 }), error => error.code === 'ORIX_DEX_INSTRUCTION_BUDGET');
 });
 
+
+
+test('DEX parser validates method-handle type, reserved fields and member references', () => {
+  const invalid_type = create_semantic_dex();
+  const map_off = invalid_type.readUInt32LE(52);
+  const map_count = invalid_type.readUInt32LE(map_off);
+  let method_handle_off = -1;
+  for (let index = 0; index < map_count; index += 1) {
+    const item = map_off + 4 + index * 12;
+    if (invalid_type.readUInt16LE(item) === 0x0008) method_handle_off = invalid_type.readUInt32LE(item + 8);
+  }
+  assert.ok(method_handle_off > 0);
+  invalid_type.writeUInt16LE(9, method_handle_off);
+  assert.throws(() => parse_dex(invalid_type), error => error.code === 'ORIX_DEX_METHOD_HANDLE_TYPE');
+
+  const invalid_member = create_semantic_dex();
+  const map_offset = invalid_member.readUInt32LE(52);
+  const count = invalid_member.readUInt32LE(map_offset);
+  for (let index = 0; index < count; index += 1) {
+    const item = map_offset + 4 + index * 12;
+    if (invalid_member.readUInt16LE(item) === 0x0008) {
+      const offset = invalid_member.readUInt32LE(item + 8);
+      invalid_member.writeUInt16LE(1, offset + 4);
+    }
+  }
+  assert.throws(() => parse_dex(invalid_member), error => error.code === 'ORIX_DEX_METHOD_HANDLE_INDEX');
+});
 
 test('DEX semantic parser rejects a class_data_item map count that disagrees with class_def references', () => {
   const fixture = create_semantic_dex();
