@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OrixError } from '../core/errors.mjs';
+
+// Variables owned by the sandbox must never inherit caller-selected paths.
+const WINDOWS_PRIVATE_ENVIRONMENT_KEYS = new Set(['home', 'userprofile', 'appdata', 'localappdata', 'temp', 'tmp']);
 import { decodeWindowsProviderLauncher, decodeWindowsProviderLauncherBase64, WINDOWS_PROVIDER_LAUNCHER_SHA256, WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256, WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES } from './windows-launcher-integrity.mjs';
 
 function isolation_error(code, message, details = {}) {
@@ -156,23 +159,23 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
   for (const key of ['SystemRoot', 'WINDIR', 'PATH', 'TEMP', 'TMP']) {
     if (typeof process.env[key] === 'string') hostEnvironment[key] = process.env[key];
   }
-  const launcherBytes = await load_windows_launcher_payload();
-  const temporary = await mkdtemp(path.join(tmpdir(), 'orix-provider-win-'));
-  const configPath = path.join(temporary, 'provider.json');
-  const logPath = path.join(temporary, 'provider.log');
-  const launcher = path.join(temporary, 'orix-windows-provider-launcher.exe');
-  const profileName = 'ORIX-' + randomUUID().replaceAll('-', '');
+  // Windows environment names are case-insensitive. Reject ambiguous
+  // case-variant duplicates before serializing the launch configuration, and
+  // keep sandbox-owned path variables under ORIX control.
   const providerEnvironment = Object.create(null);
-  for (const key of ['SystemRoot', 'WINDIR']) {
-    const value = process.env[key];
-    if (typeof value === 'string' && value.length > 0) providerEnvironment[key] = value;
-  }
-  // Provider overrides must not replace the host's Windows runtime identity.
-  // Windows environment names are case-insensitive, so reject every spelling
-  // of these reserved keys before adding the trusted values below.
+  const seenProviderEnvironmentKeys = new Set();
   for (const [key, value] of Object.entries(env)) {
     const normalizedKey = key.toLowerCase();
-    if (normalizedKey === 'systemroot' || normalizedKey === 'windir') continue;
+    if (seenProviderEnvironmentKeys.has(normalizedKey)) {
+      isolation_error(
+        'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+        'Windows provider environment contains duplicate case-insensitive keys',
+        { key },
+      );
+    }
+    seenProviderEnvironmentKeys.add(normalizedKey);
+    if (normalizedKey === 'systemroot' || normalizedKey === 'windir' ||
+        WINDOWS_PRIVATE_ENVIRONMENT_KEYS.has(normalizedKey)) continue;
     providerEnvironment[key] = value;
   }
   const trustedSystemRoot = [process.env.SystemRoot, process.env.WINDIR].find(value => typeof value === 'string' && value.trim().length > 0);
@@ -188,6 +191,12 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
     TEMP: root,
     TMP: root,
   });
+  const launcherBytes = await load_windows_launcher_payload();
+  const temporary = await mkdtemp(path.join(tmpdir(), 'orix-provider-win-'));
+  const configPath = path.join(temporary, 'provider.json');
+  const logPath = path.join(temporary, 'provider.log');
+  const launcher = path.join(temporary, 'orix-windows-provider-launcher.exe');
+  const profileName = 'ORIX-' + randomUUID().replaceAll('-', '');
   try {
     await writeFile(configPath, JSON.stringify({
       executable: provider, args, cwd: work, sandboxRoot: root, profileName, logPath, environment: providerEnvironment,

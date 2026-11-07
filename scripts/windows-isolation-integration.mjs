@@ -110,6 +110,11 @@ async function main() {
   const isolationSource = await readFile(new URL('../src/providers/windows-isolation.mjs', import.meta.url), 'utf8');
   assert.match(isolationSource, /normalizedKey === 'systemroot' \|\| normalizedKey === 'windir'/,
     'Provider environment overrides must not replace reserved Windows runtime identity keys');
+  assert.ok(isolationSource.includes("const WINDOWS_PRIVATE_ENVIRONMENT_KEYS = new Set(['home', 'userprofile', 'appdata', 'localappdata', 'temp', 'tmp']);"),
+    'Sandbox-owned path variables must be reserved case-insensitively');
+  assert.ok(isolationSource.includes('seenProviderEnvironmentKeys.has(normalizedKey)') &&
+    isolationSource.includes('Windows provider environment contains duplicate case-insensitive keys'),
+    'Ambiguous case-variant environment keys must fail closed before native launch');
   assert.match(isolationSource, /const trustedSystemRoot = \[process\.env\.SystemRoot, process\.env\.WINDIR\]\.find\(value => typeof value === 'string' && value\.trim\(\)\.length > 0\);[\s\S]*?providerEnvironment\.SystemRoot = trustedSystemRoot;[\s\S]*?providerEnvironment\.WINDIR = trustedSystemRoot;/,
     'Windows runtime identity must be restored from the first non-empty trusted host value after provider overrides');
   assert.doesNotMatch(isolationSource, /resolve_csc|csc\.exe|windows-provider-launcher\.cs/,
@@ -205,6 +210,21 @@ async function main() {
     assert.equal((await lstat(path.join(blockedTeardown.cwd, 'orix-windows-provider-launcher.exe'))).isFile(), true,
       'The cleanup guard must leave the helper workspace intact for recovery');
     await rm(blockedTeardown.cwd, { recursive: true, force: true });
+
+    // Windows environment names are case-insensitive. Reject conflicting
+    // spellings before any native helper workspace or AppContainer is created.
+    await assert.rejects(
+      prepare_windows_provider_isolation({
+        executable: path.join(root, 'node.exe'),
+        cwd: path.join(root, 'work'),
+        sandbox_root: root,
+        args: ['-e', 'process.exit(0)'],
+        env: { ORIX_CASE_COLLISION: 'first', orix_case_collision: 'second' },
+      }),
+      error => error.code === 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE' &&
+        /duplicate case-insensitive keys/.test(error.message),
+      'Windows isolation must reject duplicate environment keys differing only by case',
+    );
 
     // An ACL that lets every local principal modify the provider rootfs must
     // be rejected by the native launcher before the AppContainer is created.
@@ -381,6 +401,10 @@ async function main() {
       try { fs.writeFileSync(path.join(process.cwd(), 'host-write-probe'), 'escape'); result.root_write = 'writable'; }
       catch (error) { result.root_write = error.code || 'blocked'; }
       result.temp_dir = os.tmpdir(); result.temp_env = process.env.TEMP; result.tmp_env = process.env.TMP; result.temp_exists = fs.existsSync(os.tmpdir());
+      result.home_env = process.env.HOME || '';
+      result.userprofile_env = process.env.USERPROFILE || '';
+      result.appdata_env = process.env.APPDATA || '';
+      result.localappdata_env = process.env.LOCALAPPDATA || '';
       try { fs.writeFileSync(path.join(os.tmpdir(), 'provider-write-probe'), 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
       const actualTemp = path.resolve(os.tmpdir()).replace(/[\\\\/]+$/, '').toLowerCase();
@@ -412,7 +436,17 @@ async function main() {
       cwd: path.join(root, 'work'),
       sandbox_root: root,
       isolation: 'required',
-      env: { ORIX_HOST_PID: String(process.pid) },
+      // Deliberately hostile lower-case spellings must not redirect
+      // sandbox-owned Windows paths to host locations.
+      env: {
+        ORIX_HOST_PID: String(process.pid),
+        temp: process.env.SystemRoot || process.env.WINDIR,
+        tmp: process.env.SystemRoot || process.env.WINDIR,
+        home: process.env.SystemRoot || process.env.WINDIR,
+        userprofile: process.env.SystemRoot || process.env.WINDIR,
+        appdata: process.env.SystemRoot || process.env.WINDIR,
+        localappdata: process.env.SystemRoot || process.env.WINDIR,
+      },
       args: ['--input-type=module', '-e', probe],
       timeout_ms: 12_000,
       max_output_bytes: 4_096,
@@ -445,6 +479,18 @@ async function main() {
     assert.notEqual(result.host_file, 'readable', JSON.stringify(result) + ' — provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.temp_exists, true, JSON.stringify(result));
+    const expectedPrivateTemp = path.join(root, 'tmp').toLowerCase();
+    for (const [label, value] of Object.entries({
+      TEMP: result.temp_env,
+      TMP: result.tmp_env,
+      HOME: result.home_env,
+      USERPROFILE: result.userprofile_env,
+      APPDATA: result.appdata_env,
+      LOCALAPPDATA: result.localappdata_env,
+    })) {
+      assert.equal(String(value).toLowerCase(), expectedPrivateTemp,
+        label + ' escaped the sandbox-owned private temp path: ' + JSON.stringify(result));
+    }
     assert.equal(result.tmp_inside_root, true, JSON.stringify(result));
     assert.equal(result.tmp_write, 'allowed', JSON.stringify(result));
     assert.equal(result.host_network, 'blocked', 'Provider reached host loopback network');
