@@ -21,6 +21,7 @@ const schema_paths = [
   new URL('../schemas/har.v1.schema.json', import.meta.url),
   new URL('../schemas/rizin-functions.v1.schema.json', import.meta.url),
   new URL('../schemas/android-package.v1.schema.json', import.meta.url),
+  new URL('../schemas/android-bundle-config.v1.schema.json', import.meta.url),
   new URL('../schemas/case.v1.schema.json', import.meta.url),
   new URL('../schemas/case-bundle.v1.schema.json', import.meta.url),
 ];
@@ -116,4 +117,11 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.ok(androidPackage.properties.manifests.items.required.includes('path_original_length'));
   assert.ok(androidPackage.properties.source.properties.sha256.pattern.includes('a-f'));
   assert.equal(androidPackage.properties.format.enum.includes('AAB'), true);
+  assert.ok(androidPackage.properties.bundle.required.includes('bundle_config'));
+  assert.ok(androidPackage.properties.bundle.properties.bundle_config.properties.config.oneOf[1].$ref.endsWith('/android-bundle-config.v1.schema.json'));
+  const androidBundleConfig = schemas.find(schema => schema.properties.schema_version?.const === 'orix.android-bundle-config.v1');
+  assert.ok(androidBundleConfig, 'BundleConfig metadata schema must be registered in schema contract tests');
+  assert.equal(androidBundleConfig.additionalProperties, false);
+  assert.ok(androidBundleConfig.properties.coverage.required.includes('unknown_fields'));
+  assert.ok(androidBundleConfig.properties.coverage.required.includes('output_truncated'));
 });
