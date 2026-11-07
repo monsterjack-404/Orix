@@ -82,6 +82,10 @@ async function main() {
   assert.doesNotMatch(cleanupSource, /ORIX_CLEANUP:NO_PROFILE/,
     'Cleanup must not silently report success for an arbitrary SID lookup failure');
 
+  assert.ok(launcherSource.includes('GetProcessMitigationPolicy') &&
+    launcherSource.includes('RUN:HELPER_CHILD_PROCESS_POLICY_FLAGS') &&
+    launcherSource.includes('RUN:PROVIDER_CHILD_PROCESS_POLICY_FLAGS'),
+    'Native helper must report child-process mitigation policy for both broker and AppContainer provider');
 
   assert.ok(launcherSource.includes('DuplicateHandle(') &&
     launcherSource.includes('DUPLICATE_SAME_ACCESS'),
