@@ -4,8 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const project_root = fileURLToPath(new URL('../', import.meta.url));
-const test_roots = ['test', 'tests', '__tests__'].map(name => path.join(project_root, name));
-const skip_pattern = /\b(?:context|t|test|it|describe)\.skip\s*\(|\bskip\s*:\s*true\b/g;
+const test_roots = ['test', 'tests', '__tests__', 'platform-tests'].map(name => path.join(project_root, name));
+const skip_pattern = /\b(?:context|t|test|it|describe)\.skip\s*\(|\bskip\s*:/g;
 const violations = [];
 let scanned_modules = 0;
 
