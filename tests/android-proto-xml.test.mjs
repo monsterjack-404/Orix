@@ -208,8 +208,8 @@ test('protobuf XML decoder rejects malformed varints, wire types and invalid UTF
     error.code === 'ORIX_PROTO_XML_VARINT_TRUNCATED');
   assert.throws(() => parse_android_proto_xml(Buffer.from([0x0b])), error =>
     error.code === 'ORIX_PROTO_XML_WIRE_TYPE');
-  assert.throws(() => parse_android_proto_xml(Buffer.from([0x0a, 0x02, 0x0a, 0x00])), error =>
-    error.code === 'ORIX_PROTO_XML_UTF8' || error.code === 'ORIX_PROTO_XML_NODE_EMPTY');
+  assert.throws(() => parse_android_proto_xml(Buffer.from([0x0a, 0x03, 0x1a, 0x01, 0xff])), error =>
+    error.code === 'ORIX_PROTO_XML_UTF8');
 });
 
 test('protobuf XML decoder rejects empty, conflicting and wrong-wire XmlNode fields', () => {
