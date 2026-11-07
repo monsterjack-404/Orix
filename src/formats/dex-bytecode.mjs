@@ -216,7 +216,9 @@ function validateRegisters(opcode, operands, registersSize, pc, format) {
   const wide = new Set();
   const addWide = index => wide.add(index);
   if (format === '12x') {
-    if ([0x04, 0x7d, 0x7e, 0x81, 0x84, 0x85, 0x86, 0x8a, 0x8b, 0x8c].includes(opcode)) { addWide(0); addWide(1); }
+    if ([0x04, 0x7d, 0x7e, 0x86, 0x8b].includes(opcode)) { addWide(0); addWide(1); }
+    if (opcode === 0x81 || opcode === 0x86 || opcode === 0x8b) addWide(0);
+    if ([0x84, 0x85, 0x86, 0x8a, 0x8b, 0x8c].includes(opcode)) addWide(1);
     if (opcode >= 0xbb && opcode <= 0xc2) { addWide(0); addWide(1); }
     if (opcode >= 0xc3 && opcode <= 0xc5) addWide(0);
     if (opcode >= 0xcb && opcode <= 0xcf) { addWide(0); addWide(1); }
@@ -241,7 +243,7 @@ function validateRegisters(opcode, operands, registersSize, pc, format) {
   }
   if (operands.register_range) {
     const { first, count } = operands.register_range;
-    if (first + count > registersSize) {
+    if (count > 0 && first + count > registersSize) {
       fail('ORIX_DEX_BYTECODE_REGISTER_RANGE', 'DEX invoke/range register span exceeds the code_item register file', { pc, first_register: first, argument_words: count, registers_size: registersSize });
     }
   }
@@ -367,7 +369,7 @@ export function decode_dex_instructions(buffer, options = {}) {
 
   const instructions = [];
   const opcodeCounts = Object.create(null);
-  const branchReferences = [];
+  let branchReferenceCount = 0;
   pc = 0;
   while (pc < instructionUnits) {
     const flags = boundaries[pc];
@@ -418,7 +420,7 @@ export function decode_dex_instructions(buffer, options = {}) {
         validateBranchTarget(target, boundaries, instructionUnits, pc);
         item.branch_target = target;
       }
-      branchReferences.push({ offset: pc, target, kind: opcode === 0x26 ? 'payload' : opcode === 0x2b ? 'packed-switch' : opcode === 0x2c ? 'sparse-switch' : 'branch' });
+      branchReferenceCount += 1;
     }
 
     opcodeCounts[spec.mnemonic] = (opcodeCounts[spec.mnemonic] ?? 0) + 1;
@@ -433,7 +435,7 @@ export function decode_dex_instructions(buffer, options = {}) {
     instruction_output_omitted: totalInstructions + payloadCount - instructions.length,
     instructions_truncated: totalInstructions + payloadCount > instructions.length,
     payload_bytes: payloadBytes,
-    branch_reference_count: branchReferences.length,
+    branch_reference_count: branchReferenceCount,
     opcode_counts: opcodeCounts,
     instructions,
     notes: [
