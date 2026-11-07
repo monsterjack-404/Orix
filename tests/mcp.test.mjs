@@ -2,13 +2,14 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PassThrough } from 'node:stream';
 import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool, start_mcp_server } from '../src/mcp/server.mjs';
-import { append_ledger } from '../src/evidence/ledger.mjs';
+import { inspect_file } from '../src/core/inspect.mjs';
+import { append_ledger, verify_ledger } from '../src/evidence/ledger.mjs';
 import { create_zip_entries } from './helpers.mjs';
 
 test('MCP case tools create, mutate, verify, export and import a workspace-confined case', async t => {
@@ -609,6 +610,180 @@ test('MCP confines artifact access to configured roots and rejects symlinks', as
   }
 });
 
+test('MCP case read, verification and mutation reject hard-linked case ledgers', async () => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-ledger-hardlink-'));
+  const alias_dir = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-ledger-alias-'));
+  try {
+    const created = await call_orix_tool('orix.case.create', {
+      workspace, title: 'Case ledger alias',
+    }, { roots: [workspace] });
+    const events = path.join(workspace, '.orix', 'cases', created.case.id, 'events.jsonl');
+    const alias = path.join(alias_dir, 'outside-ledger-alias.jsonl');
+    const { link } = await import('node:fs/promises');
+    await link(events, alias);
+    const before = await readFile(events, 'utf8');
+
+    await assert.rejects(
+      call_orix_tool('orix.case.get', {
+        workspace, case_id: created.case.id, action: 'show',
+      }, { roots: [workspace] }),
+      error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+    );
+    await assert.rejects(
+      call_orix_tool('orix.case.get', {
+        workspace, case_id: created.case.id, action: 'verify',
+      }, { roots: [workspace] }),
+      error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+    );
+    await assert.rejects(
+      call_orix_tool('orix.case.mutate', {
+        workspace, case_id: created.case.id, action: 'add_note', text: 'must not append',
+      }, { roots: [workspace] }),
+      error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+    );
+    const listed = await call_orix_tool('orix.case.get', {
+      workspace, action: 'list',
+    }, { roots: [workspace] });
+    assert.equal(listed.cases.length, 0);
+    assert.equal(listed.coverage.skipped_entries, 1);
+    assert.equal(await readFile(events, 'utf8'), before);
+    assert.equal(await readFile(alias, 'utf8'), before);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(alias_dir, { recursive: true, force: true });
+  }
+});
+
+test('MCP case artifact intake rejects hard-linked source files', async () => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-hardlink-'));
+  try {
+    const source = path.join(workspace, 'source.bin');
+    const alias = path.join(workspace, 'source-alias.bin');
+    const created = await call_orix_tool('orix.case.create', {
+      workspace, title: 'Hard-link intake',
+    }, { roots: [workspace] });
+    await writeFile(source, 'case source bytes');
+    const { link } = await import('node:fs/promises');
+    await link(source, alias);
+    await assert.rejects(
+      call_orix_tool('orix.case.mutate', {
+        workspace, case_id: created.case.id, action: 'add_artifact', path: source,
+      }, { roots: [workspace] }),
+      error => error.code === 'ORIX_MCP_HARDLINK_REJECTED',
+    );
+    const state = await call_orix_tool('orix.case.get', {
+      workspace, case_id: created.case.id, action: 'show',
+    }, { roots: [workspace] });
+    assert.equal(state.artifacts.length, 0);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('MCP refuses to append evidence through a hard-linked output alias', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-output-root-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-output-outside-'));
+  try {
+    const external = path.join(outside, 'external-ledger.jsonl');
+    const alias = path.join(root, 'ledger.jsonl');
+    const { link, readFile } = await import('node:fs/promises');
+    await writeFile(external, 'external data must remain unchanged');
+    await link(external, alias);
+    await assert.rejects(
+      call_orix_tool('orix.ledger.append', { path: alias, type: 'analysis.completed', payload: {} }, { roots: [root] }),
+      error => error.code === 'ORIX_MCP_HARDLINK_REJECTED',
+    );
+    assert.equal(await readFile(external, 'utf8'), 'external data must remain unchanged');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('MCP rejects hard-linked files to prevent workspace aliases to external file content', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-root-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-outside-'));
+  try {
+    const external = path.join(outside, 'external.bin');
+    const alias = path.join(root, 'external-alias.bin');
+    const { link } = await import('node:fs/promises');
+    await writeFile(external, 'outside workspace content');
+    await link(external, alias);
+    await assert.rejects(
+      call_orix_tool('orix.inspect_file', { path: alias }, { roots: [root] }),
+      error => error.code === 'ORIX_MCP_HARDLINK_REJECTED',
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('MCP inspector can enforce hard-link rejection at its opened-file boundary', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-inspector-hardlink-root-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-inspector-hardlink-outside-'));
+  try {
+    const external = path.join(outside, 'external.bin');
+    const alias = path.join(root, 'alias.bin');
+    const { link } = await import('node:fs/promises');
+    await writeFile(external, 'protected external content');
+    await link(external, alias);
+    await assert.rejects(
+      inspect_file(alias, { reject_hardlinks: true }),
+      error => error.code === 'ORIX_HARDLINK_REJECTED',
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('Evidence-ledger read and append reject hard-link aliases when requested by MCP', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-ledger-hardlink-root-'));
+  const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-ledger-hardlink-outside-'));
+  try {
+    const external = path.join(outside, 'external-ledger.jsonl');
+    const alias = path.join(root, 'alias-ledger.jsonl');
+    await append_ledger(external, { type: 'test.created', payload: { safe: true } });
+    const { link, readFile } = await import('node:fs/promises');
+    await link(external, alias);
+    await assert.rejects(
+      verify_ledger(alias, { reject_hardlinks: true }),
+      error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+    );
+    await assert.rejects(
+      append_ledger(alias, { type: 'test.appended', payload: {} }, { reject_hardlinks: true }),
+      error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+    );
+    assert.equal((await readFile(external, 'utf8')).split('\n').length, 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('MCP rejects intermediate directory symlinks even when they resolve inside the workspace', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-intermediate-link-'));
+  try {
+    const real_directory = path.join(root, 'real-directory');
+    const linked_directory = path.join(root, 'linked-directory');
+    const file = path.join(real_directory, 'sample.bin');
+    const { symlink } = await import('node:fs/promises');
+    await mkdir(real_directory);
+    await writeFile(file, 'workspace content');
+    await symlink(real_directory, linked_directory);
+
+    await assert.rejects(
+      call_orix_tool('orix.inspect_file', { path: path.join(linked_directory, 'sample.bin') }, { roots: [root] }),
+      error => error.code === 'ORIX_MCP_SYMLINK_REJECTED',
+    );
+    const direct = await call_orix_tool('orix.inspect_file', { path: file }, { roots: [root] });
+    assert.equal(direct.schema_version, 'orix.artifact.v1');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('MCP exposes an explicit append operation for hash-chained evidence', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-ledger-'));
   try {
@@ -733,4 +908,29 @@ test('MCP architecture analysis reuses the bounded scanner and reports local cyc
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+
+test('MCP enforces declared enum and array constraints before tool dispatch', async () => {
+  await assert.rejects(
+    call_orix_tool('orix.case.get', { workspace: '/not-used', action: 'delete' }),
+    /action must be one of the declared values/,
+  );
+  await assert.rejects(
+    call_orix_tool('orix.case.mutate', {
+      workspace: '/not-used',
+      case_id: '00000000-0000-4000-8000-000000000000',
+      action: 'status',
+      status: 'pending',
+    }),
+    /status must be one of the declared values/,
+  );
+  await assert.rejects(
+    call_orix_tool('orix.rizin_functions', {
+      path: '/not-used/sample.bin',
+      executable: '/not-used/rizin',
+      executable_args: Array.from({ length: 17 }, () => 'prefix'),
+    }),
+    /executable_args must be an array within its declared item limits/,
+  );
 });
