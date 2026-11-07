@@ -434,3 +434,28 @@ if (process.platform === 'linux') {
     }
   });
 }
+
+
+test('Rizin adapters reject NUL bytes in sandbox_root before input filesystem access', async () => {
+  const expected = process.platform === 'linux'
+    ? error => error instanceof TypeError && /sandbox_root must be an absolute filesystem path/.test(error.message)
+    : error => error.code === 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE';
+  await assert.rejects(
+    analyze_rizin_imports({
+      input_path: '/not/opened/file',
+      executable: '/not/launched/rizin',
+      isolation: 'required',
+      sandbox_root: '/not/opened/rootfs\\0suffix',
+    }),
+    expected,
+  );
+  await assert.rejects(
+    analyze_rizin_functions({
+      input_path: '/not/opened/file',
+      executable: '/not/launched/rizin',
+      isolation: 'required',
+      sandbox_root: '/not/opened/rootfs\\0suffix',
+    }),
+    expected,
+  );
+});
