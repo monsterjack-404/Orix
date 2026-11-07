@@ -83,7 +83,7 @@ function signed16(value) { return (value << 16) >> 16; }
 function signed32(value) { return value | 0; }
 const SUPPORTED_DEX_VERSIONS = new Set(['035', '037', '038', '039', '040']);
 function versionNumber(version) {
-  if (typeof version !== 'string' || !/^\\d{3}$/.test(version) || !SUPPORTED_DEX_VERSIONS.has(version)) {
+  if (typeof version !== 'string' || !/^\d{3}$/.test(version) || !SUPPORTED_DEX_VERSIONS.has(version)) {
     throw new TypeError('DEX version must be one of 035, 037, 038, 039 or 040');
   }
   return Number(version);
