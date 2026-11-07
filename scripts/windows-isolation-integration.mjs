@@ -174,7 +174,7 @@ async function main() {
     );
     assert.equal(await readFile(blockedTeardownLog, 'utf8'), teardownMarker,
       'The blocked cleanup path must not launch another helper or mutate the teardown log');
-    await access(path.join(blockedTeardown.cwd, 'orix-windows-provider-launcher.exe'),
+    assert.equal((await lstat(path.join(blockedTeardown.cwd, 'orix-windows-provider-launcher.exe'))).isFile(), true,
       'The cleanup guard must leave the helper workspace intact for recovery');
     await rm(blockedTeardown.cwd, { recursive: true, force: true });
 
