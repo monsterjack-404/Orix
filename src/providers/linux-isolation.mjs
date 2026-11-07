@@ -2,6 +2,7 @@
 // provider-visible filesystem; it is mounted read-only except for an ephemeral /tmp.
 // No host home, project tree, credentials, or network namespace is exposed by default.
 
+import { execFileSync } from 'node:child_process';
 import { access, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { OrixError } from '../core/errors.mjs';
@@ -17,17 +18,58 @@ function within(root, candidate) {
     !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
 }
 
+const MINIMUM_BUBBLEWRAP_VERSION = Object.freeze([0, 12, 0]);
+
+export function is_supported_bubblewrap_version(output) {
+  if (typeof output !== 'string') return false;
+  const match = /^\\s*bubblewrap\\s+v?(\\d+)\\.(\\d+)\\.(\\d+)(?:[-+][0-9A-Za-z.-]+)?\\s*$/im.exec(output);
+  if (!match) return false;
+  const version = match.slice(1, 4).map(Number);
+  for (let index = 0; index < MINIMUM_BUBBLEWRAP_VERSION.length; index += 1) {
+    if (version[index] > MINIMUM_BUBBLEWRAP_VERSION[index]) return true;
+    if (version[index] < MINIMUM_BUBBLEWRAP_VERSION[index]) return false;
+  }
+  return true;
+}
+
 async function resolve_bwrap() {
-  for (const candidate of ['/usr/bin/bwrap', '/bin/bwrap']) {
+  for (const candidate of ['/usr/local/bin/bwrap', '/usr/bin/bwrap', '/bin/bwrap']) {
+    let canonical;
     try {
       const info = await lstat(candidate);
       if (info.isSymbolicLink() || !info.isFile()) continue;
-      const canonical = await realpath(candidate);
+      canonical = await realpath(candidate);
       await access(canonical, 1);
-      return canonical;
     } catch {
       // Try the next fixed system location; never resolve through PATH.
+      continue;
     }
+
+    let version_output;
+    try {
+      version_output = execFileSync(canonical, ['--version'], {
+        encoding: 'utf8',
+        timeout: 3000,
+        maxBuffer: 4096,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+    } catch (error) {
+      isolation_error(
+        'ORIX_PROVIDER_BUBBLEWRAP_VERSION_UNVERIFIED',
+        'Bubblewrap version could not be verified; required isolation will not start',
+        { path: canonical, reason: error.code ?? error.name ?? 'version-probe-failed' },
+      );
+    }
+
+    if (!is_supported_bubblewrap_version(version_output)) {
+      isolation_error(
+        'ORIX_PROVIDER_BUBBLEWRAP_VERSION_UNSUPPORTED',
+        'Bubblewrap 0.12.0 or newer is required because older releases contain a sandbox-setup symlink escape',
+        { path: canonical, reported_version: version_output.trim().slice(0, 128), minimum_version: '0.12.0' },
+      );
+    }
+    return canonical;
   }
   isolation_error(
     'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
