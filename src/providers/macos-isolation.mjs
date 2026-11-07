@@ -25,7 +25,7 @@ function within(root, candidate) {
  */
 export function build_macos_compiler_environment(temporary_directory) {
   if (typeof temporary_directory !== 'string' || !path.isAbsolute(temporary_directory) ||
-      temporary_directory.includes('\\0')) {
+      temporary_directory.includes('\0')) {
     throw new TypeError('temporary_directory must be an absolute path without NUL bytes');
   }
   return Object.freeze({
