@@ -81,6 +81,44 @@ function validate_input_path(input_path) {
   }
 }
 
+function requested_isolation(value, sandbox_root) {
+  if (value === undefined) {
+    throw new TypeError('isolation must be explicitly set to none or required');
+  }
+  if (value !== 'none' && value !== 'required') {
+    throw new TypeError('isolation must be either none or required');
+  }
+  if (value === 'required' &&
+      (typeof sandbox_root !== 'string' || !path.isAbsolute(sandbox_root) || sandbox_root.includes('\0'))) {
+    throw new TypeError('sandbox_root must be an absolute filesystem path when isolation is required');
+  }
+  return value;
+}
+
+// Translate host-side snapshot paths into the provider's mount namespace.
+// Bubblewrap mounts sandbox_root at /, so host paths must never cross that
+// boundary unchanged when the provider is launched with required Linux isolation.
+export async function resolve_rizin_snapshot_provider_path(host_path, isolation, sandbox_root) {
+  if (isolation !== 'required' || process.platform !== 'linux') return host_path;
+  let root;
+  let snapshot;
+  try {
+    [root, snapshot] = await Promise.all([realpath(sandbox_root), realpath(host_path)]);
+  } catch (error) {
+    provider_error('ORIX_PROVIDER_SANDBOX_PATH_UNAVAILABLE',
+      'The private Rizin snapshot could not be resolved into the provider sandbox namespace', {
+        reason: error.code ?? 'filesystem-error',
+      });
+  }
+  const relative = path.relative(root, snapshot);
+  if (relative === '' || relative === '..' ||
+      relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+    provider_error('ORIX_PROVIDER_SANDBOX_PATH_DENIED',
+      'The private Rizin snapshot is outside the required sandbox root');
+  }
+  return '/' + relative.split(path.sep).join('/');
+}
+
 
 async function file_snapshot(input_path, maximum_bytes) {
   let link_info;
@@ -239,6 +277,7 @@ export async function analyze_rizin_imports(options = {}) {
     throw new TypeError('Rizin adapter requires the rizin.static provider manifest');
   }
   assert_rizin_platform(manifest);
+  const isolation = requested_isolation(descriptors.isolation?.value, descriptors.sandbox_root?.value);
   const input_path = descriptors.input_path?.value;
   validate_input_path(input_path);
   const signal = descriptors.signal?.value;
@@ -272,7 +311,7 @@ export async function analyze_rizin_imports(options = {}) {
   // Analyze a private copy so the external tool never receives the caller's original path.
   // The copy is private to this process, read-only by default, and checked before and after use.
   const snapshot_directory = await create_rizin_snapshot_directory('.orix-rizin-', {
-    isolation: descriptors.isolation?.value,
+    isolation,
     sandbox_root: descriptors.sandbox_root?.value,
   });
   const extension = path.extname(before.canonical_path).slice(0, 16);
@@ -292,16 +331,20 @@ export async function analyze_rizin_imports(options = {}) {
       });
     }
 
+    const provider_snapshot_path = await resolve_rizin_snapshot_provider_path(
+      snapshot_path, isolation, descriptors.sandbox_root?.value,
+    );
+
     const common = {
       manifest,
       executable: descriptors.executable?.value,
       executable_args: descriptors.executable_args?.value,
-      cwd: descriptors.cwd?.value,
+      cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
       env: descriptors.env?.value,
       timeout_ms,
       max_output_bytes,
       signal,
-      isolation: descriptors.isolation?.value,
+      isolation,
       sandbox_root: descriptors.sandbox_root?.value,
     };
 
@@ -339,7 +382,7 @@ export async function analyze_rizin_imports(options = {}) {
     const import_result = await run_static_provider({
       ...common,
       timeout_ms: remaining_timeout_ms,
-      args: ['-N', '-q', '-c', 'iij', snapshot_path],
+      args: ['-N', '-q', '-c', 'iij', provider_snapshot_path],
     });
     if (!import_result.ok) {
       const code = import_result.cancelled
@@ -540,6 +583,7 @@ export async function analyze_rizin_functions(options = {}) {
     throw new TypeError('Rizin function analysis requires the rizin.static provider manifest');
   }
   assert_rizin_platform(manifest);
+  const isolation = requested_isolation(descriptors.isolation?.value, descriptors.sandbox_root?.value);
   const input_path = descriptors.input_path?.value;
   validate_input_path(input_path);
   const signal = descriptors.signal?.value;
@@ -585,7 +629,7 @@ export async function analyze_rizin_functions(options = {}) {
   }
 
   const snapshot_directory = await create_rizin_snapshot_directory('.orix-rizin-functions-', {
-    isolation: descriptors.isolation?.value,
+    isolation,
     sandbox_root: descriptors.sandbox_root?.value,
   });
   const extension = path.extname(before.canonical_path).slice(0, 16);
@@ -603,14 +647,18 @@ export async function analyze_rizin_functions(options = {}) {
       provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input changed while its private function-analysis snapshot was created');
     }
 
+    const provider_snapshot_path = await resolve_rizin_snapshot_provider_path(
+      snapshot_path, isolation, descriptors.sandbox_root?.value,
+    );
+
     const common = {
       manifest,
       executable: descriptors.executable?.value,
       executable_args: descriptors.executable_args?.value,
-      cwd: descriptors.cwd?.value,
+      cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
       env: descriptors.env?.value,
       signal,
-      isolation: descriptors.isolation?.value,
+      isolation,
       sandbox_root: descriptors.sandbox_root?.value,
     };
     let captured_output_bytes = 0;
@@ -649,7 +697,7 @@ export async function analyze_rizin_functions(options = {}) {
 
     const version_result = await invoke(['-v'], 'version');
     const engine_version = parse_engine_version(version_result.stdout);
-    const function_result = await invoke(['-N', '-q', '-A', '-c', 'aflj', snapshot_path], 'functions');
+    const function_result = await invoke(['-N', '-q', '-A', '-c', 'aflj', provider_snapshot_path], 'functions');
     const normalized = normalize_rizin_functions(function_result.stdout, max_functions);
     let disassembly = null;
     let disassembly_duration_ms = null;
@@ -668,7 +716,7 @@ export async function analyze_rizin_functions(options = {}) {
       }
       address_text = '0x' + address.toString(16);
       const disassembly_result = await invoke([
-        '-N', '-q', '-c', 'pdj ' + max_instructions + ' @ ' + address_text, snapshot_path,
+        '-N', '-q', '-c', 'pdj ' + max_instructions + ' @ ' + address_text, provider_snapshot_path,
       ], 'disassembly');
       const parsed_disassembly = normalize_rizin_disassembly(disassembly_result.stdout, max_instructions);
       disassembly = {
@@ -685,7 +733,7 @@ export async function analyze_rizin_functions(options = {}) {
 
     if (decompile) {
       const decompilation_result = await invoke([
-        '-N', '-q', '-c', 'pdg @ ' + address_text, snapshot_path,
+        '-N', '-q', '-c', 'pdg @ ' + address_text, provider_snapshot_path,
       ], 'decompilation');
       const raw_source = decompilation_result.stdout.replace(/\0/g, '').trim();
       const provider_message = (raw_source + '\n' + decompilation_result.stderr).slice(0, 2048);
@@ -793,6 +841,7 @@ export async function probe_rizin(options = {}) {
     throw new TypeError('Rizin probe requires the rizin.static provider manifest');
   }
   assert_rizin_platform(manifest);
+  const isolation = requested_isolation(descriptors.isolation?.value, descriptors.sandbox_root?.value);
   const timeout_ms = descriptors.timeout_ms?.value ?? Math.min(manifest.limits.timeout_ms, 10_000);
   const max_output_bytes = descriptors.max_output_bytes?.value ?? Math.min(manifest.limits.max_output_bytes, 16_384);
   if (!Number.isSafeInteger(timeout_ms) || timeout_ms < 1 || timeout_ms > manifest.limits.timeout_ms) {
@@ -806,13 +855,13 @@ export async function probe_rizin(options = {}) {
     manifest,
     executable: descriptors.executable?.value,
     executable_args: descriptors.executable_args?.value,
-    cwd: descriptors.cwd?.value,
+    cwd: descriptors.cwd?.value ?? (isolation === 'required' ? descriptors.sandbox_root?.value : undefined),
     env: descriptors.env?.value,
     args: ['-v'],
     timeout_ms,
     max_output_bytes,
     signal: descriptors.signal?.value,
-    isolation: descriptors.isolation?.value,
+    isolation,
     sandbox_root: descriptors.sandbox_root?.value,
   });
   if (!result.ok) {

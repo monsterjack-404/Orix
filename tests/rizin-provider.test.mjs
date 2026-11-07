@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,7 @@ import {
   analyze_rizin_functions as analyze_rizin_functions_impl,
   probe_rizin as probe_rizin_impl,
   RIZIN_PROVIDER_MANIFEST,
+  resolve_rizin_snapshot_provider_path,
 } from '../src/providers/rizin.mjs';
 
 // Normal adapter tests explicitly exercise the unsandboxed legacy path. The
@@ -24,6 +25,32 @@ test('Rizin adapter refuses an implicit unsandboxed provider policy', async () =
     probe_rizin_impl({ executable: await realpath(process.execPath) }),
     /isolation must be explicitly set/,
   );
+});
+
+test('required Linux Rizin snapshots are translated into Bubblewrap namespace paths', async () => {
+  const parent = await mkdtemp(path.join(tmpdir(), 'orix-rizin-path-'));
+  const sandbox_root = path.join(parent, 'rootfs');
+  const snapshot_directory = path.join(sandbox_root, '.orix-rizin-private');
+  const snapshot_path = path.join(snapshot_directory, 'artifact.elf');
+  const outside_path = path.join(parent, 'outside.elf');
+  try {
+    await mkdir(snapshot_directory, { recursive: true });
+    await writeFile(snapshot_path, 'inside snapshot');
+    await writeFile(outside_path, 'outside snapshot');
+    const translated = await resolve_rizin_snapshot_provider_path(snapshot_path, 'required', sandbox_root);
+    if (process.platform === 'linux') {
+      assert.equal(translated, '/.orix-rizin-private/artifact.elf');
+      await assert.rejects(
+        resolve_rizin_snapshot_provider_path(outside_path, 'required', sandbox_root),
+        error => error.code === 'ORIX_PROVIDER_SANDBOX_PATH_DENIED',
+      );
+    } else {
+      assert.equal(translated, snapshot_path);
+    }
+    assert.equal(await resolve_rizin_snapshot_provider_path(snapshot_path, 'none', sandbox_root), snapshot_path);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
 });
 
 import { create_rizin_snapshot_directory } from '../src/providers/rizin-snapshot.mjs';
