@@ -461,7 +461,7 @@ export async function run_static_provider(options) {
         args_count: executable_args.length + args.length,
         started_at,
         completed_at,
-        duration_ms: Math.max(0, performance.now() - started_clock),
+        duration_ms: Math.max(0, Math.round(performance.now() - started_clock)),
         exit_code,
         signal: exit_signal,
         termination_reason,
