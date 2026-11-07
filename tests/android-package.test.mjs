@@ -659,4 +659,6 @@ test('AAB inventory recognizes BundleConfig and module manifest/DEX paths withou
   assert.equal(report.summary.dex_entries, 1);
   assert.equal(report.dex[0].status, 'metadata-parsed');
   assert.ok(report.limitations.some(note => note.includes('AAB protobuf manifests')));
+  assert.ok(report.limitations.some(note => note.includes('compressed/encrypted manifests are inventoried only')));
+  assert.ok(report.limitations.some(note => note.includes('method/field table contents')));
 });
