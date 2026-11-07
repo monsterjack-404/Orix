@@ -65,12 +65,28 @@ function decodeStringPool(b, start, headerSize, size, limits) {
       const chars = length8(b, cursor, stringsEnd); cursor = chars.next;
       const bytes = length8(b, cursor, stringsEnd); cursor = bytes.next;
       need(b, cursor, bytes.length + 1, stringsEnd, 'UTF-8 string bytes');
+      if (b[cursor + bytes.length] !== 0) {
+        fail('ORIX_AXML_STRING_TERMINATOR', 'UTF-8 string is missing its required null terminator', { index: i });
+      }
       value = decoder.decode(b.subarray(cursor, cursor + bytes.length));
+      if (value.length !== chars.length) {
+        fail('ORIX_AXML_STRING_LENGTH', 'UTF-8 string does not match its declared UTF-16 length', {
+          index: i, declared: chars.length, actual: value.length,
+        });
+      }
     } else {
       const chars = length16(b, cursor, stringsEnd); cursor = chars.next;
       const byteLength = chars.length * 2;
       need(b, cursor, byteLength + 2, stringsEnd, 'UTF-16 string bytes');
+      if (b.readUInt16LE(cursor + byteLength) !== 0) {
+        fail('ORIX_AXML_STRING_TERMINATOR', 'UTF-16 string is missing its required null terminator', { index: i });
+      }
       value = b.toString('utf16le', cursor, cursor + byteLength);
+      if (value.length !== chars.length) {
+        fail('ORIX_AXML_STRING_LENGTH', 'UTF-16 string does not match its declared code-unit length', {
+          index: i, declared: chars.length, actual: value.length,
+        });
+      }
     }
     strings.push(value);
   }
