@@ -80,6 +80,9 @@ async function install_verified_upstream_rizin(root, base) {
 
   execFileSync('curl', [
     '--fail', '--location', '--retry', '3', '--retry-delay', '1',
+    '--proto', '=https', '--proto-redir', '=https',
+    '--connect-timeout', '20', '--max-time', '300',
+    '--max-filesize', String(RIZIN_STATIC_ARCHIVE_SIZE),
     '--output', archive_path, RIZIN_STATIC_ARCHIVE_URL,
   ], { stdio: 'pipe', timeout: 5 * 60 * 1000 });
 
