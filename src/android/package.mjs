@@ -1,5 +1,5 @@
 // JavaScript, src/android/package.mjs, Node.js 20+, read-only APK/AAB inventory.
-// ZIP contents are never extracted or decompressed; stored DEX structures and selected manifest metadata are inspected.
+// Selected stored/raw-DEFLATE entries are expanded in memory under strict budgets; nothing is extracted to disk.
 
 import { parse_zip } from '../formats/zip.mjs';
 import { parse_dex } from '../formats/dex.mjs';
@@ -240,7 +240,8 @@ function is_v1_signature(name) {
 
 /**
  * Identify APK/AAB ZIP containers and inventory their structural metadata.
- * DEX parsing is limited to fixed headers of stored, unencrypted entries.
+ * Selected stored/raw-DEFLATE DEX and manifest entries are validated and parsed
+ * in memory under per-entry and aggregate output budgets.
  */
 export function analyze_android_package(buffer, options = {}) {
   if (!Buffer.isBuffer(buffer)) throw new TypeError('Android package input must be a Buffer');
