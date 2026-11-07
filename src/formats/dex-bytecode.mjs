@@ -255,6 +255,7 @@ function validateRegisters(opcode, operands, registersSize, pc, format) {
   else if (format === '11x' && (opcode === 0x0b || opcode === 0x10)) addWide(0);
   else if (['21s', '21h', '21c', '31i'].includes(format) && [0x16, 0x17, 0x18, 0x19].includes(opcode)) addWide(0);
   else if (format === '22c' && (opcode === 0x53 || opcode === 0x5a)) addWide(0);
+  else if (format === '21c' && (opcode === 0x61 || opcode === 0x68)) { addWide(0); }
   else if (format === '51l') { addWide(0); }
   else if (format === '23x') {
     if (opcode === 0x45 || opcode === 0x4c) addWide(0);
