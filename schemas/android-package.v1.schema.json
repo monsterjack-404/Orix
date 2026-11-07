@@ -225,7 +225,9 @@
               "output-size-limit",
               "size-mismatch",
               "decompression-failed",
-              "crc-mismatch"
+              "crc-mismatch",
+              "duplicate-path",
+              "aggregate-size-limit"
             ]
           },
           "binary_xml": {
