@@ -122,6 +122,55 @@ test('APK manifest attributes resolve by namespace URI even with a nonstandard p
   assert.equal(decoded.components[0].exported, true);
 });
 
+test('APK binary XML decoder enforces file, chunk, string, element and attribute budgets', () => {
+  const manifest = binary_manifest();
+  assert.throws(
+    () => parse_android_binary_xml(manifest, { max_file_bytes: 8 }),
+    error => error.code === 'ORIX_AXML_FILE_LIMIT',
+  );
+  assert.throws(
+    () => parse_android_binary_xml(manifest, { max_chunks: 1 }),
+    error => error.code === 'ORIX_AXML_CHUNK_LIMIT',
+  );
+  assert.throws(
+    () => parse_android_binary_xml(manifest, { max_strings: 1 }),
+    error => error.code === 'ORIX_AXML_STRING_POOL_LIMIT',
+  );
+  assert.throws(
+    () => parse_android_binary_xml(manifest, { max_elements: 1 }),
+    error => error.code === 'ORIX_AXML_ELEMENT_LIMIT',
+  );
+  assert.throws(
+    () => parse_android_binary_xml(manifest, { max_attributes: 1 }),
+    error => error.code === 'ORIX_AXML_ATTRIBUTE_LIMIT',
+  );
+  const limited = parse_android_binary_xml(manifest, { max_output_items: 1 });
+  assert.equal(limited.output_truncated, true);
+  assert.ok(limited.permissions.length <= 1);
+  assert.ok(limited.components.length <= 1);
+});
+
+test('APK binary XML decoder rejects string-pool offsets outside the chunk', () => {
+  const manifest = Buffer.from(binary_manifest());
+  let offset = 8;
+  while (offset < manifest.length) {
+    const type = manifest.readUInt16LE(offset);
+    const size = manifest.readUInt32LE(offset + 4);
+    if (type === 0x0001) {
+      const header_size = manifest.readUInt16LE(offset + 2);
+      manifest.writeUInt32LE(0xffffffff, offset + header_size);
+      break;
+    }
+    if (size < 8 || size > manifest.length - offset) throw new Error('Invalid test AXML chunk framing');
+    offset += size;
+  }
+  assert.notEqual(offset, manifest.length);
+  assert.throws(
+    () => parse_android_binary_xml(manifest),
+    error => error.code === 'ORIX_AXML_STRING_OFFSET',
+  );
+});
+
 function find_binary_xml_chunk(buffer, expected_type) {
   const end = buffer.readUInt32LE(4);
   let offset = buffer.readUInt16LE(2);
