@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import {
   assess_macos_rootfs_directory_permissions,
   cleanup_macos_compiler_process_group,
+  cleanup_macos_compiler_workspace,
   assess_macos_rootfs_entry_permissions,
 } from '../src/providers/macos-isolation.mjs';
 
@@ -103,4 +104,44 @@ setInterval(() => {}, 1000);
       }).catch(() => {});
     }
   }
+});
+
+test('macOS compiler workspace is preserved when process-group emptiness cannot be verified', async () => {
+  let remove_called = false;
+  const original = Object.assign(new Error('compiler process group is still present'), {
+    code: 'ORIX_PROVIDER_MACOS_COMPILER_CLEANUP_FAILED',
+    details: { process_group_id: 1234, verified_empty: false },
+  });
+  await assert.rejects(
+    cleanup_macos_compiler_workspace(
+      '/tmp/orix-provider-macos-recovery',
+      original,
+      async () => { remove_called = true; },
+    ),
+    error => {
+      assert.equal(error.code, 'ORIX_PROVIDER_MACOS_COMPILER_CLEANUP_FAILED');
+      assert.equal(error.details.workspace_path, '/tmp/orix-provider-macos-recovery');
+      assert.equal(error.details.workspace_preserved, true);
+      assert.equal(error.details.process_group_id, 1234);
+      assert.equal(error.cause, original);
+      return true;
+    },
+  );
+  assert.equal(remove_called, false, 'Unverified compiler descendants must never race workspace deletion');
+});
+
+test('macOS compiler workspace is removed after verified compiler-group cleanup', async () => {
+  let removed_path = null;
+  let removed_options = null;
+  const result = await cleanup_macos_compiler_workspace(
+    '/tmp/orix-provider-macos-complete',
+    new Error('ordinary compiler failure after process-group cleanup'),
+    async (directory, options) => {
+      removed_path = directory;
+      removed_options = options;
+    },
+  );
+  assert.equal(result.workspace_preserved, false);
+  assert.equal(removed_path, '/tmp/orix-provider-macos-complete');
+  assert.deepEqual(removed_options, { recursive: true, force: true });
 });
