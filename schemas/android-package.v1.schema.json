@@ -16,7 +16,8 @@
     "signatures",
     "limitations",
     "warnings",
-    "signing_block"
+    "signing_block",
+    "bundle"
   ],
   "properties": {
     "schema_version": {
@@ -174,6 +175,21 @@
         "apk_signing_block_pairs": {
           "type": "integer",
           "minimum": 0
+        },
+        "aab_modules": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "aab_modules_reported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "aab_modules_omitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bundle_config_present": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -846,6 +862,102 @@
         "error": {
           "type": "object",
           "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "bundle": {
+      "type": "object",
+      "required": [
+        "status",
+        "bundle_config_present",
+        "module_count",
+        "modules_reported",
+        "modules_omitted",
+        "modules",
+        "module_semantics_decoded"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "recognized",
+            "not-applicable"
+          ]
+        },
+        "bundle_config_present": {
+          "type": "boolean"
+        },
+        "module_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "modules_reported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "modules_omitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "module_semantics_decoded": {
+          "const": false
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "name_truncated",
+              "name_original_length",
+              "manifest_present",
+              "dex_entries",
+              "native_libraries",
+              "resources_pb_present",
+              "resource_paths",
+              "asset_paths",
+              "root_paths"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "name_truncated": {
+                "type": "boolean"
+              },
+              "name_original_length": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "manifest_present": {
+                "type": "boolean"
+              },
+              "dex_entries": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "native_libraries": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "resources_pb_present": {
+                "type": "boolean"
+              },
+              "resource_paths": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "asset_paths": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "root_paths": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false
