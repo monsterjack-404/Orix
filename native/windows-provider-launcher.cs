@@ -152,7 +152,7 @@ namespace OrixWindowsSandbox {
     static extern IntPtr FreeSid(IntPtr sid);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    static extern uint GetSystemDirectory(StringBuilder buffer, uint size);
+    static extern uint GetSystemDirectoryW(StringBuilder buffer, uint size);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern IntPtr CreateJobObject(IntPtr attributes, string name);
@@ -417,18 +417,25 @@ namespace OrixWindowsSandbox {
       return pointer;
     }
 
-    static string GetTrustedSystemDirectory() {
-      // Resolve the OS system directory through Win32, not a caller-controlled
-      // SystemRoot/WINDIR environment variable.
+    static string TrustedSystemDirectory() {
+      // Do not resolve security-sensitive Windows utilities from inherited
+      // SystemRoot/WINDIR environment variables. Ask the OS for its system
+      // directory directly, then use only an absolute path beneath it.
       StringBuilder buffer = new StringBuilder(32768);
-      uint length = GetSystemDirectory(buffer, (uint)buffer.Capacity);
-      if (length == 0 || length >= buffer.Capacity)
+      uint length = GetSystemDirectoryW(buffer, (uint)buffer.Capacity);
+      if (length == 0 || length >= (uint)buffer.Capacity)
         throw Win32("Resolve trusted Windows system directory");
-      return buffer.ToString();
+      string directory = Path.GetFullPath(buffer.ToString());
+      if (!Path.IsPathRooted(directory))
+        throw new InvalidOperationException("Windows returned a non-absolute system directory");
+      return directory;
     }
 
     static void SetIntegrityLevel(string path, string level) {
-      string icacls = Path.Combine(GetTrustedSystemDirectory(), "icacls.exe");
+      string icacls = Path.Combine(TrustedSystemDirectory(), "icacls.exe");
+      FileAttributes attributes = File.GetAttributes(icacls);
+      if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+        throw new InvalidOperationException("Trusted icacls utility is not a regular system file");
       ProcessStartInfo start = new ProcessStartInfo();
       start.FileName = icacls;
       start.Arguments = Quote(path) + " /setintegritylevel (OI)(CI)" + level;
@@ -437,14 +444,31 @@ namespace OrixWindowsSandbox {
       start.RedirectStandardOutput = true;
       start.RedirectStandardError = true;
       using (Process process = Process.Start(start)) {
+        StringBuilder output = new StringBuilder();
+        StringBuilder error = new StringBuilder();
+        process.OutputDataReceived += (sender, eventArgs) => {
+          if (eventArgs.Data != null && output.Length < 8192)
+            output.AppendLine(eventArgs.Data.Substring(0, Math.Min(eventArgs.Data.Length, 8192 - output.Length)));
+        };
+        process.ErrorDataReceived += (sender, eventArgs) => {
+          if (eventArgs.Data != null && error.Length < 8192)
+            error.AppendLine(eventArgs.Data.Substring(0, Math.Min(eventArgs.Data.Length, 8192 - error.Length)));
+        };
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
         if (!process.WaitForExit(10000)) {
-          try { process.Kill(); } catch { }
+          // Do not begin AppContainer/profile cleanup while icacls may still be
+          // changing the scratch ACL. Kill and synchronously observe process exit.
+          try { process.Kill(); } catch { /* it may have exited between timeout and Kill */ }
+          process.WaitForExit();
           throw new TimeoutException("icacls integrity-label operation timed out");
         }
-        string output = process.StandardOutput.ReadToEnd();
-        string error = process.StandardError.ReadToEnd();
+        // The parameterless wait also drains completion of asynchronous output
+        // handlers on .NET Framework before the process object is disposed.
+        process.WaitForExit();
         if (process.ExitCode != 0)
-          throw new InvalidOperationException("Could not set " + level + " integrity on scratch directory: " + error + output);
+          throw new InvalidOperationException("Could not set " + level + " integrity on scratch directory: " +
+            error.ToString() + output.ToString());
       }
     }
 
