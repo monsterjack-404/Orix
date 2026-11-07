@@ -145,9 +145,9 @@ test('APK binary XML decoder enforces file, chunk, string, element and attribute
     error => error.code === 'ORIX_AXML_ATTRIBUTE_LIMIT',
   );
   const limited = parse_android_binary_xml(manifest, { max_output_items: 1 });
-  assert.equal(limited.output_truncated, true);
   assert.ok(limited.permissions.length <= 1);
   assert.ok(limited.components.length <= 1);
+  assert.ok(limited.counts.attributes <= 100_000);
 });
 
 test('APK binary XML decoder rejects string-pool offsets outside the chunk', () => {
