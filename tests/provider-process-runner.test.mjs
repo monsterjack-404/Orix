@@ -74,9 +74,25 @@ test('static provider runner uses argv without shell interpolation and returns b
   assert.equal(result.schema_version, 'orix.provider-execution.v1');
   assert.equal(result.success, true);
   assert.equal(result.termination_reason, null);
+  assert.equal(result.isolation_cleanup.error, null);
+  assert.deepEqual(result.isolation_cleanup, {
+    attempted: false,
+    complete: true,
+    failed: false,
+    reason: null,
+    error: null,
+    report: null,
+  });
+  assert.equal(typeof result.process_group_cleanup.attempted, 'boolean');
+  assert.equal(typeof result.process_group_cleanup.force_kill_sent, 'boolean');
+  assert.equal(typeof result.process_group_cleanup.failed, 'boolean');
+  assert.ok(result.process_group_cleanup.verified_empty === null ||
+    typeof result.process_group_cleanup.verified_empty === 'boolean');
+  assert.equal(result.launch_setup_failed, false);
   assert.equal(result.args_count, 3);
   assert.equal(result.output.bytes_captured, result.captured_bytes);
   assert.ok(result.completed_at);
+  assert.ok(Number.isSafeInteger(result.duration_ms));
   assert.equal(result.stdout, 'literal $(not-a-shell) value');
   assert.equal(result.stderr, 'diagnostic');
   assert.equal(result.provider.id, 'test.static');
@@ -352,7 +368,13 @@ test('static provider runner rejects symlinks inside executable and working-dire
 
 test('static provider runner rejects PATH and executable-loader environment overrides', async () => {
   const executable = await node_executable();
-  for (const key of ['PATH', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES']) {
+  for (const key of [
+    'PATH', 'NODE_OPTIONS', 'NODE_PATH', 'NODE_V8_COVERAGE', 'NODE_COMPILE_CACHE',
+    'LD_PRELOAD', 'LD_AUDIT', 'LD_DEBUG_OUTPUT', 'GCONV_PATH',
+    'NODE_ICU_DATA', 'NODE_EXTRA_CA_CERTS', 'OPENSSL_CONF', 'OPENSSL_MODULES',
+    'DYLD_INSERT_LIBRARIES', 'DYLD_FALLBACK_LIBRARY_PATH', 'DYLD_ROOT_PATH',
+    'ld_audit',
+  ]) {
     await assert.rejects(
       run_static_provider({
         manifest: manifest(),
@@ -444,20 +466,28 @@ if (process.platform !== 'win32') {
         "const fs = require('node:fs');",
         "const counter = process.argv[1];",
         "let count = 0;",
-        "fs.writeFileSync(counter, '0');",
         "process.on('SIGTERM', () => {});",
+        "fs.writeFileSync(counter, '0');",
         "setInterval(() => fs.writeFileSync(counter, String(++count)), 10);",
       ].join(' ');
       const parent_script = [
         "const { spawn } = require('node:child_process');",
-        "const child = spawn(process.execPath, ['-e', " + JSON.stringify(grandchild_script) + ", " + JSON.stringify(counter_path) + "], { stdio: 'ignore' });",
-        "child.once('spawn', () => setTimeout(() => process.exit(0), 80));",
+        "const fs = require('node:fs');",
+        "const counter = process.argv[1];",
+        "spawn(process.execPath, ['-e', " + JSON.stringify(grandchild_script) + ", counter], { stdio: 'ignore' });",
+        "const deadline = Date.now() + 3000;",
+        "function waitForReady() {",
+        "  if (fs.existsSync(counter)) { setTimeout(() => process.exit(0), 80); return; }",
+        "  if (Date.now() >= deadline) { process.stderr.write('grandchild readiness timeout'); process.exit(2); return; }",
+        "  setTimeout(waitForReady, 5);",
+        "}",
+        "waitForReady();",
       ].join(' ');
 
       const result = await run_static_provider({
         manifest: manifest(),
         executable: await node_executable(),
-        args: ['-e', parent_script],
+        args: ['-e', parent_script, counter_path],
         timeout_ms: 3_000,
         kill_grace_ms: 120,
       });
@@ -475,6 +505,57 @@ if (process.platform !== 'win32') {
       await new Promise(resolve => setTimeout(resolve, 100));
       const counter_later = await fs.readFile(counter_path, 'utf8');
       assert.equal(counter_later, counter_after_cleanup, 'Same-process-group descendant continued running after provider completion');
+    });
+  });
+}
+
+
+if (process.platform !== 'win32') {
+  test('static provider runner kills ignored-SIGTERM descendants when cancellation interrupts the provider', { timeout: 10_000 }, async () => {
+    await with_directory(async directory => {
+      const counter_path = path.join(directory, 'cancelled-grandchild-counter');
+      const grandchild_script = [
+        "const fs = require('node:fs');",
+        "const counter = process.argv[1];",
+        "let count = 0;",
+        "fs.writeFileSync(counter, '0');",
+        "process.on('SIGTERM', () => {});",
+        "setInterval(() => fs.writeFileSync(counter, String(++count)), 10);",
+      ].join(' ');
+      const parent_script = [
+        "const { spawn } = require('node:child_process');",
+        "const child = spawn(process.execPath, ['-e', " + JSON.stringify(grandchild_script) + ", " + JSON.stringify(counter_path) + "], { stdio: 'ignore' });",
+        "child.once('spawn', () => { process.stdout.write('grandchild-started'); setInterval(() => {}, 1000); });",
+      ].join(' ');
+      const controller = new AbortController();
+      const abort_timer = setTimeout(() => controller.abort(), 1_500);
+      try {
+        const result = await run_static_provider({
+          manifest: manifest(),
+          executable: await node_executable(),
+          args: ['-e', parent_script],
+          signal: controller.signal,
+          timeout_ms: 5_000,
+          kill_grace_ms: 120,
+        });
+        assert.equal(result.cancelled, true);
+        assert.equal(result.termination_reason, 'cancelled');
+        assert.equal(result.ok, false);
+        assert.equal(result.stdout, 'grandchild-started');
+        assert.deepEqual(result.process_group_cleanup, {
+          attempted: true,
+          force_kill_sent: true,
+          verified_empty: true,
+          failed: false,
+        });
+        const fs = await import('node:fs/promises');
+        const counter_after_cleanup = await fs.readFile(counter_path, 'utf8');
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const counter_later = await fs.readFile(counter_path, 'utf8');
+        assert.equal(counter_later, counter_after_cleanup, 'Cancelled process-group descendant continued running');
+      } finally {
+        clearTimeout(abort_timer);
+      }
     });
   });
 }
