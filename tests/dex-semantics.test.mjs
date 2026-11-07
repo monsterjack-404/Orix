@@ -167,7 +167,7 @@ test('DEX semantic parser inventories prototypes, fields, methods, class data an
 
 test('DEX semantic parser rejects an encoded method index outside method_ids', () => {
   const fixture = create_semantic_dex();
-  const class_data_off = fixture.readUInt32LE(160 + 24);
+  const class_data_off = fixture.readUInt32LE(180 + 24);
   fixture[class_data_off + 6] = 1; // method_idx_diff now resolves to method_id #1, which does not exist.
   assert.throws(() => parse_dex(fixture), error => error.code === 'ORIX_DEX_CLASS_DATA_METHOD_INDEX');
 });
@@ -180,14 +180,14 @@ test('DEX semantic parser rejects method records owned by another class', () => 
 
 test('DEX semantic parser rejects out-of-range code_item offsets', () => {
   const fixture = create_semantic_dex();
-  const class_data_off = fixture.readUInt32LE(160 + 24);
+  const class_data_off = fixture.readUInt32LE(180 + 24);
   fixture[class_data_off + 9] = 0x7f; // Make the second ULEB byte point beyond the DEX data section.
   assert.throws(() => parse_dex(fixture), error => error.code === 'ORIX_DEX_CODE_ITEM_RANGE');
 });
 
 test('DEX semantic parser enforces a total instruction-unit budget', () => {
   const fixture = create_semantic_dex();
-  const class_data_off = fixture.readUInt32LE(160 + 24);
+  const class_data_off = fixture.readUInt32LE(180 + 24);
   const code_off = fixture.readUInt32LE(class_data_off + 7) ?? 0;
   // The fixture's concrete code_item starts 12 bytes after class_data_off.
   fixture.writeUInt32LE(2, class_data_off + 12 + 12);
