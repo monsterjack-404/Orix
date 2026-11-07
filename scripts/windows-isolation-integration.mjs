@@ -52,6 +52,17 @@ async function main() {
   assert.match(launcherSource,
     /FileSystemRights volumeRootDestructiveMask = FileSystemRights\.DeleteSubdirectoriesAndFiles \|[\s\S]*?FileSystemRights deniedRights = rootfsComponent[\s\S]*?volumeRootComponent \? volumeRootDestructiveMask : ancestorDestructiveMask;/,
     'Volume-root ACLs must ignore non-actionable DELETE on the volume object while rejecting DELETE_CHILD and ACL/ownership mutation');
+
+  assert.match(launcherSource,
+    /static bool HasAppContainerTraversalGrant\([\s\S]*?S-1-15-2-1[\s\S]*?FileSystemRights\.Traverse[\s\S]*?AccessControlType\.Deny/,
+    'Ancestor traversal must recognize built-in AppContainer group grants and must not override applicable deny ACEs');
+  assert.match(launcherSource,
+    /if \(HasAppContainerTraversalGrant\(security, sid\)\)[\s\S]*?RUN:ANCESTOR_TRAVERSE_INHERITED[\s\S]*?Directory\.SetAccessControl/,
+    'The helper must not rewrite protected ancestors when AppContainer traverse is already granted');
+  assert.match(launcherSource,
+    /GetAccessRules\(true, false, typeof\(SecurityIdentifier\)\)[\s\S]*?hasExplicitProfileRule[\s\S]*?Directory\.SetAccessControl/,
+    'Ancestor cleanup must rewrite only directories where this profile inserted an explicit traversal ACE');
+
   const purgeStart = launcherSource.indexOf('static void PurgeTree(');
   const deleteStart = launcherSource.indexOf('static void DeleteTreeNoReparse(', purgeStart);
   assert.ok(purgeStart >= 0 && deleteStart > purgeStart,
