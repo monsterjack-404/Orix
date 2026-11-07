@@ -78,8 +78,8 @@ test('macOS compiler cleanup kills and verifies a same-group descendant after th
 }, async () => {
   const script = [
     "const { spawn } = require('node:child_process');",
-    "spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { stdio: 'ignore' });",
-    "process.stdout.write('descendant-ready');",
+    "const descendant = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { stdio: 'ignore' });",
+    "descendant.once('spawn', () => process.stdout.write('descendant-ready'));",
     "process.on('SIGTERM', () => process.exit(0));",
     "setInterval(() => {}, 1000);",
   ].join('\n');
