@@ -181,7 +181,8 @@ test('DEX semantic parser inventories prototypes, fields, methods, class data an
   assert.equal(parsed.class_data_summary.direct_methods, 1);
   assert.equal(parsed.class_data[0].static_fields[0].access_flags, 2);
   assert.equal(parsed.class_data[0].direct_methods[0].code.instruction_units, 1);
-  assert.equal(parsed.class_data[0].direct_methods[0].code.instructions_decoded, false);
+  assert.equal(parsed.class_data[0].direct_methods[0].code.instructions_decoded, true);
+  assert.deepEqual(parsed.class_data[0].direct_methods[0].code.instructions.map(item => item.mnemonic), ['return-void']);
   assert.equal(parsed.integrity.adler32_verified, true);
   assert.equal(parsed.integrity.signature_sha1_verified, true);
 });
