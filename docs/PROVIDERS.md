@@ -147,6 +147,8 @@ The adapter report contract is defined in [rizin-imports.v1.schema.json](../sche
 
 ### Opt-in Linux process isolation
 
+Required isolation needs Bubblewrap **0.12.0 or newer**. Versions before 0.12.0 are affected by [CVE-2026-87766](https://github.com/containers/bubblewrap/security/advisories/GHSA-pxhw-h44j-8pfx), a symlink traversal during sandbox setup. The Linux CI gate builds and tests pinned upstream Bubblewrap 0.13.1 from a SHA-256-verified source archive rather than trusting the runner's distro package.
+
 The Rizin JavaScript adapter functions \`analyze_rizin_imports\`, \`analyze_rizin_functions\`, and \`probe_rizin\` accept the same optional \`isolation\` and \`sandbox_root\` fields as \`run_static_provider\`. The default remains \`isolation: 'none'\`. On Linux, request the required Bubblewrap namespace/filesystem backend explicitly:
 
 ~~~js
