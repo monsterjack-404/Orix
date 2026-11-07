@@ -228,7 +228,7 @@ function node_exists(state, type, id) {
   if (type === 'evidence') return state.findings.some(item => item.evidence.some(entry => entry.evidence_id === id));
   return false;
 }
-export async function create_case(workspace_path, { title, description = '' } = {}) {
+export async function create_case(workspace_path, { title, description = '' } = {}, options = {}) {
   bounded_text(title, 'title', 200, true); bounded_text(description, 'description', 4000);
   const paths = await workspace_paths(workspace_path, true);
   const case_id = randomUUID();
@@ -238,8 +238,8 @@ export async function create_case(workspace_path, { title, description = '' } = 
   try {
     await create_evidence_ledger(events_path);
     const created_at = new Date().toISOString();
-    await append_evidence_event(events_path, 'case.created', { case_id, title: title.trim(), description, created_at });
-    return await load_state({ ...paths, directory, events_path, reports_path: path.join(directory, 'reports') });
+    await append_evidence_event(events_path, 'case.created', { case_id, title: title.trim(), description, created_at }, options);
+    return await load_state({ ...paths, directory, events_path, reports_path: path.join(directory, 'reports') }, options);
   } catch (error) { await fs.rm(directory, { recursive: true, force: true }).catch(() => {}); throw error; }
 }
 export async function list_cases(workspace_path, { max_cases = MAX_CASES, reject_hardlinks = false } = {}) {
