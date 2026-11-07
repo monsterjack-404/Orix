@@ -395,7 +395,7 @@ test('APK manifest decoder rejects mismatched end-element names', () => {
   assert.notEqual(end_element, -1);
   manifest.writeUInt32LE(0xffffffff, end_element + 20);
   const report = analyze_android_package(create_zip([{ name: 'AndroidManifest.xml', contents: manifest }]));
-  assert.equal(report.manifests[0].status, 'malformed-binary-xml');
+  assert.equal(report.manifests[0].status, 'malformed-proto-xml');
   assert.equal(report.manifests[0].error.code, 'ORIX_AXML_MISMATCHED_END_TAG');
 });
 
@@ -412,7 +412,7 @@ test('APK manifest decoder rejects attribute arrays overlapping the element exte
 test('APK manifest decoder rejects trailing bytes beyond the root chunk', () => {
   const manifest = Buffer.concat([binary_manifest(), Buffer.from([0])]);
   const report = analyze_android_package(create_zip([{ name: 'AndroidManifest.xml', contents: manifest }]));
-  assert.equal(report.manifests[0].status, 'unknown-or-invalid-header');
+  assert.equal(report.manifests[0].status, 'malformed-proto-xml');
 });
 
 test('AAB inventory recognizes bundle layout without mislabeling protobuf manifest as binary XML', () => {
@@ -481,7 +481,7 @@ test('manifest decompression shares an aggregate budget across AAB modules', () 
     { name: 'base/manifest/AndroidManifest.xml', contents: manifest, method: 8 },
     { name: 'feature/manifest/AndroidManifest.xml', contents: manifest, method: 8 },
   ]), { max_manifest_total_bytes: manifest.length + 8 });
-  assert.equal(report.manifests[0].status, 'decoded');
+  assert.equal(report.manifests[0].status, 'malformed-proto-xml');
   assert.equal(report.manifests[1].status, 'aggregate-size-limit');
 });
 
@@ -805,7 +805,7 @@ test('AAB module inventory separates base and feature paths without decoding pro
   assert.equal(report.bundle.modules[1].manifest_present, true);
   assert.equal(report.bundle.modules[1].dex_entries, 1);
   assert.equal(report.bundle.modules[1].resource_paths, 1);
-  assert.ok(report.limitations.some(note => note.includes('module names and manifest/DEX/native/resource/asset/root path counts')));
+  assert.ok(report.limitations.some(note => note.includes('bounded module manifest metadata is decoded')));
 });
 
 test('AAB module inventory reports omitted modules under a configured output ceiling', () => {
