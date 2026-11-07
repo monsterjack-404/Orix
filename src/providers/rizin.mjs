@@ -66,7 +66,7 @@ function validate_input_path(input_path) {
 }
 
 
-async function file_snapshot(input_path, maximum_bytes) {
+async function file_snapshot(input_path, maximum_bytes, options = {}) {
   let link_info;
   try { link_info = await lstat(input_path); }
   catch (error) {
@@ -80,6 +80,9 @@ async function file_snapshot(input_path, maximum_bytes) {
   const canonical_path = await realpath(input_path);
   const info = await stat(canonical_path);
   if (!info.isFile()) provider_error('ORIX_RIZIN_INPUT_NOT_REGULAR', 'Resolved Rizin input is not a regular file');
+  if (options.reject_hardlinks === true && (link_info.nlink > 1 || info.nlink > 1)) {
+    provider_error('ORIX_RIZIN_HARDLINK_REJECTED', 'Rizin MCP input must not have hard-link aliases', { link_count: Math.max(link_info.nlink, info.nlink) });
+  }
   if (!Number.isSafeInteger(info.size) || info.size < 0 || info.size > maximum_bytes) {
     provider_error('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin input exceeds the provider manifest byte limit', {
       size_bytes: info.size, maximum_bytes,
@@ -208,7 +211,7 @@ export async function analyze_rizin_imports(options = {}) {
   }
   const allowed = new Set([
     'executable', 'executable_args', 'input_path', 'manifest', 'cwd', 'env',
-    'timeout_ms', 'max_output_bytes', 'max_imports', 'signal',
+    'timeout_ms', 'max_output_bytes', 'max_imports', 'signal', 'reject_hardlinks',
   ]);
   const descriptors = Object.getOwnPropertyDescriptors(options);
   for (const key of Reflect.ownKeys(options)) {
@@ -225,6 +228,8 @@ export async function analyze_rizin_imports(options = {}) {
   assert_rizin_platform(manifest);
   const input_path = descriptors.input_path?.value;
   validate_input_path(input_path);
+  const reject_hardlinks = descriptors.reject_hardlinks?.value ?? false;
+  if (typeof reject_hardlinks !== 'boolean') throw new TypeError('reject_hardlinks must be a boolean');
   const signal = descriptors.signal?.value;
   if (signal !== undefined && !(signal instanceof AbortSignal)) {
     throw new TypeError('signal must be an AbortSignal');
@@ -241,7 +246,7 @@ export async function analyze_rizin_imports(options = {}) {
     throw new TypeError('max_output_bytes must be between 1 and the provider manifest output limit');
   }
   const analysis_started_at = Date.now();
-  const before = await file_snapshot(input_path, maximum_bytes);
+  const before = await file_snapshot(input_path, maximum_bytes, { reject_hardlinks });
   const maximum_imports = descriptors.max_imports?.value ?? 100_000;
   if (!Number.isSafeInteger(maximum_imports) || maximum_imports < 0 || maximum_imports > 1_000_000) {
     throw new TypeError('max_imports must be an integer between 0 and 1000000');
@@ -344,6 +349,9 @@ export async function analyze_rizin_imports(options = {}) {
       provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input disappeared or became inaccessible during analysis', {
         input_path: before.canonical_path, reason: error.code ?? 'filesystem-error',
       });
+    }
+    if (reject_hardlinks && (after_link.nlink > 1 || after.nlink > 1)) {
+      provider_error('ORIX_RIZIN_HARDLINK_REJECTED', 'Rizin input acquired a hard-link alias during analysis');
     }
     const stable = !after_link.isSymbolicLink() && after_link.isFile() &&
       after_realpath === before.canonical_path && same_file_identity(before.info, after);
@@ -504,7 +512,7 @@ export async function analyze_rizin_functions(options = {}) {
   const allowed = new Set([
     'executable', 'executable_args', 'input_path', 'manifest', 'cwd', 'env',
     'timeout_ms', 'max_output_bytes', 'max_functions',
-    'address', 'max_instructions', 'decompile', 'max_decompilation_chars', 'signal',
+    'address', 'max_instructions', 'decompile', 'max_decompilation_chars', 'signal', 'reject_hardlinks',
   ]);
   const descriptors = Object.getOwnPropertyDescriptors(options);
   for (const key of Reflect.ownKeys(options)) {
@@ -521,6 +529,8 @@ export async function analyze_rizin_functions(options = {}) {
   assert_rizin_platform(manifest);
   const input_path = descriptors.input_path?.value;
   validate_input_path(input_path);
+  const reject_hardlinks = descriptors.reject_hardlinks?.value ?? false;
+  if (typeof reject_hardlinks !== 'boolean') throw new TypeError('reject_hardlinks must be a boolean');
   const signal = descriptors.signal?.value;
   if (signal !== undefined && !(signal instanceof AbortSignal)) {
     throw new TypeError('signal must be an AbortSignal');
@@ -554,7 +564,7 @@ export async function analyze_rizin_functions(options = {}) {
   }
 
   const analysis_started_at = Date.now();
-  const before = await file_snapshot(input_path, manifest.limits.max_input_bytes);
+  const before = await file_snapshot(input_path, manifest.limits.max_input_bytes, { reject_hardlinks });
   if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin function analysis was cancelled before input hashing');
   const input_hash = await sha256_file(before.canonical_path, manifest.limits.max_input_bytes, signal);
   if (input_hash.bytes_read !== before.info.size) {
@@ -691,6 +701,9 @@ export async function analyze_rizin_functions(options = {}) {
       provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input disappeared or became inaccessible during function analysis', {
         input_path: before.canonical_path, reason: error.code ?? 'filesystem-error',
       });
+    }
+    if (reject_hardlinks && (after_link.nlink > 1 || after.nlink > 1)) {
+      provider_error('ORIX_RIZIN_HARDLINK_REJECTED', 'Rizin input acquired a hard-link alias during analysis');
     }
     const stable = !after_link.isSymbolicLink() && after_link.isFile() &&
       after_realpath === before.canonical_path && same_file_identity(before.info, after);

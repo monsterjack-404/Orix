@@ -279,6 +279,9 @@ function validate_arguments(name, value) {
   for (const [key, item] of Object.entries(value)) {
     const schema = properties[key];
     if (!schema) throw new TypeError('Unknown tool argument: ' + key);
+    if (schema.enum && !schema.enum.some(allowed => Object.is(allowed, item))) {
+      throw new TypeError(key + ' must be one of the declared values: ' + schema.enum.join(', '));
+    }
     if (schema.type === 'string') {
       if (typeof item !== 'string' || item.length < (schema.minLength ?? 0) || item.length > (schema.maxLength ?? Infinity)) {
         throw new TypeError(key + ' must be a string within its declared length bounds');
@@ -286,8 +289,16 @@ function validate_arguments(name, value) {
       if (schema.pattern && !new RegExp(schema.pattern).test(item)) throw new TypeError(key + ' does not match its required pattern');
     }
     if (schema.type === 'array') {
-      if (!Array.isArray(item) || item.length > (schema.maxItems ?? Infinity)) {
-        throw new TypeError(key + ' must be an array within its declared item limit');
+      if (!Array.isArray(item) ||
+          item.length < (schema.minItems ?? 0) ||
+          item.length > (schema.maxItems ?? Infinity)) {
+        throw new TypeError(key + ' must be an array within its declared item limits');
+      }
+      if (schema.uniqueItems && new Set(item.map(entry => JSON.stringify(entry))).size !== item.length) {
+        throw new TypeError(key + ' must not contain duplicate items');
+      }
+      if (schema.items?.enum && item.some(entry => !schema.items.enum.some(allowed => Object.is(allowed, entry)))) {
+        throw new TypeError(key + ' contains an item outside its declared values');
       }
       if (schema.items?.type === 'string') {
         for (const entry of item) {
@@ -315,33 +326,33 @@ export async function call_orix_tool(name, args = {}, options = {}) {
   switch (name) {
     case 'orix.case.create': {
       const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
-      return create_case(workspace.path, { title: args.title, description: args.description ?? '' });
+      return create_case(workspace.path, { title: args.title, description: args.description ?? '' }, { reject_hardlinks: true });
     }
     case 'orix.case.get': {
       const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
       if (!['list', 'show', 'verify'].includes(args.action)) throw new TypeError('Case get action must be list, show or verify');
-      if (args.action === 'list') return list_cases(workspace.path, { max_cases: args.max_cases });
+      if (args.action === 'list') return list_cases(workspace.path, { max_cases: args.max_cases, reject_hardlinks: true });
       if (!args.case_id) throw new TypeError('Case show and verify require case_id');
-      if (args.action === 'show') return get_case(workspace.path, args.case_id);
-      return verify_case(workspace.path, args.case_id);
+      if (args.action === 'show') return get_case(workspace.path, args.case_id, { reject_hardlinks: true });
+      return verify_case(workspace.path, args.case_id, { reject_hardlinks: true });
     }
     case 'orix.case.mutate': {
       if (!['add_artifact','record_analysis','add_finding','add_note','relationship','finding_status','status'].includes(args.action)) throw new TypeError('Unsupported case mutation action');
       const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
       if (args.action === 'add_artifact') {
         const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-        return add_case_artifact(workspace.path, args.case_id, target.path);
+        return add_case_artifact(workspace.path, args.case_id, target.path, { reject_hardlinks: true });
       }
       if (args.action === 'record_analysis') {
         const target = await resolve_workspace_path(args.report_path, roots, { kind: 'file' });
         const report = await read_workspace_json(target.path, roots, { max_bytes: 2 * 1024 * 1024 });
-        return record_case_analysis(workspace.path, args.case_id, { report, tool: args.tool ?? 'orix', tool_version: args.tool_version ?? null });
+        return record_case_analysis(workspace.path, args.case_id, { report, tool: args.tool ?? 'orix', tool_version: args.tool_version ?? null }, { reject_hardlinks: true });
       }
-      if (args.action === 'add_finding') return add_case_finding(workspace.path, args.case_id, args);
-      if (args.action === 'add_note') return add_case_note(workspace.path, args.case_id, args.text);
-      if (args.action === 'finding_status') return change_case_finding_status(workspace.path, args.case_id, args.finding_id, args.status, args.reason ?? '');
-      if (args.action === 'status') return change_case_status(workspace.path, args.case_id, args.status, args.reason ?? '');
-      return add_case_relationship(workspace.path, args.case_id, args);
+      if (args.action === 'add_finding') return add_case_finding(workspace.path, args.case_id, args, { reject_hardlinks: true });
+      if (args.action === 'add_note') return add_case_note(workspace.path, args.case_id, args.text, {}, { reject_hardlinks: true });
+      if (args.action === 'finding_status') return change_case_finding_status(workspace.path, args.case_id, args.finding_id, args.status, args.reason ?? '', { reject_hardlinks: true });
+      if (args.action === 'status') return change_case_status(workspace.path, args.case_id, args.status, args.reason ?? '', { reject_hardlinks: true });
+      return add_case_relationship(workspace.path, args.case_id, args, { reject_hardlinks: true });
     }
     case 'orix.case.exchange': {
       if (!['export','import'].includes(args.action)) throw new TypeError('Case exchange action must be export or import');
@@ -349,10 +360,10 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
       if (args.action === 'export') {
         const parent = await resolve_workspace_path(path.dirname(path.resolve(args.path)), roots, { kind: 'directory' });
-        return export_case_bundle(workspace.path, args.case_id, path.join(parent.path, path.basename(args.path)));
+        return export_case_bundle(workspace.path, args.case_id, path.join(parent.path, path.basename(args.path)), { reject_hardlinks: true });
       }
       const bundle = await resolve_workspace_path(args.path, roots, { kind: 'directory' });
-      return import_case_bundle(workspace.path, bundle.path);
+      return import_case_bundle(workspace.path, bundle.path, { reject_hardlinks: true });
     }
     case 'orix.inspect_file': {
       const limits = {};
@@ -360,12 +371,13 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       if (args.max_file_mib !== undefined) limits.max_file_bytes = args.max_file_mib * 1024 * 1024;
       if (args.max_strings !== undefined) limits.max_strings = args.max_strings;
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-      return inspect_file(target.path, { limits, extract_strings: args.extract_strings });
+      return inspect_file(target.path, { limits, extract_strings: args.extract_strings, reject_hardlinks: true });
     }
     case 'orix.rizin_functions': {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       return analyze_rizin_functions({
         input_path: target.path,
+        reject_hardlinks: true,
         executable: args.executable,
         executable_args: args.executable_args,
         max_functions: args.max_functions ?? 1000,
@@ -410,7 +422,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
     }
     case 'orix.analyze_har': {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-      return analyze_har_file(target.path, { max_entries: args.max_entries, max_hosts: args.max_hosts });
+      return analyze_har_file(target.path, { max_entries: args.max_entries, max_hosts: args.max_hosts, reject_hardlinks: true });
     }
     case 'orix.formats':
       return { schema_version: 'orix.formats.v1', formats: list_format_capabilities() };
@@ -426,15 +438,15 @@ export async function call_orix_tool(name, args = {}, options = {}) {
     }
     case 'orix.ledger.verify': {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-      return verify_ledger(target.path);
+      return verify_ledger(target.path, { reject_hardlinks: true });
     }
     case 'orix.ledger.list': {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-      return list_ledger(target.path);
+      return list_ledger(target.path, { reject_hardlinks: true });
     }
     case 'orix.ledger.append': {
       const target = await resolve_workspace_output(args.path, roots);
-      return append_ledger(target, { type: args.type, payload: args.payload });
+      return append_ledger(target, { type: args.type, payload: args.payload }, { reject_hardlinks: true });
     }
     default:
       throw new TypeError('Unknown ORIX tool: ' + name);

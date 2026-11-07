@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { link, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -54,6 +54,22 @@ test('inspection labels APK detection as structural evidence rather than a leadi
     assert.equal(detection.confidence, 'derived');
     assert.equal(detection.details.detection_confidence, 'structural');
     assert.match(detection.summary, /validated container structure/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('inspection rejects hard-linked inputs when the workspace boundary requests it', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-inspect-hardlink-'));
+  const original = path.join(directory, 'original.bin');
+  const alias = path.join(directory, 'workspace-alias.bin');
+  try {
+    await writeFile(original, 'external content');
+    await link(original, alias);
+    await assert.rejects(
+      inspect_file(alias, { reject_hardlinks: true }),
+      error => error.code === 'ORIX_HARDLINK_REJECTED',
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

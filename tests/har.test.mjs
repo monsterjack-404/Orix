@@ -1,7 +1,7 @@
 // JavaScript, tests/har.test.mjs, Node.js 20+, HAR network-analysis regression suite.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rm, symlink } from 'node:fs/promises';
+import { link, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -165,6 +165,22 @@ test('HAR file analyzer rejects symlinks and returns a hashed source receipt', a
     await assert.rejects(analyze_har_file(link), error => error.code === 'ORIX_HAR_SYMLINK_REJECTED');
   } finally {
     await rm(link, { force: true });
+  }
+});
+
+test('HAR file analyzer rejects hard-linked evidence when requested by MCP', async () => {
+  const directory = await mkdtemp(path.join(process.cwd(), '.orix-har-hardlink-'));
+  const file = path.join(directory, 'capture.har');
+  const alias = path.join(directory, 'capture-alias.har');
+  try {
+    await writeFile(file, make_har([entry()]));
+    await link(file, alias);
+    await assert.rejects(
+      analyze_har_file(file, { reject_hardlinks: true }),
+      error => error.code === 'ORIX_HAR_HARDLINK_REJECTED',
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

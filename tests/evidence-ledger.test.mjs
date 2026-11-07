@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { link, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -119,4 +119,20 @@ test('ledger requires event payloads to be JSON objects', async t => {
       error => error.code === 'ORIX_LEDGER_PAYLOAD_SHAPE',
     );
   }
+});
+
+test('ledger rejects hard-link aliases when the caller enables workspace hard-link policy', async t => {
+  const { directory, file } = await fixture(t);
+  const alias = path.join(directory, 'ledger-alias.jsonl');
+  await link(file, alias);
+
+  await assert.rejects(
+    verify_evidence_ledger(file, { reject_hardlinks: true }),
+    error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+  );
+  await assert.rejects(
+    append_evidence_event(file, 'scan.completed', { should_not_append: true }, { reject_hardlinks: true }),
+    error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+  );
+  assert.equal(await readFile(file, 'utf8'), '');
 });

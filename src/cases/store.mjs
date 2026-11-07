@@ -130,16 +130,18 @@ async function write_new_file(file_path, bytes) {
   try { await handle.writeFile(bytes); await handle.sync(); }
   finally { await handle.close(); }
 }
-async function read_bounded_file(file_path, maximum) {
+async function read_bounded_file(file_path, maximum, options = {}) {
   let before;
   try { before = await fs.lstat(file_path); }
   catch (error) { fail('ORIX_CASE_FILE_UNAVAILABLE', 'Case file is unavailable', { path: file_path, system_code: error.code }, error); }
   if (before.isSymbolicLink() || !before.isFile() || before.size > maximum) fail('ORIX_CASE_FILE_LIMIT', 'Case file is unsafe or exceeds its read limit', { path: file_path, size: before.size, maximum });
+  if (options.reject_hardlinks === true && before.nlink > 1) fail('ORIX_CASE_HARDLINK_REJECTED', 'Case file must not have hard-link aliases', { path: file_path, link_count: before.nlink });
   let handle;
   try {
     handle = await fs.open(file_path, fs_constants.O_RDONLY | (fs_constants.O_NOFOLLOW ?? 0));
     const opened = await handle.stat();
     if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino || opened.size > maximum) fail('ORIX_CASE_FILE_CHANGED', 'Case file identity changed before reading', { path: file_path });
+    if (options.reject_hardlinks === true && opened.nlink > 1) fail('ORIX_CASE_HARDLINK_REJECTED', 'Case file acquired a hard-link alias before descriptor acquisition completed', { path: file_path, link_count: opened.nlink });
     const chunks = [];
     let total = 0;
     const chunk = Buffer.allocUnsafe(64 * 1024);
@@ -151,6 +153,7 @@ async function read_bounded_file(file_path, maximum) {
       chunks.push(Buffer.from(chunk.subarray(0, bytesRead)));
     }
     const after = await handle.stat();
+    if (options.reject_hardlinks === true && after.nlink > 1) fail('ORIX_CASE_HARDLINK_REJECTED', 'Case file acquired a hard-link alias while being read', { path: file_path, link_count: after.nlink });
     if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) fail('ORIX_CASE_FILE_CHANGED', 'Case file changed while being read', { path: file_path });
     return Buffer.concat(chunks);
   } catch (error) {
@@ -158,8 +161,8 @@ async function read_bounded_file(file_path, maximum) {
     fail('ORIX_CASE_READ_FAILED', 'Cannot read case file', { path: file_path, system_code: error.code }, error);
   } finally { await handle?.close().catch(() => {}); }
 }
-async function append_event(paths, event, payload) {
-  return append_evidence_event(paths.events_path, event, payload);
+async function append_event(paths, event, payload, options = {}) {
+  return append_evidence_event(paths.events_path, event, payload, options);
 }
 function apply_event(state, record) {
   const payload = record.payload;
@@ -205,8 +208,8 @@ function apply_event(state, record) {
       fail('ORIX_CASE_UNKNOWN_EVENT', 'Case ledger contains an unsupported event', { event: record.event, sequence: record.sequence });
   }
 }
-async function load_state(paths) {
-  const loaded = await read_evidence_ledger(paths.events_path);
+async function load_state(paths, options = {}) {
+  const loaded = await read_evidence_ledger(paths.events_path, options);
   if (!loaded.records.length) fail('ORIX_CASE_EMPTY_LEDGER', 'Case event ledger is empty');
   const state = { schema_version: CASES_FORMAT, case: null, artifacts: [], analyses: [], findings: [], notes: [], relationships: [], timeline: [], integrity: { valid: true, records: loaded.records.length, head_hash: loaded.head_hash } };
   for (const record of loaded.records) {
@@ -225,7 +228,7 @@ function node_exists(state, type, id) {
   if (type === 'evidence') return state.findings.some(item => item.evidence.some(entry => entry.evidence_id === id));
   return false;
 }
-export async function create_case(workspace_path, { title, description = '' } = {}) {
+export async function create_case(workspace_path, { title, description = '' } = {}, options = {}) {
   bounded_text(title, 'title', 200, true); bounded_text(description, 'description', 4000);
   const paths = await workspace_paths(workspace_path, true);
   const case_id = randomUUID();
@@ -235,11 +238,11 @@ export async function create_case(workspace_path, { title, description = '' } = 
   try {
     await create_evidence_ledger(events_path);
     const created_at = new Date().toISOString();
-    await append_evidence_event(events_path, 'case.created', { case_id, title: title.trim(), description, created_at });
-    return await load_state({ ...paths, directory, events_path, reports_path: path.join(directory, 'reports') });
+    await append_evidence_event(events_path, 'case.created', { case_id, title: title.trim(), description, created_at }, options);
+    return await load_state({ ...paths, directory, events_path, reports_path: path.join(directory, 'reports') }, options);
   } catch (error) { await fs.rm(directory, { recursive: true, force: true }).catch(() => {}); throw error; }
 }
-export async function list_cases(workspace_path, { max_cases = MAX_CASES } = {}) {
+export async function list_cases(workspace_path, { max_cases = MAX_CASES, reject_hardlinks = false } = {}) {
   if (!Number.isSafeInteger(max_cases) || max_cases < 1 || max_cases > MAX_CASES) fail('ORIX_CASE_BAD_LIMIT', 'max_cases must be between 1 and ' + MAX_CASES);
   const paths = await workspace_paths(workspace_path, false);
   if (!paths.cases) return { schema_version: 'orix.case-list.v1', workspace: paths.root, cases: [], coverage: { complete: true, skipped_entries: 0, maximum_cases: max_cases } };
@@ -250,18 +253,18 @@ export async function list_cases(workspace_path, { max_cases = MAX_CASES } = {})
     if (!entry.isDirectory() || !UUID.test(entry.name)) { skipped += 1; continue; }
     if (cases.length >= max_cases) { skipped += 1; continue; }
     try {
-      const state = await load_state(await case_directory(workspace_path, entry.name));
+      const state = await load_state(await case_directory(workspace_path, entry.name), { reject_hardlinks });
       cases.push({ ...state.case, artifact_count: state.artifacts.length, analysis_count: state.analyses.length, finding_count: state.findings.length, note_count: state.notes.length, integrity: state.integrity });
     } catch { skipped += 1; }
   }
   cases.sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id));
   return { schema_version: 'orix.case-list.v1', workspace: paths.root, cases, coverage: { complete: skipped === 0, skipped_entries: skipped, maximum_cases: max_cases } };
 }
-export async function get_case(workspace_path, case_id) {
+export async function get_case(workspace_path, case_id, options = {}) {
   const paths = await case_directory(workspace_path, case_id);
-  return load_state(paths);
+  return load_state(paths, options);
 }
-async function verify_report_files(paths, state) {
+async function verify_report_files(paths, state, options = {}) {
   const verified = [];
   for (const analysis of state.analyses) {
     if (!safe_relative(analysis.report_path) || !/^reports\/[0-9a-f-]{36}\.json$/.test(analysis.report_path)) fail('ORIX_CASE_REPORT_PATH', 'Analysis report path is invalid', { report_path: analysis.report_path });
@@ -270,7 +273,7 @@ async function verify_report_files(paths, state) {
     try { directory_stats = await fs.lstat(reports_directory); }
     catch (error) { fail('ORIX_CASE_REPORT_MISSING', 'Case reports directory is missing', { system_code: error.code }, error); }
     if (directory_stats.isSymbolicLink() || !directory_stats.isDirectory() || await fs.realpath(reports_directory) !== reports_directory) fail('ORIX_CASE_REPORT_PATH', 'Reports directory must be a regular non-symlink directory');
-    const bytes = await read_bounded_file(path.join(paths.directory, ...analysis.report_path.split('/')), MAX_REPORT_BYTES);
+    const bytes = await read_bounded_file(path.join(paths.directory, ...analysis.report_path.split('/')), MAX_REPORT_BYTES, options);
     if (digest(bytes) !== analysis.report_sha256) fail('ORIX_CASE_REPORT_DIGEST', 'Stored analysis report SHA-256 does not match its case event', { run_id: analysis.run_id });
     let report;
     try { report = JSON.parse(bytes.toString('utf8')); } catch (error) { fail('ORIX_CASE_REPORT_INVALID', 'Stored analysis report is not valid JSON', { run_id: analysis.run_id }, error); }
@@ -279,26 +282,28 @@ async function verify_report_files(paths, state) {
   }
   return verified;
 }
-export async function verify_case(workspace_path, case_id) {
+export async function verify_case(workspace_path, case_id, options = {}) {
   const paths = await case_directory(workspace_path, case_id);
-  const verified = await verify_evidence_ledger(paths.events_path);
-  const state = await load_state(paths);
-  const reports = await verify_report_files(paths, state);
+  const verified = await verify_evidence_ledger(paths.events_path, options);
+  const state = await load_state(paths, options);
+  const reports = await verify_report_files(paths, state, options);
   return { schema_version: 'orix.case-verification.v1', case_id, valid: verified.valid && state.integrity.valid && reports.every(item => item.valid), records_verified: verified.records, head_hash: verified.head_hash, bytes: verified.bytes, first_timestamp: verified.first_timestamp, last_timestamp: verified.last_timestamp, findings: state.findings.length, artifact_references_recorded: state.artifacts.length, artifact_sources_revalidated: false, reports_verified: reports.length, reports };
 }
 export async function add_case_artifact(workspace_path, case_id, file_path, options = {}) {
   const paths = await case_directory(workspace_path, case_id);
+  const io_options = { reject_hardlinks: options.reject_hardlinks === true };
   const absolute = path.resolve(file_path);
   let before;
   try { before = await fs.lstat(absolute); }
   catch (error) { fail('ORIX_CASE_ARTIFACT_UNAVAILABLE', 'Artifact path is unavailable', { path: absolute, system_code: error.code }, error); }
   if (before.isSymbolicLink() || !before.isFile()) fail('ORIX_CASE_ARTIFACT_UNSAFE', 'Case artifacts must be regular non-symlink files', { path: absolute });
+  if (io_options.reject_hardlinks && before.nlink > 1) fail('ORIX_CASE_HARDLINK_REJECTED', 'Case artifact must not have hard-link aliases', { path: absolute, link_count: before.nlink });
   const real = await fs.realpath(absolute);
   if (!within(paths.root, real)) fail('ORIX_CASE_ARTIFACT_OUTSIDE_WORKSPACE', 'Artifact must be inside the case workspace', { path: real, workspace: paths.root });
   const report = await inspect_file(real, options);
   const sha256 = report.integrity?.digest;
   if (!HASH.test(sha256 ?? '')) fail('ORIX_CASE_ARTIFACT_HASH', 'Artifact inspection did not return a valid SHA-256 digest');
-  const state = await load_state(paths);
+  const state = await load_state(paths, io_options);
   const existing = state.artifacts.find(item => item.sha256 === sha256);
   if (existing) return { schema_version: 'orix.case-artifact-receipt.v1', duplicate: true, artifact: existing };
   const artifact = {
@@ -311,10 +316,10 @@ export async function add_case_artifact(workspace_path, case_id, file_path, opti
     added_at: new Date().toISOString(),
     stable_during_analysis: report.integrity.stable_during_read === true,
   };
-  await append_event(paths, 'artifact.added', artifact);
+  await append_event(paths, 'artifact.added', artifact, io_options);
   return { schema_version: 'orix.case-artifact-receipt.v1', duplicate: false, artifact };
 }
-export async function record_case_analysis(workspace_path, case_id, { report, tool = 'orix', tool_version = null, options = {} } = {}) {
+export async function record_case_analysis(workspace_path, case_id, { report, tool = 'orix', tool_version = null, options = {} } = {}, io_options = {}) {
   const paths = await case_directory(workspace_path, case_id);
   plain_object(report, 'report');
   const bytes = Buffer.from(stable_json(report), 'utf8');
@@ -340,14 +345,14 @@ export async function record_case_analysis(workspace_path, case_id, { report, to
     coverage: canonical(report.coverage ?? report.scan?.coverage ?? {}),
     limitations: Array.isArray(report.limitations) ? report.limitations.slice(0, 100).map(item => String(item).slice(0, 500)) : [],
   };
-  try { await append_event(paths, 'analysis.recorded', record); }
+  try { await append_event(paths, 'analysis.recorded', record, io_options); }
   catch (error) { await fs.rm(report_path, { force: true }).catch(() => {}); throw error; }
   return { schema_version: 'orix.case-analysis-receipt.v1', analysis: record };
 }
 export async function add_case_finding(workspace_path, case_id, {
   rule_id, title, summary = '', severity = 'unknown', confidence = 'unknown',
   artifact_id = null, run_id = null, evidence = [], source_location = null, references = [],
-} = {}) {
+} = {}, io_options = {}) {
   const paths = await case_directory(workspace_path, case_id);
   bounded_text(rule_id, 'rule_id', 160, true); bounded_text(title, 'title', 300, true); bounded_text(summary, 'summary', 2000);
   if (!SEVERITIES.has(severity)) fail('ORIX_CASE_INVALID_FINDING', 'Finding severity is invalid', { severity });
@@ -356,7 +361,7 @@ export async function add_case_finding(workspace_path, case_id, {
   if (run_id !== null && !UUID.test(run_id)) fail('ORIX_CASE_INVALID_FINDING', 'run_id must be a UUID');
   if (!Array.isArray(evidence) || evidence.length > 64) fail('ORIX_CASE_INVALID_FINDING', 'evidence must be an array of at most 64 entries');
   if (!Array.isArray(references) || references.length > 64) fail('ORIX_CASE_INVALID_FINDING', 'references must be an array of at most 64 entries');
-  const state = await load_state(paths);
+  const state = await load_state(paths, io_options);
   if (artifact_id && !node_exists(state, 'artifact', artifact_id)) fail('ORIX_CASE_REFERENCE_MISSING', 'Finding references an artifact that is not in this case', { artifact_id });
   if (run_id && !node_exists(state, 'analysis', run_id)) fail('ORIX_CASE_REFERENCE_MISSING', 'Finding references an analysis run that is not in this case', { run_id });
   const normalized_evidence = evidence.map(item => {
@@ -381,37 +386,37 @@ export async function add_case_finding(workspace_path, case_id, {
     evidence: normalized_evidence, references: references.map(value => bounded_text(value, 'reference', 500, true)),
     observed_at: new Date().toISOString(),
   };
-  await append_event(paths, 'finding.recorded', record);
+  await append_event(paths, 'finding.recorded', record, io_options);
   return { schema_version: 'orix.case-finding-receipt.v1', finding: { ...record, status: 'open' } };
 }
-export async function change_case_finding_status(workspace_path, case_id, finding_id, status, reason = '') {
+export async function change_case_finding_status(workspace_path, case_id, finding_id, status, reason = '', io_options = {}) {
   if (!UUID.test(finding_id)) fail('ORIX_CASE_INVALID_ID', 'Finding ID must be a UUID');
   if (!FINDING_STATES.has(status)) fail('ORIX_CASE_INVALID_STATUS', 'Finding status is not supported', { status });
   bounded_text(reason, 'reason', 1000);
   const paths = await case_directory(workspace_path, case_id);
-  const state = await load_state(paths);
+  const state = await load_state(paths, io_options);
   if (!node_exists(state, 'finding', finding_id)) fail('ORIX_CASE_FINDING_NOT_FOUND', 'Finding was not found in this case', { finding_id });
   const current = state.findings.find(item => item.finding_id === finding_id);
   if (current.status === status) fail('ORIX_CASE_STATUS_UNCHANGED', 'Finding already has this status', { finding_id, status });
-  await append_event(paths, 'finding.status_changed', { finding_id, status, reason, changed_at: new Date().toISOString() });
+  await append_event(paths, 'finding.status_changed', { finding_id, status, reason, changed_at: new Date().toISOString() }, io_options);
   return { schema_version: 'orix.case-finding-status.v1', finding_id, previous_status: current.status, status };
 }
-export async function add_case_note(workspace_path, case_id, text, { links = [] } = {}) {
+export async function add_case_note(workspace_path, case_id, text, { links = [] } = {}, io_options = {}) {
   bounded_text(text, 'note', 5000, true);
   if (!Array.isArray(links) || links.length > 64) fail('ORIX_CASE_INVALID_NOTE', 'Note links must be an array of at most 64 IDs');
   const paths = await case_directory(workspace_path, case_id);
-  const state = await load_state(paths);
+  const state = await load_state(paths, io_options);
   for (const link of links) {
     plain_object(link, 'note link');
     if (!node_exists(state, link.type, link.id)) fail('ORIX_CASE_REFERENCE_MISSING', 'Note link references an unknown case entity', { type: link.type, id: link.id });
   }
   const note = { note_id: randomUUID(), text, links: canonical(links), created_at: new Date().toISOString() };
-  await append_event(paths, 'note.added', note);
+  await append_event(paths, 'note.added', note, io_options);
   return { schema_version: 'orix.case-note-receipt.v1', note };
 }
-export async function add_case_relationship(workspace_path, case_id, { from_type, from_id, to_type, to_id, relation, confidence = 'derived' } = {}) {
+export async function add_case_relationship(workspace_path, case_id, { from_type, from_id, to_type, to_id, relation, confidence = 'derived' } = {}, io_options = {}) {
   const paths = await case_directory(workspace_path, case_id);
-  const state = await load_state(paths);
+  const state = await load_state(paths, io_options);
   if (!node_exists(state, from_type, from_id) || !node_exists(state, to_type, to_id)) fail('ORIX_CASE_REFERENCE_MISSING', 'Relationship endpoints must exist in this case');
   if (from_type === to_type && from_id === to_id) fail('ORIX_CASE_INVALID_RELATIONSHIP', 'Relationship cannot point an entity to itself');
   bounded_text(relation, 'relation', 80, true);
@@ -419,22 +424,22 @@ export async function add_case_relationship(workspace_path, case_id, { from_type
   const duplicate = state.relationships.some(item => item.from_type === from_type && item.from_id === from_id && item.to_type === to_type && item.to_id === to_id && item.relation === relation);
   if (duplicate) fail('ORIX_CASE_RELATIONSHIP_EXISTS', 'This relationship already exists');
   const relationship = { relationship_id: randomUUID(), from_type, from_id, to_type, to_id, relation, confidence, created_at: new Date().toISOString() };
-  await append_event(paths, 'relationship.added', relationship);
+  await append_event(paths, 'relationship.added', relationship, io_options);
   return { schema_version: 'orix.case-relationship-receipt.v1', relationship };
 }
-export async function change_case_status(workspace_path, case_id, status, reason = '') {
+export async function change_case_status(workspace_path, case_id, status, reason = '', io_options = {}) {
   if (!CASE_STATES.has(status)) fail('ORIX_CASE_INVALID_STATUS', 'Case status must be open, in_review or closed');
   bounded_text(reason, 'reason', 1000);
   const paths = await case_directory(workspace_path, case_id);
-  const state = await load_state(paths);
+  const state = await load_state(paths, io_options);
   if (state.case.status === status) fail('ORIX_CASE_STATUS_UNCHANGED', 'Case already has this status', { status });
-  await append_event(paths, 'case.status_changed', { status, reason, changed_at: new Date().toISOString() });
+  await append_event(paths, 'case.status_changed', { status, reason, changed_at: new Date().toISOString() }, io_options);
   return { schema_version: 'orix.case-status.v1', case_id, previous_status: state.case.status, status };
 }
-export async function export_case_bundle(workspace_path, case_id, destination_path) {
+export async function export_case_bundle(workspace_path, case_id, destination_path, options = {}) {
   const paths = await case_directory(workspace_path, case_id);
-  const state = await load_state(paths);
-  await verify_report_files(paths, state);
+  const state = await load_state(paths, options);
+  await verify_report_files(paths, state, options);
   const destination = path.resolve(destination_path);
   const parent = await fs.realpath(path.dirname(destination)).catch(error => fail('ORIX_CASE_EXPORT_PARENT', 'Bundle destination parent must exist', { path: path.dirname(destination), system_code: error.code }, error));
   const target = path.join(parent, path.basename(destination));
@@ -447,7 +452,7 @@ export async function export_case_bundle(workspace_path, case_id, destination_pa
     const copy_entry = async relative => {
       if (!safe_relative(relative) || files.length >= MAX_BUNDLE_FILES) fail('ORIX_CASE_BUNDLE_LIMIT', 'Case bundle file count or path is invalid');
       const source = path.join(paths.directory, ...relative.split('/'));
-      const bytes = await read_bounded_file(source, MAX_BUNDLE_BYTES);
+      const bytes = await read_bounded_file(source, MAX_BUNDLE_BYTES, options);
       const output = path.join(target, ...relative.split('/'));
       await ensure_directory(path.dirname(output));
       await write_new_file(output, bytes);
@@ -471,14 +476,14 @@ export async function export_case_bundle(workspace_path, case_id, destination_pa
     return { schema_version: 'orix.case-export.v1', case_id, destination: target, files: files.length, bytes: total, head_hash: state.integrity.head_hash, signed: false };
   } catch (error) { await fs.rm(target, { recursive: true, force: true }).catch(() => {}); throw error; }
 }
-export async function import_case_bundle(workspace_path, bundle_path) {
+export async function import_case_bundle(workspace_path, bundle_path, options = {}) {
   const source = path.resolve(bundle_path);
   let source_stats;
   try { source_stats = await fs.lstat(source); }
   catch (error) { fail('ORIX_CASE_BUNDLE_UNAVAILABLE', 'Case bundle directory is unavailable', { path: source, system_code: error.code }, error); }
   if (source_stats.isSymbolicLink() || !source_stats.isDirectory()) fail('ORIX_CASE_BUNDLE_UNSAFE', 'Case bundle must be a regular non-symlink directory');
   const real_source = await fs.realpath(source);
-  const manifest_bytes = await read_bounded_file(path.join(real_source, 'manifest.json'), 2 * 1024 * 1024);
+  const manifest_bytes = await read_bounded_file(path.join(real_source, 'manifest.json'), 2 * 1024 * 1024, options);
   let manifest;
   try { manifest = JSON.parse(manifest_bytes.toString('utf8')); }
   catch (error) { fail('ORIX_CASE_BUNDLE_MANIFEST', 'Case bundle manifest is invalid JSON', null, error); }
@@ -499,7 +504,7 @@ export async function import_case_bundle(workspace_path, bundle_path) {
     }
     const file_path = path.join(real_source, ...segments);
     if (!within(real_source, file_path)) fail('ORIX_CASE_BUNDLE_PATH', 'Bundle member escapes its directory');
-    const bytes = await read_bounded_file(file_path, MAX_BUNDLE_BYTES);
+    const bytes = await read_bounded_file(file_path, MAX_BUNDLE_BYTES, options);
     total += bytes.length;
     if (total > MAX_BUNDLE_BYTES || bytes.length !== item.size_bytes || digest(bytes) !== item.sha256) fail('ORIX_CASE_BUNDLE_DIGEST', 'Bundle member size or SHA-256 does not match its manifest', { path: item.path });
     verified.push({ path: item.path, bytes });
@@ -517,10 +522,10 @@ export async function import_case_bundle(workspace_path, bundle_path) {
       await write_new_file(output, item.bytes);
     }
     const imported_paths = { ...paths, directory, events_path: path.join(directory, 'events.jsonl'), reports_path: path.join(directory, 'reports') };
-    const state = await load_state(imported_paths);
+    const state = await load_state(imported_paths, options);
     if (state.integrity.head_hash !== manifest.case_head_hash || state.timeline.length !== manifest.event_count) fail('ORIX_CASE_BUNDLE_CHAIN', 'Imported case event chain does not match the manifest');
     for (const analysis of state.analyses) if (!seen.has(analysis.report_path)) fail('ORIX_CASE_BUNDLE_REPORT_MISSING', 'Bundle is missing a referenced analysis report', { report_path: analysis.report_path });
-    await verify_report_files(imported_paths, state);
+    await verify_report_files(imported_paths, state, options);
     return { schema_version: 'orix.case-import.v1', case_id: manifest.case_id, title: state.case.title, events: state.timeline.length, reports: state.analyses.length, head_hash: state.integrity.head_hash, source_artifacts_embedded: false, signature_verified: false };
   } catch (error) { await fs.rm(directory, { recursive: true, force: true }).catch(() => {}); throw error; }
 }

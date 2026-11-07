@@ -354,6 +354,7 @@ export function parse_har(input, options = {}) {
 export async function analyze_har_file(file_path, options = {}) {
   if (typeof file_path !== 'string' || file_path.length === 0) throw new TypeError('file_path must be a non-empty string');
   const max_bytes = safe_limit(options.max_bytes, DEFAULT_MAX_BYTES, 'max_bytes', DEFAULT_MAX_BYTES);
+  const reject_hardlinks = options.reject_hardlinks === true;
   const requested_path = path.resolve(file_path);
   let handle;
   try {
@@ -379,6 +380,7 @@ export async function analyze_har_file(file_path, options = {}) {
     handle = await fs.open(absolute, FS_CONSTANTS.O_RDONLY | no_follow | non_blocking);
     const opened = await handle.stat();
     if (!opened.isFile()) fail('ORIX_HAR_NOT_REGULAR_FILE', 'HAR analyzer accepts regular files only', { path: absolute });
+    if (reject_hardlinks && opened.nlink > 1) fail('ORIX_HAR_HARDLINK_REJECTED', 'HAR analyzer does not read hard-linked files', { path: absolute, link_count: opened.nlink });
     if (!Number.isSafeInteger(opened.size) || opened.size < 1 || opened.size > max_bytes) {
       fail('ORIX_HAR_FILE_TOO_LARGE', 'Opened HAR file size is empty, unsafe or above the configured byte ceiling', { size_bytes: opened.size, max_bytes });
     }
@@ -388,6 +390,7 @@ export async function analyze_har_file(file_path, options = {}) {
     // pre-open path check to identify the descriptor that will be read.
     const path_stat = await fs.lstat(requested_path);
     if (path_stat.isSymbolicLink()) fail('ORIX_HAR_SYMLINK_REJECTED', 'HAR analyzer does not follow symbolic links', { path: requested_path });
+    if (reject_hardlinks && path_stat.nlink > 1) fail('ORIX_HAR_HARDLINK_REJECTED', 'HAR input acquired a hard-link alias during path verification', { path: requested_path, link_count: path_stat.nlink });
     if (!path_stat.isFile() || path_stat.size !== opened.size ||
         String(path_stat.ino) !== String(opened.ino) || String(path_stat.dev) !== String(opened.dev)) {
       fail('ORIX_HAR_FILE_REPLACED', 'HAR path no longer identifies the opened regular file');
@@ -401,6 +404,7 @@ export async function analyze_har_file(file_path, options = {}) {
       offset += bytesRead;
     }
     const after = await handle.stat();
+    if (reject_hardlinks && after.nlink > 1) fail('ORIX_HAR_HARDLINK_REJECTED', 'HAR input acquired a hard-link alias while being read', { path: absolute, link_count: after.nlink });
     const stable = opened.size === after.size && opened.mtimeMs === after.mtimeMs && opened.ctimeMs === after.ctimeMs;
     const report = parse_har(input, options);
     report.source.path = absolute;

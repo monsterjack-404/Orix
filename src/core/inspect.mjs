@@ -32,6 +32,7 @@ function stat_fingerprint(stats) {
 export async function inspect_file(file_path, options = {}) {
   if (typeof file_path !== 'string' || file_path.length === 0) throw new TypeError('file_path must be a non-empty string');
   const limits = resolve_limits(options.limits);
+  const reject_hardlinks = options.reject_hardlinks === true;
   const absolute_path = path.resolve(file_path);
   let before;
   try {
@@ -41,6 +42,7 @@ export async function inspect_file(file_path, options = {}) {
   }
   if (before.isSymbolicLink()) throw new OrixError('ORIX_SYMLINK_REJECTED', 'Symbolic links are not followed by the inspector', { details: { path: absolute_path }, recoverable: true });
   if (!before.isFile()) throw new OrixError('ORIX_NOT_REGULAR_FILE', 'Only regular files can be inspected', { details: { path: absolute_path }, recoverable: true });
+  if (reject_hardlinks && before.nlink > 1) throw new OrixError('ORIX_HARDLINK_REJECTED', 'Hard-linked files are not accepted by this inspection request', { details: { path: absolute_path, link_count: before.nlink }, recoverable: true });
   if (!Number.isSafeInteger(before.size)) throw new OrixError('ORIX_FILE_SIZE_UNSAFE', 'File size cannot be represented safely', { recoverable: true });
   if (before.size > limits.max_file_bytes) {
     throw new OrixError('ORIX_FILE_TOO_LARGE', 'File exceeds the configured inspection size limit', {
@@ -65,6 +67,8 @@ export async function inspect_file(file_path, options = {}) {
       throw new OrixError('ORIX_FILE_REPLACED', 'File identity changed between metadata lookup and open', { recoverable: true });
     }
 
+    if (reject_hardlinks && opened.nlink > 1) throw new OrixError('ORIX_HARDLINK_REJECTED', 'File became hard-linked before descriptor acquisition completed', { details: { path: absolute_path, link_count: opened.nlink }, recoverable: true });
+
     const read_length = Math.min(opened.size, limits.max_read_bytes);
     const sample = Buffer.alloc(read_length);
     let sample_read = 0;
@@ -76,6 +80,7 @@ export async function inspect_file(file_path, options = {}) {
     const bytes = sample.subarray(0, sample_read);
     const sha256 = await hash_file_handle(handle, opened.size);
     const after = await handle.stat();
+    if (reject_hardlinks && after.nlink > 1) throw new OrixError('ORIX_HARDLINK_REJECTED', 'File acquired a hard-link alias during inspection', { details: { path: absolute_path, link_count: after.nlink }, recoverable: true });
     const stable_during_read = opened.size === after.size && opened.mtimeMs === after.mtimeMs && opened.ctimeMs === after.ctimeMs;
     const analyzed = analyze_known_format(bytes, { max_sections: limits.max_sections, max_commands: limits.max_sections, max_wasm_sections: limits.max_wasm_sections });
     const strings = options.extract_strings === false ? [] : extract_strings(bytes, {
