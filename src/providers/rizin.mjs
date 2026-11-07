@@ -305,9 +305,6 @@ export async function analyze_rizin_imports(options = {}) {
   });
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
-  const provider_snapshot_path = await provider_visible_input_path(
-    snapshot_path, isolation, descriptors.sandbox_root?.value,
-  );
   try {
     const snapshot_bytes = await copy_file_bounded(before.canonical_path, snapshot_path, maximum_bytes, signal);
     if (snapshot_bytes !== input_hash.bytes_read) {
@@ -322,6 +319,9 @@ export async function analyze_rizin_imports(options = {}) {
         input_path: before.canonical_path,
       });
     }
+    const provider_snapshot_path = await provider_visible_input_path(
+      snapshot_path, isolation, descriptors.sandbox_root?.value,
+    );
 
     const common = {
       manifest,
@@ -648,6 +648,9 @@ export async function analyze_rizin_functions(options = {}) {
     if (snapshot_hash.digest !== input_hash.digest || snapshot_hash.bytes_read !== input_hash.bytes_read) {
       provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input changed while its private function-analysis snapshot was created');
     }
+    const provider_snapshot_path = await provider_visible_input_path(
+      snapshot_path, isolation, descriptors.sandbox_root?.value,
+    );
 
     const common = {
       manifest,
