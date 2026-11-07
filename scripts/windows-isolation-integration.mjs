@@ -50,8 +50,8 @@ async function main() {
     'Native Main must skip AppContainer cleanup when process-tree emptiness was not confirmed');
 
   assert.match(launcherSource,
-    /bool volumeRootComponent = String\.Equals[\s\S]*?if \(current\.Parent == null && !volumeRootComponent\) continue;[\s\S]*?FileSystemRights deniedRights = rootfsComponent \? rootfsWriteMask : ancestorDestructiveMask;/,
-    'Volume-root ACLs must still reject destructive child-delete/ownership grants while allowing ordinary volume create rights');
+    /FileSystemRights volumeRootDestructiveMask = FileSystemRights\.DeleteSubdirectoriesAndFiles \|[\s\S]*?FileSystemRights deniedRights = rootfsComponent[\s\S]*?volumeRootComponent \? volumeRootDestructiveMask : ancestorDestructiveMask;/,
+    'Volume-root ACLs must ignore non-actionable DELETE on the volume object while rejecting DELETE_CHILD and ACL/ownership mutation');
   const purgeStart = launcherSource.indexOf('static void PurgeTree(');
   const deleteStart = launcherSource.indexOf('static void DeleteTreeNoReparse(', purgeStart);
   assert.ok(purgeStart >= 0 && deleteStart > purgeStart,

@@ -312,6 +312,14 @@ namespace OrixWindowsSandbox {
         FileSystemRights.DeleteSubdirectoriesAndFiles |
         FileSystemRights.ChangePermissions |
         FileSystemRights.TakeOwnership;
+      // DELETE on the volume-root object itself cannot remove or rename the
+      // volume root. Do not confuse it with DELETE_CHILD, which is represented
+      // by DeleteSubdirectoriesAndFiles and can delete the rootfs beneath it.
+      // Keep ACL/ownership mutation forbidden because inherited ACE changes
+      // can affect descendants on filesystems that propagate inherited ACLs.
+      FileSystemRights volumeRootDestructiveMask = FileSystemRights.DeleteSubdirectoriesAndFiles |
+        FileSystemRights.ChangePermissions |
+        FileSystemRights.TakeOwnership;
 
       for (DirectoryInfo current = new DirectoryInfo(fullRoot); current != null; current = current.Parent) {
         FileAttributes attributes = File.GetAttributes(current.FullName);
@@ -340,7 +348,9 @@ namespace OrixWindowsSandbox {
           if (principal == null || IsTrustedRootPrincipal(principal, serviceSid)) continue;
           bool rootfsComponent = String.Equals(current.FullName, fullRoot,
             StringComparison.OrdinalIgnoreCase);
-          FileSystemRights deniedRights = rootfsComponent ? rootfsWriteMask : ancestorDestructiveMask;
+          FileSystemRights deniedRights = rootfsComponent
+            ? rootfsWriteMask
+            : volumeRootComponent ? volumeRootDestructiveMask : ancestorDestructiveMask;
           if ((rule.FileSystemRights & deniedRights) != 0)
             throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: an untrusted principal has unsafe access to " +
               current.FullName + " (" + principal.Value + "; rights=" + rule.FileSystemRights +
