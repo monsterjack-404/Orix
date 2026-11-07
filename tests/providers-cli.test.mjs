@@ -61,6 +61,25 @@ test('provider CLI parser accepts list and Rizin import operations', () => {
   assert.equal(invocation.flags.max_output_bytes, 2 * 1024 * 1024);
   assert.equal(invocation.flags.max_imports, 25000);
   assert.equal(invocation.flags.format, 'json');
+
+  const isolated = parse_arguments([
+    'providers', 'rizin', 'imports', './sample.elf',
+    '--executable', '/usr/bin/rizin',
+    '--isolation', 'required',
+    '--sandbox-root', '/opt/orix/provider-root',
+  ]);
+  assert.equal(isolated.flags.isolation, 'required');
+  assert.equal(isolated.flags.sandbox_root, '/opt/orix/provider-root');
+  const cwd_option = parse_arguments([
+    'providers', 'rizin', 'doctor',
+    '--executable', '/usr/bin/rizin',
+    '--cwd', '/opt/orix/provider-root/work',
+  ]);
+  assert.equal(cwd_option.flags.provider_cwd, '/opt/orix/provider-root/work');
+  assert.throws(
+    () => parse_arguments(['providers', 'rizin', 'doctor', '--executable', '/usr/bin/rizin', '--isolation', 'maybe']),
+    error => error.code === 'ORIX_CLI_BAD_ISOLATION',
+  );
 });
 
 test('provider CLI parser accepts bounded Rizin function and disassembly options', () => {
@@ -223,7 +242,9 @@ test('provider help documents the opt-in provider commands and limits', () => {
   assert.match(HELP_TEXT, /providers rizin doctor/);
   assert.match(HELP_TEXT, /providers rizin imports/);
   assert.match(HELP_TEXT, /providers rizin functions/);
-  assert.match(HELP_TEXT, /not an OS sandbox/);
+  assert.match(HELP_TEXT, /not an OS sandbox by default/);
+  assert.match(HELP_TEXT, /Required isolation uses Linux Bubblewrap only/);
+  assert.match(HELP_TEXT, /does not enforce cgroup CPU, memory or task-count limits/);
 });
 
 test('providers rizin doctor performs a real explicit executable version probe', async () => {
@@ -255,4 +276,31 @@ test('providers rizin doctor requires an explicit executable and rejects extra p
     () => parse_arguments(['providers', 'rizin', 'doctor', 'unexpected']),
     error => error.code === 'ORIX_CLI_PROVIDER_ARGUMENTS',
   );
+});
+
+
+test('provider CLI rejects --cwd outside the Rizin provider command', () => {
+  assert.throws(
+    () => parse_arguments(['providers', 'list', '--cwd', '/tmp']),
+    error => error.code === 'ORIX_CLI_PROVIDER_CWD_SCOPE',
+  );
+});
+
+test('Rizin CLI fails closed when required isolation receives an unavailable sandbox root', async () => {
+  await with_fixture(async ({ executable, executable_args, input, directory }) => {
+    const missing_root = path.join(directory, 'missing-provider-root');
+    await assert.rejects(
+      main([
+        'providers', 'rizin', 'imports', input,
+        '--executable', executable,
+        ...executable_args.flatMap(value => ['--executable-arg', value]),
+        '--isolation', 'required',
+        '--sandbox-root', missing_root,
+        '--json',
+      ]),
+      error => process.platform === 'linux'
+        ? error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE'
+        : error.code === 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+    );
+  });
 });
