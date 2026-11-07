@@ -25,7 +25,10 @@ function u32(b, o, end, label) { need(b, o, 4, end, label); return b.readUInt32L
 function length8(b, offset, end) {
   need(b, offset, 1, end, 'UTF-8 string length');
   const first = b[offset++];
-  if (first & 0x80) return { length: ((first & 0x7f) << 8) | u16(b, offset, end, 'UTF-8 string length'), next: offset + 2 };
+  if (first & 0x80) {
+    need(b, offset, 1, end, 'UTF-8 string length');
+    return { length: ((first & 0x7f) << 8) | b[offset], next: offset + 1 };
+  }
   return { length: first, next: offset };
 }
 function length16(b, offset, end) {

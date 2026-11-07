@@ -122,6 +122,86 @@ test('APK manifest attributes resolve by namespace URI even with a nonstandard p
   assert.equal(decoded.components[0].exported, true);
 });
 
+function encode_utf8_length8(length) {
+  if (length < 0x80) return Buffer.from([length]);
+  return Buffer.from([0x80 | (length >>> 8), length & 0xff]);
+}
+
+function binary_manifest_with_long_utf8_package(package_name) {
+  const values = ['manifest', 'package', package_name];
+  const encoded = values.map(value => {
+    const bytes = Buffer.from(value, 'utf8');
+    const utf16_length = Buffer.byteLength(value, 'utf16le') / 2;
+    return Buffer.concat([
+      encode_utf8_length8(utf16_length),
+      encode_utf8_length8(bytes.length),
+      bytes,
+      Buffer.from([0]),
+    ]);
+  });
+  const strings_start = 28 + values.length * 4;
+  const strings_data = Buffer.concat(encoded);
+  const pool_size = (strings_start + strings_data.length + 3) & ~3;
+  const pool = Buffer.alloc(pool_size);
+  pool.writeUInt16LE(0x0001, 0);
+  pool.writeUInt16LE(28, 2);
+  pool.writeUInt32LE(pool_size, 4);
+  pool.writeUInt32LE(values.length, 8);
+  pool.writeUInt32LE(0, 12);
+  pool.writeUInt32LE(0x00000100, 16);
+  pool.writeUInt32LE(strings_start, 20);
+  pool.writeUInt32LE(0, 24);
+  let relative = 0;
+  for (let i = 0; i < encoded.length; i++) {
+    pool.writeUInt32LE(relative, 28 + i * 4);
+    encoded[i].copy(pool, strings_start + relative);
+    relative += encoded[i].length;
+  }
+
+  const start = Buffer.alloc(56);
+  start.writeUInt16LE(0x0102, 0);
+  start.writeUInt16LE(16, 2);
+  start.writeUInt32LE(start.length, 4);
+  start.writeUInt32LE(1, 8);
+  start.writeUInt32LE(0xffffffff, 12);
+  start.writeUInt32LE(0xffffffff, 16);
+  start.writeUInt32LE(0, 20);
+  start.writeUInt16LE(20, 24);
+  start.writeUInt16LE(20, 26);
+  start.writeUInt16LE(1, 28);
+  start.writeUInt32LE(0xffffffff, 36);
+  start.writeUInt32LE(1, 40);
+  start.writeUInt32LE(2, 44);
+  start.writeUInt16LE(8, 48);
+  start[51] = 0x03;
+  start.writeUInt32LE(2, 52);
+
+  const end = Buffer.alloc(24);
+  end.writeUInt16LE(0x0103, 0);
+  end.writeUInt16LE(16, 2);
+  end.writeUInt32LE(end.length, 4);
+  end.writeUInt32LE(1, 8);
+  end.writeUInt32LE(0xffffffff, 12);
+  end.writeUInt32LE(0xffffffff, 16);
+  end.writeUInt32LE(0, 20);
+
+  const total = 8 + pool.length + start.length + end.length;
+  const document = Buffer.alloc(total);
+  document.writeUInt16LE(0x0003, 0);
+  document.writeUInt16LE(8, 2);
+  document.writeUInt32LE(total, 4);
+  pool.copy(document, 8);
+  start.copy(document, 8 + pool.length);
+  end.copy(document, 8 + pool.length + start.length);
+  return document;
+}
+
+test('APK binary XML decoder reads two-byte UTF-8 lengths without consuming string bytes', () => {
+  const package_name = 'x'.repeat(130);
+  const decoded = parse_android_binary_xml(binary_manifest_with_long_utf8_package(package_name));
+  assert.equal(decoded.package_name, package_name);
+});
+
 test('APK binary XML decoder enforces file, chunk, string, element and attribute budgets', () => {
   const manifest = binary_manifest();
   assert.throws(
