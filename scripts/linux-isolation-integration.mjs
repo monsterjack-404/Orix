@@ -71,7 +71,7 @@ async function verify_rizin_adapter_under_bubblewrap(root, node_path, base) {
 
   const common = {
     executable: node_path,
-    executable_args: [fixture_path, config_path],
+    executable_args: ['/work/rizin-stub.mjs', '/work/rizin-stub-config.json'],
     input_path,
     isolation: 'required',
     sandbox_root: root,
