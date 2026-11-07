@@ -62,8 +62,9 @@ Acceptance: versioned .NET fixtures, malformed metadata heap/table indices, over
 
 **Static package analysis**
 - Implemented first slice: existing APK parser reads bounded stored/raw-DEFLATE entries with CRC32 checks and provides binary/plain XML manifest, DEX table/class and native-library metadata. New package inventory adds bounded ZIP metadata, APK binary-XML permissions/components, stored unencrypted DEX map/string/type/class metadata, source-file identity checks and SHA-256 receipt; exposed through CLI/API/MCP.
-- Remaining: resources.arsc/resources.pb, intent-filter/component correlation, DEX instructions/method bodies, ODEX/VDEX, AAB protobuf manifests, signer-block parsing and cryptographic certificate verification.
-- AAB: BundleConfig.pb and module manifest-path presence are inventoried; protobuf manifest/resources and full module/split relationships remain unsupported. Do not assume an AAB is directly installable.
+- Implemented next slice: bounded AAPT2 Resources.XmlNode protobuf decoding for AAB module manifests, including package/version, permissions, application flags and components; parser enforces wire, UTF-8, field/node/depth/attribute/string budgets.
+- Remaining: resources.arsc/resources.pb, BundleConfig.pb semantics, full intent-filter/component correlation, DEX instruction decoding and method bodies, ODEX/VDEX, APK cryptographic signature/certificate verification and device/runtime observations.
+- AAB: module protobuf manifests are decoded with bounded AAPT2 XmlNode handling; BundleConfig.pb, resources.pb and full module/split/install relationships remain unsupported. Do not assume an AAB is directly installable.
 - Correlate manifest components and permissions with DEX references, exported components, intent filters, network-security configuration, native libraries and resources.
 - Add optional JADX and Apktool adapters using explicit executable paths and the bounded provider runner.
 
