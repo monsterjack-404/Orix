@@ -282,6 +282,20 @@
               "null"
             ]
           },
+          "sdk": {
+            "type": "object",
+            "required": [
+              "min_version",
+              "target_version",
+              "max_version"
+            ],
+            "properties": {
+              "min_version": { "type": ["integer", "string", "null"] },
+              "target_version": { "type": ["integer", "string", "null"] },
+              "max_version": { "type": ["integer", "string", "null"] }
+            },
+            "additionalProperties": false
+          },
           "permissions": {
             "type": "array",
             "items": {
