@@ -5,6 +5,7 @@ import { access, lstat, realpath, stat } from 'node:fs/promises';
 import { prepare_linux_provider_isolation } from './linux-isolation.mjs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { OrixError } from '../core/errors.mjs';
 import { validate_provider_manifest } from './manifest.mjs';
 
@@ -397,7 +398,7 @@ export async function run_static_provider(options) {
   }
 
   const started_at = new Date().toISOString();
-  const started_clock = Date.now();
+  const started_clock = performance.now();
   const windows = process.platform === 'win32';
   const detached = !windows;
 
@@ -459,7 +460,7 @@ export async function run_static_provider(options) {
         args_count: executable_args.length + args.length,
         started_at,
         completed_at,
-        duration_ms: Math.max(0, Date.now() - started_clock),
+        duration_ms: Math.max(0, performance.now() - started_clock),
         exit_code,
         signal: exit_signal,
         termination_reason,
@@ -553,7 +554,7 @@ export async function run_static_provider(options) {
       process_group_cleanup_started = true;
       signal_process_group(child.pid, 'SIGTERM');
       let phase = 'term';
-      let deadline = Date.now() + limits.kill_grace_ms;
+      let deadline = performance.now() + limits.kill_grace_ms;
 
       function check_process_group() {
         if (!process_group_exists(child.pid)) {
@@ -563,12 +564,12 @@ export async function run_static_provider(options) {
           complete_process_group_cleanup();
           return;
         }
-        if (Date.now() >= deadline) {
+        if (performance.now() >= deadline) {
           if (phase === 'term') {
             // Escalate only while the original process-group id is still present.
             process_group_force_kill_sent = signal_process_group(child.pid, 'SIGKILL');
             phase = 'verify';
-            deadline = Date.now() + 5_000;
+            deadline = performance.now() + 5_000;
           } else {
             // Do not report success when the kernel still reports the group alive.
             process_group_cleanup_failed = true;
@@ -580,7 +581,7 @@ export async function run_static_provider(options) {
         }
         process_group_cleanup_timer = setTimeout(
           check_process_group,
-          Math.min(20, Math.max(1, deadline - Date.now())),
+          Math.min(20, Math.max(1, deadline - performance.now())),
         );
       }
 
