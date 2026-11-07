@@ -7,6 +7,7 @@ import { parse_android_binary_xml } from './binary-xml.mjs';
 import { constants as fs_constants, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { hash_buffer } from '../core/hash.mjs';
+import { inflateRawSync } from 'node:zlib';
 
 const LOCAL_HEADER = 0x04034b50;
 const BINARY_XML = 0x0003;
@@ -37,18 +38,34 @@ function crc32(buffer) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function local_stored_prefix(buffer, entry, minimum, central_directory_offset) {
+function local_entry_data(buffer, entry, max_output_bytes, central_directory_offset) {
   if (!entry.local_header_valid || !entry.local_data_range_valid) return { status: 'invalid-local-range' };
   if (entry.encrypted || entry.strongly_encrypted) return { status: 'encrypted' };
-  if (entry.compression_method !== 'stored' || entry.compressed_size !== entry.uncompressed_size) return { status: 'compressed' };
+  const method_code = entry.compression_method === 'stored'
+    ? 0
+    : entry.compression_method === 'deflate' ? 8 : null;
+  if (method_code === null) return { status: 'unsupported-compression' };
+  if (!Number.isSafeInteger(max_output_bytes) || max_output_bytes < 1 ||
+      entry.uncompressed_size > max_output_bytes) return { status: 'output-size-limit' };
+  if (entry.compression_method === 'stored' && entry.compressed_size !== entry.uncompressed_size) {
+    return { status: 'size-mismatch' };
+  }
+
   const offset = entry.local_header_offset;
-  if (offset < 0 || offset > buffer.length - 30 || offset > central_directory_offset - 30 || buffer.readUInt32LE(offset) !== LOCAL_HEADER) return { status: 'invalid-local-header' };
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > buffer.length - 30 ||
+      offset > central_directory_offset - 30 || buffer.readUInt32LE(offset) !== LOCAL_HEADER) {
+    return { status: 'invalid-local-header' };
+  }
   const flags = buffer.readUInt16LE(offset + 6);
   const method = buffer.readUInt16LE(offset + 8);
   const local_crc = buffer.readUInt32LE(offset + 14);
   const local_compressed_size = buffer.readUInt32LE(offset + 18);
   const local_uncompressed_size = buffer.readUInt32LE(offset + 22);
-  const expected_flags = (entry.encrypted ? 1 : 0) | (entry.data_descriptor ? 8 : 0) | (entry.utf8_name ? 0x0800 : 0);
+  const central_flags = entry.general_purpose_flags;
+  const expected_flags = (entry.encrypted ? 1 : 0) |
+    (entry.data_descriptor ? 8 : 0) |
+    (entry.utf8_name ? 0x0800 : 0);
+  const supported_flags = method_code === 8 ? 0x080f : 0x0809;
   const central_crc = Number.parseInt(entry.crc32, 16);
   const descriptor_mismatch = entry.data_descriptor
     ? (local_crc !== 0 && local_crc !== central_crc) ||
@@ -58,19 +75,37 @@ function local_stored_prefix(buffer, entry, minimum, central_directory_offset) {
       local_uncompressed_size !== entry.uncompressed_size;
   const name_length = buffer.readUInt16LE(offset + 26);
   const extra_length = buffer.readUInt16LE(offset + 28);
-  if (flags !== expected_flags || method !== 0 || descriptor_mismatch) return { status: 'local-header-mismatch' };
+  if (method !== method_code || flags !== central_flags ||
+      (flags & ~supported_flags) !== 0 || (flags & 0x0809) !== expected_flags ||
+      descriptor_mismatch) return { status: 'local-header-mismatch' };
+
   const name_start = offset + 30;
   const data_offset = name_start + name_length + extra_length;
-  if (name_start > buffer.length - name_length || data_offset > central_directory_offset || entry.compressed_size > central_directory_offset - data_offset) {
+  if (name_start > buffer.length - name_length || data_offset > central_directory_offset ||
+      entry.compressed_size > central_directory_offset - data_offset) {
     return { status: 'invalid-local-range' };
   }
-  const local_name = buffer.subarray(name_start, name_start + name_length).toString((flags & 0x0800) !== 0 ? 'utf8' : 'latin1');
-  if (local_name !== entry.name || minimum !== entry.uncompressed_size || minimum > entry.compressed_size) return { status: 'local-header-mismatch' };
-  const bytes = buffer.subarray(data_offset, data_offset + minimum);
+  const local_name = buffer.subarray(name_start, name_start + name_length)
+    .toString((flags & 0x0800) !== 0 ? 'utf8' : 'latin1');
+  if (local_name !== entry.name) return { status: 'local-header-mismatch' };
+
+  const compressed = buffer.subarray(data_offset, data_offset + entry.compressed_size);
+  let bytes;
+  if (method_code === 0) {
+    bytes = compressed;
+  } else {
+    try {
+      // The central-directory uncompressed size is the hard output ceiling;
+      // dishonest size metadata cannot trigger an unbounded inflate.
+      bytes = inflateRawSync(compressed, { maxOutputLength: Math.max(1, entry.uncompressed_size) });
+    } catch {
+      return { status: 'decompression-failed' };
+    }
+  }
+  if (bytes.length !== entry.uncompressed_size) return { status: 'size-mismatch' };
   if (crc32(bytes) !== central_crc) return { status: 'crc-mismatch' };
   return { status: 'available', bytes };
 }
-
 function inspect_manifest(buffer, entry, central_directory_offset, options = {}) {
   const max_bytes = options.max_manifest_bytes ?? 16 * 1024 * 1024;
   if (!Number.isSafeInteger(max_bytes) || max_bytes < 8 || max_bytes > 64 * 1024 * 1024) {
@@ -79,7 +114,7 @@ function inspect_manifest(buffer, entry, central_directory_offset, options = {})
   if (entry.uncompressed_size > max_bytes) {
     return { path: entry.name, status: 'manifest-size-limit', binary_xml: null, uncompressed_size: entry.uncompressed_size };
   }
-  const data = local_stored_prefix(buffer, entry, entry.uncompressed_size, central_directory_offset);
+  const data = local_entry_data(buffer, entry, max_bytes, central_directory_offset);
   if (data.status !== 'available') return { path: entry.name, status: data.status, binary_xml: null };
   if (data.bytes.length < 8) return { path: entry.name, status: 'unknown-or-invalid-header', binary_xml: false };
   const type = data.bytes.readUInt16LE(0);
@@ -218,6 +253,8 @@ export function analyze_android_package(buffer, options = {}) {
   const max_dex_entries = options.max_dex_entries ?? 64;
   const max_dex_entry_bytes = options.max_dex_entry_bytes ?? 134_217_728;
   const max_dex_total_bytes = options.max_dex_total_bytes ?? 268_435_456;
+  const max_manifest_bytes = options.max_manifest_bytes ?? 16 * 1024 * 1024;
+  const max_manifest_total_bytes = options.max_manifest_total_bytes ?? 64 * 1024 * 1024;
   const max_dex_output_items = options.max_dex_output_items ?? 1000;
   const max_archive_entries = options.max_archive_entries ?? 1000;
   const max_archive_entry_path_length = options.max_archive_entry_path_length ?? 512;
@@ -227,6 +264,8 @@ export function analyze_android_package(buffer, options = {}) {
   if (!Number.isSafeInteger(max_dex_entries) || max_dex_entries < 1 || max_dex_entries > 256) throw new TypeError('max_dex_entries must be between 1 and 256');
   if (!Number.isSafeInteger(max_dex_entry_bytes) || max_dex_entry_bytes < 112 || max_dex_entry_bytes > 536_870_912) throw new TypeError('max_dex_entry_bytes must be between 112 and 536870912');
   if (!Number.isSafeInteger(max_dex_total_bytes) || max_dex_total_bytes < 112 || max_dex_total_bytes > 1_073_741_824) throw new TypeError('max_dex_total_bytes must be between 112 and 1073741824');
+  if (!Number.isSafeInteger(max_manifest_bytes) || max_manifest_bytes < 8 || max_manifest_bytes > 67_108_864) throw new TypeError('max_manifest_bytes must be between 8 and 67108864');
+  if (!Number.isSafeInteger(max_manifest_total_bytes) || max_manifest_total_bytes < 8 || max_manifest_total_bytes > 536_870_912) throw new TypeError('max_manifest_total_bytes must be between 8 and 536870912');
   if (!Number.isSafeInteger(max_dex_output_items) || max_dex_output_items < 1 || max_dex_output_items > 10_000) throw new TypeError('max_dex_output_items must be between 1 and 10000');
   if (!Number.isSafeInteger(max_archive_entries) || max_archive_entries < 1 || max_archive_entries > 50_000) throw new TypeError('max_archive_entries must be between 1 and 50000');
   if (!Number.isSafeInteger(max_archive_entry_path_length) || max_archive_entry_path_length < 16 || max_archive_entry_path_length > 4096) throw new TypeError('max_archive_entry_path_length must be between 16 and 4096');
@@ -311,7 +350,7 @@ export function analyze_android_package(buffer, options = {}) {
     module_semantics_decoded: false,
   };
 
-  let dex_bytes_parsed = 0;
+  let dex_bytes_budget_used = 0;
   const reported_dex_entries = dex_entries.slice(0, max_archive_entries);
   const dex = reported_dex_entries.map((entry, index) => {
     const path = entry.name.slice(0, max_archive_entry_path_length);
@@ -320,10 +359,12 @@ export function analyze_android_package(buffer, options = {}) {
     if (index >= max_dex_entries) return { path, path_truncated, path_original_length, status: 'entry-limit', uncompressed_size: entry.uncompressed_size };
     if (duplicate_dex_paths.has(entry.name)) return { path, path_truncated, path_original_length, status: 'duplicate-path', uncompressed_size: entry.uncompressed_size };
     if (entry.uncompressed_size > max_dex_entry_bytes) return { path, path_truncated, path_original_length, status: 'entry-size-limit', uncompressed_size: entry.uncompressed_size };
-    if (dex_bytes_parsed + entry.uncompressed_size > max_dex_total_bytes) return { path, path_truncated, path_original_length, status: 'aggregate-size-limit', uncompressed_size: entry.uncompressed_size };
-    const data = local_stored_prefix(buffer, entry, entry.uncompressed_size, archive.archive.central_directory_offset);
+    if (dex_bytes_budget_used + entry.uncompressed_size > max_dex_total_bytes) return { path, path_truncated, path_original_length, status: 'aggregate-size-limit', uncompressed_size: entry.uncompressed_size };
+    // Reserve declared output budget before attempting to inflate. Failed or
+    // malicious entries must not get a fresh aggregate allowance on retry.
+    dex_bytes_budget_used += entry.uncompressed_size;
+    const data = local_entry_data(buffer, entry, max_dex_entry_bytes, archive.archive.central_directory_offset);
     if (data.status !== 'available') return { path, path_truncated, path_original_length, status: data.status, uncompressed_size: entry.uncompressed_size };
-    dex_bytes_parsed += entry.uncompressed_size;
     try {
       const parsed = parse_dex(data.bytes, { max_file_bytes: max_dex_entry_bytes, max_output_items: max_dex_output_items });
       if (parsed.file_size !== entry.uncompressed_size) {
@@ -395,18 +436,29 @@ export function analyze_android_package(buffer, options = {}) {
       aab_modules_omitted: Math.max(0, module_names.length - reported_modules.length),
       bundle_config_present: names.has('BundleConfig.pb'),
     },
-    manifests: reported_manifest_entries.map(entry => {
-      const path = entry.name.slice(0, max_archive_entry_path_length);
-      const path_truncated = entry.name.length > max_archive_entry_path_length;
-      const path_original_length = entry.name.length;
-      if (duplicate_manifest_paths.has(entry.name)) {
-        return { path, path_truncated, path_original_length, status: 'duplicate-path', binary_xml: null };
-      }
-      return {
-        ...inspect_manifest(buffer, entry, archive.archive.central_directory_offset, options),
-        path, path_truncated, path_original_length,
-      };
-    }),
+    manifests: (() => {
+      let manifest_bytes_budget_used = 0;
+      return reported_manifest_entries.map(entry => {
+        const path = entry.name.slice(0, max_archive_entry_path_length);
+        const path_truncated = entry.name.length > max_archive_entry_path_length;
+        const path_original_length = entry.name.length;
+        if (duplicate_manifest_paths.has(entry.name)) {
+          return { path, path_truncated, path_original_length, status: 'duplicate-path', binary_xml: null };
+        }
+        if (entry.uncompressed_size <= max_manifest_bytes) {
+          if (manifest_bytes_budget_used + entry.uncompressed_size > max_manifest_total_bytes) {
+            return { path, path_truncated, path_original_length, status: 'aggregate-size-limit', binary_xml: null, uncompressed_size: entry.uncompressed_size };
+          }
+          // Charge rejected and malformed inputs too, so repeated bad modules
+          // cannot each consume a fresh manifest decompression budget.
+          manifest_bytes_budget_used += entry.uncompressed_size;
+        }
+        return {
+          ...inspect_manifest(buffer, entry, archive.archive.central_directory_offset, options),
+          path, path_truncated, path_original_length,
+        };
+      });
+    })(),
     dex,
     native_libraries: reported_native_libraries.map(entry => ({
       path: entry.name.slice(0, max_archive_entry_path_length),
@@ -419,8 +471,8 @@ export function analyze_android_package(buffer, options = {}) {
     signing_block,
     bundle,
     limitations: [
-      'ZIP entries are inventoried without extraction or decompression; DEX metadata is inspected only when the entry is stored, unencrypted and its local header matches the central directory.',
-      'APK binary XML manifests are decoded only from stored, unencrypted entries whose local ZIP header and CRC match, within explicit chunk/string/element/attribute limits; compressed/encrypted manifests are inventoried only. AAB protobuf manifests and resource-reference resolution are not decoded.',
+      'ZIP entries are inventoried without filesystem extraction. Selected stored and raw-DEFLATE DEX/manifest entries are expanded in memory only within per-entry and aggregate output ceilings; encrypted, unsafe, malformed or unsupported entries are not parsed.',
+      'APK binary XML manifests are decoded from stored or raw-DEFLATE, unencrypted entries whose local ZIP header and CRC match, within per-manifest and aggregate decompression budgets plus explicit chunk/string/element/attribute limits; AAB protobuf manifests and resource-reference resolution are not decoded.',
       'AAB module names and manifest/DEX/native/resource/asset/root path counts are inventoried from ZIP entry names only; BundleConfig.pb, protobuf manifests/resources, dependency graph and split/install relationships are not decoded.',
       'DEX strings (including Modified UTF-8), type/field/method/prototype identifiers, class-data indexes and bounded code-item structure are inspected; instruction opcodes, operands, control flow, annotations, debug programs and decompilation are not decoded.',
       'For APK files, the APK Signing Block container and ID-value pair boundaries are inventoried (v2/v3/v3.1 and unknown IDs); cryptographic signatures, content digests, certificate chains, v1 JAR signatures and publisher identity are not verified.',
