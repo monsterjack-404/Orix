@@ -52,7 +52,7 @@ function parse_type_list(buffer, offset, data, type_count, max_items, aggregate)
     fail('ORIX_DEX_PROTO_PARAMETERS_RANGE', 'DEX prototype parameter type_list offset is invalid', { offset });
   }
   const count = buffer.readUInt32LE(offset);
-  if (count > max_items || count > data.end - offset - 4 >> 1) {
+  if (count > max_items || count * 2 > data.end - offset - 4) {
     fail('ORIX_DEX_PROTO_PARAMETERS_LIMIT', 'DEX prototype parameter list exceeds bounds or limits', { offset, count, max_items });
   }
   aggregate.total += count;
@@ -198,7 +198,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state) {
  * Inputs are the already checked DEX header/index data from parse_dex().
  */
 export function parse_dex_semantics({
-  buffer, offsets, counts, data, types, strings, max_items = 250_000,
+  buffer, offsets, counts, data, types, strings, map_items = [], max_items = 250_000,
   max_output_items = 10_000, max_instruction_units = 20_000_000,
 } = {}) {
   if (!Buffer.isBuffer(buffer)) throw new TypeError('parse_dex_semantics requires a Buffer');
@@ -288,7 +288,7 @@ export function parse_dex_semantics({
     if (index < max_output_items) method_ids.push(item);
   }
 
-  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0 };
+  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0, output_items: 0 };
   const class_data = [];
   const class_data_counts = { classes_with_data: 0, static_fields: 0, instance_fields: 0, direct_methods: 0, virtual_methods: 0 };
   for (let class_index = 0; class_index < counts.class_defs; class_index += 1) {
@@ -331,7 +331,8 @@ export function parse_dex_semantics({
     class_data_counts.direct_methods += direct_count;
     class_data_counts.virtual_methods += virtual_count;
 
-    const visible = class_data.length < max_output_items;
+    const visible = class_data.length < max_output_items && state.output_items < max_output_items;
+    if (visible) state.output_items += 1;
     const groups = { static_fields: [], instance_fields: [], direct_methods: [], virtual_methods: [] };
     const class_descriptor = type_at(class_type_index);
     const parse_fields = (count, label) => {
@@ -352,7 +353,7 @@ export function parse_dex_semantics({
             class_index, class_type_index, label, index, field_index, field_owner: field?.class_index ?? null,
           });
         }
-        if (visible && groups[label].length < max_output_items) groups[label].push({ ...field, access_flags: access.value });
+        if (visible && state.output_items < max_output_items) { groups[label].push({ ...field, access_flags: access.value }); state.output_items += 1; }
       }
     };
     const parse_methods = (count, label) => {
