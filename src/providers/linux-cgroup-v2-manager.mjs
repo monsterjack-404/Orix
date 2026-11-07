@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { OrixError } from '../core/errors.mjs';
 import { inspect_linux_cgroup_v2 } from './linux-cgroup-v2-preflight.mjs';
 
@@ -300,11 +301,11 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
     const cleanup = () => {
       if (cleanup_promise) return cleanup_promise;
       cleanup_promise = (async () => {
-        const deadline = Date.now() + 5000;
+        const deadline = performance.now() + 5000;
         try {
           close_attach_fd();
           write_control(child_fd, 'cgroup.kill', '1');
-          while (Date.now() < deadline) {
+          while (performance.now() < deadline) {
             const events = read_control(child_fd, 'cgroup.events');
             if (/^populated 0$/m.test(events)) {
               cleanup_report.memory_events = read_control(child_fd, 'memory.events');
