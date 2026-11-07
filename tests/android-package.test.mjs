@@ -946,3 +946,144 @@ test('AAB without BundleConfig reports absent metadata and APKs mark it not appl
   assert.equal(apk.bundle.status, 'not-applicable');
   assert.equal(apk.bundle.bundle_config.status, 'not-applicable');
 });
+
+
+function resource_table_varint(input) {
+  let value = BigInt.asUintN(64, BigInt(input));
+  const bytes = [];
+  do {
+    let byte = Number(value & 0x7fn);
+    value >>= 7n;
+    if (value !== 0n) byte |= 0x80;
+    bytes.push(byte);
+  } while (value !== 0n);
+  return Buffer.from(bytes);
+}
+
+function resource_table_field_varint(field, value) {
+  return Buffer.concat([resource_table_varint(BigInt(field * 8)), resource_table_varint(value)]);
+}
+
+function resource_table_field_bytes(field, value) {
+  return Buffer.concat([
+    resource_table_varint(BigInt(field * 8 + 2)),
+    resource_table_varint(value.length),
+    value,
+  ]);
+}
+
+function create_minimal_resource_table() {
+  const string_value = resource_table_field_bytes(2, resource_table_field_bytes(1, Buffer.from('Welcome')));
+  const item = resource_table_field_bytes(2, string_value);
+  const value = resource_table_field_bytes(4, item);
+  const config_value = resource_table_field_bytes(2, value);
+  const entry = Buffer.concat([
+    resource_table_field_bytes(6, config_value),
+    resource_table_field_bytes(2, Buffer.from('title')),
+    resource_table_field_bytes(1, resource_table_field_varint(1, 1)),
+  ]);
+  const type = Buffer.concat([
+    resource_table_field_bytes(3, entry),
+    resource_table_field_bytes(2, Buffer.from('string')),
+    resource_table_field_bytes(1, resource_table_field_varint(1, 1)),
+  ]);
+  const pkg = Buffer.concat([
+    resource_table_field_bytes(3, type),
+    resource_table_field_bytes(2, Buffer.from('com.example.app')),
+    resource_table_field_bytes(1, resource_table_field_varint(1, 0x7f)),
+  ]);
+  return resource_table_field_bytes(2, pkg);
+}
+
+test('AAB resources.pb module tables decode stored and DEFLATE entries with per-module summaries', () => {
+  const table = create_minimal_resource_table();
+  const report = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x40, 0x00]) },
+    { name: 'base/manifest/AndroidManifest.xml', contents: Buffer.from([0x0a, 0x00]) },
+    { name: 'base/resources.pb', contents: table },
+    { name: 'feature_camera/resources.pb', contents: table, method: 8 },
+  ]));
+  assert.equal(report.format, 'AAB');
+  assert.equal(report.summary.resources_table_present, true);
+  assert.equal(report.summary.resource_tables, 2);
+  assert.equal(report.summary.resource_tables_reported, 2);
+  assert.equal(report.summary.resource_tables_decoded, 2);
+  assert.equal(report.summary.resource_table_packages, 2);
+  assert.equal(report.summary.resource_table_types, 2);
+  assert.equal(report.summary.resource_table_entries, 2);
+  assert.equal(report.summary.resource_table_variants, 2);
+  assert.deepEqual(report.resource_tables.map(item => item.status), ['decoded', 'decoded']);
+  assert.deepEqual(report.resource_tables.map(item => item.path), ['base/resources.pb', 'feature_camera/resources.pb']);
+  assert.equal(report.resource_tables[0].table.packages[0].name, 'com.example.app');
+  assert.equal(report.resource_tables[0].table.packages[0].types[0].entries[0].resource_id, '0x7f010001');
+  assert.equal(report.resource_tables[0].table.packages[0].types[0].entries[0].config_values[0].value.item.value, 'Welcome');
+});
+
+test('AAB resources.pb reports malformed, duplicate, size and aggregate budget statuses', () => {
+  const table = create_minimal_resource_table();
+  const duplicate = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x40, 0x00]) },
+    { name: 'base/resources.pb', contents: table },
+    { name: 'base/resources.pb', contents: table },
+  ]));
+  assert.equal(duplicate.resource_tables.length, 1);
+  assert.equal(duplicate.resource_tables[0].status, 'duplicate-path');
+  assert.ok(duplicate.warnings.some(item => item.path === 'base/resources.pb' && item.reason === 'duplicate-path'));
+
+  const limited = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x40, 0x00]) },
+    { name: 'base/resources.pb', contents: table },
+  ]), { max_resource_table_bytes: table.length - 1 });
+  assert.equal(limited.resource_tables[0].status, 'entry-size-limit');
+
+  const aggregate = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x40, 0x00]) },
+    { name: 'base/resources.pb', contents: table },
+    { name: 'feature/resources.pb', contents: table },
+  ]), { max_resource_table_total_bytes: table.length });
+  assert.deepEqual(aggregate.resource_tables.map(item => item.status), ['decoded', 'aggregate-size-limit']);
+  assert.equal(aggregate.summary.resource_tables_omitted, 0);
+
+  const malformed = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x40, 0x00]) },
+    { name: 'base/resources.pb', contents: Buffer.from([0x10, 0x80]) },
+  ]));
+  assert.equal(malformed.resource_tables[0].status, 'malformed');
+  assert.equal(malformed.resource_tables[0].error.code, 'ORIX_RESOURCE_VARINT_TRUNCATED');
+
+  const corrupted = create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x40, 0x00]) },
+    { name: 'base/resources.pb', contents: table },
+  ]);
+  const parsed = parse_zip(corrupted);
+  const entry = parsed.entries.find(item => item.name === 'base/resources.pb');
+  const payload_offset = entry.local_header_offset + 30 + Buffer.byteLength(entry.name);
+  corrupted[payload_offset] ^= 0x01;
+  const crc_report = analyze_android_package(corrupted);
+  assert.equal(crc_report.resource_tables[0].status, 'crc-mismatch');
+  assert.equal(crc_report.resource_tables[0].table, null);
+});
+
+test('AAB resources.pb honors entry-count and parser budgets and APKs return no resource tables', () => {
+  const table = create_minimal_resource_table();
+  const limited = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x40, 0x00]) },
+    { name: 'base/resources.pb', contents: table },
+    { name: 'feature/resources.pb', contents: table },
+  ]), { max_resource_table_entries: 1 });
+  assert.equal(limited.summary.resource_tables, 2);
+  assert.equal(limited.summary.resource_tables_reported, 1);
+  assert.equal(limited.summary.resource_tables_omitted, 1);
+  assert.equal(limited.resource_tables.length, 1);
+
+  const parser_limited = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x40, 0x00]) },
+    { name: 'base/resources.pb', contents: table },
+  ]), { resource_table: { max_fields: 1 } });
+  assert.equal(parser_limited.resource_tables[0].status, 'malformed');
+  assert.equal(parser_limited.resource_tables[0].error.code, 'ORIX_RESOURCE_FIELD_LIMIT');
+
+  const apk = analyze_android_package(make_apk());
+  assert.deepEqual(apk.resource_tables, []);
+  assert.equal(apk.summary.resource_tables, 0);
+});
