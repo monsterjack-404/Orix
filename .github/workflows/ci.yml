@@ -132,7 +132,31 @@ jobs:
           node scripts/verify-windows-launcher.mjs artifacts/windows-helper-first/orix-windows-provider-launcher.exe
           node scripts/verify-windows-launcher.mjs artifacts/windows-helper-second/orix-windows-provider-launcher.exe
 
+  windows-child-probe-build:
+    name: Build native AppContainer child-process probe
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up pinned .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 10.0.100
+      - name: Build AnyCPU .NET Framework child-process probe
+        run: dotnet build platform-tests/windows-appcontainer-child-probe.csproj --configuration Release --output artifacts/windows-child-probe
+      - name: Upload native child-process probe
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: orix-windows-appcontainer-child-probe
+          path: artifacts/windows-child-probe/orix-windows-appcontainer-child-probe.exe
+          if-no-files-found: error
+          retention-days: 7
+
   platform-smoke:
+    needs: windows-child-probe-build
     name: Platform smoke / ${{ matrix.os }} / Node.js ${{ matrix.node-version }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -170,6 +194,12 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
+      - name: Download native AppContainer child-process probe
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: orix-windows-appcontainer-child-probe
+          path: artifacts/windows-child-probe
       - name: Install locked dependencies
         run: npm ci
       - name: Validate JavaScript syntax
