@@ -8,6 +8,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
+import { prepare_linux_provider_cgroup } from '../src/providers/linux-cgroup-v2-manager.mjs';
 import { parse_cgroup2_mounts } from '../src/providers/linux-cgroup-v2-preflight.mjs';
 
 const REQUIRED = ['cpu', 'memory', 'pids'];
@@ -566,6 +567,40 @@ async function main() {
       });
       assert.equal(command.includes('/usr/bin/sleep'), false, 'Output-limited provider descendant survived cgroup.kill');
     }
+
+    // Direct manager calls must make cleanup idempotent, including concurrent
+    // callers racing to close the same leaf cgroup.
+    const emptyRun = await prepare_linux_provider_cgroup();
+    const [emptyCleanupA, emptyCleanupB] = await Promise.all([
+      emptyRun.cleanup(),
+      emptyRun.cleanup(),
+    ]);
+    assert.deepEqual(emptyCleanupA, emptyCleanupB,
+      'Concurrent cleanup calls returned inconsistent results');
+    assert.equal(emptyCleanupA.removed, true,
+      'Idempotent cleanup did not remove the empty provider cgroup');
+
+    // A signal already aborted before launch must still roll back the prepared
+    // cgroup and must never reach provider spawn.
+    const childrenBeforePreAbort = await child_directories(delegated.parent);
+    const preAbortedController = new AbortController();
+    preAbortedController.abort();
+    await assert.rejects(
+      run_static_provider({
+        manifest: manifest(),
+        executable: nodePath,
+        cwd: path.join(root, 'work'),
+        sandbox_root: root,
+        isolation: 'required',
+        args: ['-e', 'process.stdout.write("MUST_NOT_SPAWN")'],
+        signal: preAbortedController.signal,
+        timeout_ms: 2_000,
+        max_output_bytes: 1_024,
+      }),
+      error => error.code === 'ORIX_PROVIDER_CANCELLED',
+    );
+    assert.deepEqual(await child_directories(delegated.parent), childrenBeforePreAbort,
+      'A pre-aborted request left a provider cgroup behind');
 
     process.stdout.write('Linux cgroup v2 integration passed: FD attach-before-exec, rootfs/network isolation, RLIMITs, cpu.max throttling, memory.max OOM, pids.max rejection, normal/cancel/timeout/output-limit descendant teardown and empty-cgroup removal.\\n');
   } finally {
