@@ -85,15 +85,22 @@ async function assert_extended_acl_denied(target, label, executable, root) {
 async function main() {
   assert.equal(process.platform, 'darwin', 'This integration gate must run on macOS');
   const isolationSource = await readFile(new URL('../src/providers/macos-isolation.mjs', import.meta.url), 'utf8');
-  const timeoutRequest = isolationSource.indexOf('timedOut = true;');
-  const processGroupKill = isolationSource.indexOf("process.kill(-child.pid, 'SIGKILL')", timeoutRequest);
-  const closeHandler = isolationSource.indexOf("child.once('close', (code, signal) => {", processGroupKill);
-  const timeoutFailure = isolationSource.indexOf('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', closeHandler);
+  const groupCleanup = isolationSource.indexOf('export async function cleanup_macos_compiler_process_group');
+  const termSignal = isolationSource.indexOf("process.kill(-pid, 'SIGTERM')", groupCleanup);
+  const forceKill = isolationSource.indexOf("process.kill(-pid, 'SIGKILL')", termSignal);
+  const verifyEmpty = isolationSource.indexOf('await wait_until_empty(Date.now() + verify_timeout_ms)', forceKill);
+  const closeHandler = isolationSource.indexOf("child.once('close', (code, signal) => {");
+  const closeCleanup = isolationSource.indexOf('void start_group_cleanup().finally(finish);', closeHandler);
+  const timeoutTimer = isolationSource.indexOf('timer = setTimeout(', closeHandler);
+  const timeoutCleanup = isolationSource.indexOf('void start_group_cleanup();', timeoutTimer);
   assert.match(isolationSource, /detached: true/,
     'Compiler must run in its own process group for descendant teardown');
-  assert.ok(timeoutRequest >= 0 && processGroupKill > timeoutRequest &&
-    closeHandler > processGroupKill && timeoutFailure > closeHandler,
-  'Compiler timeout must kill its process group and wait for closure before temporary-directory cleanup');
+  assert.match(isolationSource, /if \(settled \|\| !childClosed \|\| !groupCleanupComplete\) return/,
+    'Compiler completion must wait for both the leader close event and process-group cleanup');
+  assert.ok(groupCleanup >= 0 && termSignal > groupCleanup && forceKill > termSignal &&
+    verifyEmpty > forceKill && closeHandler > verifyEmpty && closeCleanup > closeHandler &&
+    timeoutTimer > closeHandler && timeoutCleanup > timeoutTimer,
+  'Compiler success, failure and timeout must verify process-group emptiness before temporary-directory cleanup');
   const base = await mkdtemp(path.join(os.tmpdir(), 'orix-seatbelt-integration-'));
   const root = path.join(base, 'rootfs');
   const hostSecret = path.join(base, 'host-only-secret.txt');

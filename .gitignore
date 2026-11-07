@@ -31,3 +31,6 @@ Thumbs.db
 .temp/
 *.swp
 *.swo
+
+# Generated native helper build outputs
+artifacts/windows-helper*/

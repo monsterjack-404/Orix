@@ -109,28 +109,60 @@ against privileged host administrators or kernel vulnerabilities.
 ## Windows AppContainer + Job Object
 
 The Windows backend creates a unique AppContainer profile with no network
-capabilities. Before profile creation, the native launcher walks the canonical
-rootfs and its ancestors, rejects reparse points, and requires each owner to be
-the service identity, LocalSystem, local Administrators or TrustedInstaller.
+capabilities. Runtime loads a prebuilt, package-owned .NET Framework 4.8
+AnyCPU launcher from a compressed package asset. It rejects symlink/non-file
+or oversized payloads, checks file identity before and after the read,
+validates the source-pinned compressed SHA-256, performs bounded gzip
+decompression, and validates the exact executable SHA-256. It stages those
+verified bytes in a fresh per-invocation temporary directory, makes the
+launcher read/execute-only, and hashes the staged executable again before
+launch. Missing, modified or unverifiable helper payloads fail closed.
+Runtime does not locate `csc.exe` or compile native helper source; the
+managed .NET Framework runtime is still required on Windows, but a compiler
+or SDK is not required for provider execution. The source-pinned digest is
+an integrity check, not a publisher signature, and does not protect against
+a compromised repository or privileged local administrator. CI builds the
+launcher on two independent Windows runner images and requires both outputs
+to match the exact source-pinned payload. The npm dry-run package check
+confirms the integrity module and compressed helper are shipped.
+
+Before profile creation, the native launcher walks the canonical rootfs and
+its ancestors, rejects reparse points, and requires each owner to be the
+service identity, LocalSystem, local Administrators or TrustedInstaller.
 The rootfs itself must have no write-capable ACL grant to another principal.
+Regular files must also have exactly one filesystem link. The native
+preflight reads link counts from opened file handles and rejects hard links
+before granting the AppContainer SID read access: NTFS hard links refer to
+the same file object, so changing the ACL through an in-root name can affect
+every other name for that file, including a name outside the rootfs. This is
+a preflight check, not a race-free filesystem pin.
 Ancestors must not grant untrusted principals deletion/replacement, ownership
-or ACL-control rights; ordinary sibling-creation rights on an ancestor are not
-treated as permission to modify an existing rootfs child. Any inherited
+or ACL-control rights; ordinary sibling-creation rights on an ancestor are
+not treated as permission to modify an existing rootfs child. Any inherited
 write-capable ACE effective on the rootfs is rejected at the rootfs itself.
+Before launch, the helper inspects the provider token for an enabled
+`SeChangeNotifyPrivilege` (Bypass traverse checking). This permits path traversal
+without granting directory enumeration or file content access; when enabled,
+the helper avoids redundant ancestor DACL writes. If the privilege is absent
+or disabled, a per-profile `FILE_TRAVERSE` ACE is considered only on a
+service-owned ancestor, never on OS/admin-owned paths. Deny ACEs are not
+overridden and provider process creation remains the actual fail-closed access
+check. See [Microsoft's privilege reference](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/bypass-traverse-checking).
 This is a conservative ACL preflight, not a defense against privileged host
-administrators or a subsequent trusted-host ACL/mount change. It grants the package SID
-read/execute access to the explicit provider rootfs and confines writable
-scratch to `rootfs/tmp`, including the package-specific
-`Packages/<profile>/AC/Temp` location used by Windows temporary-file APIs. The native launcher creates the provider suspended,
-assigns it to a Job Object before resume, verifies the process token is an
-AppContainer token, and configures a 50% CPU hard cap, 512 MiB aggregate job
-memory limit, 64 active processes and kill-on-job-close. It terminates and
-waits for remaining descendants before cleanup. Windows does not expose the
-same per-process RLIMIT file-size/open-descriptor controls used by Linux and
-macOS; ORIX's parent runner still limits wall-clock time and captured output.
-The Windows hostile-process integration test checks host-file denial,
-read-only rootfs, confined writable temporary storage and loopback network
-denial, and the launcher confirms Job Object configuration.
+administrators or a subsequent trusted-host ACL/mount change. It grants the
+package SID read/execute access to the explicit provider rootfs and confines
+writable scratch to `rootfs/tmp`, including the package-specific
+`Packages/<profile>/AC/Temp` location used by Windows temporary-file APIs.
+The native launcher creates the provider suspended, assigns it to a Job Object
+before resume, verifies the process token is an AppContainer token, and
+configures a 50% CPU hard cap, 512 MiB aggregate job memory limit, 64 active
+processes and kill-on-job-close. It terminates and waits for remaining
+descendants before cleanup. Windows does not expose the same per-process
+RLIMIT file-size/open-descriptor controls used by Linux and macOS; ORIX's
+parent runner still limits wall-clock time and captured output. The Windows
+hostile-process integration test checks host-file denial, read-only rootfs,
+confined writable temporary storage and loopback network denial, and the
+launcher confirms Job Object configuration.
 
 ## macOS Seatbelt (experimental)
 
@@ -164,6 +196,14 @@ macOS. The native integration uses Apple's reserved
 supported signed App Sandbox entitlement model. Apple does not guarantee the
 long-term availability of these reserved interfaces, so this backend is
 experimental and must be revalidated against each supported macOS release.
+The host-side clang compiler runs in its own process group. After compiler
+exit or timeout, ORIX sends TERM, escalates to KILL when required, and waits
+for the complete group to disappear before removing compiler inputs or
+outputs. If the OS does not confirm an empty group, ORIX preserves the
+private compiler workspace and returns its path for operator recovery; it
+never treats an unverified process-group cleanup as permission to delete
+files that a descendant may still be using. Operators must verify the group
+is gone before removing that preserved directory.
 It fails closed if its compiler, Seatbelt API or policy setup is unavailable.
 
 Across all platforms, `isolation: "none"` remains explicit legacy process
