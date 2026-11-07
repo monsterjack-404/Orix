@@ -202,6 +202,31 @@ test('APK binary XML decoder reads two-byte UTF-8 lengths without consuming stri
   assert.equal(decoded.package_name, package_name);
 });
 
+test('APK binary XML decoder rejects missing UTF-8 string terminators', () => {
+  const package_name = 'com.example.orix';
+  const manifest = binary_manifest_with_long_utf8_package(package_name);
+  const string_start = manifest.indexOf(Buffer.from(package_name, 'utf8'));
+  assert.notEqual(string_start, -1);
+  manifest[string_start + Buffer.byteLength(package_name, 'utf8')] = 0x01;
+  assert.throws(
+    () => parse_android_binary_xml(manifest),
+    error => error.code === 'ORIX_AXML_STRING_TERMINATOR',
+  );
+});
+
+test('APK binary XML decoder rejects UTF-8 UTF-16-length mismatches', () => {
+  const package_name = 'x'.repeat(130);
+  const manifest = binary_manifest_with_long_utf8_package(package_name);
+  const string_start = manifest.indexOf(Buffer.from(package_name, 'utf8'));
+  assert.notEqual(string_start, -1);
+  // The long UTF-8 character-length field immediately precedes the byte-length field.
+  manifest[string_start - 3] = 0x81;
+  assert.throws(
+    () => parse_android_binary_xml(manifest),
+    error => error.code === 'ORIX_AXML_STRING_LENGTH',
+  );
+});
+
 test('APK binary XML decoder enforces file, chunk, string, element and attribute budgets', () => {
   const manifest = binary_manifest();
   assert.throws(
