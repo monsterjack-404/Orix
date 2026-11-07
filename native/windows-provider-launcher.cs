@@ -152,6 +152,9 @@ namespace OrixWindowsSandbox {
     static extern IntPtr FreeSid(IntPtr sid);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern uint GetSystemDirectory(StringBuilder buffer, uint size);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern IntPtr CreateJobObject(IntPtr attributes, string name);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool SetInformationJobObject(IntPtr job, int infoClass, IntPtr info, uint length);
@@ -414,10 +417,18 @@ namespace OrixWindowsSandbox {
       return pointer;
     }
 
+    static string GetTrustedSystemDirectory() {
+      // Resolve the OS system directory through Win32, not a caller-controlled
+      // SystemRoot/WINDIR environment variable.
+      StringBuilder buffer = new StringBuilder(32768);
+      uint length = GetSystemDirectory(buffer, (uint)buffer.Capacity);
+      if (length == 0 || length >= buffer.Capacity)
+        throw Win32("Resolve trusted Windows system directory");
+      return buffer.ToString();
+    }
+
     static void SetIntegrityLevel(string path, string level) {
-      string systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
-      if (String.IsNullOrEmpty(systemRoot)) throw new InvalidOperationException("SystemRoot is unavailable for integrity-label configuration");
-      string icacls = Path.Combine(systemRoot, "System32", "icacls.exe");
+      string icacls = Path.Combine(GetTrustedSystemDirectory(), "icacls.exe");
       ProcessStartInfo start = new ProcessStartInfo();
       start.FileName = icacls;
       start.Arguments = Quote(path) + " /setintegritylevel (OI)(CI)" + level;
