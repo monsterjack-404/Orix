@@ -11,20 +11,9 @@ import { hash_buffer } from '../core/hash.mjs';
 const LOCAL_HEADER = 0x04034b50;
 const BINARY_XML = 0x0003;
 
-function is_decimal(value) {
-  if (!value) return false;
-  for (const character of value) {
-    const code = character.charCodeAt(0);
-    if (code < 48 || code > 57) return false;
-  }
-  return true;
-}
-
 function is_dex_entry(name) {
   const base = name.slice(name.lastIndexOf('/') + 1);
-  if (base === 'classes.dex') return true;
-  const match = base.match(/^classes([2-9][0-9]*)\.dex$/);
-  return match !== null && is_decimal(match[1]);
+  return base === 'classes.dex' || /^classes(?:[2-9]|[1-9][0-9]+)\.dex$/.test(base);
 }
 
 function crc32(buffer) {
