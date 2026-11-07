@@ -5,15 +5,16 @@ import { access, lstat, realpath, stat } from 'node:fs/promises';
 import { prepare_linux_provider_isolation } from './linux-isolation.mjs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
-import { OrixError } from '../core/errors.mjs';
+import { performance } from 'node:perf_hooks';
+import { OrixError, normalize_error } from '../core/errors.mjs';
 import { validate_provider_manifest } from './manifest.mjs';
 
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const BLOCKED_ENVIRONMENT_KEYS = new Set([
-  'PATH', 'PATHEXT', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
-  'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'DYLD_FRAMEWORK_PATH',
-  'PYTHONPATH', 'PYTHONHOME', 'PERL5OPT', 'RUBYOPT', 'BASH_ENV', 'ENV', 'IFS',
+  'PATH', 'PATHEXT', 'NODE_OPTIONS', 'NODE_PATH', 'NODE_V8_COVERAGE', 'NODE_COMPILE_CACHE', 'NODE_ICU_DATA', 'NODE_EXTRA_CA_CERTS',
+  'GCONV_PATH', 'PYTHONPATH', 'PYTHONHOME', 'PERL5OPT', 'RUBYOPT', 'BASH_ENV', 'ENV', 'IFS',
 ]);
+const BLOCKED_ENVIRONMENT_PREFIXES = ['LD_', 'DYLD_', 'OPENSSL_'];
 const MAX_ARGUMENTS = 256;
 const MAX_ARGUMENT_BYTES = 32 * 1024;
 const MAX_TOTAL_ARGUMENT_BYTES = 64 * 1024;
@@ -106,7 +107,10 @@ function validate_environment(value) {
   let total = 0;
   for (const key of entries) {
     const descriptor = descriptors[key];
-    if (typeof key !== 'string' || !ENV_KEY.test(key) || BLOCKED_ENVIRONMENT_KEYS.has(key.toUpperCase()) ||
+    const normalized_key = typeof key === 'string' ? key.toUpperCase() : '';
+    if (typeof key !== 'string' || !ENV_KEY.test(key) ||
+        BLOCKED_ENVIRONMENT_KEYS.has(normalized_key) ||
+        BLOCKED_ENVIRONMENT_PREFIXES.some(prefix => normalized_key.startsWith(prefix)) ||
         !descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) {
       throw new TypeError('env must contain enumerable string data properties with valid names');
     }
@@ -409,7 +413,7 @@ export async function run_static_provider(options) {
   }
 
   const started_at = new Date().toISOString();
-  const started_clock = Date.now();
+  const started_clock = performance.now();
   const windows = process.platform === 'win32';
   const detached = !windows;
 
@@ -420,6 +424,7 @@ export async function run_static_provider(options) {
     let timed_out = false;
     let cancelled = false;
     let output_limited = false;
+    let launch_setup_failed = false;
     let captured_bytes = 0;
     let stdout_bytes = 0;
     let stderr_bytes = 0;
@@ -437,6 +442,7 @@ export async function run_static_provider(options) {
     let isolation_cleanup_started = false;
     let isolation_cleanup_failed = false;
     let isolation_cleanup_error = null;
+    let isolation_cleanup_diagnostic = null;
     let isolation_cleanup_report = null;
     let isolation_cleanup_promise = null;
     let close_result = null;
@@ -458,7 +464,8 @@ export async function run_static_provider(options) {
         ? 'isolation-cleanup-failed'
         : process_group_cleanup_failed
           ? 'process-group-cleanup-failed'
-          : timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
+          : launch_setup_failed ? 'launch-setup-failed'
+            : timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
       const success = exit_code === 0 && termination_reason === null;
       const stdout = Buffer.concat(stdout_chunks).toString('utf8');
       const stderr = Buffer.concat(stderr_chunks).toString('utf8');
@@ -471,7 +478,7 @@ export async function run_static_provider(options) {
         args_count: executable_args.length + args.length,
         started_at,
         completed_at,
-        duration_ms: Math.max(0, Date.now() - started_clock),
+        duration_ms: Math.max(0, Math.round(performance.now() - started_clock)),
         exit_code,
         signal: exit_signal,
         termination_reason,
@@ -479,6 +486,7 @@ export async function run_static_provider(options) {
         timed_out,
         cancelled,
         output_limited,
+        launch_setup_failed,
         process_group_cleanup: {
           attempted: process_group_cleanup_started,
           force_kill_sent: process_group_force_kill_sent,
@@ -490,6 +498,7 @@ export async function run_static_provider(options) {
           complete: isolation_cleanup_complete,
           failed: isolation_cleanup_failed,
           reason: isolation_cleanup_error?.code ?? null,
+          error: isolation_cleanup_diagnostic,
           report: isolation_cleanup_report,
         },
         ok: success,
@@ -531,6 +540,7 @@ export async function run_static_provider(options) {
         .catch(error => {
           isolation_cleanup_failed = true;
           isolation_cleanup_error = error;
+          isolation_cleanup_diagnostic = normalize_error(error);
         })
         .finally(() => {
           isolation_cleanup_complete = true;
@@ -539,52 +549,59 @@ export async function run_static_provider(options) {
       return isolation_cleanup_promise;
     }
 
+    function complete_process_group_cleanup() {
+      // On cancellation/timeout, first stop the bootstrap process group so a
+      // not-yet-attached bootstrap cannot join the cgroup after it was emptied.
+      if (termination_started) start_isolation_cleanup(true);
+      finish_close();
+    }
+
     function start_process_group_cleanup() {
       if (process_group_cleanup_started || process_group_cleanup_complete) return;
       if (windows || !detached || !child?.pid) {
         process_group_cleanup_complete = true;
-        finish_close();
+        complete_process_group_cleanup();
         return;
       }
 
       if (!process_group_exists(child.pid)) {
         process_group_cleanup_verified = true;
         process_group_cleanup_complete = true;
-        finish_close();
+        complete_process_group_cleanup();
         return;
       }
 
       process_group_cleanup_started = true;
       signal_process_group(child.pid, 'SIGTERM');
       let phase = 'term';
-      let deadline = Date.now() + limits.kill_grace_ms;
+      let deadline = performance.now() + limits.kill_grace_ms;
 
       function check_process_group() {
         if (!process_group_exists(child.pid)) {
           process_group_cleanup_verified = true;
           process_group_cleanup_complete = true;
           process_group_cleanup_timer = null;
-          finish_close();
+          complete_process_group_cleanup();
           return;
         }
-        if (Date.now() >= deadline) {
+        if (performance.now() >= deadline) {
           if (phase === 'term') {
             // Escalate only while the original process-group id is still present.
             process_group_force_kill_sent = signal_process_group(child.pid, 'SIGKILL');
             phase = 'verify';
-            deadline = Date.now() + 5_000;
+            deadline = performance.now() + 5_000;
           } else {
             // Do not report success when the kernel still reports the group alive.
             process_group_cleanup_failed = true;
             process_group_cleanup_complete = true;
             process_group_cleanup_timer = null;
-            finish_close();
+            complete_process_group_cleanup();
             return;
           }
         }
         process_group_cleanup_timer = setTimeout(
           check_process_group,
-          Math.min(20, Math.max(1, deadline - Date.now())),
+          Math.min(20, Math.max(1, deadline - performance.now())),
         );
       }
 
@@ -619,7 +636,8 @@ export async function run_static_provider(options) {
         start_isolation_cleanup(true);
         return;
       }
-      start_isolation_cleanup(true);
+      // Prevent an un-attached bootstrap from joining after cgroup.kill has
+      // observed an empty cgroup. The cgroup-wide kill follows group teardown.
       start_process_group_cleanup();
     }
 
@@ -656,14 +674,20 @@ export async function run_static_provider(options) {
         detached,
         stdio: launch_stdio,
       });
-      close_parent_fd?.();
-      close_parent_fd = null;
     } catch (error) {
-      try { close_parent_fd?.(); } catch { /* preserve the spawn/close error */ }
+      try { close_parent_fd?.(); } catch { /* preserve the spawn error */ }
       close_parent_fd = null;
       finish_error(error);
       return;
     }
+
+    // A parent-FD close failure happens after spawn has succeeded. Treat it as
+    // a launch failure, but keep the child's exit/group listeners so teardown
+    // stops a possibly not-yet-attached bootstrap before cgroup cleanup.
+    let parent_fd_close_error = null;
+    try { close_parent_fd?.(); }
+    catch (error) { parent_fd_close_error = error; }
+    close_parent_fd = null;
 
     child.stdout.on('data', chunk => capture('stdout', chunk));
     child.stderr.on('data', chunk => capture('stderr', chunk));
@@ -672,8 +696,12 @@ export async function run_static_provider(options) {
       if (timeout_timer) clearTimeout(timeout_timer);
       timeout_timer = null;
       if (signal) signal.removeEventListener('abort', on_abort);
-      if (!termination_started) termination_started = true;
-      start_isolation_cleanup(false);
+      if (!termination_started) {
+        termination_started = true;
+        // Normal completion is different: the bootstrap has exited, so no
+        // process can still consume the one-shot attach capability.
+        start_isolation_cleanup(false);
+      }
       start_process_group_cleanup();
     });
     child.once('close', (exit_code, exit_signal) => {
@@ -687,6 +715,10 @@ export async function run_static_provider(options) {
       terminate();
     }, limits.timeout_ms);
     timeout_timer?.unref?.();
+    if (parent_fd_close_error) {
+      launch_setup_failed = true;
+      terminate();
+    }
     if (cancelled || signal?.aborted) on_abort();
   });
 }
