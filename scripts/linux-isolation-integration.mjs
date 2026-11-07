@@ -164,8 +164,8 @@ async function verify_real_upstream_rizin_under_bubblewrap(root, base) {
   // names. Use a known sample symbol when present; otherwise use the first
   // real function entry returned by the upstream engine.
   const selected_function = inventory.functions.find(item =>
-    /(?:^|\\.)main(?:$|[_.$])/.test(item.name) ||
-    item.name.includes('orix_rizin_probe_symbol')) ?? inventory.functions[0];
+    item.name === 'main' || item.name === 'sym.main' ||
+    item.name.endsWith('orix_rizin_probe_symbol')) ?? inventory.functions[0];
   assert.ok(selected_function, 'Real Rizin must return at least one selectable function entry');
 
   const disassembly = await analyze_rizin_functions({
@@ -176,13 +176,13 @@ async function verify_real_upstream_rizin_under_bubblewrap(root, base) {
   assert.equal(disassembly.provider.engine_version, RIZIN_RELEASE_VERSION);
   assert.equal(disassembly.disassembly.address, selected_function.offset);
   assert.ok(disassembly.disassembly.instructions.length > 0,
-    'Real Rizin must return actual disassembly at the discovered main entry');
+    'Real Rizin must return actual disassembly at a discovered function entry');
   assert.equal(disassembly.artifact.stable_during_analysis, true);
 
   const leftovers = (await readdir(root)).filter(name => name.startsWith('.orix-rizin-'));
   assert.deepEqual(leftovers, [], 'Real Rizin private snapshots must be removed after successful isolated analysis');
   process.stdout.write('Real upstream Rizin ' + RIZIN_RELEASE_VERSION +
-    ' + Bubblewrap passed: version, ELF imports, main-function inventory, bounded disassembly, stable input digest and snapshot cleanup.\n');
+    ' + Bubblewrap passed: version, ELF imports, function inventory, bounded disassembly, stable input digest and snapshot cleanup.\n');
 }
 
 async function verify_rizin_adapter_under_bubblewrap(root, node_path, base) {
