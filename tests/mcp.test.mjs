@@ -572,6 +572,32 @@ test('MCP confines artifact access to configured roots and rejects symlinks', as
   }
 });
 
+test('MCP case artifact intake rejects hard-linked source files', async () => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-hardlink-'));
+  try {
+    const source = path.join(workspace, 'source.bin');
+    const alias = path.join(workspace, 'source-alias.bin');
+    const created = await call_orix_tool('orix.case.create', {
+      workspace, title: 'Hard-link intake',
+    }, { roots: [workspace] });
+    await writeFile(source, 'case source bytes');
+    const { link } = await import('node:fs/promises');
+    await link(source, alias);
+    await assert.rejects(
+      call_orix_tool('orix.case.mutate', {
+        workspace, case_id: created.case.id, action: 'add_artifact', path: source,
+      }, { roots: [workspace] }),
+      error => error.code === 'ORIX_MCP_HARDLINK_REJECTED',
+    );
+    const state = await call_orix_tool('orix.case.get', {
+      workspace, case_id: created.case.id, action: 'show',
+    }, { roots: [workspace] });
+    assert.equal(state.artifacts.length, 0);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test('MCP refuses to append evidence through a hard-linked output alias', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-output-root-'));
   const outside = await mkdtemp(path.join(tmpdir(), 'orix-mcp-hardlink-output-outside-'));
