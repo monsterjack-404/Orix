@@ -152,12 +152,12 @@ test('BundleConfig parser enforces duplicate singular fields and protobuf wire t
     () => parse_android_bundle_config(Buffer.concat([field_varint(8, 0), field_varint(8, 1)])),
     error => error.code === 'ORIX_BUNDLE_CONFIG_DUPLICATE_FIELD',
   );
-  const bad_master_resources = field_bytes(4, field_bytes(1, Buffer.from([1, 2, 3, 4])));
+  const bad_master_resources = field_bytes(4, Buffer.from([0x0d, 1, 2, 3, 4])); // field 1 encoded as fixed32 instead of int32.
   assert.throws(
     () => parse_android_bundle_config(bad_master_resources),
     error => error.code === 'ORIX_BUNDLE_CONFIG_WIRE_MISMATCH',
   );
-  const bad_asset_versions = field_bytes(7, field_bytes(1, Buffer.from([1, 2, 3, 4])));
+  const bad_asset_versions = field_bytes(7, Buffer.from([0x0d, 1, 2, 3, 4])); // packed/unpacked int64 accepts only wire 0 or 2.
   assert.throws(
     () => parse_android_bundle_config(bad_asset_versions),
     error => error.code === 'ORIX_BUNDLE_CONFIG_WIRE_MISMATCH',
