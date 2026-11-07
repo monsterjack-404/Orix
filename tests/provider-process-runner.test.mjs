@@ -353,6 +353,7 @@ test('static provider runner rejects PATH and executable-loader environment over
   for (const key of [
     'PATH', 'NODE_OPTIONS', 'NODE_PATH', 'NODE_V8_COVERAGE', 'NODE_COMPILE_CACHE',
     'LD_PRELOAD', 'LD_AUDIT', 'LD_DEBUG_OUTPUT', 'GCONV_PATH',
+    'NODE_ICU_DATA', 'NODE_EXTRA_CA_CERTS', 'OPENSSL_CONF', 'OPENSSL_MODULES',
     'DYLD_INSERT_LIBRARIES', 'DYLD_FALLBACK_LIBRARY_PATH', 'DYLD_ROOT_PATH',
     'ld_audit',
   ]) {
