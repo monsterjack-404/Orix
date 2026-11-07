@@ -445,7 +445,7 @@ test('Rizin adapters reject NUL bytes in sandbox_root before input filesystem ac
       input_path: '/not/opened/file',
       executable: '/not/launched/rizin',
       isolation: 'required',
-      sandbox_root: '/not/opened/rootfs\\0suffix',
+      sandbox_root: '/not/opened/rootfs\0suffix',
     }),
     expected,
   );
@@ -454,7 +454,7 @@ test('Rizin adapters reject NUL bytes in sandbox_root before input filesystem ac
       input_path: '/not/opened/file',
       executable: '/not/launched/rizin',
       isolation: 'required',
-      sandbox_root: '/not/opened/rootfs\\0suffix',
+      sandbox_root: '/not/opened/rootfs\0suffix',
     }),
     expected,
   );
