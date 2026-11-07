@@ -18,7 +18,7 @@ function create_dex_with_string(encoded, utf16_length) {
   const map_offset = (116 + string_data.length + 3) & ~3;
   const map_size = 4 + 4 * 12;
   const buffer = Buffer.alloc(map_offset + map_size);
-  buffer.write('dex\\n035\\0', 0, 'ascii');
+  buffer.write('dex\n035\0', 0, 'ascii');
   buffer.writeUInt32LE(buffer.length, 32);
   buffer.writeUInt32LE(112, 36);
   buffer.writeUInt32LE(0x12345678, 40);
@@ -52,7 +52,7 @@ test('DEX MUTF-8 decoder returns regular ASCII strings', () => {
 
 test('DEX MUTF-8 decoder supports encoded NUL and supplementary Unicode characters', () => {
   const nul = parse_dex(create_dex_with_string(Buffer.from([0xc0, 0x80]), 1));
-  assert.equal(nul.strings[0].value, '\\0');
+  assert.equal(nul.strings[0].value, '\0');
 
   // U+1F600 is represented as two UTF-16 surrogate code units in DEX MUTF-8.
   const emoji = parse_dex(create_dex_with_string(
