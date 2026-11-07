@@ -28,6 +28,7 @@ if (command === 'iij') {
 }
 
 if (command === 'axlj') {
+  if (config.delay_references_ms) await new Promise(resolve => setTimeout(resolve, config.delay_references_ms));
   await write(config.references_output ?? '[]');
   process.exit(0);
 }
