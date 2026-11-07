@@ -57,6 +57,20 @@ test('static provider runner uses argv without shell interpolation and returns b
   assert.equal(result.success, true);
   assert.equal(result.termination_reason, null);
   assert.equal(result.isolation_cleanup.error, null);
+  assert.deepEqual(result.isolation_cleanup, {
+    attempted: false,
+    complete: true,
+    failed: false,
+    reason: null,
+    error: null,
+    report: null,
+  });
+  assert.equal(typeof result.process_group_cleanup.attempted, 'boolean');
+  assert.equal(typeof result.process_group_cleanup.force_kill_sent, 'boolean');
+  assert.equal(typeof result.process_group_cleanup.failed, 'boolean');
+  assert.ok(result.process_group_cleanup.verified_empty === null ||
+    typeof result.process_group_cleanup.verified_empty === 'boolean');
+  assert.equal(result.launch_setup_failed, false);
   assert.equal(result.args_count, 3);
   assert.equal(result.output.bytes_captured, result.captured_bytes);
   assert.ok(result.completed_at);
