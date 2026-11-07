@@ -120,7 +120,8 @@ function parse_namespace(buffer, start, end, budget, limits) {
       seen.add(field);
       result[field === 1 ? 'prefix' : 'uri'] = decode_utf8(buffer, value.start, value.end, 'XmlNamespace.' + field, budget, limits);
     }
-    // SourcePosition (field 3) and future fields are safely skipped by wire type.
+    if (field === 3) expect_wire('XmlNamespace', field, wire, 2);
+    // SourcePosition and future fields are skipped only after wire framing is validated.
   }, 'XmlNamespace');
   if (!result.uri) fail('ORIX_PROTO_XML_NAMESPACE_URI', 'XmlNamespace requires a non-empty URI');
   return result;
@@ -143,7 +144,8 @@ function parse_attribute(buffer, start, end, budget, limits) {
       if (value > 0xffffffff) fail('ORIX_PROTO_XML_RESOURCE_ID', 'XmlAttribute resource_id exceeds uint32');
       result.resource_id = value;
     }
-    // SourcePosition (field 4), compiled Item (field 6) and future fields are skipped.
+    if (field === 4 || field === 6) expect_wire('XmlAttribute', field, wire, 2);
+    // SourcePosition, compiled Item and future fields are skipped after wire framing is validated.
   }, 'XmlAttribute');
   if (!result.name) fail('ORIX_PROTO_XML_ATTRIBUTE_NAME', 'XmlAttribute requires a non-empty name');
   return result;
@@ -216,7 +218,8 @@ function parse_node(buffer, start, end, budget, limits, depth) {
       node_seen = true;
       text = decode_utf8(buffer, value.start, value.end, 'XmlNode.text', budget, limits);
     }
-    // SourcePosition (field 3) and unknown fields are skipped.
+    if (field === 3) expect_wire('XmlNode', field, wire, 2);
+    // SourcePosition and unknown fields are skipped after wire framing is validated.
   }, 'XmlNode');
   if (!node_seen) fail('ORIX_PROTO_XML_NODE_EMPTY', 'XmlNode must contain an element or text value');
   return element ? { kind: 'element', element } : { kind: 'text', text };
