@@ -23,13 +23,13 @@ Runtime no longer discovers a compiler, invokes `csc.exe`, or compiles C# source
 The source-pinned executable SHA-256 is:
 
 ```text
-7e914c03c24dbca54657357552a62b76830892d01e2a577a8cd528f9d597ec29
+14c4902a89e369cde661fae61a1779b0f1b0a8cb01e41c69c9210feeab674a34
 ```
 
 The source-pinned gzip SHA-256 is:
 
 ```text
-65d3d9a83deb1287ed149238823e170e55407da8098d6f22aa1ec4247d7c4a40
+d0667d4c4f5702e2aab6f02d11094f955f8b6de7a379d4ce089065c5600d28db
 ```
 
 Both independent Windows CI runners built the launcher from the exact PR head. Their fresh executables were byte-for-byte identical and passed the PE/CLR metadata and IL-only AnyCPU checks. The exact matching binary was then packaged and its compressed and uncompressed hashes checked. This artifact's GitHub Actions provenance is a CI build result, not a publisher signature.
