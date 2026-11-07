@@ -125,7 +125,12 @@ jobs:
           tar -xJf "$archive" -C "$source_dir" --strip-components=1
           meson setup "$build_dir" "$source_dir" --prefix=/usr/local --buildtype=release
           meson compile -C "$build_dir"
+          meson test -C "$build_dir" --print-errorlogs
           sudo meson install -C "$build_dir"
+          if [ -u /usr/local/bin/bwrap ]; then
+            echo "::error::Bubblewrap must not be installed setuid"
+            exit 1
+          fi
           test "$(/usr/local/bin/bwrap --version)" = "bubblewrap ${BUBBLEWRAP_VERSION}"
       - name: Set up Node.js
         uses: actions/setup-node@v7
