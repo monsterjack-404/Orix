@@ -291,7 +291,12 @@ export function parse_android_proto_xml(buffer, options = {}) {
     if (item.namespace_uri === '') root_attributes[item.name] = item.value;
   }
   const children = element_children(root);
-  const sdk = children.find(item => item.name === 'uses-sdk');
+  const sdk_element = children.find(item => item.name === 'uses-sdk');
+  const sdk = {
+    min_version: sdk_element ? integer_or_text(attribute(sdk_element, 'minSdkVersion')) : null,
+    target_version: sdk_element ? integer_or_text(attribute(sdk_element, 'targetSdkVersion')) : null,
+    max_version: sdk_element ? integer_or_text(attribute(sdk_element, 'maxSdkVersion')) : null,
+  };
   const permissions = [];
   let output_truncated = false;
   for (const child of children) {
@@ -340,6 +345,7 @@ export function parse_android_proto_xml(buffer, options = {}) {
     package_name: root_attributes.package ?? null,
     version_code: integer_or_text(attribute(root, 'versionCode')),
     version_name: attribute(root, 'versionName'),
+    sdk,
     permissions,
     components,
     application,
