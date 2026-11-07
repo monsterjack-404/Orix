@@ -1,6 +1,6 @@
 # Linux cgroup v2 provider resource-isolation design
 
-**Status: research/design only — no cgroup resource enforcement is implemented by this document or the current provider runner.**
+**Status: implemented in the Linux provider stack and exercised by a privileged real-kernel CI gate.** Production use still requires an administrator-provisioned delegated cgroup v2 parent configured as `ORIX_CGROUP_PARENT`.
 
 ## Goal
 
@@ -115,7 +115,7 @@ Provider manifests may request a stricter limit only if policy explicitly allows
 
 ## Existing process-runner lifecycle constraints
 
-The current `run_static_provider()` implementation directly spawns the prepared executable, owns stdout/stderr capture, starts a wall-clock timer, and settles its result from child-process `close`. Timeout, abort and output overflow currently signal the POSIX process group (or the direct child on Windows). A cgroup-backed implementation must change this lifecycle rather than bolting a PID move onto the existing spawn call.
+The Linux `run_static_provider()` path now spawns only the trusted bootstrap helper as its initial child. It passes the write-only attach capability through stdio descriptor 3, closes the host copy after spawn, and attaches before launching `prlimit`/Bubblewrap. On child exit, timeout, abort or output overflow it starts idempotent cgroup teardown and waits for process/cgroup cleanup before returning. POSIX process-group cleanup remains an additional measure; cgroup membership and `cgroup.kill` are authoritative for provider descendants.
 
 Required integration behavior:
 
@@ -159,9 +159,9 @@ The integration job must not silently skip when the security gate is expected to
 
 ## Rollout and documentation rules
 
-Implement as a separate follow-up after the Linux Bubblewrap stack is merged in dependency order. Keep this research document distinct from implementation status. Update provider docs, CLI/API docs, threat-model notes, and CI only when the behavior exists and the real-kernel integration gate is available.
+The host-side manager, trusted bootstrap integration, process-runner lifecycle, provider documentation, security model and privileged real-kernel CI gate are now present in the Linux implementation branch. This document remains the design rationale and records the implementation's trust boundaries; it is no longer a statement that resource enforcement is absent.
 
-Until then, ORIX must continue to describe its current Linux provider backend as Bubblewrap namespace/filesystem isolation with bounded process execution—not as CPU, memory, or process-count isolated.
+The production service must provision an administrator-owned delegated parent and set `ORIX_CGROUP_PARENT`. The repository CI fixture provisions a temporary parent only for the integration run; it does not provision or persist a production cgroup hierarchy.
 
 The delegated parent and its `supervisor/` child must be owned by the ORIX service effective UID and must not be group- or other-writable. The read-only preflight reports and enforces these conservative ownership/mode-bit checks, and also confirms that `cgroup.events` is readable and `cgroup.kill` is writable. Because Node's `access(2)`-backed permission checks use the process real UID/GID, the preflight fails closed unless real and effective UID/GID match; it must not use a real-ID access result to claim effective-ID readiness. This is not a full host trust proof: operators still control delegation, account membership, mount configuration, ACL policy and any external policy beyond the mode-bit checks.
 
@@ -172,10 +172,34 @@ The follow-up `scripts/linux-cgroup-v2-preflight.mjs` command inspects the host'
 The command is intentionally read-only: it does not create a child cgroup, move a process, enable controllers, change limits, or claim that kernel enforcement has been proven. It is suitable for CI environment discovery and operator diagnostics. A positive result is a deployment precondition, not a substitute for the real-kernel enforcement tests below.
 
 
-## Trusted bootstrap descriptor prototype (not yet integrated)
+## Trusted bootstrap descriptor integration
 
-The follow-up prototype in \`src/providers/linux-cgroup-v2-bootstrap.mjs\` consumes only child descriptor 3, writes the bootstrap PID, and closes that descriptor before launching the already-prepared absolute command. It rejects an unexpected descriptor contract, uses \`shell: false\`, bounds the command vector, and fails closed if the attach write or descriptor close fails. It does not accept a cgroup path or controller-management capability.
+The integrated `src/providers/linux-cgroup-v2-bootstrap.mjs` consumes only child
+descriptor 3, writes the bootstrap PID to the leaf `cgroup.procs`, and closes
+that descriptor before launching the already-prepared `prlimit`/Bubblewrap
+command. It rejects an unexpected descriptor contract, uses `shell: false`,
+bounds the command vector, and fails closed if the attach write or descriptor
+close fails. It does not accept a cgroup path or controller-management
+capability.
 
-The Linux regression tests in \`tests/linux-cgroup-v2-bootstrap.test.mjs\` exercise the real Node child-process descriptor handoff using ordinary temporary files as stand-ins for \`cgroup.procs\`. They verify attach-before-provider ordering, that the attach descriptor is not visible to the provider child, and that an attach-write failure prevents provider launch. The repository CI runs these tests on Node.js 20, 22, and 24.
+`src/providers/linux-cgroup-v2-manager.mjs` opens cgroup directories through
+retained descriptors, verifies cgroup2 filesystem identity and delegated-parent
+permissions, creates a unique leaf, writes and reads back all mandatory limits,
+and returns only the attach descriptor plus an idempotent cleanup operation.
+The process runner passes that descriptor to the bootstrap and waits for
+cgroup teardown before resolving execution.
 
-**Validation boundary:** these tests prove the Node descriptor handoff behavior on Linux; they do not prove behavior on a cgroup2 filesystem, actual kernel membership, controller enforcement, or teardown. The current process runner does not call this helper. A host-side cgroup manager, runner integration, and real delegated-cgroup integration environment remain required before ORIX can claim cgroup resource isolation.
+The privileged `scripts/linux-cgroup-v2-integration.mjs` gate exercises actual
+kernel state: it requires the bootstrap/provider to appear in the run cgroup,
+verifies `cpu.max` throttling, `memory.max` OOM behavior, `pids.max` task
+rejection, inherited RLIMITs, `cgroup.kill`, descendant termination and
+empty-cgroup removal. The Bubblewrap/Rizin Linux integration also runs inside
+a temporary delegated cgroup parent. These tests establish behavior on the
+tested Linux CI kernel/runtime; they are not a universal guarantee for all
+kernel versions, distributions or production deployments.
+
+The read-only `scripts/linux-cgroup-v2-preflight.mjs` remains diagnostic only.
+A standard CI diagnostic without `ORIX_CGROUP_PARENT` correctly reports
+`ready: false`; the privileged integration fixture creates and sets its
+temporary parent inside the test process. Production must configure and
+secure its own delegated parent before using `isolation: 'required'`.

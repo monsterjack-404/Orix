@@ -1,12 +1,12 @@
 # ORIX Provider Manifests and Registry
 
-The provider layer validates metadata, maintains an in-memory capability catalog, and supports an opt-in bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, grant authorization, create an OS sandbox, or claim that a provider is available before it has actually been located and invoked.
+The provider layer validates metadata, maintains an in-memory capability catalog, and supports an opt-in bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, or grant authorization. Process execution is not sandboxed by default; the Linux Bubblewrap backend is a separate opt-in isolation mode. ORIX does not claim that a provider is available before it has actually been located and invoked.
 
 
 
 ### Executable argument prefixes
 
-For wrapper executables, the provider adapter accepts an optional `executable_args` array. These literal arguments are prepended to the provider's own argument vector; they are passed directly to the selected absolute executable with `shell: false`. The CLI exposes this as repeatable `--executable-arg <value>` (maximum 16), and the MCP `orix.rizin_functions` tool accepts `executable_args` with the same 16-item bound. Prefix arguments are subject to the process runner's argument-count, byte-size and NUL-byte checks. This does not change executable allowlisting or turn the provider into an OS sandbox.
+For wrapper executables, the provider adapter accepts an optional `executable_args` array. These literal arguments are prepended to the provider's own argument vector; they are passed directly to the selected absolute executable with `shell: false`. The CLI exposes this as repeatable `--executable-arg <value>` (maximum 16), and the MCP `orix.rizin_functions` tool accepts `executable_args` with the same 16-item bound. Prefix arguments are subject to the process runner's argument-count, byte-size and NUL-byte checks. This does not change executable allowlisting or the separately configured isolation mode.
 ## 1. Manifest format
 
 Provider manifests use the **orix.provider.v1** contract defined by [provider-manifest.v1.schema.json](../schemas/provider-manifest.v1.schema.json).
@@ -123,7 +123,7 @@ if (!result.ok) {
 }
 ~~~
 
-This runner is a process-control boundary, **not an operating-system sandbox**. It cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. POSIX process groups are signalled on timeout/cancellation; Windows currently signals the direct child and does not guarantee process-tree teardown. Do not run untrusted provider binaries on a sensitive host. Strong isolation requires an OS/container/VM policy supplied and verified separately.
+Without `isolation: 'required'`, this runner is a process-control boundary, **not an operating-system sandbox**. On Linux, required isolation combines Bubblewrap namespace/filesystem restrictions with a per-run cgroup v2 resource boundary. A trusted bootstrap attaches itself to the run cgroup through a write-only descriptor before it starts `prlimit` and Bubblewrap; later provider descendants inherit that cgroup membership. Before launch, ORIX writes and reads back the enforced limits: `cpu.max=50000 100000` (50% CPU bandwidth, not a cumulative CPU-time budget), `memory.max=536870912` (512 MiB), `memory.swap.max=0`, `memory.oom.group=1`, and `pids.max=64`. Per-process limits also set 60 seconds CPU time, zero core-dump bytes, a 64 MiB file-size ceiling, and 256 open files. On normal completion, timeout, cancellation or output overflow, the runner uses `cgroup.kill`, waits for `cgroup.events` to report `populated 0`, and removes the run cgroup before returning. Cleanup failure prevents a successful execution result. This requires an administrator-provisioned delegated cgroup v2 parent configured as the absolute `ORIX_CGROUP_PARENT`; missing delegation, controllers or required kernel controls fail closed. This PR path provides required isolation on Linux only; Windows and macOS enforcement is not claimed. The default `isolation: 'none'` mode remains unsandboxed and must not be used as a hostile-binary security boundary.
 
 ## 5. Rizin import adapter
 
@@ -142,7 +142,27 @@ console.log(report.artifact.sha256);
 console.log(report.imports);
 ~~~
 
-The adapter report contract is defined in [rizin-imports.v1.schema.json](../schemas/rizin-imports.v1.schema.json). The adapter checks the manifest's supported platform before launch (`linux`, `windows`, or `macos`), uses Rizin's `-N` no-user-settings option and `-q -c iij` command form, and passes only the bounded private snapshot path to the import command. See the [Rizin CLI options](https://book.rizin.re/src/first_steps/commandline_options.html) and [Rizin command-line guide](https://book.rizin.re/src/first_steps/commandline_rizin.html). Rizin remains an optional external installation; ORIX does not bundle it or claim it was run when it is unavailable. The upstream repository contains files under multiple licenses, including LGPL and GPL; the manifest therefore uses SPDX `NOASSERTION` rather than claiming one license covers the whole installation. The automated adapter tests use a deterministic executable fixture and do not substitute for verification against every supported upstream Rizin release.
+The adapter report contract is defined in [rizin-imports.v1.schema.json](../schemas/rizin-imports.v1.schema.json). The adapter checks the manifest's supported platform before launch (`linux`, `windows`, or `macos`), uses Rizin's `-N` no-user-settings option and `-q -c iij` command form, and passes only the bounded private snapshot path to the import command. See the [Rizin CLI options](https://book.rizin.re/src/first_steps/commandline_options.html) and [Rizin command-line guide](https://book.rizin.re/src/first_steps/commandline_rizin.html). Rizin remains an optional external installation; ORIX does not bundle it or claim it was run when it is unavailable. The upstream repository contains files under multiple licenses, including LGPL and GPL; the manifest therefore uses SPDX `NOASSERTION` rather than claiming one license covers the whole installation. The cross-platform adapter contract tests use a deterministic executable fixture. The Linux Bubblewrap CI gate additionally downloads the official upstream Rizin 0.9.1 x86-64 static release archive, checks its pinned SHA-256 and exact size, safely checks archive member paths, and runs the real Rizin executable inside the rootfs against a compiled ELF sample. That real-binary gate verifies the reported version, imports, function inventory, bounded disassembly, input stability and snapshot cleanup. It is a verified compatibility point for this pinned Linux release, not a guarantee for every Rizin release, architecture, distribution or plugin. The `pdg` decompilation-plugin path remains covered by the deterministic adapter fixture; the real upstream binary gate does not claim that `rz-ghidra` is installed or that real pseudocode generation has been verified.
+
+
+### Opt-in Linux process isolation
+
+Required isolation needs Bubblewrap **0.12.0 or newer**. Versions before 0.12.0 are affected by [CVE-2026-87766](https://github.com/containers/bubblewrap/security/advisories/GHSA-pxhw-h44j-8pfx), a symlink traversal during sandbox setup. The Linux CI gate builds and tests pinned upstream Bubblewrap 0.13.1 from a SHA-256-verified source archive rather than trusting the runner's distro package.
+
+The Rizin JavaScript adapter functions \`analyze_rizin_imports\`, \`analyze_rizin_functions\`, and \`probe_rizin\` accept the same optional \`isolation\` and \`sandbox_root\` fields as \`run_static_provider\`. The default remains \`isolation: 'none'\`. On Linux, request the required Bubblewrap namespace/filesystem backend explicitly:
+
+~~~js
+const report = await analyze_rizin_imports({
+  executable: '/opt/rizin/bin/rizin',
+  input_path: '/evidence/sample.elf',
+  isolation: 'required',
+  sandbox_root: '/opt/orix/provider-root',
+});
+~~~
+
+The sandbox root must contain the selected Rizin executable, the working directory, and the adapter's private temporary snapshot. When cwd is omitted in required mode, the adapter uses sandbox_root itself as the working directory; an explicitly supplied cwd must resolve inside that root. In required Linux isolation mode, ORIX validates the root before staging any input snapshot: the root and every canonical ancestor must be owned by root or the ORIX service UID and not group/other writable, except for root-owned sticky ancestors such as /tmp; symbolic-link path components are rejected. The root must also provide real /proc, /dev, and /tmp directories. ORIX stages the private snapshot in a temporary directory directly under sandbox_root, not under /tmp, because Bubblewrap overlays /tmp with a fresh tmpfs. After creation, ORIX rechecks the root's device/inode identity before handing the snapshot to the process runner. Unsafe, incomplete, missing, or non-Linux required roots fail closed; the snapshot helper does not fall back to the host /tmp directory.
+
+These rootfs checks are preflight and identity rechecks, not a descriptor-pinned transaction: a validation-to-spawn TOCTOU window remains, and callers must protect rootfs contents, mount configuration, ACLs, and deployment lifecycle from untrusted writers. The provider-visible rootfs is separate from the host cgroup hierarchy; the provider receives no delegated cgroup path or controller descriptor. Production must provision a dedicated cgroup v2 subtree with `cpu`, `memory`, and `pids` controllers enabled for children, an empty domain parent, and a service-owned `supervisor/` sibling. Configure `ORIX_CGROUP_PARENT` in the ORIX host service. The administrator remains responsible for parent ownership, ACLs, controller delegation and lifecycle. CI creates a temporary delegated subtree only for its privileged integration tests; it is not a production provisioning service. The read-only preflight reporting no configured parent is expected on an unconfigured runner and is not evidence of enforcement.
 
 ### Function inventory and bounded disassembly
 

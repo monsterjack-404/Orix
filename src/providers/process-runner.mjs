@@ -282,6 +282,26 @@ function minimal_environment(overrides) {
   return result;
 }
 
+function process_group_exists(pid) {
+  if (process.platform === 'win32' || !Number.isSafeInteger(pid) || pid < 1) return false;
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code !== 'ESRCH';
+  }
+}
+
+function signal_process_group(pid, signal) {
+  if (process.platform === 'win32' || !Number.isSafeInteger(pid) || pid < 1) return false;
+  try {
+    process.kill(-pid, signal);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function signal_process(child, detached, signal) {
   if (!child.pid) return;
   if (detached && process.platform !== 'win32') {
@@ -325,10 +345,6 @@ export async function run_static_provider(options) {
       args.reduce((sum, item) => sum + Buffer.byteLength(item, 'utf8'), 0) > MAX_TOTAL_ARGUMENT_BYTES) {
     throw new TypeError('executable_args and args exceed the combined argument limits');
   }
-  const cwd = await validate_working_directory(
-    cwd_value,
-    descriptors.allowed_working_directories?.value ?? [cwd_value],
-  );
   const env = validate_environment(descriptors.env?.value);
   const limits = validate_runtime_limits(manifest, {
     timeout_ms: descriptors.timeout_ms?.value,
@@ -339,28 +355,56 @@ export async function run_static_provider(options) {
   if (isolation !== 'none' && isolation !== 'required') {
     throw new TypeError('isolation must be either none or required');
   }
+  const allowed_working_directories = descriptors.allowed_working_directories?.value ?? [cwd_value];
+  let cwd;
   let launch_executable = executable;
   let launch_args = [...executable_args, ...args];
-  let launch_cwd = cwd;
+  let launch_cwd;
   let launch_env = minimal_environment(env);
+  let launch_stdio = ['ignore', 'pipe', 'pipe'];
+  let close_parent_fd = null;
+  let isolation_cleanup = null;
+  let isolation_cleanup_on_terminate = true;
   if (isolation === 'required') {
+    // Validate the rootfs first so an absent/untrusted root reports the real
+    // isolation failure, rather than a secondary cwd lookup failure when cwd
+    // defaults to the not-yet-created rootfs.
     const prepared = await prepare_linux_provider_isolation({
       executable,
-      cwd,
+      cwd: cwd_value,
       sandbox_root: descriptors.sandbox_root?.value,
       args: launch_args,
       env,
     });
+    cwd = await validate_working_directory(cwd_value, allowed_working_directories);
     launch_executable = prepared.executable;
     launch_args = prepared.args;
     launch_cwd = prepared.cwd;
     launch_env = prepared.env;
+    launch_stdio = prepared.stdio ?? launch_stdio;
+    close_parent_fd = prepared.close_parent_fd ?? null;
+    isolation_cleanup = prepared.cleanup ?? null;
+    isolation_cleanup_on_terminate = prepared.cleanup_on_terminate !== false;
+  } else {
+    cwd = await validate_working_directory(cwd_value, allowed_working_directories);
+    launch_cwd = cwd;
   }
   const signal = descriptors.signal?.value;
   if (signal !== undefined && !(signal instanceof AbortSignal)) {
     throw new TypeError('signal must be an AbortSignal');
   }
   if (signal?.aborted) {
+    try { close_parent_fd?.(); } catch { /* isolation cleanup remains authoritative */ }
+    if (isolation_cleanup) {
+      try { await isolation_cleanup(); }
+      catch (error) {
+        runner_error('ORIX_PROVIDER_ISOLATION_CLEANUP_FAILED',
+          'Provider cancellation during isolation setup could not be cleaned up safely', {
+            provider_id: manifest.id,
+            reason: error?.code ?? error?.name ?? 'cleanup-failed',
+          });
+      }
+    }
     runner_error('ORIX_PROVIDER_CANCELLED', 'Provider process was cancelled before launch', {
       provider_id: manifest.id,
     });
@@ -385,34 +429,200 @@ export async function run_static_provider(options) {
     const stderr_chunks = [];
     let timeout_timer = null;
     let kill_timer = null;
+    let process_group_cleanup_timer = null;
+    let process_group_cleanup_started = false;
+    let process_group_cleanup_complete = windows;
+    let process_group_cleanup_verified = windows ? null : false;
+    let process_group_cleanup_failed = false;
+    let process_group_force_kill_sent = false;
+    let isolation_cleanup_complete = !isolation_cleanup;
+    let isolation_cleanup_started = false;
+    let isolation_cleanup_failed = false;
+    let isolation_cleanup_error = null;
+    let isolation_cleanup_report = null;
+    let isolation_cleanup_promise = null;
+    let close_result = null;
 
     function cleanup() {
       if (timeout_timer) clearTimeout(timeout_timer);
       if (kill_timer) clearTimeout(kill_timer);
+      if (process_group_cleanup_timer) clearTimeout(process_group_cleanup_timer);
       if (signal) signal.removeEventListener('abort', on_abort);
+    }
+
+    function finish_close() {
+      if (settled || close_result === null || !process_group_cleanup_complete || !isolation_cleanup_complete) return;
+      settled = true;
+      cleanup();
+      const { exit_code, exit_signal } = close_result;
+      const completed_at = new Date().toISOString();
+      const termination_reason = isolation_cleanup_failed
+        ? 'isolation-cleanup-failed'
+        : process_group_cleanup_failed
+          ? 'process-group-cleanup-failed'
+          : timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
+      const success = exit_code === 0 && termination_reason === null;
+      const stdout = Buffer.concat(stdout_chunks).toString('utf8');
+      const stderr = Buffer.concat(stderr_chunks).toString('utf8');
+      resolve({
+        schema_version: 'orix.provider-execution.v1',
+        provider: { id: manifest.id, version: manifest.version },
+        isolation,
+        isolation_enforced: isolation === 'required',
+        executable,
+        args_count: executable_args.length + args.length,
+        started_at,
+        completed_at,
+        duration_ms: Math.max(0, Date.now() - started_clock),
+        exit_code,
+        signal: exit_signal,
+        termination_reason,
+        success,
+        timed_out,
+        cancelled,
+        output_limited,
+        process_group_cleanup: {
+          attempted: process_group_cleanup_started,
+          force_kill_sent: process_group_force_kill_sent,
+          verified_empty: process_group_cleanup_verified,
+          failed: process_group_cleanup_failed,
+        },
+        isolation_cleanup: {
+          attempted: isolation_cleanup_started,
+          complete: isolation_cleanup_complete,
+          failed: isolation_cleanup_failed,
+          reason: isolation_cleanup_error?.code ?? null,
+          report: isolation_cleanup_report,
+        },
+        ok: success,
+        output: {
+          stdout,
+          stderr,
+          stdout_bytes,
+          stderr_bytes,
+          bytes_observed: stdout_bytes + stderr_bytes,
+          bytes_captured: captured_bytes,
+          truncated: output_limited,
+        },
+        stdout,
+        stderr,
+        stdout_bytes,
+        stderr_bytes,
+        captured_bytes,
+        output_truncated: output_limited,
+        limits: {
+          timeout_ms: limits.timeout_ms,
+          max_output_bytes: limits.max_output_bytes,
+          kill_grace_ms: limits.kill_grace_ms,
+        },
+      });
+    }
+
+    function start_isolation_cleanup(on_terminate) {
+      if (!isolation_cleanup || (on_terminate && !isolation_cleanup_on_terminate)) {
+        isolation_cleanup_complete = true;
+        finish_close();
+        return Promise.resolve();
+      }
+      if (isolation_cleanup_promise) return isolation_cleanup_promise;
+      isolation_cleanup_started = true;
+      isolation_cleanup_complete = false;
+      isolation_cleanup_promise = Promise.resolve()
+        .then(() => isolation_cleanup())
+        .then(report => { isolation_cleanup_report = report ?? null; })
+        .catch(error => {
+          isolation_cleanup_failed = true;
+          isolation_cleanup_error = error;
+        })
+        .finally(() => {
+          isolation_cleanup_complete = true;
+          finish_close();
+        });
+      return isolation_cleanup_promise;
+    }
+
+    function start_process_group_cleanup() {
+      if (process_group_cleanup_started || process_group_cleanup_complete) return;
+      if (windows || !detached || !child?.pid) {
+        process_group_cleanup_complete = true;
+        finish_close();
+        return;
+      }
+
+      if (!process_group_exists(child.pid)) {
+        process_group_cleanup_verified = true;
+        process_group_cleanup_complete = true;
+        finish_close();
+        return;
+      }
+
+      process_group_cleanup_started = true;
+      signal_process_group(child.pid, 'SIGTERM');
+      let phase = 'term';
+      let deadline = Date.now() + limits.kill_grace_ms;
+
+      function check_process_group() {
+        if (!process_group_exists(child.pid)) {
+          process_group_cleanup_verified = true;
+          process_group_cleanup_complete = true;
+          process_group_cleanup_timer = null;
+          finish_close();
+          return;
+        }
+        if (Date.now() >= deadline) {
+          if (phase === 'term') {
+            // Escalate only while the original process-group id is still present.
+            process_group_force_kill_sent = signal_process_group(child.pid, 'SIGKILL');
+            phase = 'verify';
+            deadline = Date.now() + 5_000;
+          } else {
+            // Do not report success when the kernel still reports the group alive.
+            process_group_cleanup_failed = true;
+            process_group_cleanup_complete = true;
+            process_group_cleanup_timer = null;
+            finish_close();
+            return;
+          }
+        }
+        process_group_cleanup_timer = setTimeout(
+          check_process_group,
+          Math.min(20, Math.max(1, deadline - Date.now())),
+        );
+      }
+
+      check_process_group();
     }
 
     function finish_error(error) {
       if (settled) return;
       settled = true;
       cleanup();
-      reject(new OrixError('ORIX_PROVIDER_SPAWN_FAILED', 'Provider process could not be started', {
-        details: {
-          provider_id: manifest.id,
-          executable,
-          reason: error?.code ?? error?.name ?? 'spawn-error',
-        },
-        cause: error,
-        recoverable: true,
-      }));
+      Promise.resolve(start_isolation_cleanup(false)).then(() => {
+        const final_error = isolation_cleanup_error ?? error;
+        reject(new OrixError('ORIX_PROVIDER_SPAWN_FAILED', 'Provider process could not be started or cleaned up safely', {
+          details: {
+            provider_id: manifest.id,
+            executable,
+            reason: final_error?.code ?? final_error?.name ?? 'spawn-error',
+          },
+          cause: final_error,
+          recoverable: true,
+        }));
+      });
     }
 
     function terminate() {
       if (termination_started || !child || settled) return;
       termination_started = true;
-      signal_process(child, detached, 'SIGTERM');
-      kill_timer = setTimeout(() => signal_process(child, detached, 'SIGKILL'), limits.kill_grace_ms);
-      kill_timer.unref?.();
+      if (windows) {
+        signal_process(child, detached, 'SIGTERM');
+        kill_timer = setTimeout(() => signal_process(child, detached, 'SIGKILL'), limits.kill_grace_ms);
+        kill_timer.unref?.();
+        start_isolation_cleanup(true);
+        return;
+      }
+      start_isolation_cleanup(true);
+      start_process_group_cleanup();
     }
 
     function on_abort() {
@@ -438,6 +648,7 @@ export async function run_static_provider(options) {
       }
     }
 
+    if (signal) signal.addEventListener('abort', on_abort, { once: true });
     try {
       child = spawn(launch_executable, launch_args, {
         cwd: launch_cwd,
@@ -445,9 +656,13 @@ export async function run_static_provider(options) {
         shell: false,
         windowsHide: true,
         detached,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: launch_stdio,
       });
+      close_parent_fd?.();
+      close_parent_fd = null;
     } catch (error) {
+      try { close_parent_fd?.(); } catch { /* preserve the spawn/close error */ }
+      close_parent_fd = null;
       finish_error(error);
       return;
     }
@@ -455,59 +670,25 @@ export async function run_static_provider(options) {
     child.stdout.on('data', chunk => capture('stdout', chunk));
     child.stderr.on('data', chunk => capture('stderr', chunk));
     child.once('error', finish_error);
+    child.once('exit', () => {
+      if (timeout_timer) clearTimeout(timeout_timer);
+      timeout_timer = null;
+      if (signal) signal.removeEventListener('abort', on_abort);
+      if (!termination_started) termination_started = true;
+      start_isolation_cleanup(false);
+      start_process_group_cleanup();
+    });
     child.once('close', (exit_code, exit_signal) => {
       if (settled) return;
-      settled = true;
-      cleanup();
-      const completed_at = new Date().toISOString();
-      const termination_reason = timed_out ? 'timeout' : cancelled ? 'cancelled' : output_limited ? 'output-limit' : null;
-      const success = exit_code === 0 && termination_reason === null;
-      const stdout = Buffer.concat(stdout_chunks).toString('utf8');
-      const stderr = Buffer.concat(stderr_chunks).toString('utf8');
-      resolve({
-        schema_version: 'orix.provider-execution.v1',
-        provider: { id: manifest.id, version: manifest.version },
-        executable,
-        args_count: executable_args.length + args.length,
-        started_at,
-        completed_at,
-        duration_ms: Math.max(0, Date.now() - started_clock),
-        exit_code,
-        signal: exit_signal,
-        termination_reason,
-        success,
-        timed_out,
-        cancelled,
-        output_limited,
-        ok: success,
-        output: {
-          stdout,
-          stderr,
-          stdout_bytes,
-          stderr_bytes,
-          bytes_observed: stdout_bytes + stderr_bytes,
-          bytes_captured: captured_bytes,
-          truncated: output_limited,
-        },
-        stdout,
-        stderr,
-        stdout_bytes,
-        stderr_bytes,
-        captured_bytes,
-        output_truncated: output_limited,
-        limits: {
-          timeout_ms: limits.timeout_ms,
-          max_output_bytes: limits.max_output_bytes,
-          kill_grace_ms: limits.kill_grace_ms,
-        },
-      });
+      close_result = { exit_code, exit_signal };
+      finish_close();
     });
 
-    if (signal) signal.addEventListener('abort', on_abort, { once: true });
-    timeout_timer = setTimeout(() => {
+    if (!termination_started) timeout_timer = setTimeout(() => {
       timed_out = true;
       terminate();
     }, limits.timeout_ms);
-    timeout_timer.unref?.();
+    timeout_timer?.unref?.();
+    if (cancelled || signal?.aborted) on_abort();
   });
 }

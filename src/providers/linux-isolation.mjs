@@ -2,9 +2,13 @@
 // provider-visible filesystem; it is mounted read-only except for an ephemeral /tmp.
 // No host home, project tree, credentials, or network namespace is exposed by default.
 
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { access, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { OrixError } from '../core/errors.mjs';
+import { validate_linux_rootfs_directory } from './linux-rootfs-trust.mjs';
+import { prepare_linux_provider_cgroup } from './linux-cgroup-v2-manager.mjs';
 
 function isolation_error(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
@@ -16,17 +20,59 @@ function within(root, candidate) {
     !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
 }
 
+const MINIMUM_BUBBLEWRAP_VERSION = Object.freeze([0, 12, 0]);
+
+export function is_supported_bubblewrap_version(output) {
+  if (typeof output !== 'string') return false;
+  const match = /^bubblewrap\s+v?(\d+)\.(\d+)\.(\d+)$/.exec(output.trim());
+  if (!match) return false;
+  const version = match.slice(1, 4).map(Number);
+  if (!version.every(Number.isSafeInteger)) return false;
+  for (let index = 0; index < MINIMUM_BUBBLEWRAP_VERSION.length; index += 1) {
+    if (version[index] > MINIMUM_BUBBLEWRAP_VERSION[index]) return true;
+    if (version[index] < MINIMUM_BUBBLEWRAP_VERSION[index]) return false;
+  }
+  return true;
+}
+
 async function resolve_bwrap() {
-  for (const candidate of ['/usr/bin/bwrap', '/bin/bwrap']) {
+  for (const candidate of ['/usr/local/bin/bwrap', '/usr/bin/bwrap', '/bin/bwrap']) {
+    let canonical;
     try {
       const info = await lstat(candidate);
       if (info.isSymbolicLink() || !info.isFile()) continue;
-      const canonical = await realpath(candidate);
+      canonical = await realpath(candidate);
       await access(canonical, 1);
-      return canonical;
     } catch {
       // Try the next fixed system location; never resolve through PATH.
+      continue;
     }
+
+    let version_output;
+    try {
+      version_output = execFileSync(canonical, ['--version'], {
+        encoding: 'utf8',
+        timeout: 3000,
+        maxBuffer: 4096,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+    } catch (error) {
+      isolation_error(
+        'ORIX_PROVIDER_BUBBLEWRAP_VERSION_UNVERIFIED',
+        'Bubblewrap version could not be verified; required isolation will not start',
+        { path: canonical, reason: error.code ?? error.name ?? 'version-probe-failed' },
+      );
+    }
+
+    if (!is_supported_bubblewrap_version(version_output)) {
+      isolation_error(
+        'ORIX_PROVIDER_BUBBLEWRAP_VERSION_UNSUPPORTED',
+        'Bubblewrap 0.12.0 or newer is required because older releases contain a sandbox-setup symlink escape',
+        { path: canonical, reported_version: version_output.trim().slice(0, 128), minimum_version: '0.12.0' },
+      );
+    }
+    return canonical;
   }
   isolation_error(
     'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
@@ -35,36 +81,27 @@ async function resolve_bwrap() {
   );
 }
 
+async function resolve_prlimit() {
+  for (const candidate of ['/usr/bin/prlimit', '/bin/prlimit']) {
+    try {
+      const info = await lstat(candidate);
+      if (info.isSymbolicLink() || !info.isFile()) continue;
+      const canonical = await realpath(candidate);
+      await access(canonical, 1);
+      return canonical;
+    } catch {
+      // Only fixed system locations are considered; never resolve through PATH.
+    }
+  }
+  isolation_error(
+    'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+    'prlimit is not installed at a trusted system path; required isolation cannot start',
+    { platform: process.platform, backend: 'prlimit' },
+  );
+}
+
 async function validate_rootfs(value) {
-  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
-    throw new TypeError('sandbox_root must be an absolute filesystem path');
-  }
-  let info;
-  try { info = await lstat(value); }
-  catch (error) {
-    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE', 'Provider sandbox root cannot be inspected', {
-      reason: error.code ?? 'filesystem-error',
-    });
-  }
-  if (info.isSymbolicLink() || !info.isDirectory()) {
-    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID', 'Provider sandbox root must be a non-symlink directory');
-  }
-  const root = await realpath(value);
-  for (const required of ['proc', 'dev', 'tmp']) {
-    let entry;
-    try { entry = await lstat(path.join(root, required)); }
-    catch {
-      isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID', 'Sandbox root is missing a required mount point', {
-        mount_point: '/' + required,
-      });
-    }
-    if (entry.isSymbolicLink() || !entry.isDirectory()) {
-      isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID', 'Sandbox mount points must be real directories', {
-        mount_point: '/' + required,
-      });
-    }
-  }
-  return root;
+  return validate_linux_rootfs_directory(value);
 }
 
 function sandbox_path(root, host_path, label) {
@@ -83,7 +120,8 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
       { platform: process.platform },
     );
   }
-  const root = await validate_rootfs(sandbox_root);
+  const rootfs = await validate_rootfs(sandbox_root);
+  const root = rootfs.path;
   const sandboxExecutable = sandbox_path(root, executable, 'executable');
   const sandboxCwd = sandbox_path(root, cwd, 'cwd');
   const bwrap = await resolve_bwrap();
@@ -113,10 +151,30 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
     bwrapArgs.push('--setenv', key, value);
   }
   bwrapArgs.push('--', sandboxExecutable, ...args);
+  const final_rootfs = await validate_rootfs(sandbox_root);
+  if (final_rootfs.path !== rootfs.path || final_rootfs.dev !== rootfs.dev || final_rootfs.ino !== rootfs.ino) {
+    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_CHANGED',
+      'Provider sandbox root directory was replaced while its launch policy was being prepared');
+  }
+  const prlimit = await resolve_prlimit();
+  const limitArgs = [
+    '--cpu=60:60',
+    '--fsize=67108864:67108864',
+    '--nofile=256:256',
+    '--core=0:0',
+    '--',
+    bwrap,
+    ...bwrapArgs,
+  ];
+  const cgroup = await prepare_linux_provider_cgroup();
+  const bootstrap = fileURLToPath(new URL('./linux-cgroup-v2-bootstrap.mjs', import.meta.url));
   return Object.freeze({
-    executable: bwrap,
-    args: Object.freeze(bwrapArgs),
+    executable: process.execPath,
+    args: Object.freeze([bootstrap, '--attach-fd=3', '--', prlimit, ...limitArgs]),
     cwd: '/',
     env: Object.freeze({}),
+    stdio: cgroup.stdio,
+    close_parent_fd: cgroup.close_attach_fd,
+    cleanup: cgroup.cleanup,
   });
 }
