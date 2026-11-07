@@ -41,12 +41,14 @@ test('DEX 35c and 45cc instructions decode C-through-G registers from the third 
     counts: { ...emptyCounts, method_ids: 1 },
   });
   assert.deepEqual(invoke.instructions[0].registers, [1, 2, 3, 4, 5]);
+  assert.deepEqual(invoke.instructions[0].reference, { index: 0, kind: 'method_ids' });
 
   const polymorphic = decode(words(0x01fa, 0x0000, 0x0007, 0x0000), {
     registers_size: 8,
     counts: { ...emptyCounts, method_ids: 1, proto_ids: 1 },
   });
   assert.deepEqual(polymorphic.instructions[0].registers, [7]);
+  assert.deepEqual(polymorphic.instructions[0].reference, { index: 0, kind: 'method_ids' });
   assert.deepEqual(polymorphic.instructions[0].proto_reference, { index: 0, kind: 'proto_ids' });
 });
 
