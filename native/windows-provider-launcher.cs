@@ -418,6 +418,36 @@ namespace OrixWindowsSandbox {
       }
     }
 
+    // A child process opened by an AppContainer must resolve the executable path
+    // using the AppContainer token. Grant only FILE_TRAVERSE on each trusted
+    // ancestor; do not grant directory listing or file-read access outside rootfs.
+    // These per-profile ACEs are removed after the provider Job Object is empty.
+    static void GrantAncestorTraversal(string root, SecurityIdentifier sid) {
+      string fullRoot = Path.GetFullPath(root);
+      DirectoryInfo current = Directory.GetParent(fullRoot);
+      while (current != null) {
+        FileAttributes attributes = File.GetAttributes(current.FullName);
+        if ((attributes & FileAttributes.ReparsePoint) != 0)
+          throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: reparse-point ancestor appeared before traversal grant: " + current.FullName);
+        DirectorySecurity security = Directory.GetAccessControl(current.FullName, AccessControlSections.Access);
+        security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.Traverse, AccessControlType.Allow));
+        Directory.SetAccessControl(current.FullName, security);
+        Log("RUN:ANCESTOR_TRAVERSE_GRANTED:" + current.FullName);
+        current = current.Parent;
+      }
+    }
+
+    static void PurgeAncestorTraversal(string root, SecurityIdentifier sid) {
+      string fullRoot = Path.GetFullPath(root);
+      DirectoryInfo current = Directory.GetParent(fullRoot);
+      while (current != null) {
+        DirectorySecurity security = Directory.GetAccessControl(current.FullName, AccessControlSections.Access);
+        security.PurgeAccessRules(sid);
+        Directory.SetAccessControl(current.FullName, security);
+        current = current.Parent;
+      }
+    }
+
     static void GrantTree(string path, SecurityIdentifier sid, FileSystemRights rights, bool root) {
       FileAttributes attributes = File.GetAttributes(path);
       if ((attributes & FileAttributes.ReparsePoint) != 0)
@@ -670,6 +700,8 @@ namespace OrixWindowsSandbox {
         sid = CreateProfile(profileName);
         Log("RUN:PROFILE_CREATED");
         SecurityIdentifier identity = new SecurityIdentifier(sid);
+        GrantAncestorTraversal(root, identity);
+        Log("RUN:ANCESTOR_TRAVERSE_READY");
         GrantTree(root, identity, FileSystemRights.ReadAndExecute, true);
         Log("RUN:ROOT_ACL_GRANTED");
         PrepareScratch(root, sid, profileName, environment);
@@ -817,6 +849,9 @@ namespace OrixWindowsSandbox {
         if (Directory.Exists(packagesRoot) && !Directory.EnumerateFileSystemEntries(packagesRoot).Any())
           Directory.Delete(packagesRoot, false);
         if (Directory.Exists(scratch)) SetIntegrityLevel(scratch, "M");
+        PurgeAncestorTraversal(root, identity);
+        Console.Error.WriteLine("ORIX_CLEANUP:ANCESTOR_TRAVERSE_PURGED");
+        Log("CLEANUP:ANCESTOR_TRAVERSE_PURGED");
         Console.Error.WriteLine("ORIX_CLEANUP:ROOT_ACL_PURGED");
         Log("CLEANUP:ROOT_ACL_PURGED");
         int deleteResult = DeleteAppContainerProfile(profileName);
