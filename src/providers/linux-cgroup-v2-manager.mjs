@@ -37,6 +37,9 @@ export function parse_cgroup_process_ids(contents) {
   if (process_ids.some(value => !/^[1-9]\d*$/.test(value))) {
     throw new TypeError('cgroup process list contains an invalid process ID');
   }
+  if (new Set(process_ids).size !== process_ids.length) {
+    throw new TypeError('cgroup process list contains a duplicate process ID');
+  }
   return process_ids;
 }
 
