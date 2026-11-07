@@ -5,10 +5,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { list_format_capabilities } from '../src/formats/index.mjs';
 import { MCP_PROTOCOL_VERSION } from '../src/mcp/server.mjs';
+import {
+  WINDOWS_PROVIDER_LAUNCHER_SHA256,
+  WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256,
+} from '../src/providers/windows-launcher-integrity.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = relative => fs.readFile(path.join(root, relative), 'utf8');
-const [package_text, readme, cli, formats, indicators, roadmap, charter, matrix, mcp, indicator_source, cases] = await Promise.all([
+const [package_text, readme, cli, formats, indicators, roadmap, charter, matrix, mcp, indicator_source, cases, windows_helper] = await Promise.all([
   read('package.json'),
   read('README.md'),
   read('docs/CLI.md'),
@@ -20,6 +24,7 @@ const [package_text, readme, cli, formats, indicators, roadmap, charter, matrix,
   read('docs/MCP.md'),
   read('src/analyzer/indicators.mjs'),
   read('docs/CASES.md'),
+  read('docs/WINDOWS_HELPER_BOOTSTRAP.md'),
 ]);
 const pkg = JSON.parse(package_text);
 const errors = [];
@@ -53,6 +58,12 @@ check('Product charter discoverability', () => {
 check('MCP protocol documentation', () => {
   assert.ok(mcp.includes(MCP_PROTOCOL_VERSION), 'MCP docs must state implemented protocol ' + MCP_PROTOCOL_VERSION);
   assert.ok(mcp.includes('2026-07-28'), 'MCP docs must distinguish the newer research target');
+});
+check('Windows launcher digest documentation', () => {
+  assert.ok(windows_helper.includes(WINDOWS_PROVIDER_LAUNCHER_SHA256),
+    'Windows helper documentation does not match the source-pinned executable SHA-256');
+  assert.ok(windows_helper.includes(WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256),
+    'Windows helper documentation does not match the source-pinned compressed payload SHA-256');
 });
 check('format table matches parser registry', () => {
   const table_lines = formats.split(/\r?\n/).filter(line => line.startsWith('|'));

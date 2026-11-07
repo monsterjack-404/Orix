@@ -2,7 +2,7 @@
 
 ## Current security posture
 
-ORIX's built-in analysis remains static and read-only: it reads file bytes, calculates hashes, extracts strings, calculates entropy, parses supported formats and writes optional reports. It does not execute the inspected target, load target libraries, attach to target processes or modify the artifact. An operator can explicitly invoke an optional external static provider such as Rizin. ORIX executes that provider process—not the inspected sample—through a shell-free argument vector with a timeout and captured-output ceiling. This is process control, not a sandbox: a provider can still access files, spawn children or use the network unless the operating system or a separately managed container/VM restricts it.
+ORIX's built-in analysis remains static and read-only: it reads file bytes, calculates hashes, extracts strings, calculates entropy, parses supported formats and writes optional reports. It does not execute the inspected target, load target libraries, attach to target processes or modify the artifact. An operator can explicitly invoke an optional external static provider such as Rizin. ORIX executes that provider process—not the inspected sample—through a shell-free argument vector with a timeout and captured-output ceiling. This is process control, not a sandbox in `isolation: 'none'` mode: a provider can still access files, spawn children or use the network. `isolation: 'required'` selects a platform backend: Bubblewrap plus cgroup v2 on Linux, AppContainer plus Job Objects on Windows, and an experimental deny-by-default Seatbelt policy on macOS. Each backend has separate host prerequisites and residual race/administrative trust boundaries.
 
 ## Threats considered
 
@@ -15,7 +15,7 @@ ORIX's built-in analysis remains static and read-only: it reads file bytes, calc
 | File mutation during analysis | Before/after metadata comparison and `stable_during_read` result | A sufficiently unusual filesystem or timestamp behavior may evade metadata comparison |
 | Report overwrite | `--out` uses exclusive-create semantics | Parent-directory permissions and storage integrity remain OS responsibilities |
 | False confidence | Evidence confidence labels, explicit parser status and limitations | Users can still over-interpret results; reports must be read with their warnings |
-| External provider process | Absolute executable path, no shell interpolation, minimal explicit environment, timeout, cancellation and output-byte cap | Provider binaries are not sandboxed; filesystem/network side effects and Windows child-tree teardown are not enforced |
+| External provider process | Absolute executable path, no shell interpolation, minimal explicit environment, timeout, cancellation and output-byte cap; opt-in OS isolation backends | `isolation: 'none'` remains unsandboxed; Linux cgroup delegation is host-configured; macOS Seatbelt is experimental; privileged host actors and validation-to-launch races remain outside the guarantee |
 | Dependency supply chain | No third-party runtime dependencies in current package | Node.js runtime, npm and development tooling still require trusted acquisition |
 
 ## MCP, browser viewer and network boundaries
@@ -104,6 +104,20 @@ macOS; ORIX's parent runner still limits wall-clock time and captured output.
 The Windows hostile-process integration test checks host-file denial,
 read-only rootfs, confined writable temporary storage and loopback network
 denial, and the launcher confirms Job Object configuration.
+
+The runtime trust anchor is a package-owned .NET Framework 4.8 AnyCPU helper.
+Its executable and gzip payload hashes are pinned in
+`src/providers/windows-launcher-integrity.mjs`. Runtime reads the fixed payload
+segments through retained handles, enforces encoded/compressed/decompressed
+size bounds, verifies both hashes, stages the helper in a fresh directory and
+verifies the staged bytes again before launch. CI builds the helper twice with
+pinned .NET SDK 10.0.100 on `windows-latest` and `windows-2022`, validates
+PE/CLR metadata and requires byte-identical output. The AppContainer provider
+is created suspended with a new hidden console (`CREATE_NEW_CONSOLE`/`SW_HIDE`);
+`lpDesktop` remains null, the standard-handle list is explicit, and the provider
+is assigned to its Job Object before resume. The integration suite proves both
+native .NET and Node/libuv descendants start inside the AppContainer and are
+terminated with the Job Object after their leader exits.
 
 ## macOS Seatbelt (experimental)
 

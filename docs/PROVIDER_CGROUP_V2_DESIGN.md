@@ -141,7 +141,7 @@ The Bubblewrap launch also applies per-process `RLIMIT_CPU=60s`, `RLIMIT_FSIZE=6
 - On timeout, AbortSignal cancellation, or output overflow, the runner first terminates/verifies the bootstrap's original POSIX process group. This closes the window in which a bootstrap that has not yet attached could join after an empty cgroup was removed. It then uses `cgroup.kill` as the authoritative whole-leaf cleanup and waits for `cgroup.events` to report `populated 0`.
 - On normal completion and launch failure, it also runs idempotent cgroup cleanup. A result is not successful unless process-group and isolation teardown complete; cleanup failures have explicit unsuccessful termination diagnostics.
 - Process groups are a pre-attach race guard, not the descendant-security boundary. Bubblewrap can create a separate session; the cgroup leaf remains authoritative for all attached descendants.
-- The default remains `isolation: 'none'`. Windows and macOS have no enforced backend and fail closed when required isolation is requested.
+- The default remains `isolation: 'none'`. This cgroup-v2 resource backend is Linux-only; Windows uses a separate AppContainer/Job Object backend and macOS uses an experimental Seatbelt backend. Neither Windows nor macOS claims Linux cgroup enforcement.
 
 ## Required test plan
 
@@ -176,7 +176,7 @@ The integration job must not silently skip when the security gate is expected to
 
 ## Rollout and documentation rules
 
-Keep the feature opt-in and merge its stacked dependencies in order. The implementation in this branch must not be described as generally available until the PR chain is reviewed and merged. The provider API remains process-controlled but unsandboxed by default; only Linux calls that explicitly request `isolation: 'required'`, supply a trusted rootfs, and satisfy `ORIX_CGROUP_PARENT` can use this backend. No cgroup enforcement is claimed for `isolation: 'none'`, Windows, or macOS.
+Keep the feature opt-in and merge its stacked dependencies in order. The implementation in this branch must not be described as generally available until the PR chain is reviewed and merged. The provider API remains process-controlled but unsandboxed by default; only Linux calls that explicitly request `isolation: 'required'`, supply a trusted rootfs, and satisfy `ORIX_CGROUP_PARENT` can use this cgroup backend. Windows and macOS have separate platform isolation implementations, but no Linux cgroup enforcement is claimed for those operating systems or for `isolation: 'none'`.
 
 The delegated parent and its `supervisor/` child must be owned by the ORIX service effective UID and must not be group- or other-writable. The read-only preflight reports and enforces these conservative ownership/mode-bit checks, and also confirms that `cgroup.events` is readable and `cgroup.kill` is writable. This is not a full host trust proof: operators still control delegation, account membership, mount configuration, and any external policy beyond the mode-bit checks.
 
