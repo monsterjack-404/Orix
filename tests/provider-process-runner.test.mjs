@@ -428,30 +428,39 @@ if (process.platform !== 'win32') {
         "const fs = require('node:fs');",
         "const counter = process.argv[1];",
         "let count = 0;",
-        "fs.writeFileSync(counter, '0');",
         "process.on('SIGTERM', () => {});",
+        "fs.writeFileSync(counter, '0');",
         "setInterval(() => fs.writeFileSync(counter, String(++count)), 10);",
       ].join(' ');
       const parent_script = [
         "const { spawn } = require('node:child_process');",
-        "const child = spawn(process.execPath, ['-e', " + JSON.stringify(grandchild_script) + ", " + JSON.stringify(counter_path) + "], { stdio: 'ignore' });",
-        "child.once('spawn', () => setTimeout(() => process.exit(0), 80));",
+        "const fs = require('node:fs');",
+        "const counter = process.argv[1];",
+        "spawn(process.execPath, ['-e', " + JSON.stringify(grandchild_script) + ", counter], { stdio: 'ignore' });",
+        "const deadline = Date.now() + 3000;",
+        "function waitForReady() {",
+        "  if (fs.existsSync(counter)) { setTimeout(() => process.exit(0), 80); return; }",
+        "  if (Date.now() >= deadline) { process.stderr.write('grandchild readiness timeout'); process.exit(2); return; }",
+        "  setTimeout(waitForReady, 5);",
+        "}",
+        "waitForReady();",
       ].join(' ');
 
       const result = await run_static_provider({
         manifest: manifest(),
         executable: await node_executable(),
-        args: ['-e', parent_script],
+        args: ['-e', parent_script, counter_path],
         timeout_ms: 3_000,
         kill_grace_ms: 120,
       });
 
       assert.equal(result.ok, true);
-      assert.equal(result.process_group_cleanup.attempted, true);
-      assert.equal(typeof result.process_group_cleanup.force_kill_sent, 'boolean',
-        'The runner must report whether escalation was actually needed');
-      assert.equal(result.process_group_cleanup.verified_empty, true);
-      assert.equal(result.process_group_cleanup.failed, false);
+      assert.deepEqual(result.process_group_cleanup, {
+        attempted: true,
+        force_kill_sent: true,
+        verified_empty: true,
+        failed: false,
+      });
 
       const fs = await import('node:fs/promises');
       const counter_after_cleanup = await fs.readFile(counter_path, 'utf8');
