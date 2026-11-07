@@ -319,3 +319,17 @@ This backlog turns the product charter into reviewable engineering work. It is i
 - [MCP specification](https://modelcontextprotocol.io/specification/2025-03-26)
 
 Research must use primary sources, pin versions/commits where behavior matters, record license compatibility, and include a minimal reproducible fixture before adopting a capability.
+
+
+## 11. Linux provider resource isolation (planned; not implemented)
+
+### G4.6 — cgroup v2 CPU, memory and task limits
+- [ ] Implement a trusted bootstrap that joins a per-run delegated cgroup v2 child **before** it starts Bubblewrap; do not use spawn-then-move.
+- [ ] Require an administrator-owned, empty delegated parent with `cpu`, `memory` and `pids` already enabled; keep the ORIX supervisor in a sibling `supervisor/` cgroup, enforce single-writer ownership, and never accept a provider-selected parent or modify parent/global controller settings.
+- [ ] Apply and read back `cpu.max`, `memory.max` and `pids.max` before provider launch; retain wall-clock and output limits as separate controls.
+- [ ] Use cgroup-wide termination and prove `cgroup.events` reports `populated 0` before removing a run cgroup; fail closed on incomplete cleanup.
+- [ ] Add deterministic tests for validation, bootstrap attach ordering, malformed limits, failure races and cleanup; fake cgroup filesystems are not proof of kernel enforcement.
+- [ ] Add a required real-kernel Linux integration environment that verifies actual CPU, memory and task enforcement plus descendant cleanup. Do not silently skip this gate when claiming support.
+- Acceptance: the delegated parent is an empty inner cgroup with the ORIX supervisor in a sibling; provider code cannot execute before cgroup membership is established; limits are kernel-enforced; all descendants are removed; no parent/global cgroup controls are modified; missing delegation or unsafe ownership fails closed.
+
+Design and threat-model notes: [Provider cgroup v2 resource-isolation design](PROVIDER_CGROUP_V2_DESIGN.md). This backlog item is future work. Current Bubblewrap provider isolation does **not** yet enforce cgroup CPU, RAM or task limits.
