@@ -42,6 +42,12 @@ Before creating the AppContainer, the native helper checks the rootfs and each e
 
 The volume root is not renameable as a path component, but its ACL still matters: an untrusted `DeleteSubdirectoriesAndFiles` (Windows `FILE_DELETE_CHILD`) grant on `C:\\` can delete or replace a child rootfs directory. The helper therefore applies the destructive ancestor mask at the volume root as well, while continuing to tolerate ordinary volume namespace create-file/create-directory grants. It does not skip the volume-root ACL entirely.
 
+## Ancestor traversal ACL behavior
+
+The AppContainer provider must be able to traverse each directory component between the volume root and its private rootfs. The helper first inspects each ancestor DACL for an existing traverse grant to the built-in **ALL APPLICATION PACKAGES** AppContainer group. A sufficient existing grant is preserved and logged; it is not rewritten. Where no sufficient grant exists, the helper adds only a per-profile FILE_TRAVERSE ACE. Applicable deny ACEs are not overridden.
+
+Cleanup removes a per-profile ancestor ACE only when that exact explicit ACE was added by this invocation. Protected ancestors with inherited or group-based traversal grants are left unchanged. Reparse-point ancestors fail closed. This prevents unnecessary WRITE_DAC operations on protected paths such as Program Files, while retaining least-privilege traversal for the provider and a bounded cleanup path.
+
 ## Process-tree teardown and cleanup ordering
 
 The native launcher now treats process termination as an operation that must be observed, not merely requested.
