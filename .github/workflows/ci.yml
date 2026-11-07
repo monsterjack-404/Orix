@@ -173,6 +173,9 @@ jobs:
       - name: Run Windows AppContainer hostile-process isolation checks
         if: runner.os == 'Windows' && matrix.node-version == 22
         run: node scripts/windows-isolation-integration.mjs
+      - name: Run POSIX compiler process-group teardown regression
+        if: runner.os == 'macOS'
+        run: node --test platform-tests/macos-compiler-process-group.mjs
       - name: Run macOS Seatbelt hostile-process isolation checks
         if: runner.os == 'macOS'
         run: node scripts/macos-isolation-integration.mjs
