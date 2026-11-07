@@ -34,7 +34,7 @@ export function parse_cgroup_process_ids(contents) {
     throw new TypeError('cgroup process list must be a string');
   }
   const process_ids = contents.split(/\s+/).filter(Boolean);
-  if (process_ids.some(value => !/^[1-9]\d*$/.test(value))) {
+  if (process_ids.some(value => !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))) {
     throw new TypeError('cgroup process list contains an invalid process ID');
   }
   if (new Set(process_ids).size !== process_ids.length) {
