@@ -331,6 +331,15 @@ export async function analyze_rizin_imports(options = {}) {
       });
     }
     const engine_version = parse_engine_version(version_result.stdout);
+    // Treat max_output_bytes as one workflow-wide budget, not a fresh ceiling
+    // for both subprocesses. The version probe's captured bytes consume it.
+    const remaining_output_bytes = max_output_bytes - version_result.output.bytes_captured;
+    if (remaining_output_bytes < 1) {
+      provider_error('ORIX_RIZIN_OUTPUT_LIMIT', 'Rizin version probing exhausted the total output budget before import extraction', {
+        max_output_bytes,
+        captured_output_bytes: version_result.output.bytes_captured,
+      });
+    }
     const remaining_timeout_ms = timeout_ms - (Date.now() - analysis_started_at);
     if (remaining_timeout_ms < 1) {
       provider_error('ORIX_RIZIN_TIMEOUT', 'Rizin analysis exceeded the total provider deadline', {
@@ -341,12 +350,14 @@ export async function analyze_rizin_imports(options = {}) {
     const import_result = await run_static_provider({
       ...common,
       timeout_ms: remaining_timeout_ms,
+      max_output_bytes: remaining_output_bytes,
       args: ['-N', '-q', '-c', 'iij', snapshot_path],
     });
     if (!import_result.ok) {
       const code = import_result.cancelled
         ? 'ORIX_RIZIN_CANCELLED'
-        : import_result.timed_out ? 'ORIX_RIZIN_TIMEOUT' : 'ORIX_RIZIN_IMPORT_FAILED';
+        : import_result.timed_out ? 'ORIX_RIZIN_TIMEOUT'
+          : import_result.output_limited ? 'ORIX_RIZIN_OUTPUT_LIMIT' : 'ORIX_RIZIN_IMPORT_FAILED';
       provider_error(code, 'Rizin import extraction did not complete successfully', {
         exit_code: import_result.exit_code,
         timed_out: import_result.timed_out,
