@@ -41,6 +41,8 @@ test('capability inventory labels important missing domains instead of claiming 
   assert.equal(status('android-apk-analysis'), 'partial');
   assert.equal(status('dotnet-analysis'), 'partial');
   assert.equal(status('website-structure-analysis'), 'partial');
+  assert.equal(status('browser-observation'), 'partial');
+  assert.equal(status('recorded-behavior-replay'), 'partial');
   assert.equal(status('firmware-analysis'), 'partial');
   assert.equal(status('evidence-investigation-workflows'), 'partial');
   assert.equal(status('pcap-network-analysis'), 'partial');

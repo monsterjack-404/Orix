@@ -77,6 +77,18 @@ node src/cli.mjs har ./capture.har --max-har-entries 5000 --max-har-hosts 1000 -
 
 The HAR command accepts HAR 1.2 JSON and performs offline metadata analysis. It reports request/response metadata, hosts, status codes, timings, SHA-256 provenance and evidence-linked security review leads. Shared operating-system temporary-directory paths are rejected as evidence intake; copy captures into a private workspace first. The default ceiling is 20,000 entries (maximum 100,000), the default host inventory ceiling is 5,000 distinct hosts (maximum 10,000), and the input-file ceiling is 32 MiB. The report marks entry and host truncation independently; `coverage.complete` is false whenever either inventory is incomplete. Request/response bodies, cookie values, query values and arbitrary header values are never included in the report. URL paths and server IP addresses may still be sensitive. No requests are sent and no target code is executed.
 
+### Analyze a recorded Playwright browser trace
+
+~~~sh
+node src/cli.mjs trace ./trace.zip
+node src/cli.mjs trace ./trace.zip --json
+node src/cli.mjs trace ./trace.zip --max-trace-events 50000 --max-trace-actions 10000 --max-trace-requests 20000 --format markdown
+~~~
+
+The trace command reads a user-supplied Playwright trace ZIP completely offline. It accepts only trace event format versions 8 and 9, reads only the root trace.trace JSONL member, validates the local ZIP header, central-directory size metadata and CRC32, and never extracts resource files. Archive size is capped at 32 MiB, trace JSONL at 16 MiB, event lines at 1 MiB, ZIP entries at 20,000, and defaults are 50,000 events, 10,000 actions and 20,000 network records. The corresponding ceilings are also enforced by the public API and MCP tool.
+
+The report includes action method/timing/outcome candidates, request method/origin/sanitized path/status/MIME/timing/size metadata, console error/warning counts, media/snapshot presence counts and SHA-256 provenance. Action parameters and titles, selectors, typed values, console message text, request/response headers, cookies, query values, payload bodies, DOM/ARIA content and screenshot/video bytes are excluded. URL origins, some path segments and the absolute source path may still identify sensitive systems; review before sharing. Trace format internals can change between Playwright releases, so unsupported versions are rejected instead of guessed. This does not start a browser, execute page code, fetch URLs, replay actions or authenticate the trace creator. See the Playwright trace documentation at https://playwright.dev/docs/trace-viewer and schemas/playwright-trace.v1.schema.json.
+
 ### Analyze a source project
 
 ```bash
