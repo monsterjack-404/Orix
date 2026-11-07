@@ -49,6 +49,9 @@ async function main() {
   assert.match(launcherSource, /catch \(ProviderTeardownIncompleteException error\)[\s\S]*?return 125/,
     'Native Main must skip AppContainer cleanup when process-tree emptiness was not confirmed');
 
+  assert.match(launcherSource,
+    /bool volumeRootComponent = String\.Equals[\s\S]*?if \(current\.Parent == null && !volumeRootComponent\) continue;[\s\S]*?FileSystemRights deniedRights = rootfsComponent \? rootfsWriteMask : ancestorDestructiveMask;/,
+    'Volume-root ACLs must still reject destructive child-delete/ownership grants while allowing ordinary volume create rights');
   const purgeStart = launcherSource.indexOf('static void PurgeTree(');
   const deleteStart = launcherSource.indexOf('static void DeleteTreeNoReparse(', purgeStart);
   assert.ok(purgeStart >= 0 && deleteStart > purgeStart,
