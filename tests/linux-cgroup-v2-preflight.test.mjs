@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -82,7 +82,7 @@ test('cgroup directory permission gate requires effective-UID ownership and no g
   );
 });
 
-async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode = 0o700, events_mode = 0o600, kill_mode = 0o600 } = {}) {
+async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode = 0o700, events_mode = 0o600, kill_mode = 0o600, process_cgroup = '0::/tenant/supervisor\n' } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'orix-cgroup-preflight-'));
   const mountpoint = path.join(root, 'cgroup2');
   const parent = path.join(mountpoint, 'tenant');
@@ -109,7 +109,7 @@ async function create_fake_delegated_host({ parent_mode = 0o700, supervisor_mode
     path.join(proc_self, 'mountinfo'),
     '29 23 0:26 / ' + mountpoint + ' rw,nosuid,nodev - cgroup2 cgroup rw\n',
   );
-  await writeFile(path.join(proc_self, 'cgroup'), '0::/tenant/supervisor/orix\n');
+  await writeFile(path.join(proc_self, 'cgroup'), process_cgroup);
   return { root, parent };
 }
 
@@ -128,6 +128,39 @@ if (process.platform === 'linux') {
       assert.equal(report.parent.supervisor_not_group_or_other_writable, true);
       assert.equal(report.parent.cgroup_events_available, true);
       assert.equal(report.parent.cgroup_kill_available, true);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test('read-only preflight rejects symlinked delegated-parent components', { timeout: 10_000 }, async () => {
+    const fixture = await create_fake_delegated_host();
+    const mountpoint = path.join(fixture.root, 'cgroup2');
+    const alias = path.join(mountpoint, 'tenant-alias');
+    try {
+      await symlink(fixture.parent, alias, 'dir');
+      const report = await inspect_linux_cgroup_v2({
+        proc_root: path.join(fixture.root, 'proc'),
+        parent_path: alias,
+      });
+      assert.equal(report.ready, false);
+      assert.equal(report.parent.no_symlink_components, false);
+      assert.equal(report.reason, 'configured-parent-has-symlink-or-unsafe-path-component');
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test('read-only preflight rejects a manager nested below supervisor because runtime requires direct membership', { timeout: 10_000 }, async () => {
+    const fixture = await create_fake_delegated_host({ process_cgroup: '0::/tenant/supervisor/orix\n' });
+    try {
+      const report = await inspect_linux_cgroup_v2({
+        proc_root: path.join(fixture.root, 'proc'),
+        parent_path: fixture.parent,
+      });
+      assert.equal(report.ready, false);
+      assert.equal(report.parent.supervisor_exists, true);
+      assert.equal(report.parent.supervisor_contains_current_process, false);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }

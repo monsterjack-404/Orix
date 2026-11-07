@@ -68,29 +68,44 @@ The provider runner compares the canonical executable with an explicit allowlist
 These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. Windows currently terminates only the direct child.
 
 
-## Enforced provider isolation (Linux implementation gate)
+## Enforced provider isolation (Linux implementation in PR #64)
 
 The provider runner accepts `isolation: "required"` only when an explicit Linux
-sandbox root is supplied. The current Linux adapter uses Bubblewrap with an
-unshared network namespace, explicitly required user/PID/IPC/UTS namespaces,
-a read-only sandbox-root mount, fresh ephemeral `/tmp`, a private `/proc` and
-minimal `/dev`, and an explicit working directory. The backend also applies
-Bubblewrap 0.8.0 or later's `--disable-userns` and
+sandbox root and the host-configured `ORIX_CGROUP_PARENT` are available. The
+Linux backend uses Bubblewrap with an unshared network namespace, explicitly
+required user/PID/IPC/UTS namespaces, a read-only sandbox-root mount, fresh
+ephemeral `/tmp`, a private `/proc` and minimal `/dev`, and an explicit working
+directory. It also applies Bubblewrap's `--disable-userns` and
 `--assert-userns-disabled` controls so the provider cannot create nested user
-namespaces to rearrange mount isolation. Older versions reject the required
-flags and therefore fail closed before provider launch.
-The Linux hostile-process integration test attempts to create a nested user
-namespace from inside the provider and requires that attempt to fail, in
-addition to checking filesystem and network boundaries. The provider executable and its
-working directory must resolve inside that root. The host project, home
-directories, and credentials are not bind-mounted into the provider namespace.
-The rootfs must be a deliberately provisioned minimal runtime containing the
-provider and its runtime dependencies; it must contain real `/proc`, `/dev`,
-and `/tmp` mount-point directories.
+namespaces to rearrange mount isolation. Unsupported Bubblewrap versions fail
+closed before provider launch.
 
-This is an opt-in Linux backend, not a claim of complete cross-platform
-isolation. It does not yet impose cgroup CPU/memory/PID quotas, and it does not
-provide macOS or Windows enforcement. Those controls remain explicit delivery
-gates. If Bubblewrap or a valid rootfs is unavailable, required isolation fails
-before provider launch. Omitting `isolation: "required"` preserves the legacy
-process-control behavior and must not be described as sandboxed.
+The trusted Node bootstrap receives only the leaf `cgroup.procs` write
+capability as child FD 3. It attaches itself before starting `prlimit` and
+Bubblewrap, closes the descriptor, and never passes it to provider code. The
+host configures and reads back the fixed per-run limits: 50% CPU bandwidth,
+512 MiB memory, zero swap, whole-cgroup OOM handling, and 64 tasks. Per-process
+RLIMITs cap CPU time at 60 seconds, file size at 64 MiB, open files at 256, and
+core dumps at zero. CPU bandwidth is not a total CPU-time budget. The provider
+executable and working directory must resolve inside the rootfs; the host
+project, home directories, credentials, and cgroup hierarchy are not mounted
+into the provider namespace.
+
+The privileged Linux integration gate exercises real kernel cgroup membership,
+CPU throttling, memory OOM, PID ceiling, host-file/network denial, descendant
+cleanup, cancellation, timeout, and empty-leaf removal on the CI Ubuntu
+runner. The host operator must provision a dedicated delegated cgroup v2
+parent owned by the ORIX service UID, not group/other writable, empty, and with
+`cpu`, `memory`, and `pids` enabled for children. Its `supervisor/` sibling
+must contain the ORIX manager process. The runtime verifies this layout and
+fails closed; it does not enable parent controllers. Run
+`node scripts/linux-cgroup-v2-preflight.mjs` under the service identity before
+deployment.
+
+This is an opt-in Linux implementation in the PR #64 branch, not a claim of
+complete cross-platform isolation or availability from the unmerged `main`
+branch. Windows and macOS have no enforced backend and reject
+`isolation: "required"`. Without the explicit mode, the runner remains a
+process-control boundary, not an operating-system sandbox. Host-specific
+cgroup delegation, ACLs, kernel versions and distribution behavior still
+require operator validation.

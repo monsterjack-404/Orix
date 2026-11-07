@@ -1,6 +1,6 @@
 # ORIX Report Schemas
 
-The JSON Schema documents in this directory describe the public JSON report contracts. They use JSON Schema Draft 2020-12 and are intentionally additive: unknown report properties are permitted so compatible consumers can ignore fields introduced by newer ORIX releases.
+The JSON Schema documents in this directory describe the public JSON report contracts. They use JSON Schema Draft 2020-12. Contracts that allow additive evolution permit unknown properties so compatible consumers can ignore fields introduced by newer ORIX releases; contracts that set `additionalProperties: false` deliberately require the exact documented object shape.
 
 | Schema | Report | Compatibility identifier |
 |---|---|---|
@@ -23,4 +23,4 @@ The provider manifest describes declared capabilities, execution side effects, r
 
 The schemas document shape and basic constraints. They do not prove that a parser result is truthful, that a report was generated from authentic bytes, or that a file is safe. Consumers that need runtime validation should use a JSON Schema Draft 2020-12 validator and pin the exact schema files they accept.
 
-The receipt carries provider identity/version, executable path, timestamps, exit/termination outcome, bounded output metadata and effective process limits. It is operational metadata, not proof of trust or sandboxing.
+The receipt carries provider identity/version, executable path, timestamps, exit/termination outcome, bounded output metadata and effective process limits. It also records process-group cleanup status and isolation cleanup status, including the final cgroup event/limit report and a normalized diagnostic when cleanup fails. Its termination reason distinguishes timeout, cancellation, output overflow, process-group cleanup failure, isolation cleanup failure, and launch setup failure. Durations are whole milliseconds. It is operational metadata, not proof of trust or sandboxing.

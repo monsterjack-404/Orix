@@ -62,6 +62,18 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.equal(schemas[8].properties.schema_version.const, 'orix.provider-execution.v1');
   assert.equal(schemas[8].additionalProperties, false);
   assert.ok(schemas[8].required.includes('termination_reason'));
+  assert.equal(schemas[8].properties.duration_ms.type, 'integer');
+  assert.ok(schemas[8].required.includes('launch_setup_failed'));
+  assert.ok(schemas[8].required.includes('process_group_cleanup'));
+  assert.ok(schemas[8].required.includes('isolation_cleanup'));
+  assert.ok(schemas[8].properties.termination_reason.enum.includes('process-group-cleanup-failed'));
+  assert.ok(schemas[8].properties.termination_reason.enum.includes('isolation-cleanup-failed'));
+  assert.ok(schemas[8].properties.termination_reason.enum.includes('launch-setup-failed'));
+  assert.ok(schemas[8].properties.process_group_cleanup.required.includes('verified_empty'));
+  assert.ok(schemas[8].properties.isolation_cleanup.required.includes('error'));
+  assert.ok(schemas[8].properties.isolation_cleanup.required.includes('report'));
+  assert.ok(schemas[8].properties.isolation_cleanup.properties.error.oneOf[1].required.includes('details'));
+  assert.ok(schemas[8].properties.isolation_cleanup.properties.report.oneOf[1].properties.limits.required.includes('pids.max'));
   assert.ok(schemas[8].properties.output.required.includes('bytes_captured'));
   assert.ok(schemas[8].properties.limits.required.includes('kill_grace_ms'));
   assert.equal(schemas[9].properties.schema_version.const, 'orix.provider-probe.v1');
