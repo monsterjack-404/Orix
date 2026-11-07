@@ -1,7 +1,7 @@
 // JavaScript, tests/linux-cgroup-v2-bootstrap.test.mjs, Linux descriptor-handoff regression tests.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeSync, fstatSync, openSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -20,7 +20,7 @@ async function with_directory(callback) {
   }
 }
 
-function run_bootstrap_with_fd(fd, args) {
+function run_bootstrap_with_fd(fd, args, { close_parent_fd = true } = {}) {
   return new Promise((resolve, reject) => {
     let child;
     try {
@@ -31,13 +31,14 @@ function run_bootstrap_with_fd(fd, args) {
         stdio: ['ignore', 'pipe', 'pipe', fd],
       });
     } catch (error) {
-      closeSync(fd);
+      if (close_parent_fd) closeSync(fd);
       reject(error);
       return;
     }
 
-    // The child has received its dedicated fd 3; the host must drop its copy.
-    closeSync(fd);
+    // The default mirrors the host contract: drop its copy after inheritance.
+    // One regression test retains the test harness copy for positional readback.
+    if (close_parent_fd) closeSync(fd);
     let stdout = '';
     let stderr = '';
     child.stdout.setEncoding('utf8');
@@ -53,13 +54,11 @@ if (process.platform === 'linux') {
   test('bootstrap attaches before provider launch and does not leak fd 3', { timeout: 10_000 }, async () => {
     await with_directory(async directory => {
       const attach_file = path.join(directory, 'attach-capability');
-      writeFileSync(attach_file, '');
-      const fd = openSync(attach_file, 'w');
-      // Pin the fixture inode before the child runs; read it back through the
-      // retained descriptor instead of reopening a pathname after launch.
-      const readback_fd = openSync(attach_file, 'r');
+      // Create the fixture and obtain its read/write capability in one
+      // exclusive open, avoiding a create-then-reopen pathname sequence.
+      const fd = openSync(attach_file, 'wx+');
       try {
-        const attach_info = fstatSync(readback_fd);
+        const attach_info = fstatSync(fd);
         const provider_code = [
           "const { fstatSync } = require('node:fs');",
           "const expectedDev = process.argv[1];",
@@ -71,14 +70,16 @@ if (process.platform === 'linux') {
         ].join(' ');
         const result = await run_bootstrap_with_fd(fd, [
           '--attach-fd=3', '--', process.execPath, '-e', provider_code, String(attach_info.dev), String(attach_info.ino),
-        ]);
+        ], { close_parent_fd: false });
 
         assert.equal(result.code, 0, result.stderr);
         assert.equal(result.signal, null);
         assert.equal(result.stdout, 'attached-and-closed');
-        assert.match(readFileSync(readback_fd, 'utf8'), /^\d+\n$/);
+        const membership_buffer = Buffer.alloc(64);
+        const bytes_read = readSync(fd, membership_buffer, 0, membership_buffer.length, 0);
+        assert.match(membership_buffer.subarray(0, bytes_read).toString('utf8'), /^\\d+\\n$/);
       } finally {
-        closeSync(readback_fd);
+        closeSync(fd);
       }
     });
   });
