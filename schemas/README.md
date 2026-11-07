@@ -1,6 +1,6 @@
 # ORIX Report Schemas
 
-The JSON Schema documents in this directory describe the public JSON report contracts. They use JSON Schema Draft 2020-12 and are intentionally additive: unknown report properties are permitted so compatible consumers can ignore fields introduced by newer ORIX releases.
+The JSON Schema documents in this directory describe the public JSON report contracts. They use JSON Schema Draft 2020-12. Contracts that allow additive evolution permit unknown properties so compatible consumers can ignore fields introduced by newer ORIX releases; contracts that set `additionalProperties: false` deliberately require the exact documented object shape.
 
 | Schema | Report | Compatibility identifier |
 |---|---|---|
