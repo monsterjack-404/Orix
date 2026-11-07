@@ -9,6 +9,15 @@
     <LangVersion>7.3</LangVersion>
     <Deterministic>true</Deterministic>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- The packaged security helper is SHA-256 pinned. Exclude commit-specific
+         SourceLink/PDB metadata so identical inputs yield the same PE digest
+         on later commits and across independent Windows runners. -->
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <PublishRepositoryUrl>false</PublishRepositoryUrl>
+    <EmbedUntrackedSources>false</EmbedUntrackedSources>
   </PropertyGroup>
 
   <ItemGroup>
