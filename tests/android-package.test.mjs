@@ -689,7 +689,7 @@ test('AAB inventory recognizes BundleConfig and module manifest/DEX paths withou
   assert.equal(report.dex[0].status, 'metadata-parsed');
   assert.ok(report.limitations.some(note => note.includes('AAB protobuf manifests')));
   assert.ok(report.limitations.some(note => note.includes('compressed/encrypted manifests are inventoried only')));
-  assert.ok(report.limitations.some(note => note.includes('method/field table contents')));
+  assert.ok(report.limitations.some(note => note.includes('instruction opcodes')));
 });
 
 
@@ -764,7 +764,9 @@ test('APK Signing Block inventory rejects mismatched size fields and reports the
     { id: 0x7109871a, value: Buffer.from([1]) },
   ]);
   const central_directory_offset = parse_zip(apk).archive.central_directory_offset;
-  apk.writeBigUInt64LE(0n, central_directory_offset - 24);
+  const footer_size = apk.readBigUInt64LE(central_directory_offset - 24);
+  const signing_block_offset = central_directory_offset - Number(footer_size + 8n);
+  apk.writeBigUInt64LE(footer_size - 1n, signing_block_offset);
   const report = analyze_android_package(apk);
   assert.equal(report.signing_block.status, 'malformed');
   assert.equal(report.signing_block.error.code, 'ORIX_APK_SIGNING_BLOCK_SIZE_MISMATCH');
