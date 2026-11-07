@@ -15,7 +15,8 @@ function encode_uleb(value) {
 
 function create_dex_with_string(encoded, utf16_length) {
   const string_data = Buffer.concat([encode_uleb(utf16_length), encoded, Buffer.from([0])]);
-  const map_offset = (116 + string_data.length + 3) & ~3;
+  const data_offset = 120; // DEX data_off must be four-byte aligned.
+  const map_offset = (data_offset + string_data.length + 3) & ~3;
   const map_size = 4 + 4 * 12;
   const buffer = Buffer.alloc(map_offset + map_size);
   buffer.write('dex\n035\0', 0, 'ascii');
@@ -25,15 +26,15 @@ function create_dex_with_string(encoded, utf16_length) {
   buffer.writeUInt32LE(map_offset, 52);
   buffer.writeUInt32LE(1, 56);
   buffer.writeUInt32LE(112, 60);
-  buffer.writeUInt32LE(buffer.length - 116, 104);
-  buffer.writeUInt32LE(116, 108);
-  buffer.writeUInt32LE(116, 112);
-  string_data.copy(buffer, 116);
+  buffer.writeUInt32LE(buffer.length - data_offset, 104);
+  buffer.writeUInt32LE(data_offset, 108);
+  buffer.writeUInt32LE(data_offset, 112);
+  string_data.copy(buffer, data_offset);
   buffer.writeUInt32LE(4, map_offset);
   const items = [
     [0x0000, 1, 0],
     [0x0001, 1, 112],
-    [0x2002, 1, 116],
+    [0x2002, 1, data_offset],
     [0x1000, 1, map_offset],
   ];
   items.forEach(([type, size, offset], index) => {
