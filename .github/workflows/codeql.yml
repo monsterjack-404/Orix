@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
+    types: [checks_requested]
   schedule:
     - cron: '23 4 * * 1'
   workflow_dispatch:
@@ -24,7 +26,29 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Verify exact workflow checkout
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Expected source SHA is missing or malformed: $EXPECTED_SHA"
+            exit 1
+          fi
+          actual="$(git rev-parse HEAD)"
+          if [[ "$actual" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Exact-head mismatch: expected $EXPECTED_SHA but checked out $actual"
+            exit 1
+          fi
+          {
+            echo "### Exact-head verification"
+            printf '%s\n' "- Event: $GITHUB_EVENT_NAME"
+            printf '%s\n' "- Expected SHA: $EXPECTED_SHA"
+            printf '%s\n' "- Checked-out SHA: $actual"
+            printf '%s\n' "- Result: PASS"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Initialize CodeQL
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4 (Node 24)
         with:
