@@ -309,29 +309,46 @@ export function analyze_android_package(buffer, options = {}) {
     ? inspect_apk_signing_block(buffer, archive.archive.central_directory_offset, { max_signing_block_bytes, max_signing_block_pairs })
     : { status: 'not-applicable', offset: null, size_bytes: 0, pair_count: 0, schemes: [], unknown_ids: [], duplicate_ids: [] };
   const reported_signatures = signatures.slice(0, max_archive_entries);
-  const module_names = is_aab
-    ? [...new Set(entries.map(entry => entry.name.split('/')[0]).filter(name =>
-      name && name !== 'BundleConfig.pb' && name !== 'BUNDLE-METADATA'))].sort()
-    : [];
-  const reported_modules = module_names.slice(0, max_aab_modules).map(name => {
-    const prefix = name + '/';
-    const module_entries = entries.filter(entry => entry.name.startsWith(prefix));
-    const module_dex = module_entries.filter(entry => is_dex_entry(entry.name, true));
-    const module_native = module_entries.filter(entry =>
-      (entry.name.startsWith(prefix + 'lib/') || entry.name.includes('/lib/')) && entry.name.endsWith('.so'));
-    return {
-      name: name.slice(0, max_archive_entry_path_length),
-      name_truncated: name.length > max_archive_entry_path_length,
-      name_original_length: name.length,
-      manifest_present: module_entries.some(entry => entry.name === prefix + 'manifest/AndroidManifest.xml'),
-      dex_entries: module_dex.length,
-      native_libraries: module_native.length,
-      resources_pb_present: module_entries.some(entry => entry.name === prefix + 'resources.pb'),
-      resource_paths: module_entries.filter(entry => entry.name.startsWith(prefix + 'res/')).length,
-      asset_paths: module_entries.filter(entry => entry.name.startsWith(prefix + 'assets/')).length,
-      root_paths: module_entries.filter(entry => entry.name.startsWith(prefix + 'root/')).length,
-    };
-  });
+  // Aggregate module path counts in one pass. Re-scanning the full entry
+  // table once per module would turn hostile high-cardinality bundles into
+  // quadratic CPU work.
+  const module_inventory = new Map();
+  if (is_aab) {
+    for (const entry of entries) {
+      const separator = entry.name.indexOf('/');
+      if (separator <= 0) continue;
+      const module_name = entry.name.slice(0, separator);
+      if (module_name === 'BUNDLE-METADATA') continue;
+      let item = module_inventory.get(module_name);
+      if (!item) {
+        item = {
+          manifest_present: false,
+          dex_entries: 0,
+          native_libraries: 0,
+          resources_pb_present: false,
+          resource_paths: 0,
+          asset_paths: 0,
+          root_paths: 0,
+        };
+        module_inventory.set(module_name, item);
+      }
+      const relative = entry.name.slice(separator + 1);
+      if (relative === 'manifest/AndroidManifest.xml') item.manifest_present = true;
+      if (/^dex\/classes(?:[2-9]|[1-9][0-9]+)?\.dex$/.test(relative)) item.dex_entries += 1;
+      if ((relative.startsWith('lib/') || relative.includes('/lib/')) && relative.endsWith('.so')) item.native_libraries += 1;
+      if (relative === 'resources.pb') item.resources_pb_present = true;
+      if (relative.startsWith('res/')) item.resource_paths += 1;
+      if (relative.startsWith('assets/')) item.asset_paths += 1;
+      if (relative.startsWith('root/')) item.root_paths += 1;
+    }
+  }
+  const module_names = [...module_inventory.keys()].sort();
+  const reported_modules = module_names.slice(0, max_aab_modules).map(name => ({
+    name: name.slice(0, max_archive_entry_path_length),
+    name_truncated: name.length > max_archive_entry_path_length,
+    name_original_length: name.length,
+    ...module_inventory.get(name),
+  }));
   const bundle = is_aab ? {
     status: 'recognized',
     bundle_config_present: names.has('BundleConfig.pb'),
