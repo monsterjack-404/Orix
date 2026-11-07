@@ -77,7 +77,7 @@ function requested_isolation(value, sandbox_root) {
       { platform: process.platform });
   }
   if (isolation === 'required' &&
-      (typeof sandbox_root !== 'string' || !path.isAbsolute(sandbox_root) || sandbox_root.includes('\\0'))) {
+      (typeof sandbox_root !== 'string' || !path.isAbsolute(sandbox_root) || sandbox_root.includes('\0'))) {
     throw new TypeError('sandbox_root must be an absolute filesystem path when isolation is required');
   }
   return isolation;
