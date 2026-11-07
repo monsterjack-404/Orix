@@ -214,6 +214,18 @@ export async function prepare_windows_provider_isolation({ executable, cwd, sand
   const cleanup = () => {
     if (cleanupPromise) return cleanupPromise;
     cleanupPromise = (async () => {
+      const previousHelperLog = await readFile(logPath, 'utf8').catch(() => '');
+      if (previousHelperLog.includes('RUN:TEARDOWN_INCOMPLETE')) {
+        // The native helper could not prove the Job Object was empty. Do not
+        // launch a second cleanup helper that might remove profile ACLs or
+        // AppContainer scratch while a provider descendant is still alive.
+        cleanup.last_log = previousHelperLog;
+        throw new OrixError(
+          'ORIX_PROVIDER_WINDOWS_TEARDOWN_UNVERIFIED',
+          'Provider process termination could not be confirmed; AppContainer cleanup was skipped',
+          { details: { helper_log: previousHelperLog.slice(-8192) }, recoverable: true },
+        );
+      }
       try { await run_native_helper(launcher, ['cleanup', configPath], temporary, hostEnvironment, logPath, 30_000); }
       finally { cleanup.last_log = await readFile(logPath, 'utf8').catch(() => ''); }
       await rm(temporary, { recursive: true, force: true });
