@@ -13,6 +13,7 @@ const BLOCKED_ENVIRONMENT_KEYS = new Set([
   'PATH', 'PATHEXT', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
   'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'DYLD_FRAMEWORK_PATH',
   'PYTHONPATH', 'PYTHONHOME', 'PERL5OPT', 'RUBYOPT', 'BASH_ENV', 'ENV', 'IFS',
+  'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'COMSPEC',
 ]);
 const MAX_ARGUMENTS = 256;
 const MAX_ARGUMENT_BYTES = 32 * 1024;
@@ -103,13 +104,17 @@ function validate_environment(value) {
     throw new TypeError('env contains too many entries');
   }
   const result = Object.create(null);
+  const normalized_keys = new Set();
   let total = 0;
   for (const key of entries) {
+    const normalized_key = typeof key === 'string' ? key.toUpperCase() : '';
     const descriptor = descriptors[key];
-    if (typeof key !== 'string' || !ENV_KEY.test(key) || BLOCKED_ENVIRONMENT_KEYS.has(key.toUpperCase()) ||
+    if (typeof key !== 'string' || !ENV_KEY.test(key) || BLOCKED_ENVIRONMENT_KEYS.has(normalized_key) ||
+        normalized_keys.has(normalized_key) ||
         !descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) {
       throw new TypeError('env must contain enumerable string data properties with valid names');
     }
+    normalized_keys.add(normalized_key);
     const item = descriptor.value;
     if (typeof item !== 'string' || item.includes('\0')) {
       throw new TypeError('env values must be strings without NUL bytes');
@@ -284,7 +289,18 @@ function minimal_environment(overrides) {
 
 function signal_process(child, detached, signal) {
   if (!child.pid) return;
-  if (detached && process.platform !== 'win32') {
+  // Node's public child_process API does not expose the Windows process HANDLE
+  // required to assign the child to a Job Object. Do not resolve taskkill.exe
+  // through inherited SystemRoot/WINDIR: those variables are not a trusted
+  // source of the Windows system directory. Until a trusted native launcher
+  // owns process creation and Job Object assignment, terminate only this child.
+  if (process.platform === 'win32') {
+    try { child.kill(); } catch {
+      // The process may have exited between the state check and signal.
+    }
+    return;
+  }
+  if (detached) {
     try {
       process.kill(-child.pid, signal);
       return;
@@ -292,7 +308,7 @@ function signal_process(child, detached, signal) {
       // Fall through to direct child signalling.
     }
   }
-  try { if (process.platform === 'win32') child.kill(); else child.kill(signal); } catch {
+  try { child.kill(signal); } catch {
     // The process may have exited between the state check and signal.
   }
 }

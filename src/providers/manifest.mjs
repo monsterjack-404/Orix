@@ -252,6 +252,13 @@ export async function read_provider_manifest(file_path, options = {}) {
     if (!opened.isFile() || !same_file_identity(before, opened)) {
       throw new OrixError('ORIX_PROVIDER_MANIFEST_REPLACED', 'Provider manifest identity changed before it was opened', { recoverable: true });
     }
+    // O_NOFOLLOW is unavailable on some platforms. Re-check the path after
+    // opening so a symlink swap between the initial lstat and open is rejected.
+    const path_after_open = await fs.lstat(absolute_path);
+    if (path_after_open.isSymbolicLink() || !path_after_open.isFile() ||
+        !same_file_identity(path_after_open, opened)) {
+      throw new OrixError('ORIX_PROVIDER_MANIFEST_REPLACED', 'Provider manifest path changed while it was being opened', { recoverable: true });
+    }
     const buffer = Buffer.alloc(maximum_bytes + 1);
     let total = 0;
     while (total < buffer.length) {

@@ -143,6 +143,24 @@ test('static provider runner terminates providers at the configured deadline', a
   assert.equal(result.ok, false);
 });
 
+test('Windows timeout path does not depend on an environment-derived taskkill executable', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  // The runner intentionally uses Node's direct-child termination on Windows
+  // until a trusted native Job Object launcher is available. This test keeps
+  // the contract explicit; it does not claim descendant teardown.
+  const result = await run_static_provider({
+    manifest: manifest(),
+    executable: await node_executable(),
+    args: ['-e', 'setInterval(() => {}, 1000)'],
+    timeout_ms: 1500,
+    kill_grace_ms: 20,
+  });
+  assert.equal(result.timed_out, true);
+  assert.equal(result.termination_reason, 'timeout');
+  assert.equal(result.ok, false);
+});
+
 test('static provider runner supports AbortSignal cancellation', async () => {
   const controller = new AbortController();
   // Executable/cwd validation can be substantially slower on Windows CI;
@@ -358,9 +376,12 @@ test('static provider runner rejects symlinks inside executable and working-dire
   });
 });
 
-test('static provider runner rejects PATH and executable-loader environment overrides', async () => {
+test('static provider runner rejects command, loader and Windows bootstrap environment overrides', async () => {
   const executable = await node_executable();
-  for (const key of ['PATH', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES']) {
+  for (const key of [
+    'PATH', 'PATHEXT', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES',
+    'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'COMSPEC',
+  ]) {
     await assert.rejects(
       run_static_provider({
         manifest: manifest(),
@@ -369,8 +390,22 @@ test('static provider runner rejects PATH and executable-loader environment over
         env: { [key]: 'attacker-controlled-value' },
       }),
       /enumerable string data properties with valid names/,
+      key + ' must not be overridden',
     );
   }
+});
+
+test('static provider runner rejects case-insensitive duplicate environment keys', async () => {
+  const executable = await node_executable();
+  await assert.rejects(
+    run_static_provider({
+      manifest: manifest(),
+      executable,
+      args: [],
+      env: { ORIX_PROVIDER_MODE: 'safe', orix_provider_mode: 'ambiguous' },
+    }),
+    /enumerable string data properties with valid names/,
+  );
 });
 
 

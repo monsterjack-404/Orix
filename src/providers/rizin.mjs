@@ -80,6 +80,19 @@ async function file_snapshot(input_path, maximum_bytes) {
   const canonical_path = await realpath(input_path);
   const info = await stat(canonical_path);
   if (!info.isFile()) provider_error('ORIX_RIZIN_INPUT_NOT_REGULAR', 'Resolved Rizin input is not a regular file');
+  // Re-check after resolution: on platforms without O_NOFOLLOW, a symlink
+  // swap between lstat and realpath must not redirect the initial snapshot.
+  let path_after_resolve;
+  try { path_after_resolve = await lstat(input_path); }
+  catch (error) {
+    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input path changed while it was being resolved', {
+      reason: error.code ?? 'filesystem-error',
+    });
+  }
+  if (path_after_resolve.isSymbolicLink() || !path_after_resolve.isFile() ||
+      !same_file_identity(link_info, info) || !same_file_identity(path_after_resolve, info)) {
+    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input identity changed while it was being resolved');
+  }
   if (!Number.isSafeInteger(info.size) || info.size < 0 || info.size > maximum_bytes) {
     provider_error('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin input exceeds the provider manifest byte limit', {
       size_bytes: info.size, maximum_bytes,

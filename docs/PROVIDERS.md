@@ -64,7 +64,7 @@ process.stdout.write(JSON.stringify(manifest, null, 2));
 The reader:
 - Accepts only regular files and rejects symbolic links.
 - Defaults to a 64 KiB input limit (configurable up to 1 MiB).
-- Opens the file read-only and checks file identity before and after reading.
+- Opens the file read-only with `O_NOFOLLOW` where supported, then re-checks the opened handle against the path to detect a symlink/path swap during open; it also checks file identity before and after reading.
 - Rejects files that change while being read.
 - Requires valid UTF-8 and JSON.
 - Rejects unknown fields, accessors, sparse arrays, duplicate array values, and non-enumerable data.
@@ -123,11 +123,11 @@ if (!result.ok) {
 }
 ~~~
 
-This runner is a process-control boundary, **not an operating-system sandbox**. It cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. POSIX process groups are signalled on timeout/cancellation; Windows currently signals the direct child and does not guarantee process-tree teardown. Do not run untrusted provider binaries on a sensitive host. Strong isolation requires an OS/container/VM policy supplied and verified separately.
+This runner is a process-control boundary, **not an operating-system sandbox**. It cannot force a declared-static executable to avoid network access, filesystem writes, or malicious behavior. POSIX process groups are signalled on timeout/cancellation. On Windows, the runner terminates only the direct child. It deliberately does not invoke `taskkill.exe` because Node's public child-process API does not provide the process HANDLE needed for Job Object ownership, and deriving the utility path from inherited `SystemRoot`/`WINDIR` would create an executable-path trust issue. Descendant teardown is not guaranteed on Windows until a trusted native launcher assigns the process to a Job Object at creation time. Do not run untrusted provider binaries on a sensitive host. Strong isolation requires an OS/container/VM policy supplied and verified separately.
 
 ## 5. Rizin import adapter
 
-`analyze_rizin_imports` is the first concrete optional adapter. It probes the installed Rizin version, invokes the documented command-line JSON import command, normalizes import name/library/binding/type/ordinal/PLT fields, hashes the input, and rejects an input whose identity or metadata changes during the run.
+`analyze_rizin_imports` is the first concrete optional adapter. It probes the installed Rizin version, invokes the documented command-line JSON import command, normalizes import name/library/binding/type/ordinal/PLT fields, hashes the input, and rejects an input whose identity or metadata changes during the run. Before hashing or snapshot creation, it re-checks the original path after canonical resolution and requires the initial path metadata, resolved file identity, and post-resolution path identity to agree; symbolic-link inputs are rejected.
 
 ~~~js
 import { analyze_rizin_imports } from '@orix/cli';
@@ -225,6 +225,32 @@ Provider failure must remain visible. ORIX must not silently substitute another 
 
 A manifest is untrusted input. It is descriptive metadata, not a signed identity, executable policy, sandbox, or authorization token. Provider installation and execution remain separate operations. Dynamic analysis must be explicitly scoped to systems the operator owns or is authorized to assess.
 
+## 7.1 Operating-system isolation support matrix
+
+The current process runner is **not an OS sandbox on any supported platform**. Its timeout, output limits, environment filtering, executable/cwd checks and process teardown are useful controls, but they do not confine provider syscalls or resource use.
+
+| Platform | Current process control | OS-level confinement in ORIX |
+| --- | --- | --- |
+| Linux | Detached process groups; timeout/cancellation signals the group. | Not implemented. No bubblewrap/mount namespace, user/PID/network namespace, seccomp or cgroup policy is applied. |
+| Windows | Timeout/cancellation terminates the direct child only. | Not implemented. No Job Object, restricted token, AppContainer, filesystem ACL boundary or network capability policy is assigned by ORIX. |
+| macOS | Detached process groups; timeout/cancellation signals the group. | Not implemented. No Seatbelt/sandbox profile or App Sandbox entitlement is applied. |
+
+A process group or process-tree kill is a lifecycle mechanism, not a containment boundary. In particular, Windows `taskkill /T` is not a substitute for assigning the process to a Job Object at creation time; a descendant may escape before the tree is enumerated. Likewise, a Linux namespace or a macOS sandbox must be configured before untrusted provider code starts.
+
+### Isolation requirements before enabling untrusted providers
+
+A future sandbox backend must be opt-in and fail closed. It must:
+- create the containment boundary before launching the provider;
+- deny network access by default for static providers;
+- expose only the selected executable, required runtime libraries, read-only input snapshot and an explicitly bounded scratch area;
+- prevent writes to the host filesystem and prevent access to caller secrets, home directories and unrelated project files;
+- apply CPU, memory, process-count, file-size and wall-clock limits where the OS supports them;
+- ensure descendants remain inside the same containment boundary;
+- report the backend and effective policy in a versioned execution receipt;
+- have platform-specific adversarial tests proving denied filesystem, network and process-escape behavior.
+
+Until those controls are implemented and tested, use only trusted provider binaries and run them under a separate low-privilege OS account or disposable VM/container. Do not interpret a manifest's `mode: "static"` as a sandbox guarantee.
+
 ## 8. Public API
 
 - validate_provider_manifest(value) — validate an in-memory data object.
@@ -248,8 +274,8 @@ The static runner accepts two optional allowlists:
 - `allowed_executables`: absolute executable paths. If omitted, the requested `executable` is the single permitted path. If supplied, the selected executable must canonicalize to one regular, non-symlink entry.
 - `allowed_working_directories`: absolute directory roots. If omitted, the chosen `cwd` is its own permitted root (or the current process directory when `cwd` is omitted). If supplied, the canonical working directory must be equal to or beneath one of the listed regular, non-symlink roots.
 
-Allowlist arrays reject sparse entries, accessors and custom properties. The child does not inherit the full parent environment. Explicit overrides reject command-search and executable-loader keys including `PATH`, `PATHEXT`, `NODE_OPTIONS`, `NODE_PATH`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `PYTHONPATH`, `PERL5OPT` and `RUBYOPT`.
+Allowlist arrays reject sparse entries, accessors and custom properties. The child does not inherit the full parent environment. Explicit overrides reject command-search and executable-loader keys including `PATH`, `PATHEXT`, `NODE_OPTIONS`, `NODE_PATH`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `PYTHONPATH`, `PERL5OPT` and `RUBYOPT`. Windows bootstrap variables (`SystemRoot`, `WINDIR`, `TEMP`, `TMP`, `COMSPEC`) cannot be overridden, and environment keys that differ only by letter case are rejected to avoid Windows case-insensitive collisions.
 
-Execution results include a versioned `orix.provider-execution.v1` receipt defined by [provider-execution.v1.schema.json](../schemas/provider-execution.v1.schema.json). Legacy result properties remain available for the current Rizin adapter. POSIX termination signals the detached process group; Windows currently terminates only the direct child.
+Execution results include a versioned `orix.provider-execution.v1` receipt defined by [provider-execution.v1.schema.json](../schemas/provider-execution.v1.schema.json). Legacy result properties remain available for the current Rizin adapter. POSIX termination signals the detached process group. Windows currently terminates only the direct child; descendant cleanup is deferred until a trusted native Job Object launcher is implemented.
 
-These path checks constrain the selected executable and working directory; they do not confine every file the child can read or write. The manifest still cannot enforce provider behavior.
+These path checks constrain the selected executable and working directory; they do not confine every file the child can read or write. Validation and process creation are separate filesystem operations, so the checks are not an atomic defense against a concurrent actor that can replace files or directories in the selected paths between validation and launch. Keep provider executables, allowlist roots, and their parent directories in locations that untrusted users cannot modify. The runner does not claim race-free path confinement or an OS sandbox. The manifest still cannot enforce provider behavior.
