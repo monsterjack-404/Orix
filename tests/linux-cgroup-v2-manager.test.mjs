@@ -12,8 +12,11 @@ test('supervisor cgroup process-list parsing handles multiple newline-separated 
   assert.deepEqual(parse_cgroup_process_ids(''), []);
 });
 
-test('supervisor cgroup process-list parsing rejects malformed PID records', () => {
+test('supervisor cgroup process-list parsing rejects malformed and duplicate PID records', () => {
   assert.throws(() => parse_cgroup_process_ids('123\nnot-a-pid\n'), /invalid process ID/);
+  for (const invalid of ['0', '01', '+123', '-123', '1.5', '123\n123']) {
+    assert.throws(() => parse_cgroup_process_ids(invalid), /invalid process ID|duplicate process ID/);
+  }
   assert.throws(() => parse_cgroup_process_ids(null), /must be a string/);
 });
 
