@@ -148,11 +148,11 @@ jobs:
           set -euo pipefail
           test_log="$RUNNER_TEMP/bubblewrap-meson-tests.log"
           meson test -C "$RUNNER_TEMP/bubblewrap-build" --print-errorlogs 2>&1 | tee "$test_log"
-          if grep -Eq 'test-seccomp\\.py[[:space:]]+SKIP' "$test_log"; then
+          if grep -Eq 'test-seccomp\.py[[:space:]]+SKIP' "$test_log"; then
             echo "::error::Upstream Bubblewrap seccomp test was skipped"
             exit 1
           fi
-          if ! grep -Eq 'test-seccomp\\.py[[:space:]]+OK' "$test_log"; then
+          if ! grep -Eq 'test-seccomp\.py[[:space:]]+OK' "$test_log"; then
             echo "::error::Upstream Bubblewrap seccomp test did not report a successful run"
             exit 1
           fi
