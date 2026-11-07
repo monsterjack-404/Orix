@@ -85,7 +85,7 @@ node src/cli.mjs android ./app.apk --json --max-archive-entries 2000
 node src/cli.mjs android ./app.aab --format markdown --out ./android-report.md
 ```
 
-This offline inventory reports safe ZIP metadata, bounded APK binary-XML permissions/components, stored unencrypted DEX metadata, multidex/native-library paths, v1 signature filename hints and a SHA-256 receipt for file-based analysis. It never extracts or decompresses archive entries and never executes app code. AAB support is limited to bundle layout and manifest-path presence; protobuf manifests/resources, signature verification and device observations are not implemented. `--max-archive-entries` defaults to 1,000 (maximum 50,000). Android file input is capped at 1,024 MiB; the default is 512 MiB.
+This offline inventory reports safe ZIP metadata, bounded APK binary-XML permissions/components, stored unencrypted DEX identifier/prototype/class-data/code-item metadata, multidex/native-library paths, v1 signature filename hints, APK Signing Block scheme-ID structure (v2/v3/v3.1), and a SHA-256 receipt for file-based analysis. DEX Adler-32 and SHA-1 fields are recomputed. Signing-block inspection is structural only: APK signatures, content digests, certificate chains and publisher identity are not cryptographically verified. AAB output counts module manifest/DEX/native/resource/asset/root paths but does not decode protobuf manifests/resources or split relationships. It never extracts/decompresses entries and never executes app code. `--max-archive-entries` defaults to 1,000 (maximum 50,000). Android file input is capped at 1,024 MiB; the default is 512 MiB.
 
 ### Analyze a source project
 
