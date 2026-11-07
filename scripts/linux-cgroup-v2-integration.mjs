@@ -10,6 +10,7 @@ import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
 import { prepare_linux_provider_cgroup } from '../src/providers/linux-cgroup-v2-manager.mjs';
 import { parse_cgroup2_mounts } from '../src/providers/linux-cgroup-v2-preflight.mjs';
+import { assert_linux_cgroup_integration_authorized } from '../src/providers/linux-cgroup-v2-test-gate.mjs';
 
 const REQUIRED = ['cpu', 'memory', 'pids'];
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -252,9 +253,15 @@ async function remove_delegated_parent(state) {
 }
 
 async function main() {
+  // This gate mutates root-level cgroup controller state on a disposable VM.
+  // Require explicit workflow authorization before creating any cgroup.
+  assert_linux_cgroup_integration_authorized();
   assert.equal(process.platform, 'linux', 'This integration gate must run on Linux');
-  const delegated = await create_delegated_parent();
-  const previousParent = process.env.ORIX_CGROUP_PARENT;
+  assert.equal(typeof process.geteuid, 'function');
+  assert.equal(process.geteuid(), 0, 'The real cgroup integration gate must run as root');
+
+  // Validate every non-mutating prerequisite before changing host cgroup state.
+  // In particular, a /tmp workspace rejection must never strand a new cgroup.
   const hostWorkspace = path.resolve(process.cwd());
   const tempRoot = path.resolve(os.tmpdir());
   const workspaceFromTemp = path.relative(tempRoot, hostWorkspace);
@@ -263,6 +270,9 @@ async function main() {
      !workspaceFromTemp.startsWith('..' + path.sep));
   assert.equal(workspaceInsideTemp, false,
     'Host-root sentinel must be outside /tmp because the sandbox deliberately replaces /tmp with a tmpfs');
+
+  const delegated = await create_delegated_parent();
+  const previousParent = process.env.ORIX_CGROUP_PARENT;
   const hostSecret = path.join(hostWorkspace, '.orix-cgroup-host-secret-' + process.pid + '-' + randomUUID());
   const hostSecretValue = 'host-only-secret-' + process.pid + '-' + randomUUID();
   let base = null;
