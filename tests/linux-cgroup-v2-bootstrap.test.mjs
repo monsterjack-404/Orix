@@ -55,23 +55,30 @@ if (process.platform === 'linux') {
       const attach_file = path.join(directory, 'attach-capability');
       writeFileSync(attach_file, '');
       const fd = openSync(attach_file, 'w');
-      const provider_code = [
-        "const { readFileSync, readlinkSync } = require('node:fs');",
-        "const marker = process.argv[1];",
-        "const membership = readFileSync(marker, 'utf8');",
-        "let leaked = false;",
-        "try { leaked = readlinkSync('/proc/self/fd/3').includes(marker); }",
-        "catch (error) { if (error.code !== 'ENOENT') throw error; }",
-        "process.stdout.write(/^\\d+\\n$/.test(membership) && !leaked ? 'attached-and-closed' : 'failed');",
-      ].join(' ');
-      const result = await run_bootstrap_with_fd(fd, [
-        '--attach-fd=3', '--', process.execPath, '-e', provider_code, attach_file,
-      ]);
+      // Pin the fixture inode before the child runs; read it back through the
+      // retained descriptor instead of reopening a pathname after launch.
+      const readback_fd = openSync(attach_file, 'r');
+      try {
+        const provider_code = [
+          "const { readFileSync, readlinkSync } = require('node:fs');",
+          "const marker = process.argv[1];",
+          "const membership = readFileSync(marker, 'utf8');",
+          "let leaked = false;",
+          "try { leaked = readlinkSync('/proc/self/fd/3').includes(marker); }",
+          "catch (error) { if (error.code !== 'ENOENT') throw error; }",
+          "process.stdout.write(/^\\d+\\n$/.test(membership) && !leaked ? 'attached-and-closed' : 'failed');",
+        ].join(' ');
+        const result = await run_bootstrap_with_fd(fd, [
+          '--attach-fd=3', '--', process.execPath, '-e', provider_code, attach_file,
+        ]);
 
-      assert.equal(result.code, 0, result.stderr);
-      assert.equal(result.signal, null);
-      assert.equal(result.stdout, 'attached-and-closed');
-      assert.match(readFileSync(attach_file, 'utf8'), /^\d+\n$/);
+        assert.equal(result.code, 0, result.stderr);
+        assert.equal(result.signal, null);
+        assert.equal(result.stdout, 'attached-and-closed');
+        assert.match(readFileSync(readback_fd, 'utf8'), /^\\d+\\n$/);
+      } finally {
+        closeSync(readback_fd);
+      }
     });
   });
 
