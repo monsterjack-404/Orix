@@ -62,6 +62,23 @@ Requirements:
 
 This layout follows the kernel’s no-internal-process constraint and systemd’s delegation guidance. See the [Linux kernel cgroup v2 documentation](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#no-internal-process-constraint) and [systemd cgroup delegation guidance](https://github.com/systemd/systemd/blob/main/docs/CGROUP_DELEGATION.md).
 
+### systemd-backed production deployment
+
+For a systemd-managed ORIX service, request a delegated subtree on the service or scope rather than creating cgroups beneath arbitrary systemd-owned units:
+
+```ini
+[Service]
+Delegate=cpu memory pids
+# systemd 254+: place the service's main process in the required sibling.
+DelegateSubgroup=supervisor
+```
+
+`Delegate=` makes the requested controllers available to the service, but systemd does not automatically enable them in the delegated parent's `cgroup.subtree_control`. The administrator must arrange for `cpu`, `memory`, and `pids` to be enabled for children before the ORIX manager starts, while ensuring the service's main process is already in `supervisor/` and the parent itself is empty. On systemd versions before 254, use a trusted service launcher/provisioning step to move the manager into the `supervisor/` child before enabling domain controllers. Do not start ORIX's provider runner until this layout is complete.
+
+Set `ORIX_CGROUP_PARENT` to the canonical absolute path of that delegated service cgroup as seen from the ORIX process's cgroup2 mount namespace. Do not assume the mountpoint is always `/sys/fs/cgroup`: derive the mountpoint from the unified cgroup2 mount and map the service's `ControlGroup` path to it. Run `node scripts/linux-cgroup-v2-preflight.mjs` with the same service identity and environment. Required isolation must not be enabled until the report says `ready: true`, the supervisor contains the running manager directly, and the operator has confirmed the service unit is the exclusive owner of that delegated subtree.
+
+The runtime intentionally does not try to create the parent, move the long-lived manager, enable controllers, call systemd's D-Bus API, or repair a partly configured hierarchy. Those are host-administration operations outside the provider execution path. A missing controller, wrong process placement, ambiguous mount mapping, or unsafe ownership is a hard fail-closed condition.
+
 ## Parent and child cgroup validation
 
 Before creating a child, implementation must:
