@@ -13,6 +13,11 @@ using System.Runtime.InteropServices;
 
 namespace OrixWindowsSandbox {
   public static class Launcher {
+    sealed class ProviderTeardownIncompleteException : Exception {
+      public ProviderTeardownIncompleteException(Exception inner)
+        : base("ORIX_WINDOWS_TEARDOWN_UNVERIFIED: provider process termination could not be confirmed; AppContainer cleanup was skipped", inner) { }
+    }
+
     public static int Main(string[] args) {
       string root = null;
       string profileName = null;
@@ -41,6 +46,11 @@ namespace OrixWindowsSandbox {
         int exitCode = 125;
         try {
           exitCode = Run(executable, providerArgs, cwd, root, profileName, providerEnvironment);
+        } catch (ProviderTeardownIncompleteException error) {
+          // Never remove profile ACLs or redirected scratch while any provider
+          // process may still be alive. Leave recovery to an explicit operator.
+          Console.Error.WriteLine("ORIX_WINDOWS_ISOLATION_ERROR=" + error.Message);
+          return 125;
         } catch (Exception error) {
           Console.Error.WriteLine("ORIX_WINDOWS_ISOLATION_ERROR=" + error.Message);
         }
@@ -553,6 +563,33 @@ namespace OrixWindowsSandbox {
       } finally { Marshal.FreeHGlobal(buffer); }
     }
 
+    static void TerminateAndWaitForProvider(IntPtr job, bool processAssignedToJob, IntPtr processHandle) {
+      if (processAssignedToJob && job != IntPtr.Zero) {
+        uint jobWait = WaitForSingleObject(job, 0);
+        if (jobWait != 0) {
+          if (!TerminateJobObject(job, 1)) {
+            jobWait = WaitForSingleObject(job, 0);
+            if (jobWait != 0) throw Win32("Terminate provider Job Object");
+          }
+        }
+        jobWait = WaitForSingleObject(job, 5000);
+        if (jobWait != 0) throw new TimeoutException("Provider Job Object did not become empty after termination (wait=" + jobWait + ")");
+        Log("RUN:TEARDOWN_CONFIRMED_JOB_EMPTY");
+        return;
+      }
+
+      uint processWait = WaitForSingleObject(processHandle, 0);
+      if (processWait != 0) {
+        if (!TerminateProcess(processHandle, 1)) {
+          processWait = WaitForSingleObject(processHandle, 0);
+          if (processWait != 0) throw Win32("Terminate provider process outside Job Object");
+        }
+      }
+      processWait = WaitForSingleObject(processHandle, 5000);
+      if (processWait != 0) throw new TimeoutException("Provider process did not exit after termination (wait=" + processWait + ")");
+      Log("RUN:TEARDOWN_CONFIRMED_PROCESS_EXITED");
+    }
+
     public static int Run(string executable, string[] arguments, string cwd, string root,
       string profileName, IDictionary environment) {
       IntPtr sid = IntPtr.Zero, job = IntPtr.Zero, attributeList = IntPtr.Zero;
@@ -561,6 +598,7 @@ namespace OrixWindowsSandbox {
       PROCESS_INFORMATION processInfo = new PROCESS_INFORMATION();
       List<IntPtr> inheritedStandardHandles = new List<IntPtr>();
       bool processCreated = false;
+      bool processAssignedToJob = false;
       try {
         Log("RUN:BEGIN");
         if (!Directory.Exists(root) || !Directory.Exists(cwd))
@@ -621,6 +659,7 @@ namespace OrixWindowsSandbox {
         processCreated = true;
         Log("RUN:PROCESS_CREATED_SUSPENDED");
         if (!AssignProcessToJobObject(job, processInfo.hProcess)) throw Win32("Assign provider to Job Object");
+        processAssignedToJob = true;
         Log("RUN:PROCESS_ASSIGNED_TO_JOB");
 
         if (!OpenProcessToken(processInfo.hProcess, 0x0008, out token)) throw Win32("Open provider process token");
@@ -648,9 +687,18 @@ namespace OrixWindowsSandbox {
         Log("RUN:JOB_EMPTY");
         return unchecked((int)exitCode);
       } finally {
+        Exception teardownFailure = null;
         if (processCreated && processInfo.hProcess != IntPtr.Zero) {
-          if (job != IntPtr.Zero) TerminateJobObject(job, 1);
-          TerminateProcess(processInfo.hProcess, 1);
+          try {
+            // Termination APIs are asynchronous. Do not return to Main (where
+            // AppContainer ACL/scratch cleanup occurs) until the job is empty
+            // or the direct suspended process is signaled.
+            TerminateAndWaitForProvider(job, processAssignedToJob, processInfo.hProcess);
+          } catch (Exception error) {
+            teardownFailure = error;
+            Log("RUN:TEARDOWN_INCOMPLETE:" + error.Message);
+            Console.Error.WriteLine("ORIX_WINDOWS_TEARDOWN_UNVERIFIED=" + error.Message);
+          }
         }
         if (tokenInfo != IntPtr.Zero) Marshal.FreeHGlobal(tokenInfo);
         if (token != IntPtr.Zero) CloseHandle(token);
@@ -666,6 +714,7 @@ namespace OrixWindowsSandbox {
         if (handleList != IntPtr.Zero) Marshal.FreeHGlobal(handleList);
         if (environmentBlock != IntPtr.Zero) Marshal.FreeHGlobal(environmentBlock);
         if (sid != IntPtr.Zero) FreeSid(sid);
+        if (teardownFailure != null) throw new ProviderTeardownIncompleteException(teardownFailure);
       }
     }
 
