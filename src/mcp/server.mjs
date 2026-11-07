@@ -341,7 +341,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
       if (args.action === 'add_artifact') {
         const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
-        return add_case_artifact(workspace.path, args.case_id, target.path);
+        return add_case_artifact(workspace.path, args.case_id, target.path, { reject_hardlinks: true });
       }
       if (args.action === 'record_analysis') {
         const target = await resolve_workspace_path(args.report_path, roots, { kind: 'file' });
