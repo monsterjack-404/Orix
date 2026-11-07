@@ -115,6 +115,17 @@ function qname(ns, name, namespaces) {
   return prefix ? prefix + ':' + name : name;
 }
 
+function node_extension_start(buffer, cursor, headerSize, requiredBytes, end, label) {
+  if (headerSize < 16) {
+    fail('ORIX_AXML_NODE_HEADER', 'Android XML node header is shorter than the required ResXMLTree_node header', {
+      cursor, header_size: headerSize, minimum: 16, label,
+    });
+  }
+  const extensionStart = cursor + headerSize;
+  need(buffer, extensionStart, requiredBytes, end, label);
+  return extensionStart;
+}
+
 /** Parse bounded Android binary XML. Returns metadata candidates, not a semantic Android manifest verdict. */
 export function parse_android_binary_xml(buffer, options = {}) {
   if (!Buffer.isBuffer(buffer)) throw new TypeError('Android binary XML input must be a Buffer');
@@ -173,9 +184,9 @@ export function parse_android_binary_xml(buffer, options = {}) {
       if (resourceMapCount > strings.length) fail('ORIX_AXML_RESOURCE_MAP_RANGE', 'Resource map contains more IDs than string-pool entries');
       resourceMapSeen = true;
     } else if (type === TYPE_START_NAMESPACE || type === TYPE_END_NAMESPACE) {
-      need(buffer, cursor + 16, 8, end, 'namespace extension');
-      const prefix = stringAt(strings, u32(buffer, cursor + 16, end, 'namespace prefix'), 'namespace prefix');
-      const uri = stringAt(strings, u32(buffer, cursor + 20, end, 'namespace URI'), 'namespace URI');
+      const extensionStart = node_extension_start(buffer, cursor, headerSize, 8, end, 'namespace extension');
+      const prefix = stringAt(strings, u32(buffer, extensionStart, end, 'namespace prefix'), 'namespace prefix');
+      const uri = stringAt(strings, u32(buffer, extensionStart + 4, end, 'namespace URI'), 'namespace URI');
       if (!uri) fail('ORIX_AXML_NAMESPACE_URI', 'Namespace chunk requires a URI');
       if (type === TYPE_START_NAMESPACE) {
         namespaceStack.push({ prefix, uri });
@@ -191,15 +202,15 @@ export function parse_android_binary_xml(buffer, options = {}) {
       }
     } else if (type === TYPE_START_ELEMENT) {
       if (++elements > limits.max_elements) fail('ORIX_AXML_ELEMENT_LIMIT', 'Android binary XML element limit exceeded');
-      need(buffer, cursor + 16, 20, end, 'element extension');
-      const ns = stringAt(strings, u32(buffer, cursor + 16, end, 'element namespace'), 'element namespace');
-      const name = stringAt(strings, u32(buffer, cursor + 20, end, 'element name'), 'element name');
-      const attributeStart = u16(buffer, cursor + 24, end, 'attribute start');
-      const attributeSize = u16(buffer, cursor + 26, end, 'attribute size');
-      const attributeCount = u16(buffer, cursor + 28, end, 'attribute count');
+      const extensionStart = node_extension_start(buffer, cursor, headerSize, 20, end, 'element extension');
+      const ns = stringAt(strings, u32(buffer, extensionStart, end, 'element namespace'), 'element namespace');
+      const name = stringAt(strings, u32(buffer, extensionStart + 4, end, 'element name'), 'element name');
+      const attributeStart = u16(buffer, extensionStart + 8, end, 'attribute start');
+      const attributeSize = u16(buffer, extensionStart + 10, end, 'attribute size');
+      const attributeCount = u16(buffer, extensionStart + 12, end, 'attribute count');
       if (!name || attributeSize < 20 || attributeCount > limits.max_attributes - attributesSeen) fail('ORIX_AXML_ATTRIBUTE_LIMIT', 'Invalid or excessive Android XML attributes');
       if (attributeStart < 20) fail('ORIX_AXML_ATTRIBUTE_START', 'Attribute array must begin after the complete attribute extension');
-      const attributesOffset = cursor + 16 + attributeStart;
+      const attributesOffset = extensionStart + attributeStart;
       need(buffer, attributesOffset, attributeCount * attributeSize, end, 'attribute array');
       // Avoid the legacy __proto__ setter for untrusted manifest attribute names.
       const attrs = Object.create(null);
@@ -254,15 +265,15 @@ export function parse_android_binary_xml(buffer, options = {}) {
         };
       }
     } else if (type === TYPE_END_ELEMENT) {
-      need(buffer, cursor + 16, 8, end, 'end-element extension');
-      const ns = stringAt(strings, u32(buffer, cursor + 16, end, 'end-element namespace'), 'end-element namespace');
-      const name = stringAt(strings, u32(buffer, cursor + 20, end, 'end-element name'), 'end-element name');
+      const extensionStart = node_extension_start(buffer, cursor, headerSize, 8, end, 'end-element extension');
+      const ns = stringAt(strings, u32(buffer, extensionStart, end, 'end-element namespace'), 'end-element namespace');
+      const name = stringAt(strings, u32(buffer, extensionStart + 4, end, 'end-element name'), 'end-element name');
       const opened = stack.pop();
       if (!opened || opened.ns !== ns || opened.name !== name) fail('ORIX_AXML_MISMATCHED_END_TAG', 'Android XML end element does not match its opening element', { name });
       if (stack.length === 0) manifestEnded = true;
     } else if (type === TYPE_CDATA) {
-      need(buffer, cursor + 16, 12, end, 'CDATA extension');
-      if (stringAt(strings, u32(buffer, cursor + 16, end, 'CDATA string'), 'CDATA string') === null) {
+      const extensionStart = node_extension_start(buffer, cursor, headerSize, 12, end, 'CDATA extension');
+      if (stringAt(strings, u32(buffer, extensionStart, end, 'CDATA string'), 'CDATA string') === null) {
         fail('ORIX_AXML_CDATA_INDEX', 'CDATA chunk is missing its text string');
       }
     }
