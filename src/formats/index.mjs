@@ -8,6 +8,7 @@ import { parse_wasm } from './wasm.mjs';
 import { parse_zip } from './zip.mjs';
 import { parse_pdf } from './pdf.mjs';
 import { parse_png } from './png.mjs';
+import { parse_dex } from './dex.mjs';
 import { parse_apk } from './apk.mjs';
 import { parse_cpio } from './cpio.mjs';
 import { parse_gzip } from './gzip.mjs';
@@ -21,7 +22,7 @@ import { parse_ubifs } from './ubifs.mjs';
 import { parse_ubifs_master } from './ubifs-master.mjs';
 
 const PARSERS = new Map([
-  ['PE', parse_pe], ['ELF', parse_elf], ['Mach-O', parse_macho], ['Mach-O Universal', parse_macho_fat], ['WebAssembly', parse_wasm], ['ZIP', parse_zip], ['PDF', parse_pdf], ['PNG', parse_png], ['CPIO newc', parse_cpio], ['GZIP', parse_gzip], ['PCAP', parse_pcap], ['PCAPNG', parse_pcapng], ['TAR', parse_tar], ['SquashFS', parse_squashfs], ['cramfs', parse_cramfs], ['UBI', parse_ubi], ['UBIFS', parse_ubifs],
+  ['PE', parse_pe], ['ELF', parse_elf], ['Mach-O', parse_macho], ['Mach-O Universal', parse_macho_fat], ['WebAssembly', parse_wasm], ['ZIP', parse_zip], ['PDF', parse_pdf], ['PNG', parse_png], ['DEX', parse_dex], ['CPIO newc', parse_cpio], ['GZIP', parse_gzip], ['PCAP', parse_pcap], ['PCAPNG', parse_pcapng], ['TAR', parse_tar], ['SquashFS', parse_squashfs], ['cramfs', parse_cramfs], ['UBI', parse_ubi], ['UBIFS', parse_ubifs],
 ]);
 
 export function analyze_known_format(buffer, options = {}) {
@@ -65,6 +66,7 @@ export { parse_wasm } from './wasm.mjs';
 export { parse_zip } from './zip.mjs';
 export { parse_pdf } from './pdf.mjs';
 export { parse_png } from './png.mjs';
+export { parse_dex } from './dex.mjs';
 export { parse_apk } from './apk.mjs';
 export { parse_cpio } from './cpio.mjs';
 export { parse_gzip } from './gzip.mjs';

@@ -77,6 +77,16 @@ node src/cli.mjs har ./capture.har --max-har-entries 5000 --max-har-hosts 1000 -
 
 The HAR command accepts HAR 1.2 JSON and performs offline metadata analysis. It reports request/response metadata, hosts, status codes, timings, SHA-256 provenance and evidence-linked security review leads. Shared operating-system temporary-directory paths are rejected as evidence intake; copy captures into a private workspace first. The default ceiling is 20,000 entries (maximum 100,000), the default host inventory ceiling is 5,000 distinct hosts (maximum 10,000), and the input-file ceiling is 32 MiB. The report marks entry and host truncation independently; `coverage.complete` is false whenever either inventory is incomplete. Request/response bodies, cookie values, query values and arbitrary header values are never included in the report. URL paths and server IP addresses may still be sensitive. No requests are sent and no target code is executed.
 
+### Analyze an Android APK or App Bundle
+
+```bash
+node src/cli.mjs android ./app.apk
+node src/cli.mjs android ./app.apk --json --max-archive-entries 2000
+node src/cli.mjs android ./app.aab --format markdown --out ./android-report.md
+```
+
+This offline inventory reports safe ZIP metadata, bounded APK binary-XML permissions/components, stored and raw-DEFLATE DEX identifier/prototype/class-data/code-item metadata, multidex/native-library paths, v1 signature filename hints, APK Signing Block scheme-ID structure (v2/v3/v3.1), and a SHA-256 receipt for file-based analysis. DEX Adler-32 and SHA-1 fields are recomputed. Signing-block inspection is structural only: APK signatures, content digests, certificate chains and publisher identity are not cryptographically verified. AAB output counts module manifest/DEX/native/resource/asset/root paths but does not decode protobuf manifests/resources or split relationships. It does not extract entries to disk. Selected stored/raw-DEFLATE manifest and DEX entries are expanded in memory under per-entry and aggregate byte ceilings; encrypted, malformed and unsupported entries are not parsed. App code is never executed. `--max-archive-entries` defaults to 1,000 (maximum 50,000). Android file input is capped at 1,024 MiB; the default is 512 MiB.
+
 ### Analyze a source project
 
 ```bash
@@ -206,6 +216,7 @@ A scan that contains some per-file failures still returns a report and exits suc
 | `--concurrency` | 4 | 1–32 |
 | `--strings-limit` | 2,000 | 0–100,000 |
 | `--max-functions` | 10,000 | 1–100,000 |
+| `--max-archive-entries` | 1,000 | 1–50,000 |
 | `--max-instructions` | 100 | 1–1,000 |
 
 `max-read-mib` cannot exceed `max-file-mib`. Programmatic callers can supply the same limits in the `limits` object, where byte values are expressed in bytes rather than MiB.
