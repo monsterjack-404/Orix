@@ -6,6 +6,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import net from 'node:net';
 import os_host from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
 import { prepare_windows_provider_isolation } from '../src/providers/windows-isolation.mjs';
 import { decodeWindowsProviderLauncher, decodeWindowsProviderLauncherBase64, WINDOWS_PROVIDER_LAUNCHER_SHA256 } from '../src/providers/windows-launcher-integrity.mjs';
@@ -451,46 +452,24 @@ async function main() {
     // Prove that a provider's descendants are actually terminated when the
     // provider leader exits. Configuration checks alone do not prove Job Object
     // containment or descendant cleanup.
+    // Verify real OS child-process containment without relying on Node/libuv
+    // child stdio or pipe creation inside the AppContainer. The C# fixture uses
+    // System.Diagnostics.Process and the same Windows process APIs as native
+    // providers. The OS Job Object must still terminate its child when the
+    // provider leader exits.
     const descendantCounter = path.join(root, 'tmp', 'job-descendant-counter-' + process.pid);
-    const descendantScript = [
-      'const fs = require("node:fs");',
-      'const counter = ' + JSON.stringify(descendantCounter) + ';',
-      'let count = 0;',
-      'fs.writeFileSync(counter, "0");',
-      'setInterval(() => fs.writeFileSync(counter, String(++count)), 20);',
-    ].join(String.fromCharCode(10));
-    const parentScript = [
-      'const { spawn } = require("node:child_process");',
-      'const fs = require("node:fs");',
-      // The descendant writes only a private marker, so it does not need any
-      // inherited stdio handles. Avoids coupling the Job Object containment test
-      // to console-handle inheritance differences across supported Node/libuv builds.
-      'const child = spawn(process.execPath, ["-e", ' + JSON.stringify(descendantScript) + '], { detached: true, stdio: "inherit", windowsHide: false });',
-      'child.once("error", error => { console.error("provider descendant spawn failed: " + JSON.stringify({ code: error.code, errno: error.errno, syscall: error.syscall, path: error.path, spawnargs: error.spawnargs, cwd: process.cwd(), execPath: process.execPath, execPathExists: fs.existsSync(process.execPath), execPathStat: (() => { try { const stat = fs.statSync(process.execPath); return { size: stat.size, isFile: stat.isFile() }; } catch (statError) { return { error: statError.code }; } })(), systemRoot: process.env.SystemRoot, node: process.version, libuv: process.versions.uv })); process.exit(89); });',
-      'child.once("spawn", () => {',
-      '  const deadline = Date.now() + 10000;',
-      '  const timer = setInterval(() => {',
-      '    if (fs.existsSync(' + JSON.stringify(descendantCounter) + ')) {',
-      '      clearInterval(timer);',
-      '      process.stdout.write("provider-descendant-started");',
-      '      process.exit(0);',
-      '    }',
-      '    if (Date.now() >= deadline) {',
-      '      clearInterval(timer);',
-      '      console.error("provider descendant did not become ready");',
-      '      process.exit(88);',
-      '    }',
-      '  }, 25);',
-      '});',
-    ].join(String.fromCharCode(10));
+    const probeSource = fileURLToPath(new URL('../artifacts/windows-child-probe/orix-windows-appcontainer-child-probe.exe', import.meta.url));
+    await access(probeSource);
+    const probeExecutable = path.join(root, 'orix-windows-appcontainer-child-probe.exe');
+    await copyFile(probeSource, probeExecutable);
     const descendantExecution = await run_static_provider({
       manifest: manifest(),
-      executable: path.join(root, 'node.exe'),
+      executable: probeExecutable,
       cwd: path.join(root, 'work'),
       sandbox_root: root,
       isolation: 'required',
       env: {},
-      args: ['-e', parentScript],
+      args: ['parent', descendantCounter],
       timeout_ms: 12_000,
       max_output_bytes: 4_096,
     });
@@ -501,7 +480,7 @@ async function main() {
       termination_reason: descendantExecution.termination_reason,
     }));
     assert.match(descendantExecution.stdout, /provider-descendant-started/,
-      'Provider leader must exit only after its child process has started');
+      'Native provider leader must exit only after its OS-created child process has started');
     assert.match(descendantExecution.stderr, /ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64/,
       'Native launcher did not confirm AppContainer and Job Object limits for the descendant test');
     assert.match(descendantExecution.stderr, /ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED/,
@@ -514,7 +493,7 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 250));
     const descendantCountLater = await readFile(descendantCounter, 'utf8');
     assert.equal(descendantCountLater, descendantCountAfterExit,
-      'A provider-spawned descendant continued writing after its leader exited; the Job Object did not clean it up');
+      'A provider-spawned native descendant continued writing after its leader exited; the Job Object did not clean it up');
 
     // Exercise the cleanup traversal with a real directory junction. The
     // provider process waits while the host replaces its writable Packages
