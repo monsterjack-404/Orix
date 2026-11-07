@@ -66,6 +66,32 @@ function validate_input_path(input_path) {
 }
 
 
+async function provider_visible_input_path(host_path, isolation, sandbox_root) {
+  if (isolation !== 'required') return host_path;
+  let root;
+  let snapshot;
+  try {
+    [root, snapshot] = await Promise.all([
+      realpath(sandbox_root),
+      realpath(host_path),
+    ]);
+  } catch (error) {
+    provider_error('ORIX_PROVIDER_SANDBOX_PATH_UNAVAILABLE',
+      'The private Rizin snapshot could not be resolved into the provider sandbox namespace', {
+        reason: error.code ?? 'filesystem-error',
+      });
+  }
+  const relative = path.relative(root, snapshot);
+  if (relative === '' || relative === '..' ||
+      relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+    provider_error('ORIX_PROVIDER_SANDBOX_PATH_DENIED',
+      'The private Rizin snapshot is outside the required sandbox root');
+  }
+  // Bubblewrap mounts the host rootfs at /. Pass the namespace path rather
+  // than the host-side rootfs path to Rizin.
+  return '/' + relative.split(path.sep).join('/');
+}
+
 function requested_isolation(value, sandbox_root) {
   const isolation = value ?? 'none';
   if (isolation !== 'none' && isolation !== 'required') {
@@ -279,6 +305,9 @@ export async function analyze_rizin_imports(options = {}) {
   });
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
+  const provider_snapshot_path = await provider_visible_input_path(
+    snapshot_path, isolation, descriptors.sandbox_root?.value,
+  );
   try {
     const snapshot_bytes = await copy_file_bounded(before.canonical_path, snapshot_path, maximum_bytes, signal);
     if (snapshot_bytes !== input_hash.bytes_read) {
@@ -351,7 +380,7 @@ export async function analyze_rizin_imports(options = {}) {
       ...common,
       timeout_ms: remaining_timeout_ms,
       max_output_bytes: remaining_output_bytes,
-      args: ['-N', '-q', '-c', 'iij', snapshot_path],
+      args: ['-N', '-q', '-c', 'iij', provider_snapshot_path],
     });
     if (!import_result.ok) {
       const code = import_result.cancelled
@@ -663,7 +692,7 @@ export async function analyze_rizin_functions(options = {}) {
 
     const version_result = await invoke(['-v'], 'version');
     const engine_version = parse_engine_version(version_result.stdout);
-    const function_result = await invoke(['-N', '-q', '-A', '-c', 'aflj', snapshot_path], 'functions');
+    const function_result = await invoke(['-N', '-q', '-A', '-c', 'aflj', provider_snapshot_path], 'functions');
     const normalized = normalize_rizin_functions(function_result.stdout, max_functions);
     let disassembly = null;
     let disassembly_duration_ms = null;
@@ -682,7 +711,7 @@ export async function analyze_rizin_functions(options = {}) {
       }
       address_text = '0x' + address.toString(16);
       const disassembly_result = await invoke([
-        '-N', '-q', '-c', 'pdj ' + max_instructions + ' @ ' + address_text, snapshot_path,
+        '-N', '-q', '-c', 'pdj ' + max_instructions + ' @ ' + address_text, provider_snapshot_path,
       ], 'disassembly');
       const parsed_disassembly = normalize_rizin_disassembly(disassembly_result.stdout, max_instructions);
       disassembly = {
@@ -699,7 +728,7 @@ export async function analyze_rizin_functions(options = {}) {
 
     if (decompile) {
       const decompilation_result = await invoke([
-        '-N', '-q', '-c', 'pdg @ ' + address_text, snapshot_path,
+        '-N', '-q', '-c', 'pdg @ ' + address_text, provider_snapshot_path,
       ], 'decompilation');
       const raw_source = decompilation_result.stdout.replace(/\0/g, '').trim();
       const provider_message = (raw_source + '\n' + decompilation_result.stderr).slice(0, 2048);
