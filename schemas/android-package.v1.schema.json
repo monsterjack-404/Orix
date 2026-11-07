@@ -216,6 +216,7 @@
               "unknown-or-invalid-header",
               "manifest-size-limit",
               "malformed-binary-xml",
+              "aggregate-size-limit",
               "invalid-local-range",
               "encrypted",
               "compressed",
