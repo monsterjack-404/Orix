@@ -6,10 +6,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OrixError } from '../core/errors.mjs';
+import { decodeWindowsProviderLauncher, decodeWindowsProviderLauncherBase64, WINDOWS_PROVIDER_LAUNCHER_SHA256, WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256, WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES } from './windows-launcher-integrity.mjs';
 
 // Variables owned by the sandbox must never inherit caller-selected paths.
 const WINDOWS_PRIVATE_ENVIRONMENT_KEYS = new Set(['home', 'userprofile', 'appdata', 'localappdata', 'temp', 'tmp']);
-import { decodeWindowsProviderLauncher, decodeWindowsProviderLauncherBase64, WINDOWS_PROVIDER_LAUNCHER_SHA256, WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256, WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES } from './windows-launcher-integrity.mjs';
 
 function isolation_error(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });

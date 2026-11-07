@@ -440,8 +440,8 @@ async function main() {
       // sandbox-owned Windows paths to host locations.
       env: {
         ORIX_HOST_PID: String(process.pid),
-        temp: process.env.SystemRoot || process.env.WINDIR,
-        tmp: process.env.SystemRoot || process.env.WINDIR,
+        TEMP: process.env.SystemRoot || process.env.WINDIR,
+        TMP: process.env.SystemRoot || process.env.WINDIR,
         home: process.env.SystemRoot || process.env.WINDIR,
         userprofile: process.env.SystemRoot || process.env.WINDIR,
         appdata: process.env.SystemRoot || process.env.WINDIR,
