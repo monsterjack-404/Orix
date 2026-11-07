@@ -424,7 +424,7 @@ async function main() {
       'const { spawn } = require("node:child_process");',
       'const fs = require("node:fs");',
       'const child = spawn(process.execPath, ["-e", ' + JSON.stringify(descendantScript) + '], { detached: false, stdio: "inherit", windowsHide: true });',
-      'child.once("error", error => { console.error("provider descendant spawn failed: " + error.code); process.exit(89); });',
+      'child.once("error", error => { console.error("provider descendant spawn failed: " + JSON.stringify({ code: error.code, errno: error.errno, syscall: error.syscall, path: error.path, spawnargs: error.spawnargs, cwd: process.cwd(), execPath: process.execPath, execPathExists: fs.existsSync(process.execPath), execPathStat: (() => { try { const stat = fs.statSync(process.execPath); return { size: stat.size, isFile: stat.isFile() }; } catch (statError) { return { error: statError.code }; } })(), systemRoot: process.env.SystemRoot })); process.exit(89); });',
       'child.once("spawn", () => {',
       '  const deadline = Date.now() + 10000;',
       '  const timer = setInterval(() => {',
