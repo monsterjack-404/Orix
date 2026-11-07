@@ -348,6 +348,8 @@ async function main() {
     assert.match(String(nativeHardLinkError.stderr),
       /ORIX_WINDOWS_ISOLATION_ERROR=.*ORIX_WINDOWS_ROOTFS_UNTRUSTED: hard-linked files are not allowed/,
       'Native launcher did not reject the hard link using the file handle link count');
+    assert.doesNotMatch(String(nativeHardLinkError.stderr), /ORIX_CLEANUP:BEGIN/,
+      'Native preflight rejection before AppContainer profile creation must not mutate rootfs ACLs during cleanup');
     assert.equal(await readFile(externalHardLinkTarget, 'utf8'), externalHardLinkValue,
       'Native hard-link preflight must not modify the external target');
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
@@ -418,6 +420,12 @@ async function main() {
     }));
     assert.match(execution.stderr, /ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64/,
       'AppContainer token and Job Object limits were not confirmed by the native launcher');
+    assert.match(execution.stderr, /ORIX_WINDOWS_TRACE=RUN:HELPER_CHILD_PROCESS_POLICY_FLAGS(?:_UNAVAILABLE)?=/,
+      'Native launcher did not report the broker child-process mitigation policy');
+    assert.match(execution.stderr, /ORIX_WINDOWS_TRACE=RUN:PROVIDER_CHILD_PROCESS_POLICY_FLAGS(?:_UNAVAILABLE)?=/,
+      'Native launcher did not report the AppContainer child-process mitigation policy');
+    assert.match(execution.stderr, /ORIX_WINDOWS_TRACE=RUN:PROVIDER_SE_CHANGE_NOTIFY_ENABLED=[01]/,
+      'Native launcher did not report the provider token traverse-bypass privilege');
     assert.match(execution.stderr, /ORIX_CLEANUP:ANCESTOR_TRAVERSE_PURGED/,
       'Per-profile traverse-only ancestor ACL grants were not removed after provider teardown');
     const ancestorGrantLines = execution.stderr.split(/\r?\n/).filter(line =>
