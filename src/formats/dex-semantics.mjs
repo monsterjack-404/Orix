@@ -232,6 +232,22 @@ export function parse_dex_semantics({
       fail('ORIX_DEX_PROTO_INDEX', 'DEX proto_id_item has an invalid shorty or return-type index', { index, shorty_index, return_type_index });
     }
     const parameters = parse_type_list(buffer, parameters_off, data, counts.type_ids, max_items, { get total() { return total_parameters; }, set total(value) { total_parameters = value; } });
+    if (index > 0) {
+      const previous = proto_meta[index - 1];
+      let order = return_type_index - previous.return_type_index;
+      if (order === 0) {
+        const shared = Math.min(parameters.length, previous.parameter_type_indices.length);
+        for (let item = 0; item < shared && order === 0; item += 1) {
+          order = parameters[item] - previous.parameter_type_indices[item];
+        }
+        if (order === 0) order = parameters.length - previous.parameter_type_indices.length;
+      }
+      if (order <= 0) {
+        fail('ORIX_DEX_PROTO_ORDER', 'DEX proto_id_item entries must be unique and sorted by return type and parameter type list', {
+          index, previous_index: index - 1, return_type_index, previous_return_type_index: previous.return_type_index,
+        });
+      }
+    }
     const signature = '(' + parameters.map(type_at).join('') + ')' + (type_at(return_type_index) ?? '?');
     const item = {
       index,
@@ -259,6 +275,16 @@ export function parse_dex_semantics({
     if (class_index >= counts.type_ids || type_index >= counts.type_ids || name_index >= counts.string_ids) {
       fail('ORIX_DEX_FIELD_INDEX', 'DEX field_id_item has an invalid class, type or name index', { index, class_index, type_index, name_index });
     }
+    if (index > 0) {
+      const previous = field_meta[index - 1];
+      const order = class_index - previous.class_index ||
+        name_index - previous.name_index || type_index - previous.type_index;
+      if (order <= 0) {
+        fail('ORIX_DEX_FIELD_ORDER', 'DEX field_id_item entries must be unique and sorted by class, name and type indexes', {
+          index, class_index, name_index, type_index,
+        });
+      }
+    }
     const item = {
       index, class_index, class_descriptor: type_at(class_index),
       type_index, type_descriptor: type_at(type_index),
@@ -279,6 +305,16 @@ export function parse_dex_semantics({
     if (class_index >= counts.type_ids || proto_index >= counts.proto_ids || name_index >= counts.string_ids) {
       fail('ORIX_DEX_METHOD_INDEX', 'DEX method_id_item has an invalid class, prototype or name index', { index, class_index, proto_index, name_index });
     }
+    if (index > 0) {
+      const previous = method_meta[index - 1];
+      const order = class_index - previous.class_index ||
+        name_index - previous.name_index || proto_index - previous.proto_index;
+      if (order <= 0) {
+        fail('ORIX_DEX_METHOD_ORDER', 'DEX method_id_item entries must be unique and sorted by class, name and prototype indexes', {
+          index, class_index, name_index, proto_index,
+        });
+      }
+    }
     const item = {
       index, class_index, class_descriptor: type_at(class_index),
       proto_index, prototype: proto_meta[proto_index]?.signature ?? null,
@@ -288,7 +324,7 @@ export function parse_dex_semantics({
     if (index < max_output_items) method_ids.push(item);
   }
 
-  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0, output_items: 0 };
+  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0, output_items: 0, output_items_omitted: 0 };
   const class_data = [];
   const class_data_counts = { classes_with_data: 0, static_fields: 0, instance_fields: 0, direct_methods: 0, virtual_methods: 0 };
   for (let class_index = 0; class_index < counts.class_defs; class_index += 1) {
@@ -333,6 +369,7 @@ export function parse_dex_semantics({
 
     const visible = class_data.length < max_output_items && state.output_items < max_output_items;
     if (visible) state.output_items += 1;
+    else state.output_items_omitted += 1;
     const groups = { static_fields: [], instance_fields: [], direct_methods: [], virtual_methods: [] };
     const class_descriptor = type_at(class_type_index);
     const parse_fields = (count, label) => {
@@ -354,6 +391,7 @@ export function parse_dex_semantics({
           });
         }
         if (visible && state.output_items < max_output_items) { groups[label].push({ ...field, access_flags: access.value }); state.output_items += 1; }
+        else state.output_items_omitted += 1;
       }
     };
     const parse_methods = (count, label) => {
@@ -383,9 +421,10 @@ export function parse_dex_semantics({
           });
         }
         const body = code.value === 0 ? null : parse_code_item(buffer, code.value, data, counts.type_ids, limits, state);
-        if (visible && groups[label].length < max_output_items) {
+        if (visible && state.output_items < max_output_items) {
           groups[label].push({ ...method, access_flags: access.value, code_off: code.value, code: body });
-        }
+          state.output_items += 1;
+        } else state.output_items_omitted += 1;
       }
     };
     parse_fields(static_count, 'static_fields');
@@ -398,14 +437,14 @@ export function parse_dex_semantics({
         descriptor: class_descriptor,
         counts: { static_fields: static_count, instance_fields: instance_count, direct_methods: direct_count, virtual_methods: virtual_count },
         ...groups,
-        output_truncated: [static_count, instance_count, direct_count, virtual_count].some(count => count > max_output_items),
+        output_truncated: groups.static_fields.length < static_count || groups.instance_fields.length < instance_count || groups.direct_methods.length < direct_count || groups.virtual_methods.length < virtual_count,
       });
     }
   }
-  const class_data_map = (counts.map_items ?? []).find(item => item.type === 0x2000);
-  if (class_data_map && class_data_map.size !== state.class_data_items) {
+  const class_data_map = map_items.find(item => item.type === 0x2000);
+  if ((class_data_map?.size ?? 0) !== state.class_data_items) {
     fail('ORIX_DEX_CLASS_DATA_MAP_COUNT', 'DEX class_data_item map count does not match class_def references', {
-      map_count: class_data_map.size, referenced_count: state.class_data_items,
+      map_count: class_data_map?.size ?? 0, referenced_count: state.class_data_items,
     });
   }
   return {
@@ -421,7 +460,9 @@ export function parse_dex_semantics({
       code_items: state.code_items,
       instruction_units: state.instruction_units,
       code_bytes: state.code_bytes,
-      output_truncated: counts.proto_ids > max_output_items ||
+      output_items_reported: state.output_items,
+      output_items_omitted: state.output_items_omitted,
+      output_truncated: state.output_items_omitted > 0 || counts.proto_ids > max_output_items ||
         counts.field_ids > max_output_items || counts.method_ids > max_output_items ||
         state.class_data_items > max_output_items ||
         state.total_data_items > max_output_items,
