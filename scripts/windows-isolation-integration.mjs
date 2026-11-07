@@ -87,6 +87,12 @@ async function main() {
     launcherSource.includes('RUN:PROVIDER_CHILD_PROCESS_POLICY_FLAGS'),
     'Native helper must report child-process mitigation policy for both broker and AppContainer provider');
 
+  assert.ok(launcherSource.includes('CREATE_NEW_CONSOLE') &&
+    launcherSource.includes('STARTF_USESHOWWINDOW') &&
+    launcherSource.includes('startup.StartupInfo.lpDesktop = null') &&
+    launcherSource.includes('ORIX_WINDOWS_CONSOLE=NEW_HIDDEN;DESKTOP=INHERITED'),
+    'AppContainer console hosts must use a fresh hidden console without selecting a private desktop');
+
   assert.ok(launcherSource.includes('DuplicateHandle(') &&
     launcherSource.includes('DUPLICATE_SAME_ACCESS'),
     'Native helper must duplicate standard handles instead of changing the host handle table');
@@ -460,8 +466,8 @@ async function main() {
       'const fs = require("node:fs");',
       // This probe validates Job Object containment through a private file, not output forwarding.
       // Ignore child stdio so the AppContainer child does not inherit the supervisor's pipe handles.
-      'const child = spawn(process.execPath, ["-e", ' + JSON.stringify(descendantScript) + '], { detached: false, stdio: "ignore", windowsHide: true });',
-      'child.once("error", error => { console.error("provider descendant spawn failed: " + JSON.stringify({ code: error.code, errno: error.errno, syscall: error.syscall, path: error.path, spawnargs: error.spawnargs, cwd: process.cwd(), execPath: process.execPath, execPathExists: fs.existsSync(process.execPath), execPathStat: (() => { try { const stat = fs.statSync(process.execPath); return { size: stat.size, isFile: stat.isFile() }; } catch (statError) { return { error: statError.code }; } })(), systemRoot: process.env.SystemRoot })); process.exit(89); });',
+      'const child = spawn(process.execPath, ["-e", ' + JSON.stringify(descendantScript) + '], { detached: false, stdio: "ignore", windowsHide: false });',
+      'child.once("error", error => { console.error("provider descendant spawn failed: " + JSON.stringify({ code: error.code, errno: error.errno, syscall: error.syscall, path: error.path, spawnargs: error.spawnargs, cwd: process.cwd(), execPath: process.execPath, execPathExists: fs.existsSync(process.execPath), execPathStat: (() => { try { const stat = fs.statSync(process.execPath); return { size: stat.size, isFile: stat.isFile() }; } catch (statError) { return { error: statError.code }; } })(), systemRoot: process.env.SystemRoot, node: process.version, libuv: process.versions.uv })); process.exit(89); });',
       'child.once("spawn", () => {',
       '  const deadline = Date.now() + 10000;',
       '  const timer = setInterval(() => {',
@@ -501,6 +507,8 @@ async function main() {
       'Native launcher did not confirm AppContainer and Job Object limits for the descendant test');
     assert.match(descendantExecution.stderr, /ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED/,
       'Native launcher did not explicitly permit child creation inside the inherited AppContainer Job Object');
+    assert.match(descendantExecution.stderr, /ORIX_WINDOWS_CONSOLE=NEW_HIDDEN;DESKTOP=INHERITED/,
+      'Native launcher did not attest the fresh hidden console and inherited desktop used by the AppContainer host');
     assert.match(descendantExecution.stderr, /ORIX_CLEANUP:ANCESTOR_TRAVERSE_PURGED/,
       'Ancestor traversal ACLs must be purged after the descendant Job Object becomes empty');
     const descendantCountAfterExit = await readFile(descendantCounter, 'utf8');
