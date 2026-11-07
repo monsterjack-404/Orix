@@ -55,13 +55,13 @@ test('macOS compiler cleanup waits for TERM/KILL and verifies the whole process 
   skip: process.platform === 'win32',
   timeout: 10_000,
 }, async () => {
-  const source = [
-    "const { spawn } = require('node:child_process');",
-    "spawn(process.execPath, ['-e', 'process.on(\\"SIGTERM\\", () => {}); setInterval(() => {}, 1000);'], { stdio: 'ignore' });",
-    "process.on('SIGTERM', () => {});",
-    "setTimeout(() => process.stdout.write('ready'), 150);",
-    "setInterval(() => {}, 1000);",
-  ].join('\\n');
+  const source = String.raw`
+const { spawn } = require('node:child_process');
+spawn(process.execPath, ['-e', 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);'], { stdio: 'ignore' });
+process.on('SIGTERM', () => {});
+setTimeout(() => process.stdout.write('ready'), 150);
+setInterval(() => {}, 1000);
+`;
   const child = spawn(process.execPath, ['-e', source], {
     detached: true,
     stdio: ['ignore', 'pipe', 'ignore'],
