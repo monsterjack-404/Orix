@@ -402,14 +402,67 @@ test('AAB inventory recognizes bundle layout without mislabeling protobuf manife
   assert.equal(report.manifests[0].status, 'unknown-or-invalid-header');
 });
 
-test('compressed DEX entries are inventoried but are not decompressed or parsed', () => {
+test('raw-DEFLATE DEX entries are bounded, expanded in memory and parsed', () => {
   const report = analyze_android_package(create_zip([
     { name: 'AndroidManifest.xml', contents: binary_manifest() },
     { name: 'classes.dex', contents: create_dex_fixture(), method: 8 },
   ]));
-  assert.equal(report.dex[0].status, 'compressed');
+  assert.equal(report.dex[0].status, 'metadata-parsed');
+  assert.equal(report.summary.dex_metadata_parsed, 1);
+  assert.deepEqual(report.warnings, []);
+  assert.ok(report.dex[0].uncompressed_size > 0);
+});
+
+test('raw-DEFLATE APK binary XML manifests are decoded after CRC validation', () => {
+  const report = analyze_android_package(create_zip([
+    { name: 'AndroidManifest.xml', contents: binary_manifest(), method: 8 },
+  ]));
+  assert.equal(report.manifests[0].status, 'decoded');
+  assert.equal(report.manifests[0].package_name, 'com.example.orix');
+});
+
+test('raw-DEFLATE entries cannot exceed declared output bounds', () => {
+  const archive = create_zip([
+    { name: 'classes.dex', contents: create_dex_fixture(), method: 8 },
+  ]);
+  const central = parse_zip(archive).archive.central_directory_offset;
+  archive.writeUInt32LE(112, 22);
+  archive.writeUInt32LE(112, central + 24);
+  const report = analyze_android_package(archive);
+  assert.equal(report.dex[0].status, 'decompression-failed');
   assert.equal(report.summary.dex_metadata_parsed, 0);
-  assert.deepEqual(report.warnings, [{ path: 'classes.dex', reason: 'compressed' }]);
+});
+
+test('raw-DEFLATE manifest entries with mismatched CRC metadata are not decoded', () => {
+  const archive = create_zip([
+    { name: 'AndroidManifest.xml', contents: binary_manifest(), method: 8 },
+  ]);
+  const central = parse_zip(archive).archive.central_directory_offset;
+  archive.writeUInt32LE(0x12345678, 14);
+  archive.writeUInt32LE(0x12345678, central + 16);
+  const report = analyze_android_package(archive);
+  assert.equal(report.manifests[0].status, 'crc-mismatch');
+});
+
+test('manifest decompression shares an aggregate budget across AAB modules', () => {
+  const manifest = binary_manifest();
+  const report = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x0a, 0x00]) },
+    { name: 'base/manifest/AndroidManifest.xml', contents: manifest, method: 8 },
+    { name: 'feature/manifest/AndroidManifest.xml', contents: manifest, method: 8 },
+  ]), { max_manifest_total_bytes: manifest.length + 8 });
+  assert.equal(report.manifests[0].status, 'decoded');
+  assert.equal(report.manifests[1].status, 'aggregate-size-limit');
+});
+
+test('DEX decompression shares an aggregate budget across multidex entries', () => {
+  const dex = create_dex_fixture();
+  const report = analyze_android_package(create_zip([
+    { name: 'classes.dex', contents: dex, method: 8 },
+    { name: 'classes2.dex', contents: dex, method: 8 },
+  ]), { max_dex_total_bytes: dex.length });
+  assert.equal(report.dex[0].status, 'metadata-parsed');
+  assert.equal(report.dex[1].status, 'aggregate-size-limit');
 });
 
 test('archive entry inventory is bounded and reports omitted coverage', () => {
