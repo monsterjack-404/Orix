@@ -117,17 +117,20 @@ jobs:
           $secondHash = (Get-FileHash -LiteralPath $second -Algorithm SHA256).Hash
           if ($firstHash -ne $secondHash) { throw "Windows launcher builds are not byte-for-byte reproducible: $firstHash != $secondHash" }
           Write-Output "Reproducible Windows launcher SHA-256: $firstHash"
-      - name: Validate Windows launcher PE and CLR metadata
-        run: |
-          node scripts/verify-windows-launcher.mjs artifacts/windows-helper-first/orix-windows-provider-launcher.exe
-          node scripts/verify-windows-launcher.mjs artifacts/windows-helper-second/orix-windows-provider-launcher.exe
-      - name: Upload Windows launcher build artifact (not a runtime trust anchor)
+      # Keep the freshly built candidate available even when the source-pinned
+      # package check below fails. This is diagnostic build output, not a
+      # runtime trust anchor; the subsequent verification remains mandatory.
+      - name: Upload Windows launcher candidate for cross-runner review
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: orix-windows-launcher-${{ matrix.os }}
           path: artifacts/windows-helper-first/orix-windows-provider-launcher.exe
           if-no-files-found: error
           retention-days: 7
+      - name: Validate Windows launcher PE, CLR metadata and source-pinned package identity
+        run: |
+          node scripts/verify-windows-launcher.mjs artifacts/windows-helper-first/orix-windows-provider-launcher.exe
+          node scripts/verify-windows-launcher.mjs artifacts/windows-helper-second/orix-windows-provider-launcher.exe
 
   platform-smoke:
     name: Platform smoke / ${{ matrix.os }}
@@ -164,6 +167,7 @@ jobs:
     name: Windows launcher cross-runner reproducibility
     runs-on: ubuntu-latest
     needs: windows-launcher-build
+    if: ${{ always() && needs.windows-launcher-build.result != 'cancelled' }}
     steps:
       - name: Download windows-latest launcher
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
