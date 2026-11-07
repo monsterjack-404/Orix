@@ -43,7 +43,7 @@ jobs:
         if: matrix.node-version == 22
         run: npm run test:coverage
       - name: Verify Windows helper payload is included in the npm package
-        if: matrix.node-version == 20
+        if: matrix.node-version == 22
         run: node scripts/verify-windows-launcher-package.mjs
 
   linux-provider-isolation:
