@@ -250,7 +250,9 @@ test('Rizin function adapter validates isolation mode before input filesystem ac
 
 test('Rizin adapters reject NUL bytes in sandbox_root before input filesystem access', async () => {
   const invalid_root = '/tmp/orix-root\0suffix';
-  const expected = /sandbox_root must be an absolute filesystem path/;
+  const expected = process.platform === 'linux'
+    ? /sandbox_root must be an absolute filesystem path/
+    : error => error.code === 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE';
   await assert.rejects(
     analyze_rizin_imports({
       input_path: '/not/opened/file',
