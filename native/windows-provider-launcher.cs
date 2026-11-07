@@ -53,7 +53,8 @@ namespace OrixWindowsSandbox {
         return exitCode;
       } catch (Exception error) {
         Console.Error.WriteLine("ORIX_WINDOWS_ISOLATION_ERROR=" + error.Message);
-        if (!String.IsNullOrEmpty(root) && !String.IsNullOrEmpty(profileName)) {
+        bool explicitCleanup = args != null && args.Length > 0 && args[0] == "cleanup";
+        if (!explicitCleanup && !String.IsNullOrEmpty(root) && !String.IsNullOrEmpty(profileName)) {
           try { Cleanup(root, profileName); }
           catch (Exception cleanupError) {
             Console.Error.WriteLine("ORIX_WINDOWS_CLEANUP_ERROR=" + cleanupError.Message);
@@ -170,6 +171,8 @@ namespace OrixWindowsSandbox {
     static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern uint GetSystemDirectoryW(StringBuilder buffer, uint size);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool TerminateProcess(IntPtr process, uint exitCode);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -348,9 +351,16 @@ namespace OrixWindowsSandbox {
     }
 
     static void PurgeTree(string path, SecurityIdentifier sid) {
-      if (!File.Exists(path) && !Directory.Exists(path)) return;
-      FileAttributes attributes = File.GetAttributes(path);
-      if ((attributes & FileAttributes.ReparsePoint) != 0) return;
+      // Inspect the directory entry itself before any existence helper can
+      // follow a reparse target. A provider-controlled junction in scratch
+      // must abort cleanup; silently skipping it and later deleting a child
+      // path would allow that child path to resolve outside the sandbox root.
+      FileAttributes attributes;
+      try { attributes = File.GetAttributes(path); }
+      catch (FileNotFoundException) { return; }
+      catch (DirectoryNotFoundException) { return; }
+      if ((attributes & FileAttributes.ReparsePoint) != 0)
+        throw new InvalidOperationException("ORIX_WINDOWS_CLEANUP_REPARSE_POINT: refusing to traverse cleanup path: " + path);
       bool directory = (attributes & FileAttributes.Directory) != 0;
       if (directory) {
         foreach (string child in Directory.EnumerateFileSystemEntries(path)) PurgeTree(child, sid);
@@ -646,10 +656,11 @@ namespace OrixWindowsSandbox {
         Console.Error.WriteLine("ORIX_CLEANUP:BEGIN");
         Log("CLEANUP:BEGIN");
         int hr = DeriveAppContainerSidFromAppContainerName(profileName, out sid);
-        if (hr != 0) {
-          Console.Error.WriteLine("ORIX_CLEANUP:NO_PROFILE:" + hr);
-          return;
-        }
+        // A failed SID lookup is not evidence that the profile is absent.
+        // The API documents E_INVALIDARG as a failure; treating every HRESULT
+        // as a successful no-op would hide invalid input and genuine cleanup
+        // failures. DeleteAppContainerProfile itself is idempotent for absence.
+        if (hr != 0) Marshal.ThrowExceptionForHR(hr);
         Console.Error.WriteLine("ORIX_CLEANUP:SID_DERIVED");
         Log("CLEANUP:SID_DERIVED");
         SecurityIdentifier identity = new SecurityIdentifier(sid);
