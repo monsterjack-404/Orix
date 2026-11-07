@@ -74,6 +74,16 @@ test('DEX bytecode decoder is exposed through the public API and package subpath
   assert.equal(exported.decode_dex_instructions, decode_dex_instructions);
 });
 
+test('DEX decoder checks wide static field get and put register pairs', () => {
+  const counts = { ...emptyCounts, field_ids: 1 };
+  const get = decode(words(0x0161, 0x0000), { registers_size: 3, counts });
+  assert.deepEqual(get.instructions[0].wide_registers, [1]);
+  assert.deepEqual(get.instructions[0].reference, { index: 0, kind: 'field_ids' });
+
+  const put = decode(words(0x0068, 0x0000), { registers_size: 2, counts });
+  assert.deepEqual(put.instructions[0].wide_registers, [0]);
+});
+
 test('DEX decoder extracts const/4 signed literal and return register operands', () => {
   const result = decode(words(0x2112, 0x010f), { registers_size: 2 });
   assert.equal(result.instruction_count, 2);
