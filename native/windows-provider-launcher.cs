@@ -449,14 +449,24 @@ namespace OrixWindowsSandbox {
     // These per-profile ACEs are removed after the provider Job Object is empty.
     static void GrantAncestorTraversal(string root, SecurityIdentifier sid) {
       string fullRoot = Path.GetFullPath(root);
+      SecurityIdentifier serviceSid = WindowsIdentity.GetCurrent().User;
       DirectoryInfo current = Directory.GetParent(fullRoot);
       while (current != null) {
         FileAttributes attributes = File.GetAttributes(current.FullName);
         if ((attributes & FileAttributes.ReparsePoint) != 0)
           throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: reparse-point ancestor appeared before traversal grant: " + current.FullName);
-        DirectorySecurity security = Directory.GetAccessControl(current.FullName, AccessControlSections.Access);
+        DirectorySecurity security = Directory.GetAccessControl(current.FullName,
+          AccessControlSections.Owner | AccessControlSections.Access);
+        SecurityIdentifier owner = (SecurityIdentifier)security.GetOwner(typeof(SecurityIdentifier));
         if (HasAppContainerTraversalGrant(security, sid)) {
           Log("RUN:ANCESTOR_TRAVERSE_INHERITED:" + current.FullName);
+        } else if (!owner.Equals(serviceSid)) {
+          // Never attempt to rewrite DACLs on OS/admin-owned ancestors such as
+          // Program Files. The AppContainer receives a profile-specific traverse
+          // ACE only on the service-owned directory it created. Windows' normal
+          // ancestor traversal semantics are left intact; CreateProcess under
+          // the actual AppContainer token is the fail-closed access check.
+          Log("RUN:ANCESTOR_TRAVERSE_OS_MANAGED:" + current.FullName);
         } else {
           security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.Traverse, AccessControlType.Allow));
           Directory.SetAccessControl(current.FullName, security);
