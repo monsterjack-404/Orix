@@ -326,7 +326,7 @@ export async function call_orix_tool(name, args = {}, options = {}) {
   switch (name) {
     case 'orix.case.create': {
       const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
-      return create_case(workspace.path, { title: args.title, description: args.description ?? '' });
+      return create_case(workspace.path, { title: args.title, description: args.description ?? '' }, { reject_hardlinks: true });
     }
     case 'orix.case.get': {
       const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
