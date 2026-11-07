@@ -462,6 +462,8 @@ async function main() {
       'Provider leader must exit only after its child process has started');
     assert.match(descendantExecution.stderr, /ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64/,
       'Native launcher did not confirm AppContainer and Job Object limits for the descendant test');
+    assert.match(descendantExecution.stderr, /ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED/,
+      'Native launcher did not explicitly permit child creation inside the inherited AppContainer Job Object');
     const descendantCountAfterExit = await readFile(descendantCounter, 'utf8');
     await new Promise(resolve => setTimeout(resolve, 250));
     const descendantCountLater = await readFile(descendantCounter, 'utf8');
