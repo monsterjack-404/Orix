@@ -449,6 +449,7 @@ async function main() {
     });
     assert.deepEqual(remainingPackageScratch, [],
       'Per-profile AppContainer temp files must be removed after provider teardown');
+    console.log('PASS: AppContainer token, filesystem ACLs, private temp, network denial, and profile scratch cleanup');
 
     // Prove that a provider's descendants are actually terminated when the
     // provider leader exits. Configuration checks alone do not prove Job Object
@@ -503,6 +504,7 @@ async function main() {
     }));
     assert.match(descendantExecution.stdout, /provider-descendant-started/,
       'Provider leader must exit only after its child process has started');
+    console.log('PASS: provider-created Node descendant started and reported readiness before leader exit');
     assert.match(descendantExecution.stderr, /ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64/,
       'Native launcher did not confirm AppContainer and Job Object limits for the descendant test');
     assert.match(descendantExecution.stderr, /ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED/,
@@ -511,11 +513,13 @@ async function main() {
       'Native launcher did not attest the fresh hidden console and inherited desktop used by the AppContainer host');
     assert.match(descendantExecution.stderr, /ORIX_CLEANUP:ANCESTOR_TRAVERSE_PURGED/,
       'Ancestor traversal ACLs must be purged after the descendant Job Object becomes empty');
+    console.log('PASS: native AppContainer/job quotas, descendant policy, hidden console, inherited desktop, and cleanup attestations');
     const descendantCountAfterExit = await readFile(descendantCounter, 'utf8');
     await new Promise(resolve => setTimeout(resolve, 250));
     const descendantCountLater = await readFile(descendantCounter, 'utf8');
     assert.equal(descendantCountLater, descendantCountAfterExit,
       'A provider-spawned descendant continued writing after its leader exited; the Job Object did not clean it up');
+    console.log('PASS: Job Object terminated the provider descendant after its leader exited (counter remained stable)');
 
     // Exercise the cleanup traversal with a real directory junction. The
     // provider process waits while the host replaces its writable Packages
@@ -592,6 +596,7 @@ async function main() {
         'Native cleanup did not report the rejected reparse-point path');
       assert.equal(await readFile(externalSentinel, 'utf8'), 'external-data-must-survive',
         'Cleanup traversed the junction and deleted data outside the sandbox root');
+      console.log('PASS: cleanup rejected junction traversal and preserved the external sentinel');
 
       await rmdir(packagesRoot);
       junctionInstalled = false;
@@ -622,6 +627,7 @@ async function main() {
         'Invalid AppContainer profile name did not surface a native cleanup diagnostic');
       assert.equal((String(invalidCleanupError.stderr).match(/ORIX_WINDOWS_ISOLATION_ERROR=/g) ?? []).length, 1,
         'Explicit cleanup failure must not trigger a duplicate cleanup attempt');
+      console.log('PASS: invalid AppContainer profile cleanup failed closed once with a native diagnostic');
 
       await reparsePrepared.cleanup();
       preparedCleanupComplete = true;
@@ -635,7 +641,7 @@ async function main() {
       if (!preparedCleanupComplete) await reparsePrepared.cleanup().catch(() => {});
     }
 
-    process.stdout.write('Windows AppContainer hostile-process checks passed: token, filesystem ACLs, private temp, network isolation, Job Object quotas and reparse-safe cleanup.\\n');
+    process.stdout.write('Windows AppContainer hostile-process checks passed: token, filesystem ACLs, private temp, network isolation, Job Object quotas, nested descendant start/termination after leader exit, reparse-safe cleanup, and fail-closed invalid-profile handling.\\n');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await rm(base, { recursive: true, force: true });
