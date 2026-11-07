@@ -90,3 +90,8 @@ representation of that exact reviewed executable. Windows CI must build the
 helper from source on independent Windows runners, require byte-identical
 outputs, and verify each build against the source-pinned payload identity.
 The digest establishes byte integrity only; it is not a publisher signature.
+
+
+## AppContainer console host and descendant creation
+
+The AppContainer provider is a console runtime. Launch it with `CREATE_NEW_CONSOLE` and `STARTF_USESHOWWINDOW`/`SW_HIDE` so it receives a fresh console host without flashing a visible console window. Leave `STARTUPINFO.lpDesktop` null; ORIX must not create or select a private desktop/window station for a console provider. This is required for the provider's own nested `CreateProcess` calls on Windows hosts where a console host launched in a private desktop context cannot initialize descendant executables. The provider remains created suspended, assigned to the non-breakaway Job Object before it is resumed, and retains its AppContainer token, restricted handle list, filesystem ACLs, network denial and job quotas. The Windows hostile-process test proves the nested Node child can start and then proves that it stops writing after the provider leader exits; a configuration string alone is not accepted as proof.
