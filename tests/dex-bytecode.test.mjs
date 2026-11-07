@@ -62,7 +62,7 @@ test('DEX decoder rejects branches into the middle of an instruction', () => {
 test('DEX decoder reads aligned packed-switch payload and validates case targets', () => {
   const result = decode(words(
     0x0000, 0x0000,
-    0x002b, 0x0002, 0x0000,
+    0x002b, 0x0004, 0x0000, 0x0000,
     0x0100, 0x0001, 0x000a, 0x0000, 0xfffe, 0xffff,
   ), { registers_size: 1 });
   assert.equal(result.payload_count, 1);
@@ -76,7 +76,7 @@ test('DEX decoder rejects unsorted sparse-switch keys', () => {
   assert.throws(
     () => decode(words(
       0x0000, 0x0000,
-      0x002c, 0x0002, 0x0000,
+      0x002c, 0x0004, 0x0000, 0x0000,
       0x0200, 0x0002,
       0x0005, 0x0000, 0x0004, 0x0000,
       0xfffe, 0xffff, 0xfffe, 0xffff,
@@ -87,7 +87,7 @@ test('DEX decoder rejects unsorted sparse-switch keys', () => {
 
 test('DEX decoder validates bounded fill-array-data payloads', () => {
   const result = decode(words(
-    0x0026, 0x0002, 0x0000,
+    0x0026, 0x0004, 0x0000, 0x0000,
     0x0300, 0x0001, 0x0004, 0x0000, 0x2211, 0x4433,
   ), { registers_size: 1 });
   assert.equal(result.payload_count, 1);
@@ -99,7 +99,7 @@ test('DEX decoder validates bounded fill-array-data payloads', () => {
 
 test('DEX decoder rejects invalid payload widths, alignment and aggregate payload budgets', () => {
   assert.throws(
-    () => decode(words(0x0026, 0x0002, 0x0000, 0x0300, 0x0003, 0x0001, 0x0000, 0x0000), { registers_size: 1 }),
+    () => decode(words(0x0026, 0x0004, 0x0000, 0x0000, 0x0300, 0x0003, 0x0001, 0x0000, 0x0000), { registers_size: 1 }),
     error => error.code === 'ORIX_DEX_BYTECODE_ARRAY_WIDTH',
   );
   assert.throws(
@@ -107,7 +107,7 @@ test('DEX decoder rejects invalid payload widths, alignment and aggregate payloa
     error => error.code === 'ORIX_DEX_BYTECODE_PAYLOAD_ALIGNMENT',
   );
   assert.throws(
-    () => decode(words(0x0026, 0x0002, 0x0000, 0x0300, 0x0001, 0x0004, 0x0000, 0x2211, 0x4433), {
+    () => decode(words(0x0026, 0x0004, 0x0000, 0x0000, 0x0300, 0x0001, 0x0004, 0x0000, 0x2211, 0x4433), {
       registers_size: 1, max_payload_bytes: 3,
     }),
     error => error.code === 'ORIX_DEX_BYTECODE_PAYLOAD_LIMIT',
@@ -150,7 +150,7 @@ test('DEX decoder caps displayed instructions while validating the full stream',
 
 test('DEX decoder rejects branch targets outside the method', () => {
   assert.throws(
-    () => decode(words(0x0028), { registers_size: 0 }),
+    () => decode(words(0x0128), { registers_size: 0 }),
     error => error.code === 'ORIX_DEX_BYTECODE_BRANCH_RANGE',
   );
 });
