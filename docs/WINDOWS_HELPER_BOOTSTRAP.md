@@ -8,9 +8,9 @@ The runtime now consumes a prebuilt, package-owned .NET Framework 4.8 AnyCPU lau
 
 ## Runtime trust
 
-The reviewed package asset is `native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz`. Runtime:
-1. Uses `lstat` to reject symlinks, non-regular files and oversized input.
-2. Opens the file through a handle and checks file identity before and after reading so path replacement during the read fails closed.
+The reviewed package payload is stored as four bounded base64 segments under `native/bin/win32-anycpu/launcher-payload-01.b64` through `launcher-payload-04.b64`. Runtime assembles the segments in a fixed order, requires canonical base64, then verifies the compressed bytes and executable digest. Runtime:
+1. Opens each fixed payload segment through a handle and checks the opened object against the path entry; symlinks, non-regular files, oversized segments and concurrent file changes fail closed.
+2. Assembles the four ASCII segments in a fixed order, rejects invalid/non-canonical base64 and enforces the compressed-size limit.
 3. Verifies the compressed SHA-256 before bounded gzip decompression.
 4. Verifies the exact executable SHA-256 after decompression.
 5. Stages the verified bytes into a fresh per-invocation temporary directory, makes the launcher read/execute-only, then reads and hashes the staged executable again before spawn.
@@ -23,18 +23,18 @@ Runtime no longer discovers a compiler, invokes `csc.exe`, or compiles C# source
 The source-pinned executable SHA-256 is:
 
 ```text
-cb18ce7442a9ba715d1e5f18aecdbb49ffedba7bb2c425bf798a56c1f1ffba89
+975dbe8dd65ec19b7a28c67eb77f8946fb8245bf5a5229a8b5467d381688e3d0
 ```
 
 The source-pinned gzip SHA-256 is:
 
 ```text
-b90f5cac8408626d0bacbe27b32e9202d328cc7cefa34960285bbd0ebf36a56e
+caf5a2d9125fbf70f3f39f45dfb991465ac6e3048ece68a418c707d30569a541
 ```
 
 Both independent Windows CI runners built the launcher from the exact PR head. Their fresh executables were byte-for-byte identical and passed the PE/CLR metadata and IL-only AnyCPU checks. The exact matching binary was then packaged and its compressed and uncompressed hashes checked. This artifact's GitHub Actions provenance is a CI build result, not a publisher signature.
 
-CI also checks that `npm pack --dry-run --json` contains both the integrity module and the compressed launcher. The Windows hostile-process smoke test runs through the actual runtime path using the packaged executable, rather than treating a compiler-success step as proof of isolation.
+CI also checks that `npm pack --dry-run --json` contains the integrity module and all four payload segments. The Windows hostile-process smoke test runs through the actual runtime path using the packaged executable, rather than treating a compiler-success step as proof of isolation.
 
 ## Rootfs path and ACL trust
 
