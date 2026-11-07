@@ -191,12 +191,13 @@ test('ResourceTable parser rejects truncated varints, bad UTF-8, conflicting one
     field_bytes(3, message([field_string(1, 'two')])),
   ]);
   const bad_value = field_bytes(4, bad_item);
-  const bad_entry = field_bytes(2, message([field_string(2, 'bad'), field_bytes(4, message([field_bytes(4, message([bad_value]))]))]));
-  const bad_type = field_bytes(3, message([field_string(2, 'string'), bad_entry]));
+  const bad_config_value = field_bytes(2, bad_value);
+  const bad_entry = message([field_string(2, 'bad'), field_bytes(6, bad_config_value)]);
+  const bad_type = message([field_string(2, 'string'), field_bytes(3, bad_entry)]);
   const bad_pkg = field_bytes(2, message([field_bytes(3, bad_type)]));
   assert.throws(() => parse_android_resource_table(bad_pkg), error => error.code === 'ORIX_RESOURCE_ONEOF_DUPLICATE');
 
-  const bad_fixed = field_bytes(2, Buffer.from([0x0d, 1, 2, 3]));
+  const bad_fixed = Buffer.from([0x15, 1, 2, 3]); // table field 2 incorrectly uses fixed32 and is truncated.
   assert.throws(() => parse_android_resource_table(bad_fixed), error => error.code === 'ORIX_RESOURCE_FIXED32_RANGE');
 });
 
