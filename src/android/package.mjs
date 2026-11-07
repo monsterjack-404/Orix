@@ -23,11 +23,16 @@ function is_dex_entry(name, is_aab) {
     : parts.length === 1;
 }
 
+const CRC32_TABLE = Uint32Array.from({ length: 256 }, (_, value) => {
+  let crc = value;
+  for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  return crc >>> 0;
+});
+
 function crc32(buffer) {
   let crc = 0xffffffff;
-  for (const byte of buffer) {
-    crc ^= byte;
-    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  for (let index = 0; index < buffer.length; index++) {
+    crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ buffer[index]) & 0xff];
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
@@ -102,7 +107,13 @@ function is_v1_signature(name) {
  * DEX parsing is limited to fixed headers of stored, unencrypted entries.
  */
 export function analyze_android_package(buffer, options = {}) {
+  if (!Buffer.isBuffer(buffer)) throw new TypeError('Android package input must be a Buffer');
   if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Android package options must be an object');
+  const max_file_bytes = options.max_file_bytes ?? 536_870_912;
+  if (!Number.isSafeInteger(max_file_bytes) || max_file_bytes < 1 || max_file_bytes > 1_073_741_824) {
+    throw new TypeError('max_file_bytes must be between 1 and 1073741824');
+  }
+  if (buffer.length > max_file_bytes) throw new RangeError('Android package exceeds the configured file-size limit');
   const max_dex_entries = options.max_dex_entries ?? 64;
   const max_dex_entry_bytes = options.max_dex_entry_bytes ?? 134_217_728;
   const max_dex_total_bytes = options.max_dex_total_bytes ?? 268_435_456;

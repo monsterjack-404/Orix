@@ -507,6 +507,16 @@ test('unsafe archive paths and Unix symlink entries are excluded from Android pa
   assert.equal(report.archive_entries.length, 0);
 });
 
+test('Android package Buffer API enforces a bounded input size before ZIP parsing', () => {
+  const archive = make_apk();
+  assert.throws(
+    () => analyze_android_package(archive, { max_file_bytes: archive.length - 1 }),
+    error => error instanceof RangeError && /file-size limit/.test(error.message),
+  );
+  assert.throws(() => analyze_android_package(archive, { max_file_bytes: 0 }), TypeError);
+  assert.throws(() => analyze_android_package(new Uint8Array(archive)), TypeError);
+});
+
 test('Android package parser rejects invalid options and malformed ZIP input', () => {
   assert.throws(() => analyze_android_package(Buffer.from('not a ZIP')), error => error.code === 'ORIX_ZIP_EOCD_MISSING');
   assert.throws(() => analyze_android_package(make_apk(), { max_dex_entries: 0 }), /max_dex_entries must be/);
