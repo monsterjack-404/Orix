@@ -38,6 +38,44 @@ jobs:
       - name: Generate coverage summary
         run: npm run test:coverage
 
+
+  real-rizin-provider:
+    name: Real Rizin provider / Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Download and verify pinned Rizin 0.9.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/orix-rizin"
+          archive="$RUNNER_TEMP/rizin-v0.9.1-static-x86_64.tar.xz"
+          mkdir -p "$root"
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "https://github.com/rizinorg/rizin/releases/download/v0.9.1/rizin-v0.9.1-static-x86_64.tar.xz" \
+            --output "$archive"
+          echo "9102249a9f0b6319c5334a2e5cf8d9cc3f2035e1d3def027c41f6a90f647e8cf  $archive" | sha256sum --check -
+          tar -xJf "$archive" -C "$root"
+          rizin_bin="$(find "$root" -type f -name rizin -perm -111 -print -quit)"
+          if [ -z "$rizin_bin" ]; then
+            echo "Pinned Rizin archive did not contain an executable named rizin" >&2
+            find "$root" -maxdepth 5 -type f -print >&2
+            exit 1
+          fi
+          "$rizin_bin" -v
+          echo "RIZIN_BIN=$rizin_bin" >> "$GITHUB_ENV"
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify real Rizin cross-reference and call-graph interoperability
+        run: node scripts/rizin-real-provider-integration.mjs
+
   linux-provider-isolation:
     name: Linux Bubblewrap hostile-process isolation
     runs-on: ubuntu-latest

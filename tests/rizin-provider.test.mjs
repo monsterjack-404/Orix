@@ -78,11 +78,140 @@ test('Rizin function adapter returns a bounded function inventory and address-sc
     assert.equal(report.disassembly.instruction_limit_reached, true);
     assert.equal(report.summary.disassembly_included, true);
     assert.equal(report.summary.decompilation_included, true);
+    assert.equal(report.references, null);
+    assert.equal(report.call_graph, null);
     assert.equal(report.decompilation.backend, 'rizin-pdg');
     assert.match(report.decompilation.source, /int main/);
     assert.match(report.artifact.sha256, /^[a-f0-9]{64}$/);
     assert.ok(report.notes.some(note => /not decompiled source/.test(note)));
   });
+});
+
+
+test('Rizin function adapter returns bounded cross-references and a resolved call graph', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({
+      function_output: JSON.stringify([
+        { offset: 4198400, name: 'sym.main', size: 40, bits: 64, type: 'fcn' },
+        { offset: 4198464, name: 'sym.helper', size: 32, bits: 64, type: 'fcn' },
+      ]),
+      references_output: JSON.stringify([
+        { from: 4198405, to: 4198466, type: 'CALL' },
+        { from: 4198470, to: 4198406, type: 'DATA' },
+        { from: 4198473, to: 4294967295, type: 'CALL' },
+      ]),
+    });
+    const report = await analyze_rizin_functions({
+      input_path, executable, executable_args, include_references: true, max_references: 2,
+    });
+    assert.equal(report.references.length, 2);
+    assert.equal(report.summary.references_total, 3);
+    assert.equal(report.summary.references_truncated, true);
+    assert.equal(report.references[0].from_function_offset, 4198400);
+    assert.equal(report.references[0].to_function_offset, 4198464);
+    assert.equal(report.call_graph.nodes.length, 2);
+    assert.equal(report.call_graph.edges.length, 1);
+    assert.equal(report.call_graph.edges[0].from_function_offset, 4198400);
+    assert.equal(report.call_graph.edges[0].to_function_offset, 4198464);
+    assert.equal(report.summary.call_graph_edges, 1);
+    assert.ok(report.notes.some(note => /indirect\/unresolved calls may be absent/.test(note)));
+  });
+});
+
+test('Rizin reference membership remains correct across overlapping function ranges', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({
+      function_output: JSON.stringify([
+        { offset: 4198400, name: 'sym.outer', size: 100, bits: 64, type: 'fcn' },
+        { offset: 4198450, name: 'sym.inner', size: 10, bits: 64, type: 'fcn' },
+      ]),
+      references_output: JSON.stringify([
+        { from: 4198455, to: 4198460, type: 'CALL' },
+        { from: 4198460, to: 4198455, type: 'CALL' },
+        { from: 4198460, to: 4198500, type: 'CALL' },
+      ]),
+    });
+    const report = await analyze_rizin_functions({
+      input_path, executable, executable_args, include_references: true,
+    });
+    assert.deepEqual(report.references.map(item => item.from_function_offset), [
+      4198450, 4198400, 4198400,
+    ]);
+    assert.deepEqual(report.references.map(item => item.to_function_offset), [
+      4198400, 4198450, null,
+    ]);
+    assert.equal(report.call_graph.edges.length, 3);
+    assert.equal(report.call_graph.edges[0].from_function_offset, 4198450);
+    assert.equal(report.call_graph.edges[0].to_function_offset, 4198400);
+    assert.equal(report.call_graph.edges[2].to_function_offset, null);
+  });
+});
+
+test('Rizin function adapter rejects malformed cross-reference JSON', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({ references_output: 'not-json' });
+    await assert.rejects(
+      analyze_rizin_functions({ input_path, executable, executable_args, include_references: true }),
+      error => error.code === 'ORIX_RIZIN_REFERENCE_JSON_INVALID',
+    );
+  });
+});
+
+test('Rizin function adapter rejects malformed reference addresses, entries and types', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    const cases = [
+      { output: JSON.stringify([{ from: -1, to: 2, type: 'CALL' }]), code: 'ORIX_RIZIN_REFERENCE_ADDRESS_INVALID' },
+      { output: JSON.stringify([null]), code: 'ORIX_RIZIN_REFERENCE_ENTRY_INVALID' },
+      { output: JSON.stringify([{ from: 1, to: 2 }]), code: 'ORIX_RIZIN_REFERENCE_TYPE_INVALID' },
+      { output: JSON.stringify([{ from: '0x20000000000001', to: 2, type: 'CALL' }]), code: 'ORIX_RIZIN_REFERENCE_ADDRESS_INVALID' },
+    ];
+    for (const item of cases) {
+      await write_config({ references_output: item.output });
+      await assert.rejects(
+        analyze_rizin_functions({ input_path, executable, executable_args, include_references: true }),
+        error => error.code === item.code,
+      );
+    }
+  });
+});
+
+test('Rizin reference pass shares the overall function-analysis deadline', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({ delay_references_ms: 5000 });
+    await assert.rejects(
+      analyze_rizin_functions({
+        input_path, executable, executable_args, include_references: true, timeout_ms: 500,
+      }),
+      error => error.code === 'ORIX_RIZIN_TIMEOUT',
+    );
+  });
+});
+
+test('Rizin reference output cannot exceed the aggregate captured-output budget', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({ references_output: JSON.stringify([{ from: 4198400, to: 4198401, type: 'CALL' }]).repeat(500) });
+    await assert.rejects(
+      analyze_rizin_functions({
+        input_path, executable, executable_args, include_references: true, max_output_bytes: 1024,
+      }),
+      error => error.code === 'ORIX_RIZIN_OUTPUT_LIMIT',
+    );
+  });
+});
+
+test('Rizin function adapter validates reference settings before opening the input', async () => {
+  await assert.rejects(
+    analyze_rizin_functions({
+      input_path: '/not/opened/file', executable: '/not/launched/rizin', include_references: 'yes',
+    }),
+    /include_references must be a boolean/,
+  );
+  await assert.rejects(
+    analyze_rizin_functions({
+      input_path: '/not/opened/file', executable: '/not/launched/rizin', max_references: 100001,
+    }),
+    /max_references must be an integer/,
+  );
 });
 
 test('Rizin function adapter refuses disassembly addresses that are not returned function entries', async () => {

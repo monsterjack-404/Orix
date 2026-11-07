@@ -27,6 +27,12 @@ if (command === 'iij') {
   process.exit(config.import_exit_code ?? 0);
 }
 
+if (command === 'axlj') {
+  if (config.delay_references_ms) await new Promise(resolve => setTimeout(resolve, config.delay_references_ms));
+  await write(config.references_output ?? '[]');
+  process.exit(0);
+}
+
 if (command === 'aflj') {
   await write(config.function_output ?? JSON.stringify([
     { offset: 4198400, name: 'sym.main', size: 40, realsz: 40, bits: 64, type: 'fcn', calltype: 'amd64', nbbs: 3, edges: 2, nargs: 1, nlocals: 2, noreturn: false },

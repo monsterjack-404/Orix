@@ -112,6 +112,8 @@ test('MCP tools/list exposes the complete local ORIX tool surface', async () => 
   }
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.inspect_file').annotations.readOnlyHint, true);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_functions').annotations.readOnlyHint, true);
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_functions').inputSchema.properties.include_references.type, 'boolean');
+  assert.equal(response.result.tools.find(tool => tool.name === 'orix.rizin_functions').inputSchema.properties.max_references.type, 'integer');
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.readOnlyHint, false);
   assert.equal(response.result.tools.find(tool => tool.name === 'orix.ledger.append').annotations.idempotentHint, false);
 });
@@ -154,6 +156,9 @@ test('MCP Rizin function tool runs an explicit provider through a bounded argv p
         { offset: 4198400, size: 1, bytes: 'c3', opcode: 'ret', disasm: 'ret', type: 'ret' },
       ]),
       decompilation_output: 'int main(void) { return 0; }',
+      references_output: JSON.stringify([
+        { from: 4198405, to: 4198410, type: 'CALL' },
+      ]),
     }));
     const response = await handle_mcp_message({
       jsonrpc: '2.0', id: 510, method: 'tools/call',
@@ -162,7 +167,7 @@ test('MCP Rizin function tool runs an explicit provider through a bounded argv p
         arguments: {
           path: file, executable, executable_args,
           max_functions: 100, address: '0x401000',
-          decompile: true, timeout_ms: 10000,
+          decompile: true, include_references: true, max_references: 20, timeout_ms: 10000,
         },
       },
     }, { roots: [directory] });
@@ -172,6 +177,8 @@ test('MCP Rizin function tool runs an explicit provider through a bounded argv p
     assert.equal(report.functions[0].name, 'sym.main');
     assert.equal(report.disassembly.instructions[0].disassembly, 'ret');
     assert.match(report.decompilation.source, /int main/);
+    assert.equal(report.references.length, 1);
+    assert.equal(report.call_graph.edges.length, 1);
     assert.equal(report.artifact.stable_during_analysis, true);
   } finally {
     await rm(directory, { recursive: true, force: true });

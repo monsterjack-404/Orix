@@ -158,15 +158,25 @@ const report = await analyze_rizin_functions({
   address: '0x401000',
   max_instructions: 100,
   decompile: true, // optional; requires rz-ghidra to be installed in Rizin
+  include_references: true,
+  max_references: 25000,
 });
 
 console.log(report.functions);
 console.log(report.disassembly?.instructions);
+console.log(report.references);
+console.log(report.call_graph);
 ~~~
 
-The function inventory is capped at 100,000 entries; the default is 10,000. Address-scoped disassembly is optional and capped at 1,000 instructions; the default is 100. Runtime and captured stdout/stderr share one total budget across the version, function and optional disassembly processes. Each report includes the input SHA-256 and records whether function inventory was truncated.
+The function inventory is capped at 100,000 entries; the default is 10,000. Address-scoped disassembly is optional and capped at 1,000 instructions; the default is 100. Cross-reference collection is opt-in (include_references: true), uses one additional axlj JSON pass, and is capped at 100,000 records (default 25,000). The call graph is built from references that Rizin explicitly classifies as CALL; source addresses are mapped to the returned function inventory, and unresolved/external destinations retain their target address with a null function offset. This does not prove completeness: indirect calls, tail calls or unrecognized reference kinds may be absent. Runtime and captured stdout/stderr share one total budget across version, function, reference, disassembly and optional decompilation processes. Each report includes the input SHA-256 and records whether inventories were truncated.
 
 The `pdg` pseudocode mode requires the separately installed `rz-ghidra` plugin; it is never downloaded or installed by ORIX. The upstream project is LGPL-3.0 and documents Rizin-version compatibility; choose a compatible plugin/Rizin pair before enabling it. ORIX does not redistribute or auto-install the plugin. Its output is heuristic and may be incomplete, incorrect or non-compilable. When the plugin is absent, the request returns `ORIX_RIZIN_DECOMPILER_UNAVAILABLE`. Rizin's automatic analysis is heuristic and may miss or misclassify functions. See the [rz-ghidra project and command reference](https://github.com/rizinorg/rz-ghidra), which documents `pdg` as its native Ghidra decompiler command. See the [Rizin command-line options](https://book.rizin.re/src/first_steps/commandline_options.html), [code analysis guide](https://book.rizin.re/src/analysis/code_analysis.html) and [function analysis reference](https://book.rizin.re/src/analysis/code_analysis.html#analyze-functions).
+
+### Real-provider conformance check
+
+The pull-request CI includes a separate real-provider lane pinned to the upstream Rizin 0.9.1 static Linux release. It verifies the downloaded archive against its source-pinned SHA-256 digest, compiles a tiny no-inline ELF fixture, runs the actual adapter against that binary, and requires the real `axlj` output to identify the direct `orix_caller → orix_helper` call. This complements deterministic fake-provider tests; it does not imply that every Rizin release, architecture or binary format has been tested.
+
+
 ### CLI
 
 List adapters without probing external installations:
@@ -201,6 +211,7 @@ Run bounded function inventory and an optional instruction window:
 ~~~sh
 orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --max-functions 10000 --json
 orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --address 0x401000 --max-instructions 100 --json
+orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --references --max-references 25000 --json
 ~~~
 
 
@@ -235,7 +246,7 @@ A manifest is untrusted input. It is descriptive metadata, not a signed identity
 - DEFAULT_PROVIDER_MANIFEST_LIMIT — default 64 KiB input ceiling.
 - run_static_provider(options) — bounded shell-free process launch for a declared static provider.
 - analyze_rizin_imports(options) — Rizin CLI adapter returning an `orix.rizin-imports.v1` report.
-- analyze_rizin_functions(options) — Rizin CLI adapter returning a bounded `orix.rizin-functions.v1` function inventory and optional address-scoped instruction disassembly; it does not decompile source. The adapter hashes the source, creates a private read-only temporary snapshot, analyzes the snapshot rather than the caller's original path, and verifies the snapshot digest after provider execution.
+- analyze_rizin_functions(options) — Rizin CLI adapter returning a bounded `orix.rizin-functions.v1` function inventory, optional address-scoped instruction disassembly, opt-in cross-references and a CALL-derived function call graph, and optional plugin-backed pseudocode. Its analysis does not execute the inspected target and does not reconstruct original source. The adapter hashes the source, creates a private read-only temporary snapshot, analyzes the snapshot rather than the caller's original path, and verifies the snapshot digest after provider execution.
 - probe_rizin(options) — invoke an explicitly selected executable with `-v` and return an `orix.provider-probe.v1` availability/version report. This does not search PATH or claim compatibility beyond the version probe.
 - render_rizin_functions_markdown(report, options) — bounded Markdown renderer for function and disassembly reports.
 - RIZIN_PROVIDER_MANIFEST and RIZIN_ADAPTER_VERSION — Rizin integration metadata.

@@ -23,6 +23,9 @@ async function with_fixture(callback) {
       import_output: JSON.stringify([
         { name: 'open', libname: 'libc.so.6', ordinal: 4, bind: 'GLOBAL', type: 'FUNC', plt: 4096 },
       ]),
+      references_output: JSON.stringify([
+        { from: 4198405, to: 4198400, type: 'CALL' },
+      ]),
     }));
     const executable = await realpath(process.execPath);
     const executable_args = [RIZIN_STUB, config_path];
@@ -142,6 +145,8 @@ test('providers rizin functions writes the actual bounded function/disassembly r
       '--address', '0x401000',
       '--max-instructions', '1',
       '--decompile',
+      '--references',
+      '--max-references', '10',
       '--format', 'json',
       '--out', output,
     ]);
@@ -151,6 +156,8 @@ test('providers rizin functions writes the actual bounded function/disassembly r
     assert.equal(report.functions[0].name, 'sym.main');
     assert.equal(report.disassembly.instructions[0].disassembly, 'push rbp');
     assert.match(report.decompilation.source, /int main/);
+    assert.equal(report.references.length, 1);
+    assert.equal(report.call_graph.edges.length, 1);
   });
 });
 
@@ -223,6 +230,8 @@ test('provider help documents the opt-in provider commands and limits', () => {
   assert.match(HELP_TEXT, /providers rizin doctor/);
   assert.match(HELP_TEXT, /providers rizin imports/);
   assert.match(HELP_TEXT, /providers rizin functions/);
+  assert.match(HELP_TEXT, /--references/);
+  assert.match(HELP_TEXT, /--max-references/);
   assert.match(HELP_TEXT, /not an OS sandbox/);
 });
 

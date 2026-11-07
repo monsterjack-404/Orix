@@ -131,12 +131,51 @@ export function render_rizin_functions_markdown(report, options = {}) {
       fence,
     );
   }
+  if (Array.isArray(report.references)) {
+    lines.push(
+      '',
+      '## Cross-references and call graph',
+      '',
+      '- **References returned:** ' + report.summary.references_returned + ' / ' + report.summary.references_total,
+      '- **Reference inventory truncated:** ' + (report.summary.references_truncated ? 'yes' : 'no'),
+      '- **Call graph edges:** ' + report.summary.call_graph_edges,
+      '',
+      '| From | To | Type | Source function | Target function |',
+      '|---:|---:|---|---|---|',
+    );
+    for (const item of report.references.slice(0, maximum_rows)) {
+      lines.push('| ' + [
+        '0x' + item.from.toString(16),
+        '0x' + item.to.toString(16),
+        item.type,
+        item.from_function_offset === null ? '—' : '0x' + item.from_function_offset.toString(16),
+        item.to_function_offset === null ? '—' : '0x' + item.to_function_offset.toString(16),
+      ].map(function_cell).join(' | ') + ' |');
+    }
+    if (report.references.length > maximum_rows) {
+      lines.push('', '_' + (report.references.length - maximum_rows) + ' additional cross-references omitted from this Markdown view._');
+    }
+    lines.push(
+      '',
+      '### Call edges',
+      '',
+      '| Caller | Callee | Call site | Target address |',
+      '|---:|---:|---:|---:|',
+      ...report.call_graph.edges.slice(0, maximum_rows).map(edge => '| ' + [
+        '0x' + edge.from_function_offset.toString(16),
+        edge.to_function_offset === null ? 'unresolved / external' : '0x' + edge.to_function_offset.toString(16),
+        '0x' + edge.call_site.toString(16),
+        '0x' + edge.target_address.toString(16),
+      ].map(function_cell).join(' | ') + ' |'),
+    );
+  }
   lines.push(
     '',
     '## Analysis boundaries',
     '',
     '- Rizin automatic analysis is heuristic and may miss or misclassify functions.',
     '- The optional instruction view is disassembly, not reconstructed source or proof of behavior.',
+    '- Cross-reference call edges include only Rizin records typed CALL; indirect or unrecognized call patterns may be absent.',
     '- The target is not executed. The external Rizin process is time/output bounded, not OS-sandboxed.',
     '',
   );
