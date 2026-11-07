@@ -80,13 +80,21 @@ Execution results report `isolation: "none"` and
 
 `isolation: "required"` is the enforced Linux path. It requires an explicit
 sandbox root and an administrator-provisioned delegated cgroup-v2 parent with
-the `cpu`, `memory` and `pids` controllers available. The adapter uses
-Bubblewrap with unshared network, PID, IPC, UTS and user namespaces, a
-read-only provider rootfs, a fresh ephemeral `/tmp`, private `/proc`, and
-minimal `/dev`. It disables nested user namespaces and fails closed if the
-installed Bubblewrap does not support the required controls. The provider
-executable and working directory must resolve inside the deliberately
-provisioned rootfs.
+the `cpu`, `memory` and `pids` controllers available. The adapter requires
+Bubblewrap **0.12.0 or newer** and checks the executable's reported version
+before use. Versions below 0.12.0 are rejected because of
+[GHSA-pxhw-h44j-8pfx / CVE-2026-87766](https://github.com/containers/bubblewrap/security/advisories/GHSA-pxhw-h44j-8pfx),
+a symlink traversal that can write outside the sandbox during setup when
+untrusted filesystem content is used. CI builds the upstream 0.12.0 release
+from its pinned, signature-verified tag target and runs its upstream Meson
+test suite before the ORIX hostile-process gate.
+
+The adapter uses Bubblewrap with unshared network, PID, IPC, UTS and user
+namespaces, a read-only provider rootfs, a fresh ephemeral `/tmp`, private
+`/proc`, and minimal `/dev`. It disables nested user namespaces and fails
+closed if the installed Bubblewrap does not support the required controls.
+The provider executable and working directory must resolve inside the
+deliberately provisioned rootfs.
 
 Before provider execution, a trusted bootstrap moves itself into the
 per-provider cgroup; the spawned Bubblewrap and provider descendants inherit

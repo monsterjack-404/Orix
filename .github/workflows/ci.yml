@@ -51,10 +51,28 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - name: Install Bubblewrap
+      - name: Install Bubblewrap 0.12.0 build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap
+          sudo apt-get install --yes build-essential git meson ninja-build pkg-config libcap-dev
+      - name: Build and install pinned Bubblewrap 0.12.0
+        env:
+          BWRAP_TAG_OBJECT: 014a04330642e5c870418beb621532cb896e0002
+          BWRAP_COMMIT: 2a76602a8c71f36c1527cf9fc3417d9149822e0c
+        run: |
+          source_dir="$RUNNER_TEMP/bubblewrap-src"
+          build_dir="$RUNNER_TEMP/bubblewrap-build"
+          git clone --filter=blob:none --no-checkout https://github.com/containers/bubblewrap.git "$source_dir"
+          git -C "$source_dir" fetch --depth=1 origin refs/tags/v0.12.0:refs/tags/v0.12.0
+          test "$(git -C "$source_dir" rev-parse refs/tags/v0.12.0)" = "$BWRAP_TAG_OBJECT"
+          test "$(git -C "$source_dir" rev-parse 'refs/tags/v0.12.0^{commit}')" = "$BWRAP_COMMIT"
+          git -C "$source_dir" checkout --detach "$BWRAP_COMMIT"
+          test "$(git -C "$source_dir" rev-parse HEAD)" = "$BWRAP_COMMIT"
+          meson setup "$build_dir" "$source_dir" --prefix=/usr -Dselinux=disabled -Dman=disabled -Dtests=true
+          meson compile -C "$build_dir"
+          meson test -C "$build_dir" --print-errorlogs
+          sudo meson install -C "$build_dir"
+          test "$(/usr/bin/bwrap --version)" = "bubblewrap 0.12.0"
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
