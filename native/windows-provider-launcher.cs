@@ -87,6 +87,7 @@ namespace OrixWindowsSandbox {
     const uint FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
     const uint FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400;
     const uint JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x00000008;
+    const uint PROCESS_CREATION_CHILD_PROCESS_OVERRIDE = 0x00000002;
     const uint JOB_OBJECT_LIMIT_JOB_MEMORY = 0x00000200;
     const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
     const uint JOB_OBJECT_CPU_RATE_CONTROL_ENABLE = 0x00000001;
@@ -96,6 +97,7 @@ namespace OrixWindowsSandbox {
     const int TokenIsAppContainer = 29;
     static readonly IntPtr PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES = new IntPtr(0x00020009);
     static readonly IntPtr PROC_THREAD_ATTRIBUTE_HANDLE_LIST = new IntPtr(0x00020002);
+    static readonly IntPtr PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY = new IntPtr(0x0002000E);
     static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -653,7 +655,7 @@ namespace OrixWindowsSandbox {
     public static int Run(string executable, string[] arguments, string cwd, string root,
       string profileName, IDictionary environment) {
       IntPtr sid = IntPtr.Zero, job = IntPtr.Zero, attributeList = IntPtr.Zero;
-      IntPtr securityCaps = IntPtr.Zero, handleList = IntPtr.Zero, environmentBlock = IntPtr.Zero;
+      IntPtr securityCaps = IntPtr.Zero, handleList = IntPtr.Zero, childProcessPolicy = IntPtr.Zero, environmentBlock = IntPtr.Zero;
       IntPtr token = IntPtr.Zero, tokenInfo = IntPtr.Zero;
       PROCESS_INFORMATION processInfo = new PROCESS_INFORMATION();
       List<IntPtr> inheritedStandardHandles = new List<IntPtr>();
@@ -692,16 +694,26 @@ namespace OrixWindowsSandbox {
         for (int index = 0; index < inheritedStandardHandles.Count; index++)
           Marshal.WriteIntPtr(handleList, IntPtr.Size * index, inheritedStandardHandles[index]);
 
+        // AppContainer child creation may be restricted by the inherited process policy.
+        // The trusted, non-AppContainer launcher explicitly permits descendants, but does
+        // not relax the AppContainer token or Job Object: descendants inherit both and
+        // cannot break away from this job because no breakaway limit is enabled.
+        childProcessPolicy = Marshal.AllocHGlobal(sizeof(uint));
+        Marshal.WriteInt32(childProcessPolicy, unchecked((int)PROCESS_CREATION_CHILD_PROCESS_OVERRIDE));
+
         IntPtr attributeSize = IntPtr.Zero;
-        InitializeProcThreadAttributeList(IntPtr.Zero, 2, 0, ref attributeSize);
+        InitializeProcThreadAttributeList(IntPtr.Zero, 3, 0, ref attributeSize);
         attributeList = Marshal.AllocHGlobal(attributeSize);
-        if (!InitializeProcThreadAttributeList(attributeList, 2, 0, ref attributeSize)) throw Win32("Initialize process attribute list");
+        if (!InitializeProcThreadAttributeList(attributeList, 3, 0, ref attributeSize)) throw Win32("Initialize process attribute list");
         if (!UpdateProcThreadAttribute(attributeList, 0, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
           securityCaps, (IntPtr)Marshal.SizeOf(typeof(SECURITY_CAPABILITIES)), IntPtr.Zero, IntPtr.Zero))
           throw Win32("Attach AppContainer security capabilities");
         if (!UpdateProcThreadAttribute(attributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
           handleList, (IntPtr)(IntPtr.Size * 3), IntPtr.Zero, IntPtr.Zero))
           throw Win32("Restrict inherited handles");
+        if (!UpdateProcThreadAttribute(attributeList, 0, PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY,
+          childProcessPolicy, (IntPtr)sizeof(uint), IntPtr.Zero, IntPtr.Zero))
+          throw Win32("Allow Job-contained AppContainer descendants");
 
         STARTUPINFOEX startup = new STARTUPINFOEX();
         startup.StartupInfo.cb = (uint)Marshal.SizeOf(typeof(STARTUPINFOEX));
@@ -729,6 +741,7 @@ namespace OrixWindowsSandbox {
         if (Marshal.ReadInt32(tokenInfo) != 1) throw new InvalidOperationException("Windows did not create the provider inside an AppContainer");
 
         Console.Error.WriteLine("ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64");
+        Console.Error.WriteLine("ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED");
         Log("RUN:APP_CONTAINER_VERIFIED");
         if (ResumeThread(processInfo.hThread) == 0xFFFFFFFF) throw Win32("Resume AppContainer provider");
         Log("RUN:PROCESS_RESUMED");
@@ -771,6 +784,7 @@ namespace OrixWindowsSandbox {
         if (job != IntPtr.Zero) CloseHandle(job);
         if (attributeList != IntPtr.Zero) DeleteProcThreadAttributeList(attributeList);
         if (securityCaps != IntPtr.Zero) Marshal.FreeHGlobal(securityCaps);
+        if (childProcessPolicy != IntPtr.Zero) Marshal.FreeHGlobal(childProcessPolicy);
         if (handleList != IntPtr.Zero) Marshal.FreeHGlobal(handleList);
         if (environmentBlock != IntPtr.Zero) Marshal.FreeHGlobal(environmentBlock);
         if (sid != IntPtr.Zero) FreeSid(sid);
