@@ -40,7 +40,7 @@ function require_crypto() {
 }
 import * as crypto_module from 'node:crypto';
 
-function create_semantic_dex() {
+function create_semantic_dex({ catch_handler_size_bytes = null } = {}) {
   const strings = ['I', 'Lcom/example/App;', 'Ljava/lang/Object;', 'V', 'run', 'value'];
   const string_ids_off = 112;
   const type_ids_off = string_ids_off + strings.length * 4;
@@ -63,7 +63,12 @@ function create_semantic_dex() {
   }
   const class_data_off = align4(cursor);
   const code_off = align4(class_data_off + 10);
-  const map_off = align4(code_off + 18);
+  const has_catch_handlers = Array.isArray(catch_handler_size_bytes);
+  const handler_bytes = has_catch_handlers
+    ? Buffer.from([1, ...catch_handler_size_bytes, 0, 0, 0])
+    : Buffer.alloc(0);
+  const code_item_size = 16 + 2 + (has_catch_handlers ? 2 + 8 + handler_bytes.length : 0);
+  const map_off = align4(code_off + code_item_size);
   const map_items = [
     [0x0000, 1, 0],
     [0x0001, strings.length, string_ids_off],
@@ -140,10 +145,18 @@ function create_semantic_dex() {
   buffer.writeUInt16LE(1, code_off);
   buffer.writeUInt16LE(1, code_off + 2);
   buffer.writeUInt16LE(0, code_off + 4);
-  buffer.writeUInt16LE(0, code_off + 6);
+  buffer.writeUInt16LE(has_catch_handlers ? 1 : 0, code_off + 6);
   buffer.writeUInt32LE(0, code_off + 8);
   buffer.writeUInt32LE(1, code_off + 12);
   buffer.writeUInt16LE(0x000e, code_off + 16); // return-void; deliberately not decoded by ORIX.
+  if (has_catch_handlers) {
+    const try_item = code_off + 20; // 16-byte header, one code unit, and two-byte alignment padding.
+    buffer.writeUInt16LE(0, code_off + 18);
+    buffer.writeUInt32LE(0, try_item);
+    buffer.writeUInt16LE(1, try_item + 4);
+    buffer.writeUInt16LE(1, try_item + 6); // First handler starts one byte after the list count.
+    handler_bytes.copy(buffer, try_item + 8);
+  }
 
   buffer.writeUInt32LE(map_items.length, map_off);
   map_items.forEach(([type, size, offset], index) => {
@@ -202,6 +215,29 @@ test('DEX semantic parser enforces a total instruction-unit budget', () => {
 });
 
 
+
+test('DEX SLEB128 catch-handler sizes validate fifth-byte sign extension', () => {
+  const one_byte_negative = parse_dex(create_semantic_dex({ catch_handler_size_bytes: [0x7f] }));
+  assert.equal(one_byte_negative.class_data[0].direct_methods[0].code.handlers, 1);
+
+  // A redundant but correctly sign-extended five-byte encoding of -1 is valid.
+  const five_byte_negative = parse_dex(create_semantic_dex({
+    catch_handler_size_bytes: [0xff, 0xff, 0xff, 0xff, 0x7f],
+  }));
+  assert.equal(five_byte_negative.class_data[0].direct_methods[0].code.handlers, 1);
+
+  // In both cases the fifth byte disagrees with its own sign bit. The old
+  // decoder could wrap 0x70 << 28 to zero and accept the malformed handler.
+  for (const invalid_last_byte of [0x08, 0x70]) {
+    const malformed = create_semantic_dex({
+      catch_handler_size_bytes: [0x80, 0x80, 0x80, 0x80, invalid_last_byte],
+    });
+    assert.throws(
+      () => parse_dex(malformed),
+      error => error.code === 'ORIX_DEX_SEMANTIC_LEB_OVERFLOW',
+    );
+  }
+});
 
 test('DEX parser validates method-handle type, reserved fields and member references', () => {
   const invalid_type = create_semantic_dex();
