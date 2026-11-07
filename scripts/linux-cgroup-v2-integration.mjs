@@ -623,7 +623,7 @@ async function main() {
     // run leaf. Remove it during the bounded backoff; cleanup must retain the
     // delegated parent FD, reopen the leaf, and succeed on attempt two.
     const retryRun = await prepare_linux_provider_cgroup();
-    const nestedCgroup = path.join(retryRun.path, 'orix-transient-cleanup-probe');
+    const nestedCgroup = `${retryRun.path}/orix-transient-cleanup-probe`;
     await mkdir(nestedCgroup, { mode: 0o700 });
     const nestedRemoval = new Promise((resolve, reject) => {
       setTimeout(() => rmdir(nestedCgroup).then(resolve, reject), 25);
