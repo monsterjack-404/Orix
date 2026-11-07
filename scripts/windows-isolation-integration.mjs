@@ -420,7 +420,7 @@ async function main() {
       'AppContainer token and Job Object limits were not confirmed by the native launcher');
     assert.match(execution.stderr, /ORIX_CLEANUP:ANCESTOR_TRAVERSE_PURGED/,
       'Per-profile traverse-only ancestor ACL grants were not removed after provider teardown');
-    const ancestorGrantLines = execution.stderr.split(/\\r?\\n/).filter(line =>
+    const ancestorGrantLines = execution.stderr.split(/\r?\n/).filter(line =>
       line.includes('RUN:ANCESTOR_TRAVERSE_GRANTED:'));
     assert.equal(ancestorGrantLines.some(line => line.endsWith('RUN:ANCESTOR_TRAVERSE_GRANTED:' + trustedParent)), false,
       'The native launcher must never attempt to rewrite the protected Program Files ancestor ACL');
