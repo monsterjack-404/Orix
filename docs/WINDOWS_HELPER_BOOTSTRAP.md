@@ -82,8 +82,8 @@ The runtime package payload is generated from the reviewed source in
 `native/windows-provider-launcher.cs`. The executable and compressed bytes
 are separately pinned in `src/providers/windows-launcher-integrity.mjs`:
 
-- Executable SHA-256: `17f4420aa2bcd43b1f6bcaa70e094f64decab30c084658f79762b476e855b060`
-- Compressed payload SHA-256: `20fab442f82ca85df1037309b920515ff47fb60cc47bbe06976a2d3851111a76`
+- Executable SHA-256: `27b04b8d4282bfe4e02ecc96bd1abe7dece757879c8a811ca95a06d9b1a55de6`
+- Compressed payload SHA-256: `524d16642a265018ff77deba8a53f9985ca3b9c9f1d1ff1ccc7aba8925c6fc51`
 
 The four base64 segments under `native/bin/win32-anycpu/` are the runtime
 representation of that exact reviewed executable. Windows CI must build the
