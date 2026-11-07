@@ -83,7 +83,7 @@ test('macOS compiler cleanup kills and verifies a same-group descendant after th
     "descendant.stdout.once('data', () => process.stdout.write('descendant-ready'));",
     "process.on('SIGTERM', () => process.exit(0));",
     "setInterval(() => {}, 1000);",
-  ].join('\\n');
+  ].join('\n');
   const child = spawn(process.execPath, ['-e', script], {
     detached: true,
     stdio: ['ignore', 'pipe', 'ignore'],
