@@ -4,6 +4,8 @@ import {
   parse_android_proto_xml,
 } from '../src/android/proto-xml.mjs';
 import { analyze_android_package } from '../src/android/package.mjs';
+import * as public_api from '../src/index.mjs';
+import { parse_android_proto_xml as package_subpath_parser } from '@orix/cli/android/proto-xml';
 
 const ANDROID_NS = 'http://schemas.android.com/apk/res/android';
 
@@ -241,4 +243,9 @@ test('protobuf XML decoder skips well-formed unknown fields and refuses invalid 
   const parsed = parse_android_proto_xml(input);
   assert.equal(parsed.package_name, 'com.example.orix');
   assert.throws(() => parse_android_proto_xml(proto_manifest(), { max_depth: 0 }), TypeError);
+});
+
+test('AAB protobuf XML decoder is exposed through the root API and package subpath', () => {
+  assert.equal(public_api.parse_android_proto_xml, parse_android_proto_xml);
+  assert.equal(package_subpath_parser, parse_android_proto_xml);
 });
