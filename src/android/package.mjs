@@ -4,6 +4,7 @@
 import { parse_zip } from '../formats/zip.mjs';
 import { parse_dex } from '../formats/dex.mjs';
 import { parse_android_binary_xml } from './binary-xml.mjs';
+import { parse_android_proto_xml } from './proto-xml.mjs';
 import { constants as fs_constants, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { hash_buffer } from '../core/hash.mjs';
@@ -116,6 +117,24 @@ function inspect_manifest(buffer, entry, central_directory_offset, options = {})
   }
   const data = local_entry_data(buffer, entry, max_bytes, central_directory_offset);
   if (data.status !== 'available') return { path: entry.name, status: data.status, binary_xml: null };
+  // AAB module manifests are AAPT2 Resources.XmlNode protobuf messages, not
+  // Android binary XML chunks. Never attempt to reinterpret malformed proto
+  // bytes as an APK binary-XML document.
+  if (entry.name.endsWith('/manifest/AndroidManifest.xml')) {
+    try {
+      const decoded = parse_android_proto_xml(data.bytes, options.proto_xml ?? {});
+      return { path: entry.name, status: 'decoded-proto-xml', binary_xml: false, proto_xml: true, ...decoded };
+    } catch (error) {
+      return {
+        path: entry.name,
+        status: 'malformed-proto-xml',
+        binary_xml: false,
+        proto_xml: true,
+        decoded: false,
+        error: { code: error.code ?? 'ORIX_PROTO_XML_ERROR', message: error.message },
+      };
+    }
+  }
   if (data.bytes.length < 8) return { path: entry.name, status: 'unknown-or-invalid-header', binary_xml: false };
   const type = data.bytes.readUInt16LE(0);
   const header_size = data.bytes.readUInt16LE(2);
@@ -490,8 +509,8 @@ export function analyze_android_package(buffer, options = {}) {
     bundle,
     limitations: [
       'ZIP entries are inventoried without filesystem extraction. Selected stored and raw-DEFLATE DEX/manifest entries are expanded in memory only within per-entry and aggregate output ceilings; encrypted, unsafe, malformed or unsupported entries are not parsed.',
-      'APK binary XML manifests are decoded from stored or raw-DEFLATE, unencrypted entries whose local ZIP header and CRC match, within per-manifest and aggregate decompression budgets plus explicit chunk/string/element/attribute limits; AAB protobuf manifests and resource-reference resolution are not decoded.',
-      'AAB module names and manifest/DEX/native/resource/asset/root path counts are inventoried from ZIP entry names only; BundleConfig.pb, protobuf manifests/resources, dependency graph and split/install relationships are not decoded.',
+      'APK binary XML and AAB AAPT2 protobuf XML manifests are decoded from stored or raw-DEFLATE, unencrypted entries whose local ZIP header and CRC match, within per-manifest and aggregate decompression budgets plus explicit parser limits; resource-reference resolution is not performed.',
+      'AAB module names and DEX/native/resource/asset/root path counts are inventoried from ZIP entry names; bounded module manifest metadata is decoded from AAPT2 protobuf XML, while BundleConfig.pb, resources.pb, dependency graph and split/install relationships remain unsupported.',
       'DEX strings (including Modified UTF-8), type/field/method/prototype identifiers, class-data indexes and bounded code-item structure are inspected; instruction opcodes, operands, control flow, annotations, debug programs and decompilation are not decoded.',
       'For APK files, the APK Signing Block container and ID-value pair boundaries are inventoried (v2/v3/v3.1 and unknown IDs); cryptographic signatures, content digests, certificate chains, v1 JAR signatures and publisher identity are not verified.',
       'This is offline file analysis. No Android device, adb command, app installation, emulator or application code is accessed or executed.',
@@ -633,6 +652,9 @@ export function render_android_package_markdown(report) {
     if (item.decoded) {
       lines.push('  - Package: ' + markdown_cell(item.package_name ?? '—'));
       lines.push('  - Version: ' + markdown_cell(item.version_name ?? item.version_code ?? '—'));
+      if (item.sdk) lines.push('  - SDK: min=' + markdown_cell(item.sdk.min_version ?? 'unspecified') +
+        ', target=' + markdown_cell(item.sdk.target_version ?? 'unspecified') +
+        ', max=' + markdown_cell(item.sdk.max_version ?? 'unspecified'));
       if (item.application) lines.push('  - Application: debuggable=' + markdown_cell(item.application.debuggable ?? 'unspecified') +
         ', allowBackup=' + markdown_cell(item.application.allowBackup ?? 'unspecified') +
         ', cleartext=' + markdown_cell(item.application.usesCleartextTraffic ?? 'unspecified'));

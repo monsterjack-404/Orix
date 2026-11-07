@@ -212,6 +212,8 @@
           "status": {
             "enum": [
               "decoded",
+              "decoded-proto-xml",
+              "malformed-proto-xml",
               "binary-xml-header",
               "unknown-or-invalid-header",
               "manifest-size-limit",
@@ -236,6 +238,9 @@
               "boolean",
               "null"
             ]
+          },
+          "proto_xml": {
+            "type": "boolean"
           },
           "chunk_type": {
             "type": "string"
@@ -276,6 +281,20 @@
               "string",
               "null"
             ]
+          },
+          "sdk": {
+            "type": "object",
+            "required": [
+              "min_version",
+              "target_version",
+              "max_version"
+            ],
+            "properties": {
+              "min_version": { "type": ["integer", "string", "null"] },
+              "target_version": { "type": ["integer", "string", "null"] },
+              "max_version": { "type": ["integer", "string", "null"] }
+            },
+            "additionalProperties": false
           },
           "permissions": {
             "type": "array",
