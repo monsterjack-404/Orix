@@ -84,6 +84,12 @@ async function main() {
     'Cleanup must not silently report success for an arbitrary SID lookup failure');
 
 
+  assert.ok(launcherSource.includes('CREATE_NEW_CONSOLE') &&
+    launcherSource.includes('STARTF_USESHOWWINDOW') &&
+    launcherSource.includes('startup.StartupInfo.lpDesktop = null') &&
+    launcherSource.includes('ORIX_WINDOWS_CONSOLE=NEW_HIDDEN;DESKTOP=INHERITED'),
+    'AppContainer console hosts must use a fresh hidden console without selecting a private desktop');
+
   assert.ok(launcherSource.includes('DuplicateHandle(') &&
     launcherSource.includes('DUPLICATE_SAME_ACCESS'),
     'Native helper must duplicate standard handles instead of changing the host handle table');
@@ -485,8 +491,8 @@ async function main() {
       'Native launcher did not confirm AppContainer and Job Object limits for the descendant test');
     assert.match(descendantExecution.stderr, /ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED/,
       'Native launcher did not explicitly permit child creation inside the inherited AppContainer Job Object');
-    assert.match(descendantExecution.stderr, /ORIX_WINDOWS_DESKTOP=NO_INHERIT;CONSOLE=NEW_HIDDEN/,
-      'Native launcher must avoid inheriting the runner desktop and keep its new console hidden');
+    assert.match(descendantExecution.stderr, /ORIX_WINDOWS_CONSOLE=NEW_HIDDEN;DESKTOP=INHERITED/,
+      'Native launcher must attest a fresh hidden console with the inherited desktop context');
     assert.match(descendantExecution.stderr, /ORIX_CLEANUP:ANCESTOR_TRAVERSE_PURGED/,
       'Ancestor traversal ACLs must be purged after the descendant Job Object becomes empty');
     const descendantCountAfterExit = await readFile(descendantCounter, 'utf8');
