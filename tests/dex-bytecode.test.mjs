@@ -24,6 +24,47 @@ function decode(code, options = {}) {
   });
 }
 
+test('DEX decoder uses the correct 22x and 32x formats for object moves', () => {
+  const from16 = decode(words(0x0108, 0x0010), { registers_size: 17 });
+  assert.equal(from16.instructions[0].mnemonic, 'move-object/from16');
+  assert.deepEqual(from16.instructions[0].registers, [1, 16]);
+
+  const move16 = decode(words(0x0009, 0x0001, 0x0010), { registers_size: 17 });
+  assert.equal(move16.instructions[0].mnemonic, 'move-object/16');
+  assert.deepEqual(move16.instructions[0].registers, [1, 16]);
+});
+
+test('DEX 35c and 45cc instructions decode C-through-G registers from the third code unit', () => {
+  const invoke = decode(words(0x506e, 0x0000, 0x4321), {
+    registers_size: 6,
+    counts: { ...emptyCounts, method_ids: 1 },
+  });
+  assert.deepEqual(invoke.instructions[0].registers, [1, 2, 3, 4, 5]);
+
+  const polymorphic = decode(words(0x10fa, 0x0000, 0x0007, 0x0000), {
+    registers_size: 8,
+    counts: { ...emptyCounts, method_ids: 1, proto_ids: 1 },
+  });
+  assert.deepEqual(polymorphic.instructions[0].registers, [7]);
+  assert.deepEqual(polymorphic.instructions[0].proto_reference, { index: 0, kind: 'proto_ids' });
+});
+
+test('DEX decoder checks destination and source register pairs for wide conversions and literals', () => {
+  const intToDouble = decode(words(0x2083), { registers_size: 3 });
+  assert.deepEqual(intToDouble.instructions[0].wide_registers, [0]);
+
+  assert.throws(
+    () => decode(words(0x0080), { registers_size: 1 }),
+    error => error.code === 'ORIX_DEX_BYTECODE_REGISTER_RANGE',
+  );
+
+  const constWide = decode(words(0x0018, 0x0001, 0x0002, 0x0003, 0x0004), { registers_size: 2 });
+  assert.deepEqual(constWide.instructions[0].wide_registers, [0]);
+
+  const longShift2addr = decode(words(0x10c3), { registers_size: 2 });
+  assert.deepEqual(longShift2addr.instructions[0].wide_registers, [1]);
+});
+
 test('DEX decoder extracts const/4 signed literal and return register operands', () => {
   const result = decode(words(0x2112, 0x010f), { registers_size: 2 });
   assert.equal(result.instruction_count, 2);
