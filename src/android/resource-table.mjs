@@ -322,15 +322,18 @@ function parse_primitive(buffer, value, budget, depth) {
   };
   let selected = null;
   const seen = new Set();
+  let selected_field = null;
   walk_fields(buffer, value.start, value.end, budget, 'Primitive', (field, wire, raw) => {
     if (field >= 1 && field <= 14) {
       const expected = field === 3 || field === 4 || field === 5 ? 5 : field === 1 || field === 2 ? 2 : 0;
       expect_wire('Primitive', field, wire, expected);
+      if (selected_field !== null) fail('ORIX_RESOURCE_ONEOF_DUPLICATE', 'Primitive has more than one concrete oneof value', { first: selected_field, second: field });
+      selected_field = field;
       singular(seen, field, 'Primitive.oneof_value');
       selected = { kind: kinds[field], value: null };
-      if (wire === 0) selected.value = field === 8 ? raw !== 0n : Number(BigInt.asIntN(field === 6 ? 32 : 32, raw));
+      if (wire === 0) selected.value = field === 6 ? Number(BigInt.asIntN(32, raw)) : field === 8 ? raw !== 0n : Number(raw);
       if (wire === 5) selected.value = buffer.readFloatLE(raw.start);
-      if (wire === 2) selected.value = opaque_message(buffer, raw, budget, 'Primitive.' + kinds[field], depth + 1);
+      if (wire === 2 && raw.start !== raw.end) fail('ORIX_RESOURCE_PRIMITIVE_EMPTY_TYPE', 'Primitive null/empty marker must be an empty message', { field });
     } else budget.unknown_fields += 1;
   });
   return selected;
@@ -340,9 +343,12 @@ function parse_item(buffer, value, budget, limits, depth) {
   assert_depth(depth, budget, 'Item');
   const result = { kind: null, value: null, flag_status: 0, flag_negated: false, flag_name: '' };
   const seen = new Set();
+  let oneof_field = null;
   walk_fields(buffer, value.start, value.end, budget, 'Item', (field, wire, raw) => {
     if (field >= 1 && field <= 7) {
       expect_wire('Item', field, wire, 2);
+      if (oneof_field !== null) fail('ORIX_RESOURCE_ONEOF_DUPLICATE', 'Item has more than one concrete oneof value', { first: oneof_field, second: field });
+      oneof_field = field;
       singular(seen, field, 'Item.oneof_value');
       const kinds = { 1: 'reference', 2: 'string', 3: 'raw_string', 4: 'styled_string', 5: 'file', 6: 'id', 7: 'primitive' };
       result.kind = kinds[field];
@@ -415,6 +421,7 @@ function parse_value(buffer, value, budget, limits, depth) {
   assert_depth(depth, budget, 'Value');
   const result = { comment: '', weak: false, kind: null, item: null, compound_kind: null };
   const seen = new Set();
+  let oneof_field = null;
   walk_fields(buffer, value.start, value.end, budget, 'Value', (field, wire, raw) => {
     if (field === 1) {
       expect_wire('Value', field, wire, 2);
@@ -430,6 +437,8 @@ function parse_value(buffer, value, budget, limits, depth) {
       result.weak = raw !== 0n;
     } else if (field === 4 || field === 5) {
       expect_wire('Value', field, wire, 2);
+      if (oneof_field !== null) fail('ORIX_RESOURCE_ONEOF_DUPLICATE', 'Value has more than one concrete oneof value', { first: oneof_field, second: field });
+      oneof_field = field;
       singular(seen, field, 'Value.oneof_value');
       if (field === 4) {
         const item = parse_item(buffer, raw, budget, limits, depth + 1);
