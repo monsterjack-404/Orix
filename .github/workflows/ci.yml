@@ -44,11 +44,11 @@ jobs:
             exit 1
           fi
           {
-            echo "### Exact-head verification"
-            echo "- Event: `$GITHUB_EVENT_NAME`"
-            echo "- Expected SHA: `$EXPECTED_SHA`"
-            echo "- Checked-out SHA: `$actual`"
-            echo "- Result: **PASS**"
+            printf '%s\n' '### Exact-head verification'
+            printf '%s\n' "- Event: ${GITHUB_EVENT_NAME}"
+            printf '%s\n' "- Expected SHA: ${EXPECTED_SHA}"
+            printf '%s\n' "- Checked-out SHA: ${actual}"
+            printf '%s\n' '- Result: **PASS**'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -95,11 +95,11 @@ jobs:
             exit 1
           fi
           {
-            echo "### Exact-head verification"
-            echo "- Event: `$GITHUB_EVENT_NAME`"
-            echo "- Expected SHA: `$EXPECTED_SHA`"
-            echo "- Checked-out SHA: `$actual`"
-            echo "- Result: **PASS**"
+            printf '%s\n' '### Exact-head verification'
+            printf '%s\n' "- Event: ${GITHUB_EVENT_NAME}"
+            printf '%s\n' "- Expected SHA: ${EXPECTED_SHA}"
+            printf '%s\n' "- Checked-out SHA: ${actual}"
+            printf '%s\n' '- Result: **PASS**'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Build patched Bubblewrap 0.13.1 from checksum-verified upstream source
         env:
@@ -175,11 +175,11 @@ jobs:
             exit 1
           fi
           {
-            echo "### Exact-head verification"
-            echo "- Event: `$GITHUB_EVENT_NAME`"
-            echo "- Expected SHA: `$EXPECTED_SHA`"
-            echo "- Checked-out SHA: `$actual`"
-            echo "- Result: **PASS**"
+            printf '%s\n' '### Exact-head verification'
+            printf '%s\n' "- Event: ${GITHUB_EVENT_NAME}"
+            printf '%s\n' "- Expected SHA: ${EXPECTED_SHA}"
+            printf '%s\n' "- Checked-out SHA: ${actual}"
+            printf '%s\n' '- Result: **PASS**'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -245,11 +245,11 @@ jobs:
             exit 1
           fi
           {
-            echo "### Exact-head verification"
-            echo "- Event: `$GITHUB_EVENT_NAME`"
-            echo "- Expected SHA: `$EXPECTED_SHA`"
-            echo "- Checked-out SHA: `$actual`"
-            echo "- Result: **PASS**"
+            printf '%s\n' '### Exact-head verification'
+            printf '%s\n' "- Event: ${GITHUB_EVENT_NAME}"
+            printf '%s\n' "- Expected SHA: ${EXPECTED_SHA}"
+            printf '%s\n' "- Checked-out SHA: ${actual}"
+            printf '%s\n' '- Result: **PASS**'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Set up pinned .NET SDK
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
@@ -315,11 +315,11 @@ jobs:
             exit 1
           fi
           {
-            echo "### Exact-head verification"
-            echo "- Event: `$GITHUB_EVENT_NAME`"
-            echo "- Expected SHA: `$EXPECTED_SHA`"
-            echo "- Checked-out SHA: `$actual`"
-            echo "- Result: **PASS**"
+            printf '%s\n' '### Exact-head verification'
+            printf '%s\n' "- Event: ${GITHUB_EVENT_NAME}"
+            printf '%s\n' "- Expected SHA: ${EXPECTED_SHA}"
+            printf '%s\n' "- Checked-out SHA: ${actual}"
+            printf '%s\n' '- Result: **PASS**'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
