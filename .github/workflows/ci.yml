@@ -107,11 +107,19 @@ jobs:
           archive="$RUNNER_TEMP/bubblewrap-${BUBBLEWRAP_VERSION}.tar.xz"
           source_dir="$RUNNER_TEMP/bubblewrap-${BUBBLEWRAP_VERSION}"
           build_dir="$RUNNER_TEMP/bubblewrap-build"
-          curl --fail --location --retry 3 --retry-delay 1 \
+          source_url="https://github.com/containers/bubblewrap/releases/download/v${BUBBLEWRAP_VERSION}/bubblewrap-${BUBBLEWRAP_VERSION}.tar.xz"
+          if ! curl --fail --location --retry 3 --retry-delay 1 \
             --proto '=https' --proto-redir '=https' \
             --connect-timeout 20 --max-time 180 \
-            --output "$archive" \
-            "https://github.com/containers/bubblewrap/releases/download/v${BUBBLEWRAP_VERSION}/bubblewrap-${BUBBLEWRAP_VERSION}.tar.xz"
+            --output "$archive" "$source_url"; then
+            echo "::warning::Official GitHub release asset unavailable; trying Debian's source mirror for the same upstream tarball"
+            rm -f "$archive"
+            curl --fail --location --retry 3 --retry-delay 1 \
+              --proto '=https' --proto-redir '=https' \
+              --connect-timeout 20 --max-time 180 \
+              --output "$archive" \
+              "https://deb.debian.org/debian/pool/main/b/bubblewrap/bubblewrap_${BUBBLEWRAP_VERSION}.orig.tar.xz"
+          fi
           printf '%s  %s\n' "$BUBBLEWRAP_SHA256" "$archive" | sha256sum --check --strict -
           mkdir -p "$source_dir"
           tar -xJf "$archive" -C "$source_dir" --strip-components=1
