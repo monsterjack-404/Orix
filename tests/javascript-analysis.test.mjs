@@ -21,7 +21,7 @@ test('extracts static imports, re-exports, require and dynamic import without co
   const report = analyze_javascript_source(source);
   assert.deepEqual(report.imports.map(item => [item.specifier, item.kind]), [
     ['./side-effect.js', 'side-effect-import'],
-    ['./types.js', 'import'],
+    ['./types.js', 'type-import'],
     ['./value.js', 're-export'],
     ['./common.cjs', 'require'],
     ['./lazy.js', 'dynamic-import'],
