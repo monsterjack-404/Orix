@@ -454,6 +454,7 @@ async function main() {
     });
     assert.deepEqual(remainingPackageScratch, [],
       'Per-profile AppContainer temp files must be removed after provider teardown');
+    console.log('PASS: AppContainer token, quotas, host-file/network denial, read-only rootfs, private temp and profile scratch cleanup');
 
     // Prove that a provider's descendants are actually terminated when the
     // provider leader exits. Configuration checks alone do not prove Job Object
@@ -500,6 +501,8 @@ async function main() {
     const descendantCountLater = await readFile(descendantCounter, 'utf8');
     assert.equal(descendantCountLater, descendantCountAfterExit,
       'A provider-spawned native descendant continued writing after its leader exited; the Job Object did not clean it up');
+    console.log('PASS: native AppContainer child started; Job Object terminated it after provider leader exit');
+    console.log('PASS: launcher attested new hidden console, inherited desktop and Job-contained child policy');
 
     // Retain an independent Node/libuv compatibility regression. The C# probe
     // above proves the Windows OS process-creation and Job Object boundary;
@@ -558,6 +561,7 @@ async function main() {
     const nodeDescendantCountLater = await readFile(nodeDescendantCounter, 'utf8');
     assert.equal(nodeDescendantCountLater, nodeDescendantCountAfterExit,
       'A Node/libuv descendant continued writing after its provider leader exited; the Job Object did not clean it up');
+    console.log('PASS: Node/libuv child spawned inside AppContainer and Job Object terminated it after leader exit');
 
     // Exercise the cleanup traversal with a real directory junction. The
     // provider process waits while the host replaces its writable Packages
@@ -634,6 +638,7 @@ async function main() {
         'Native cleanup did not report the rejected reparse-point path');
       assert.equal(await readFile(externalSentinel, 'utf8'), 'external-data-must-survive',
         'Cleanup traversed the junction and deleted data outside the sandbox root');
+      console.log('PASS: reparse-safe cleanup rejected junction traversal and preserved external sentinel');
 
       await rmdir(packagesRoot);
       junctionInstalled = false;
@@ -664,6 +669,7 @@ async function main() {
         'Invalid AppContainer profile name did not surface a native cleanup diagnostic');
       assert.equal((String(invalidCleanupError.stderr).match(/ORIX_WINDOWS_ISOLATION_ERROR=/g) ?? []).length, 1,
         'Explicit cleanup failure must not trigger a duplicate cleanup attempt');
+      console.log('PASS: invalid AppContainer profile cleanup failed closed exactly once with native diagnostic');
 
       await reparsePrepared.cleanup();
       preparedCleanupComplete = true;
