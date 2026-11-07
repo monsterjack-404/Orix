@@ -21,6 +21,7 @@ namespace OrixWindowsSandbox {
     public static int Main(string[] args) {
       string root = null;
       string profileName = null;
+      bool profileCreated = false;
       try {
         if (args == null || args.Length != 2 || (args[0] != "run" && args[0] != "cleanup"))
           throw new ArgumentException("Expected mode and config path");
@@ -45,7 +46,7 @@ namespace OrixWindowsSandbox {
           providerEnvironment[item.Key] = Convert.ToString(item.Value);
         int exitCode = 125;
         try {
-          exitCode = Run(executable, providerArgs, cwd, root, profileName, providerEnvironment);
+          exitCode = Run(executable, providerArgs, cwd, root, profileName, providerEnvironment, out profileCreated);
         } catch (ProviderTeardownIncompleteException error) {
           // Never remove profile ACLs or redirected scratch while any provider
           // process may still be alive. Leave recovery to an explicit operator.
@@ -54,17 +55,19 @@ namespace OrixWindowsSandbox {
         } catch (Exception error) {
           Console.Error.WriteLine("ORIX_WINDOWS_ISOLATION_ERROR=" + error.Message);
         }
-        try {
-          Cleanup(root, profileName);
-        } catch (Exception cleanupError) {
-          Console.Error.WriteLine("ORIX_WINDOWS_CLEANUP_ERROR=" + cleanupError.Message);
-          return 125;
+        if (profileCreated) {
+          try {
+            Cleanup(root, profileName);
+          } catch (Exception cleanupError) {
+            Console.Error.WriteLine("ORIX_WINDOWS_CLEANUP_ERROR=" + cleanupError.Message);
+            return 125;
+          }
         }
         return exitCode;
       } catch (Exception error) {
         Console.Error.WriteLine("ORIX_WINDOWS_ISOLATION_ERROR=" + error.Message);
         bool explicitCleanup = args != null && args.Length > 0 && args[0] == "cleanup";
-        if (!explicitCleanup && !String.IsNullOrEmpty(root) && !String.IsNullOrEmpty(profileName)) {
+        if (!explicitCleanup && profileCreated && !String.IsNullOrEmpty(root) && !String.IsNullOrEmpty(profileName)) {
           try { Cleanup(root, profileName); }
           catch (Exception cleanupError) {
             Console.Error.WriteLine("ORIX_WINDOWS_CLEANUP_ERROR=" + cleanupError.Message);
@@ -95,6 +98,8 @@ namespace OrixWindowsSandbox {
     const int JobObjectExtendedLimitInformation = 9;
     const int JobObjectCpuRateControlInformation = 15;
     const int TokenIsAppContainer = 29;
+    const int TokenPrivileges = 3;
+    const uint SE_PRIVILEGE_ENABLED = 0x00000002;
     static readonly IntPtr PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES = new IntPtr(0x00020009);
     static readonly IntPtr PROC_THREAD_ATTRIBUTE_HANDLE_LIST = new IntPtr(0x00020002);
     static readonly IntPtr PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY = new IntPtr(0x0002000E);
@@ -133,6 +138,16 @@ namespace OrixWindowsSandbox {
     struct FILETIME_DATA {
       public uint LowDateTime;
       public uint HighDateTime;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct LUID {
+      public uint LowPart;
+      public int HighPart;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct LUID_AND_ATTRIBUTES {
+      public LUID Luid;
+      public uint Attributes;
     }
     [StructLayout(LayoutKind.Sequential)]
     struct BY_HANDLE_FILE_INFORMATION {
@@ -239,6 +254,10 @@ namespace OrixWindowsSandbox {
     [DllImport("advapi32.dll", SetLastError = true)]
     static extern bool GetTokenInformation(IntPtr token, int tokenInformationClass, IntPtr information,
       int informationLength, out int returnLength);
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool LookupPrivilegeValueW(string systemName, string name, out LUID luid);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetProcessMitigationPolicy(IntPtr process, int policy, out uint buffer, UIntPtr length);
 
     static void Log(string message) {
       try {
@@ -251,6 +270,43 @@ namespace OrixWindowsSandbox {
 
     static Exception Win32(string operation) {
       return new Win32Exception(Marshal.GetLastWin32Error(), operation);
+    }
+
+    static bool HasEnabledPrivilege(IntPtr token, string privilegeName) {
+      LUID expected;
+      if (!LookupPrivilegeValueW(null, privilegeName, out expected))
+        throw Win32("Resolve " + privilegeName);
+      int required = 0;
+      GetTokenInformation(token, TokenPrivileges, IntPtr.Zero, 0, out required);
+      if (required < sizeof(uint) || required > 65536)
+        throw new InvalidOperationException("Windows returned an invalid token-privilege buffer size");
+      IntPtr buffer = Marshal.AllocHGlobal(required);
+      try {
+        int returned;
+        if (!GetTokenInformation(token, TokenPrivileges, buffer, required, out returned))
+          throw Win32("Read provider token privileges");
+        int count = Marshal.ReadInt32(buffer);
+        int entrySize = Marshal.SizeOf(typeof(LUID_AND_ATTRIBUTES));
+        if (count < 0 || count > 1024 || sizeof(uint) + (long)count * entrySize > returned)
+          throw new InvalidOperationException("Windows returned a malformed token-privilege list");
+        for (int index = 0; index < count; index++) {
+          IntPtr entry = IntPtr.Add(buffer, sizeof(uint) + index * entrySize);
+          LUID_AND_ATTRIBUTES item = (LUID_AND_ATTRIBUTES)Marshal.PtrToStructure(entry, typeof(LUID_AND_ATTRIBUTES));
+          if (item.Luid.LowPart == expected.LowPart && item.Luid.HighPart == expected.HighPart)
+            return (item.Attributes & SE_PRIVILEGE_ENABLED) != 0;
+        }
+        return false;
+      } finally {
+        Marshal.FreeHGlobal(buffer);
+      }
+    }
+
+    static void LogProcessChildPolicy(IntPtr process, string label) {
+      uint flags;
+      if (GetProcessMitigationPolicy(process, 13, out flags, new UIntPtr((uint)sizeof(uint))))
+        Log(label + "=0x" + flags.ToString("X8"));
+      else
+        Log(label + "_UNAVAILABLE=" + Marshal.GetLastWin32Error());
     }
 
     // Duplicate stdio handles for the child; never mutate the host's original
@@ -736,7 +792,8 @@ namespace OrixWindowsSandbox {
     }
 
     public static int Run(string executable, string[] arguments, string cwd, string root,
-      string profileName, IDictionary environment) {
+      string profileName, IDictionary environment, out bool profileCreated) {
+      profileCreated = false;
       IntPtr sid = IntPtr.Zero, job = IntPtr.Zero, attributeList = IntPtr.Zero;
       IntPtr securityCaps = IntPtr.Zero, handleList = IntPtr.Zero, childProcessPolicy = IntPtr.Zero, environmentBlock = IntPtr.Zero;
       IntPtr token = IntPtr.Zero, tokenInfo = IntPtr.Zero;
@@ -751,10 +808,9 @@ namespace OrixWindowsSandbox {
         ValidateRootTrust(root);
         ValidateTree(root, WindowsIdentity.GetCurrent().User);
         sid = CreateProfile(profileName);
+        profileCreated = true;
         Log("RUN:PROFILE_CREATED");
         SecurityIdentifier identity = new SecurityIdentifier(sid);
-        GrantAncestorTraversal(root, identity);
-        Log("RUN:ANCESTOR_TRAVERSE_READY");
         GrantTree(root, identity, FileSystemRights.ReadAndExecute, true);
         Log("RUN:ROOT_ACL_GRANTED");
         PrepareScratch(root, sid, profileName, environment);
@@ -824,6 +880,24 @@ namespace OrixWindowsSandbox {
         int returned;
         if (!GetTokenInformation(token, TokenIsAppContainer, tokenInfo, sizeof(int), out returned)) throw Win32("Verify AppContainer token");
         if (Marshal.ReadInt32(tokenInfo) != 1) throw new InvalidOperationException("Windows did not create the provider inside an AppContainer");
+
+        LogProcessChildPolicy(GetCurrentProcess(), "RUN:HELPER_CHILD_PROCESS_POLICY_FLAGS");
+        LogProcessChildPolicy(processInfo.hProcess, "RUN:PROVIDER_CHILD_PROCESS_POLICY_FLAGS");
+        bool bypassTraverseEnabled = HasEnabledPrivilege(token, "SeChangeNotifyPrivilege");
+        Log("RUN:PROVIDER_SE_CHANGE_NOTIFY_ENABLED=" + (bypassTraverseEnabled ? "1" : "0"));
+        if (bypassTraverseEnabled) {
+          // Windows grants SeChangeNotifyPrivilege by default. An enabled
+          // AppContainer token privilege bypasses per-component FILE_TRAVERSE
+          // checks, so do not rewrite protected host ancestors such as
+          // Program Files merely to add redundant per-profile ACEs.
+          Log("RUN:ANCESTOR_TRAVERSE_BYPASS_PRIVILEGE");
+        } else {
+          // Some hardened hosts remove this privilege. In that case explicit
+          // traverse grants are required; failure to update a protected
+          // ancestor remains fail-closed.
+          GrantAncestorTraversal(root, identity);
+          Log("RUN:ANCESTOR_TRAVERSE_READY");
+        }
 
         Console.Error.WriteLine("ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64");
         Console.Error.WriteLine("ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED");
