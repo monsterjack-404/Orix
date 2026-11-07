@@ -200,9 +200,13 @@ function readOperands(buffer, base, pc, spec) {
     case '22b': out.registers = [aa, second & 0xff]; out.literal = signed8(second >>> 8); break;
     case '35c':
     case '45cc': {
-      const argumentWords = a4;
+      // In the A|G|op code unit, A (bits 12..15) is the argument
+      // word count and G (bits 8..11) is the fifth register. They must not
+      // be interchanged: most short invoke instructions use fewer than five
+      // arguments, while G is still present in the encoding.
+      const argumentWords = b4;
       if (argumentWords > 5) fail('ORIX_DEX_BYTECODE_ARGUMENT_COUNT', 'DEX 35c/45cc instruction argument count exceeds five registers', { pc, argument_words: argumentWords });
-      const nibbleRegs = [third & 0x0f, (third >>> 4) & 0x0f, (third >>> 8) & 0x0f, third >>> 12, (first >>> 12) & 0x0f];
+      const nibbleRegs = [third & 0x0f, (third >>> 4) & 0x0f, (third >>> 8) & 0x0f, third >>> 12, a4];
       out.registers = nibbleRegs.slice(0, argumentWords);
       out.argument_words = argumentWords;
       out.reference = { index: second };
