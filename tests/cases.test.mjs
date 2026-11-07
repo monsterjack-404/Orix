@@ -112,7 +112,7 @@ test('case artifact intake enforces the opened-file hard-link policy when reques
   const created = await create_case(root, { title: 'Hard-link case' });
   await assert.rejects(
     add_case_artifact(root, created.case.id, file, { reject_hardlinks: true }),
-    error => error.code === 'ORIX_HARDLINK_REJECTED',
+    error => error.code === 'ORIX_CASE_HARDLINK_REJECTED',
   );
   assert.equal((await get_case(root, created.case.id)).artifacts.length, 0);
 });
