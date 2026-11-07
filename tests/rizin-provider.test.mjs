@@ -157,6 +157,48 @@ test('Rizin function adapter rejects malformed cross-reference JSON', async () =
   });
 });
 
+test('Rizin function adapter rejects malformed reference addresses, entries and types', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    const cases = [
+      { output: JSON.stringify([{ from: -1, to: 2, type: 'CALL' }]), code: 'ORIX_RIZIN_REFERENCE_ADDRESS_INVALID' },
+      { output: JSON.stringify([null]), code: 'ORIX_RIZIN_REFERENCE_ENTRY_INVALID' },
+      { output: JSON.stringify([{ from: 1, to: 2 }]), code: 'ORIX_RIZIN_REFERENCE_TYPE_INVALID' },
+      { output: JSON.stringify([{ from: '0x20000000000001', to: 2, type: 'CALL' }]), code: 'ORIX_RIZIN_REFERENCE_ADDRESS_INVALID' },
+    ];
+    for (const item of cases) {
+      await write_config({ references_output: item.output });
+      await assert.rejects(
+        analyze_rizin_functions({ input_path, executable, executable_args, include_references: true }),
+        error => error.code === item.code,
+      );
+    }
+  });
+});
+
+test('Rizin reference pass shares the overall function-analysis deadline', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({ delay_references_ms: 5000 });
+    await assert.rejects(
+      analyze_rizin_functions({
+        input_path, executable, executable_args, include_references: true, timeout_ms: 500,
+      }),
+      error => error.code === 'ORIX_RIZIN_TIMEOUT',
+    );
+  });
+});
+
+test('Rizin reference output cannot exceed the aggregate captured-output budget', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({ references_output: JSON.stringify([{ from: 4198400, to: 4198401, type: 'CALL' }]).repeat(500) });
+    await assert.rejects(
+      analyze_rizin_functions({
+        input_path, executable, executable_args, include_references: true, max_output_bytes: 1024,
+      }),
+      error => error.code === 'ORIX_RIZIN_OUTPUT_LIMIT',
+    );
+  });
+});
+
 test('Rizin function adapter validates reference settings before opening the input', async () => {
   await assert.rejects(
     analyze_rizin_functions({
