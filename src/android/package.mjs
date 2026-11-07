@@ -1,5 +1,5 @@
 // JavaScript, src/android/package.mjs, Node.js 20+, read-only APK/AAB inventory.
-// ZIP contents are never extracted or decompressed; only stored DEX headers are inspected.
+// ZIP contents are never extracted or decompressed; stored DEX structures and selected manifest metadata are inspected.
 
 import { parse_zip } from '../formats/zip.mjs';
 import { parse_dex } from '../formats/dex.mjs';
@@ -223,6 +223,7 @@ export function analyze_android_package(buffer, options = {}) {
   const max_archive_entry_path_length = options.max_archive_entry_path_length ?? 512;
   const max_signing_block_bytes = options.max_signing_block_bytes ?? 64 * 1024 * 1024;
   const max_signing_block_pairs = options.max_signing_block_pairs ?? 4096;
+  const max_aab_modules = options.max_aab_modules ?? 256;
   if (!Number.isSafeInteger(max_dex_entries) || max_dex_entries < 1 || max_dex_entries > 256) throw new TypeError('max_dex_entries must be between 1 and 256');
   if (!Number.isSafeInteger(max_dex_entry_bytes) || max_dex_entry_bytes < 112 || max_dex_entry_bytes > 536_870_912) throw new TypeError('max_dex_entry_bytes must be between 112 and 536870912');
   if (!Number.isSafeInteger(max_dex_total_bytes) || max_dex_total_bytes < 112 || max_dex_total_bytes > 1_073_741_824) throw new TypeError('max_dex_total_bytes must be between 112 and 1073741824');
@@ -231,6 +232,7 @@ export function analyze_android_package(buffer, options = {}) {
   if (!Number.isSafeInteger(max_archive_entry_path_length) || max_archive_entry_path_length < 16 || max_archive_entry_path_length > 4096) throw new TypeError('max_archive_entry_path_length must be between 16 and 4096');
   if (!Number.isSafeInteger(max_signing_block_bytes) || max_signing_block_bytes < 32 || max_signing_block_bytes > 536_870_912) throw new TypeError('max_signing_block_bytes must be between 32 and 536870912');
   if (!Number.isSafeInteger(max_signing_block_pairs) || max_signing_block_pairs < 1 || max_signing_block_pairs > 65_536) throw new TypeError('max_signing_block_pairs must be between 1 and 65536');
+  if (!Number.isSafeInteger(max_aab_modules) || max_aab_modules < 1 || max_aab_modules > 4096) throw new TypeError('max_aab_modules must be between 1 and 4096');
   const archive = parse_zip(buffer, options.zip ?? {});
   const entries = archive.entries.filter(entry => !entry.unsafe_path && !entry.is_symlink);
   const entry_name_counts = new Map();
@@ -268,6 +270,47 @@ export function analyze_android_package(buffer, options = {}) {
     ? inspect_apk_signing_block(buffer, archive.archive.central_directory_offset, { max_signing_block_bytes, max_signing_block_pairs })
     : { status: 'not-applicable', offset: null, size_bytes: 0, pair_count: 0, schemes: [], unknown_ids: [], duplicate_ids: [] };
   const reported_signatures = signatures.slice(0, max_archive_entries);
+  const module_names = is_aab
+    ? [...new Set(entries.map(entry => entry.name.split('/')[0]).filter(name =>
+      name && name !== 'BundleConfig.pb' && name !== 'BUNDLE-METADATA'))].sort()
+    : [];
+  const reported_modules = module_names.slice(0, max_aab_modules).map(name => {
+    const prefix = name + '/';
+    const module_entries = entries.filter(entry => entry.name.startsWith(prefix));
+    const module_dex = module_entries.filter(entry => is_dex_entry(entry.name, true));
+    const module_native = module_entries.filter(entry =>
+      (entry.name.startsWith(prefix + 'lib/') || entry.name.includes('/lib/')) && entry.name.endsWith('.so'));
+    return {
+      name: name.slice(0, max_archive_entry_path_length),
+      name_truncated: name.length > max_archive_entry_path_length,
+      name_original_length: name.length,
+      manifest_present: module_entries.some(entry => entry.name === prefix + 'manifest/AndroidManifest.xml'),
+      dex_entries: module_dex.length,
+      native_libraries: module_native.length,
+      resources_pb_present: module_entries.some(entry => entry.name === prefix + 'resources.pb'),
+      resource_paths: module_entries.filter(entry => entry.name.startsWith(prefix + 'res/')).length,
+      asset_paths: module_entries.filter(entry => entry.name.startsWith(prefix + 'assets/')).length,
+      root_paths: module_entries.filter(entry => entry.name.startsWith(prefix + 'root/')).length,
+    };
+  });
+  const bundle = is_aab ? {
+    status: 'recognized',
+    bundle_config_present: names.has('BundleConfig.pb'),
+    module_count: module_names.length,
+    modules_reported: reported_modules.length,
+    modules_omitted: Math.max(0, module_names.length - reported_modules.length),
+    modules: reported_modules,
+    module_semantics_decoded: false,
+  } : {
+    status: 'not-applicable',
+    bundle_config_present: false,
+    module_count: 0,
+    modules_reported: 0,
+    modules_omitted: 0,
+    modules: [],
+    module_semantics_decoded: false,
+  };
+
   let dex_bytes_parsed = 0;
   const reported_dex_entries = dex_entries.slice(0, max_archive_entries);
   const dex = reported_dex_entries.map((entry, index) => {
@@ -338,7 +381,7 @@ export function analyze_android_package(buffer, options = {}) {
       native_libraries: native_libraries.length,
       native_libraries_reported: reported_native_libraries.length,
       native_libraries_omitted: Math.max(0, native_libraries.length - reported_native_libraries.length),
-      resources_table_present: names.has('resources.arsc') || names.has('base/resources.pb'),
+      resources_table_present: names.has('resources.arsc') || entries.some(entry => entry.name.endsWith('/resources.pb')),
       manifest_entries: manifest_entries.length,
       manifest_entries_reported: reported_manifest_entries.length,
       manifest_entries_omitted: Math.max(0, manifest_entries.length - reported_manifest_entries.length),
@@ -347,6 +390,10 @@ export function analyze_android_package(buffer, options = {}) {
       v1_signature_files_omitted: Math.max(0, signatures.length - reported_signatures.length),
       apk_signing_block_present: signing_block.status === 'present',
       apk_signing_block_pairs: signing_block.pair_count,
+      aab_modules: module_names.length,
+      aab_modules_reported: reported_modules.length,
+      aab_modules_omitted: Math.max(0, module_names.length - reported_modules.length),
+      bundle_config_present: names.has('BundleConfig.pb'),
     },
     manifests: reported_manifest_entries.map(entry => {
       const path = entry.name.slice(0, max_archive_entry_path_length);
@@ -370,9 +417,11 @@ export function analyze_android_package(buffer, options = {}) {
     })),
     signatures: reported_signatures.map(entry => entry.name.slice(0, max_archive_entry_path_length)),
     signing_block,
+    bundle,
     limitations: [
       'ZIP entries are inventoried without extraction or decompression; DEX metadata is inspected only when the entry is stored, unencrypted and its local header matches the central directory.',
       'APK binary XML manifests are decoded only from stored, unencrypted entries whose local ZIP header and CRC match, within explicit chunk/string/element/attribute limits; compressed/encrypted manifests are inventoried only. AAB protobuf manifests and resource-reference resolution are not decoded.',
+      'AAB module names and manifest/DEX/native/resource/asset/root path counts are inventoried from ZIP entry names only; BundleConfig.pb, protobuf manifests/resources, dependency graph and split/install relationships are not decoded.',
       'DEX strings (including Modified UTF-8), type/field/method/prototype identifiers, class-data indexes and bounded code-item structure are inspected; instruction opcodes, operands, control flow, annotations, debug programs and decompilation are not decoded.',
       'For APK files, the APK Signing Block container and ID-value pair boundaries are inventoried (v2/v3/v3.1 and unknown IDs); cryptographic signatures, content digests, certificate chains, v1 JAR signatures and publisher identity are not verified.',
       'This is offline file analysis. No Android device, adb command, app installation, emulator or application code is accessed or executed.',
@@ -523,6 +572,15 @@ export function render_android_package_markdown(report) {
       if (item.output_truncated) lines.push('  - Output was truncated by configured limits.');
     }
   }
+  lines.push('', '## App Bundle modules', '');
+  if (report.bundle.status === 'recognized') {
+    lines.push('- BundleConfig.pb present: ' + String(report.bundle.bundle_config_present));
+    lines.push('- Modules reported: ' + report.bundle.modules_reported + ' / ' + report.bundle.module_count);
+    lines.push('', '| Module | Manifest | DEX | Native libraries | resources.pb | res/ | assets/ | root/ |', '|---|---:|---:|---:|---|---:|---:|---:|');
+    for (const item of report.bundle.modules) {
+      lines.push('| ' + markdown_cell(item.name) + ' | ' + String(item.manifest_present) + ' | ' + item.dex_entries + ' | ' + item.native_libraries + ' | ' + String(item.resources_pb_present) + ' | ' + item.resource_paths + ' | ' + item.asset_paths + ' | ' + item.root_paths + ' |');
+    }
+  } else lines.push('Not an Android App Bundle.');
   lines.push('', '## Native libraries', '');
   if (report.native_libraries.length === 0) lines.push('No native library paths were reported.');
   for (const item of report.native_libraries) {
