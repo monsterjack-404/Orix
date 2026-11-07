@@ -1,7 +1,7 @@
 // JavaScript, tests/cases.test.mjs, Node.js 20+, persistent case workflow regressions.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -49,6 +49,20 @@ test('case artifacts are content-addressed, workspace-confined and deduplicated'
     await writeFile(external, 'outside');
     await assert.rejects(add_case_artifact(root, created.case.id, external), error => error.code === 'ORIX_CASE_ARTIFACT_OUTSIDE_WORKSPACE');
   } finally { await rm(outside, { recursive: true, force: true }); }
+});
+
+test('case artifact intake enforces the opened-file hard-link policy when requested', async t => {
+  const root = await fixture(t);
+  const file = path.join(root, 'sample.bin');
+  const alias = path.join(root, 'sample-alias.bin');
+  await writeFile(file, 'case artifact hard-link fixture');
+  await link(file, alias);
+  const created = await create_case(root, { title: 'Hard-link case' });
+  await assert.rejects(
+    add_case_artifact(root, created.case.id, file, { reject_hardlinks: true }),
+    error => error.code === 'ORIX_HARDLINK_REJECTED',
+  );
+  assert.equal((await get_case(root, created.case.id)).artifacts.length, 0);
 });
 
 test('case records analysis reports, findings, evidence, relationships, notes and lifecycle transitions', async t => {
