@@ -1,6 +1,7 @@
 // JavaScript, src/formats/dex-semantics.mjs, Node.js 20+, bounded DEX method/field/class-data inventory.
 // This module validates DEX structures; it does not decode or execute instructions.
 import { OrixError } from '../core/errors.mjs';
+import { decode_dex_instructions } from './dex-bytecode.mjs';
 
 function fail(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
@@ -75,7 +76,7 @@ function parse_type_list(buffer, offset, data, type_count, max_items, aggregate)
   return result;
 }
 
-function parse_code_item(buffer, offset, data, type_count, limits, state) {
+function parse_code_item(buffer, offset, data, type_count, limits, state, dex_version, counts) {
   if (!offset || offset < data.offset || offset % 4 !== 0 || offset > data.end - 16) {
     fail('ORIX_DEX_CODE_ITEM_RANGE', 'DEX code_item offset is invalid or unaligned', { offset, data });
   }
@@ -106,6 +107,19 @@ function parse_code_item(buffer, offset, data, type_count, limits, state) {
       max_instruction_units: limits.max_instruction_units,
     });
   }
+  const decoded = decode_dex_instructions(buffer, {
+    offset: offset + 16,
+    instruction_units: insns_size,
+    registers_size,
+    dex_version,
+    counts,
+    max_output_instructions: Math.max(0, limits.max_decoded_instructions - state.decoded_instruction_items),
+    max_payload_bytes: limits.max_payload_bytes,
+    max_switch_targets: limits.max_switch_targets,
+  });
+  state.decoded_instruction_items += decoded.instruction_count + decoded.payload_count;
+  state.instruction_output_items += decoded.instructions.length;
+  state.instruction_output_omitted += decoded.instruction_output_omitted;
   let cursor = offset + 16 + instruction_bytes;
   const try_items = [];
   const handler_offsets = new Set();
@@ -194,7 +208,13 @@ function parse_code_item(buffer, offset, data, type_count, limits, state) {
     instruction_units: insns_size,
     instruction_bytes,
     item_bytes: cursor - offset,
-    instructions_decoded: false,
+    instructions_decoded: true,
+    instruction_count: decoded.instruction_count,
+    payload_count: decoded.payload_count,
+    instruction_output_omitted: decoded.instruction_output_omitted,
+    instructions_truncated: decoded.instructions_truncated,
+    opcode_counts: decoded.opcode_counts,
+    instructions: decoded.instructions,
   };
 }
 
@@ -205,13 +225,18 @@ function parse_code_item(buffer, offset, data, type_count, limits, state) {
 export function parse_dex_semantics({
   buffer, offsets, counts, data, types, strings, map_items = [], max_items = 250_000,
   max_output_items = 10_000, max_instruction_units = 20_000_000,
+  dex_version = '040', max_decoded_instructions = 10_000,
+  max_payload_bytes = 16 * 1024 * 1024, max_switch_targets = 1_024,
 } = {}) {
   if (!Buffer.isBuffer(buffer)) throw new TypeError('parse_dex_semantics requires a Buffer');
-  const limits = { max_items, max_instruction_units };
+  const limits = { max_items, max_instruction_units, max_decoded_instructions, max_payload_bytes, max_switch_targets };
   for (const [name, value, min, max] of [
     ['max_items', max_items, 1, 1_000_000],
     ['max_output_items', max_output_items, 1, 100_000],
     ['max_instruction_units', max_instruction_units, 1, 100_000_000],
+    ['max_decoded_instructions', max_decoded_instructions, 0, 100_000],
+    ['max_payload_bytes', max_payload_bytes, 0, 128 * 1024 * 1024],
+    ['max_switch_targets', max_switch_targets, 0, 65_535],
   ]) {
     if (!Number.isSafeInteger(value) || value < min || value > max) {
       throw new TypeError(name + ' is outside its supported range');
@@ -329,7 +354,7 @@ export function parse_dex_semantics({
     if (index < max_output_items) method_ids.push(item);
   }
 
-  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0, output_items: 0, output_items_omitted: 0 };
+  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0, decoded_instruction_items: 0, instruction_output_items: 0, instruction_output_omitted: 0, output_items: 0, output_items_omitted: 0 };
   const class_data = [];
   const class_data_counts = { classes_with_data: 0, static_fields: 0, instance_fields: 0, direct_methods: 0, virtual_methods: 0 };
   for (let class_index = 0; class_index < counts.class_defs; class_index += 1) {
@@ -425,7 +450,12 @@ export function parse_dex_semantics({
             class_index, label, method_index, access_flags: access.value, code_off: code.value,
           });
         }
-        const body = code.value === 0 ? null : parse_code_item(buffer, code.value, data, counts.type_ids, limits, state);
+        const referenceCounts = {
+          ...counts,
+          call_site_ids: map_items.find(item => item.type === 7)?.size ?? 0,
+          method_handles: map_items.find(item => item.type === 8)?.size ?? 0,
+        };
+        const body = code.value === 0 ? null : parse_code_item(buffer, code.value, data, counts.type_ids, limits, state, dex_version, referenceCounts);
         if (visible && state.output_items < max_output_items) {
           groups[label].push({ ...method, access_flags: access.value, code_off: code.value, code: body });
           state.output_items += 1;
@@ -465,6 +495,9 @@ export function parse_dex_semantics({
       code_items: state.code_items,
       instruction_units: state.instruction_units,
       code_bytes: state.code_bytes,
+      decoded_instruction_items: state.decoded_instruction_items,
+      instruction_output_items: state.instruction_output_items,
+      instruction_output_omitted: state.instruction_output_omitted,
       output_items_reported: state.output_items,
       output_items_omitted: state.output_items_omitted,
       output_truncated: state.output_items_omitted > 0 || counts.proto_ids > max_output_items ||
@@ -474,8 +507,8 @@ export function parse_dex_semantics({
     },
     notes: [
       'Prototype, field, method and class-data indexes are structurally validated; class data is reported within output limits.',
-      'Method code_item headers, instruction-array extents, try ranges and catch-handler references are bounded and validated.',
-      'DEX bytecode opcodes, operands, control flow, annotations, debug programs and decompilation are not decoded.',
+      'Method code_item headers, Dalvik opcodes and operands, register/reference bounds, branch targets, payload layouts, try ranges and catch-handler references are bounded and validated.',
+      'Bytecode is statically decoded for inventory and structural validation only; it is not executed, fully verified, converted into a complete control-flow graph or decompiled.',
     ],
   };
 }
