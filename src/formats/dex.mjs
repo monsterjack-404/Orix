@@ -1,6 +1,8 @@
 // JavaScript, src/formats/dex.mjs, Node.js 20+, bounded DEX metadata parser.
 // This parser does not decode bytecode instructions or execute artifacts.
+import { createHash } from 'node:crypto';
 import { OrixError } from '../core/errors.mjs';
+import { parse_dex_semantics } from './dex-semantics.mjs';
 const HEADER=112, NO_INDEX=0xffffffff;
 const MAP_NAMES=new Map([[0,'header_item'],[1,'string_id_item'],[2,'type_id_item'],[3,'proto_id_item'],[4,'field_id_item'],[5,'method_id_item'],[6,'class_def_item'],[7,'call_site_id_item'],[8,'method_handle_item'],[0x1000,'map_list'],[0x1001,'type_list'],[0x2000,'class_data_item'],[0x2001,'code_item'],[0x2002,'string_data_item'],[0x2003,'debug_info_item'],[0x2004,'annotation_item'],[0x2005,'encoded_array_item'],[0x2006,'annotations_directory_item']]);
 function fail(code,message,details={}){throw new OrixError(code,message,{details,recoverable:true});}
@@ -26,5 +28,38 @@ export function parse_dex(buffer,options={}){
  const strings=[],stringMeta=[];let total=0;for(let i=0;i<counts.string_ids;i++){const off=buffer.readUInt32LE(offsets.string_ids+i*4);if(off<dataOff||off>=dataOff+dataSize)fail('ORIX_DEX_STRING_OFFSET','DEX string_data offset is outside data section',{i,off});const s=readString(buffer,off,dataOff+dataSize,maxString);total+=s.byte_length;if(total>maxTotal)fail('ORIX_DEX_STRING_BUDGET','DEX string bytes exceed aggregate limit',{maxTotal});stringMeta.push(s);if(i<maxOutput)strings.push({index:i,...s});}
  const types=[],typeMeta=[];for(let i=0;i<counts.type_ids;i++){const descriptorIndex=buffer.readUInt32LE(offsets.type_ids+i*4);if(descriptorIndex>=counts.string_ids)fail('ORIX_DEX_TYPE_INDEX','DEX type descriptor index is invalid',{i,descriptorIndex});const item={index:i,descriptor_index:descriptorIndex,descriptor:stringMeta[descriptorIndex]?.value??null};typeMeta.push(item);if(i<maxOutput)types.push(item);}
  const classes=[];for(let i=0;i<counts.class_defs;i++){const p=offsets.class_defs+i*32,classIndex=buffer.readUInt32LE(p),access=buffer.readUInt32LE(p+4),superIndex=buffer.readUInt32LE(p+8),interfaces=buffer.readUInt32LE(p+12),source=buffer.readUInt32LE(p+16),annotations=buffer.readUInt32LE(p+20),classData=buffer.readUInt32LE(p+24),staticValues=buffer.readUInt32LE(p+28);if(classIndex>=counts.type_ids||(superIndex!==NO_INDEX&&superIndex>=counts.type_ids)||(source!==NO_INDEX&&source>=counts.string_ids))fail('ORIX_DEX_CLASS_INDEX','DEX class definition has invalid type or source index',{i,classIndex,superIndex,source});for(const [label,value] of [['interfaces',interfaces],['annotations',annotations],['class_data',classData],['static_values',staticValues]])if(value&&(value<dataOff||value>=dataOff+dataSize))fail('ORIX_DEX_CLASS_OFFSET','DEX class '+label+' offset is outside data section',{i,value});if(interfaces){if(interfaces%4||interfaces>dataOff+dataSize-4)fail('ORIX_DEX_INTERFACE_RANGE','DEX interfaces type_list is invalid',{i,interfaces});const n=buffer.readUInt32LE(interfaces);if(n>maxItems||interfaces>dataOff+dataSize-4-n*2)fail('ORIX_DEX_INTERFACE_RANGE','DEX interfaces type_list exceeds bounds',{i,n});for(let j=0;j<n;j++)if(buffer.readUInt16LE(interfaces+4+j*2)>=counts.type_ids)fail('ORIX_DEX_INTERFACE_INDEX','DEX interface type index is invalid',{i,j});}if(i<maxOutput)classes.push({index:i,class_index:classIndex,descriptor:typeMeta[classIndex]?.descriptor??null,access_flags:access,superclass_index:superIndex,superclass:superIndex===NO_INDEX?null:typeMeta[superIndex]?.descriptor??null,source_file_index:source,source_file:source===NO_INDEX?null:stringMeta[source]?.value??null,interfaces_off:interfaces,annotations_off:annotations,class_data_off:classData,static_values_off:staticValues});}
- return {format:'DEX',version,file_size:fileSize,header_size:headerSize,endian:'little-endian',checksum:buffer.readUInt32LE(8),signature_sha1:buffer.subarray(12,32).toString('hex'),link:{size:linkSize,offset:linkOff},map_off:mapOff,data:{size:dataSize,offset:dataOff},counts,strings,types,classes,map_items:mapItems,output_truncated:Object.values(counts).some(n=>n>maxOutput),integrity:{adler32_verified:false,signature_sha1_verified:false},notes:['DEX header, index and class-definition metadata only; bytecode is not decoded or decompiled.','Class data, annotations, debug info and encoded static values are indexed by offsets but not recursively decoded.','DEX checksum and SHA-1 signature fields are reported but not verified.','APK ZIP containers and binary AndroidManifest.xml resources are not analyzed by this standalone parser.']};
+ const semantics=parse_dex_semantics({
+  buffer, offsets, counts, data:{offset:dataOff,size:dataSize,end:dataEnd},
+  types:typeMeta, strings:stringMeta, map_items:mapItems,
+  max_items:maxItems, max_output_items:maxOutput,
+  max_instruction_units:options.max_instruction_units??20000000,
+ });
+ const expectedAdler=buffer.readUInt32LE(8);
+ let adlerA=1,adlerB=0;
+ for(let i=12;i<buffer.length;i++){adlerA=(adlerA+buffer[i])%65521;adlerB=(adlerB+adlerA)%65521;}
+ const actualAdler=((adlerB<<16)|adlerA)>>>0;
+ const expectedSha1=buffer.subarray(12,32).toString('hex');
+ const actualSha1=createHash('sha1').update(buffer.subarray(32)).digest('hex');
+ const integrity={
+  adler32_verified:expectedAdler===actualAdler,
+  signature_sha1_verified:expectedSha1===actualSha1,
+  adler32_expected:expectedAdler,
+  adler32_actual:actualAdler,
+  signature_sha1_expected:expectedSha1,
+  signature_sha1_actual:actualSha1,
+ };
+ return {
+  format:'DEX',version,file_size:fileSize,header_size:headerSize,endian:'little-endian',
+  checksum:expectedAdler,signature_sha1:expectedSha1,link:{size:linkSize,offset:linkOff},
+  map_off:mapOff,data:{size:dataSize,offset:dataOff},counts,strings,types,classes,map_items:mapItems,
+  ...semantics,integrity,
+  output_truncated:Object.values(counts).some(n=>n>maxOutput)||semantics.class_data_summary.output_truncated,
+  notes:[
+   'DEX header, identifiers, prototypes, class data and code_item structure are validated within explicit limits.',
+   'DEX Adler-32 and SHA-1 file-integrity fields are recomputed; these checks do not authenticate the APK publisher or replace APK signing verification.',
+   ...semantics.notes,
+   'DEX bytecode opcodes, operands, control flow, annotations, debug programs and decompilation are not decoded.',
+   'APK ZIP containers and binary AndroidManifest.xml resources are not analyzed by this standalone parser.',
+  ],
+ };
 }
