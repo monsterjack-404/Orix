@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { decode_dex_instructions } from '../src/formats/dex-bytecode.mjs';
+import * as public_api from '../src/index.mjs';
 
 function words(...values) {
   const buffer = Buffer.alloc(values.length * 2);
@@ -63,6 +64,12 @@ test('DEX decoder checks destination and source register pairs for wide conversi
 
   const longShift2addr = decode(words(0x10c3), { registers_size: 2 });
   assert.deepEqual(longShift2addr.instructions[0].wide_registers, [0]);
+});
+
+test('DEX bytecode decoder is exposed through the public API and package subpath', async () => {
+  assert.equal(public_api.decode_dex_instructions, decode_dex_instructions);
+  const exported = await import('@orix/cli/formats/dex-bytecode');
+  assert.equal(exported.decode_dex_instructions, decode_dex_instructions);
 });
 
 test('DEX decoder extracts const/4 signed literal and return register operands', () => {
