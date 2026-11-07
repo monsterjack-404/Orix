@@ -25,6 +25,7 @@ export function is_supported_bubblewrap_version(output) {
   const match = /^\s*bubblewrap\s+v?(\d+)\.(\d+)\.(\d+)\s*$/im.exec(output);
   if (!match) return false;
   const version = match.slice(1, 4).map(Number);
+  if (!version.every(Number.isSafeInteger)) return false;
   for (let index = 0; index < MINIMUM_BUBBLEWRAP_VERSION.length; index += 1) {
     if (version[index] > MINIMUM_BUBBLEWRAP_VERSION[index]) return true;
     if (version[index] < MINIMUM_BUBBLEWRAP_VERSION[index]) return false;
