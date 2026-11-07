@@ -186,6 +186,23 @@ test('Rizin adapter enforces the import result ceiling without returning partial
   });
 });
 
+test('Rizin import adapter shares one output budget across version and import subprocesses', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({
+      version_output: 'rizin 0.8.2 ' + 'v'.repeat(100),
+    });
+    await assert.rejects(
+      analyze_rizin_imports({
+        input_path,
+        executable,
+        executable_args,
+        max_output_bytes: 120,
+      }),
+      error => error.code === 'ORIX_RIZIN_OUTPUT_LIMIT',
+    );
+  });
+});
+
 test('Rizin adapter applies one total timeout across version and import probes', async () => {
   await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     await write_config({ delay_import_ms: 5000 });
