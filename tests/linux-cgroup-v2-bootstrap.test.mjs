@@ -77,7 +77,7 @@ if (process.platform === 'linux') {
         assert.equal(result.stdout, 'attached-and-closed');
         const membership_buffer = Buffer.alloc(64);
         const bytes_read = readSync(fd, membership_buffer, 0, membership_buffer.length, 0);
-        assert.match(membership_buffer.subarray(0, bytes_read).toString('utf8'), /^\\d+\\n$/);
+        assert.match(membership_buffer.subarray(0, bytes_read).toString('utf8'), /^\d+\n$/);
       } finally {
         closeSync(fd);
       }
