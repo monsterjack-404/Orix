@@ -261,8 +261,8 @@ export function analyze_android_package(buffer, options = {}) {
     signatures: reported_signatures.map(entry => entry.name.slice(0, max_archive_entry_path_length)),
     limitations: [
       'ZIP entries are inventoried without extraction or decompression; DEX metadata is inspected only when the entry is stored, unencrypted and its local header matches the central directory.',
-      'APK binary XML manifests are decoded within explicit chunk/string/element/attribute limits; AAB protobuf manifests and resource-reference resolution are not decoded.',
-      'DEX string pools, type/method tables, class definitions, bytecode, resources and native library contents are not decoded.',
+      'APK binary XML manifests are decoded only from stored, unencrypted entries whose local ZIP header and CRC match, within explicit chunk/string/element/attribute limits; compressed/encrypted manifests are inventoried only. AAB protobuf manifests and resource-reference resolution are not decoded.',
+      'DEX string, type and class-definition metadata is decoded within explicit bounds; method/field table contents, bytecode, resources and native library contents are not decoded.',
       'APK/AAB signing blocks, certificate chains, signatures and publisher identity are not verified; v1 signature filenames are inventory hints only.',
       'This is offline file analysis. No Android device, adb command, app installation, emulator or application code is accessed or executed.',
     ],
