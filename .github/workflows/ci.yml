@@ -104,7 +104,7 @@ jobs:
       - name: Install Bubblewrap 0.12.0 build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential git meson ninja-build pkg-config libcap-dev
+          sudo apt-get install --yes build-essential git meson ninja-build pkg-config libcap-dev python3-seccomp
       - name: Build and install pinned Bubblewrap 0.12.0
         env:
           BWRAP_TAG_OBJECT: 014a04330642e5c870418beb621532cb896e0002
@@ -139,8 +139,23 @@ jobs:
             } | sudo tee /etc/apparmor.d/bwrap >/dev/null
             sudo apparmor_parser -r /etc/apparmor.d/bwrap || sudo apparmor_parser -a /etc/apparmor.d/bwrap
           fi
+      - name: Verify upstream Bubblewrap seccomp test dependency
+        run: |
+          python3 -c "import seccomp; print('python3-seccomp import passed')"
       - name: Run upstream Bubblewrap 0.12.0 test suite
-        run: meson test -C "$RUNNER_TEMP/bubblewrap-build" --print-errorlogs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_log="$RUNNER_TEMP/bubblewrap-meson-tests.log"
+          meson test -C "$RUNNER_TEMP/bubblewrap-build" --print-errorlogs 2>&1 | tee "$test_log"
+          if grep -Eq 'test-seccomp\\.py[[:space:]]+SKIP' "$test_log"; then
+            echo "::error::Upstream Bubblewrap seccomp test was skipped"
+            exit 1
+          fi
+          if ! grep -Eq 'test-seccomp\\.py[[:space:]]+OK' "$test_log"; then
+            echo "::error::Upstream Bubblewrap seccomp test did not report a successful run"
+            exit 1
+          fi
       - name: Diagnose cgroup v2 delegation (read-only)
         run: node scripts/linux-cgroup-v2-preflight.mjs
       - name: Verify Bubblewrap availability
