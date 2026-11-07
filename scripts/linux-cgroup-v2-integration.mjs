@@ -99,21 +99,12 @@ async function sample_cgroup(parent, marker) {
   try {
     cgroup = await find_provider_cgroup(parent);
   } catch (error) {
-    // A provider may finish and remove its unique leaf between readdir and
-    // inspection. cgroupfs can report ENODEV as well as ENOENT for that race.
+    // The unique leaf can disappear between enumeration and inspection.
     if (error.code === 'ENOENT' || error.code === 'ENODEV') return null;
     throw error;
   }
   if (!cgroup) return null;
-async function sample_cgroup(parent, marker) {
-  let cgroup;
-  try {
-    cgroup = await find_provider_cgroup(parent);
-  } catch (error) {
-    if (error.code === 'ENOENT' || error.code === 'ENODEV') return null;
-    throw error;
-  }
-  if (!cgroup) return null;
+
   try {
     let provider_seen = false;
     const sleep_pids = [];
@@ -125,6 +116,7 @@ async function sample_cgroup(parent, marker) {
         if (command.includes('/usr/bin/sleep')) sleep_pids.push(Number(pid));
       } catch (error) {
         if (error.code !== 'ENOENT' && error.code !== 'ESRCH') throw error;
+        // A task may exit after the cgroup.procs snapshot.
       }
     }
     const cpu = await read_control(path.join(cgroup, 'cpu.stat'));
@@ -136,6 +128,8 @@ async function sample_cgroup(parent, marker) {
     return { cgroup, provider_seen, sleep_pids, throttled, memory, pidsCurrent, oomKills };
   } catch (error) {
     if (error.code === 'ENOENT' || error.code === 'ENODEV') {
+      // A controller file can vanish during teardown. Only treat that as a
+      // completed teardown when the cgroup directory itself is now absent.
       try {
         await lstat(cgroup);
       } catch (directoryError) {
@@ -146,15 +140,7 @@ async function sample_cgroup(parent, marker) {
     throw error;
   }
 }
-  }
-  const cpu = await read_control(path.join(cgroup, 'cpu.stat'));
-  const throttled = Number(cpu.match(/^nr_throttled (\d+)$/m)?.[1] || 0);
-  const memory = Number(await read_control(path.join(cgroup, 'memory.current')));
-  const pidsCurrent = Number(await read_control(path.join(cgroup, 'pids.current')));
-  const memoryEvents = await read_control(path.join(cgroup, 'memory.events'));
-  const oomKills = Number(memoryEvents.match(/^oom_kill (\d+)$/m)?.[1] || 0);
-  return { cgroup, provider_seen, sleep_pids, throttled, memory, pidsCurrent, oomKills };
-}
+
 async function create_delegated_parent() {
   assert.equal(process.platform, 'linux');
   assert.equal(typeof process.geteuid, 'function');

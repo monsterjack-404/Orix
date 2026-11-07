@@ -13,12 +13,10 @@ import { validate_provider_manifest } from './manifest.mjs';
 
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const BLOCKED_ENVIRONMENT_KEYS = new Set([
-const BLOCKED_ENVIRONMENT_KEYS = new Set([
   'PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC',
   'NODE_OPTIONS', 'NODE_PATH', 'NODE_V8_COVERAGE', 'NODE_COMPILE_CACHE',
   'NODE_ICU_DATA', 'NODE_EXTRA_CA_CERTS', 'GCONV_PATH',
   'PYTHONPATH', 'PYTHONHOME', 'PERL5OPT', 'RUBYOPT', 'BASH_ENV', 'ENV', 'IFS',
-]);
 ]);
 const BLOCKED_ENVIRONMENT_PREFIXES = ['LD_', 'DYLD_', 'OPENSSL_'];
 const MAX_ARGUMENTS = 256;
