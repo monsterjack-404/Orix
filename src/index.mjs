@@ -7,7 +7,7 @@ export { analyze_electron_project } from './project/electron.mjs';
 export { analyze_website_project } from './project/website.mjs';
 export { evaluate_indicators } from './analyzer/indicators.mjs';
 export { walk_directory } from './analyzer/walk.mjs';
-export { detect_format, list_supported_formats, analyze_known_format, parse_pe, parse_elf, parse_macho, parse_macho_fat, parse_wasm, parse_zip, parse_pdf, parse_png, parse_apk, parse_tar, parse_pcap, parse_pcapng, parse_squashfs, parse_cramfs, parse_ubi, parse_ubifs, parse_ubifs_master, list_format_capabilities } from './formats/index.mjs';
+export { detect_format, list_supported_formats, analyze_known_format, parse_pe, parse_elf, parse_macho, parse_macho_fat, parse_wasm, parse_zip, parse_pdf, parse_png, parse_apk, parse_dex, parse_tar, parse_pcap, parse_pcapng, parse_squashfs, parse_cramfs, parse_ubi, parse_ubifs, parse_ubifs_master, list_format_capabilities } from './formats/index.mjs';
 export { calculate_entropy } from './core/entropy.mjs';
 export { extract_strings } from './core/strings.mjs';
 export { hash_buffer } from './core/hash.mjs';
@@ -50,3 +50,5 @@ export { audit_project_dependencies, render_vulnerability_audit_markdown } from 
 
 export { build_capability_report } from './capabilities/registry.mjs';
 export { parse_har, analyze_har_file, render_har_markdown } from './network/har.mjs';
+export { analyze_android_package, analyze_android_package_file, render_android_package_markdown } from './android/package.mjs';
+export { parse_android_binary_xml } from './android/binary-xml.mjs';
