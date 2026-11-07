@@ -55,6 +55,9 @@ function validate_command_flags(command, flags) {
   if (!allowed) return;
   const unsupported = Object.keys(flags).filter(key => !allowed.includes(key));
   if (unsupported.length) throw new Error(command + ' does not support option(s): ' + unsupported.join(', '));
+  if (command === 'android' && flags.max_file_bytes !== undefined && flags.max_file_bytes > 1_073_741_824) {
+    throw new Error('android --max-file-mib cannot exceed 1024 MiB');
+  }
 }
 export async function main(argv=process.argv.slice(2), dependencies = {}) {
   const parsed=parse_arguments(argv);
