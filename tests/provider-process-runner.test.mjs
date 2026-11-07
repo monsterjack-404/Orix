@@ -352,7 +352,7 @@ test('static provider runner rejects symlinks inside executable and working-dire
 
 test('static provider runner rejects PATH and executable-loader environment overrides', async () => {
   const executable = await node_executable();
-  for (const key of ['PATH', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES']) {
+  for (const key of ['PATH', 'SystemRoot', 'WINDIR', 'COMSPEC', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES']) {
     await assert.rejects(
       run_static_provider({
         manifest: manifest(),
@@ -428,9 +428,7 @@ test('required provider isolation refuses executable and cwd paths outside its r
         isolation: 'required',
         sandbox_root: root,
       }),
-      error => process.platform === 'linux'
-        ? error.code === 'ORIX_PROVIDER_SANDBOX_PATH_DENIED'
-        : error.code === 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+      error => error.code === 'ORIX_PROVIDER_SANDBOX_PATH_DENIED',
     );
   });
 });

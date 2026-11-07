@@ -3,6 +3,8 @@
 import { constants as FS_CONSTANTS } from 'node:fs';
 import { access, lstat, realpath, stat } from 'node:fs/promises';
 import { prepare_linux_provider_isolation } from './linux-isolation.mjs';
+import { prepare_windows_provider_isolation } from './windows-isolation.mjs';
+import { prepare_macos_provider_isolation } from './macos-isolation.mjs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { OrixError } from '../core/errors.mjs';
@@ -10,7 +12,7 @@ import { validate_provider_manifest } from './manifest.mjs';
 
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const BLOCKED_ENVIRONMENT_KEYS = new Set([
-  'PATH', 'PATHEXT', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
+  'PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
   'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'DYLD_FRAMEWORK_PATH',
   'PYTHONPATH', 'PYTHONHOME', 'PERL5OPT', 'RUBYOPT', 'BASH_ENV', 'ENV', 'IFS',
 ]);
@@ -375,7 +377,21 @@ export async function run_static_provider(options) {
     throw new TypeError('signal must be an AbortSignal');
   }
   if (isolation === 'required') {
-    const prepared = await prepare_linux_provider_isolation({
+    const prepare = process.platform === 'linux'
+      ? prepare_linux_provider_isolation
+      : process.platform === 'win32'
+        ? prepare_windows_provider_isolation
+        : process.platform === 'darwin'
+          ? prepare_macos_provider_isolation
+          : null;
+    if (!prepare) {
+      runner_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
+        'Required provider isolation has no enforced backend for this operating system', {
+          provider_id: manifest.id,
+          platform: process.platform,
+        });
+    }
+    const prepared = await prepare({
       executable,
       cwd,
       sandbox_root: descriptors.sandbox_root?.value,

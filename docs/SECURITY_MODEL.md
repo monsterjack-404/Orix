@@ -65,7 +65,7 @@ Please use GitHub's private vulnerability reporting or Security Advisories for s
 
 The provider runner compares the canonical executable with an explicit allowlist (or uses the selected executable as its single-entry default) and validates the working directory against explicit canonical roots (or the exact cwd as its default). It rejects final symlink paths and malformed/accessor-backed allowlist arrays. The child does not inherit the full parent environment; explicit values reject PATH/search and runtime-loader variables such as NODE_OPTIONS, LD_PRELOAD, DYLD_INSERT_LIBRARIES, PYTHONPATH and RUBYOPT.
 
-These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. Windows currently terminates only the direct child.
+These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. In explicitly unsandboxed `isolation: "none"` mode, Windows process teardown can signal only the direct child; the required AppContainer backend instead places the provider in a Job Object before resuming it and applies kill-on-job-close to descendants.
 
 
 ## Enforced provider isolation (Linux implementation gate)
@@ -106,7 +106,69 @@ delegated, exclusively managed parent; ORIX does not change controllers on a
 parent it does not own. This is a risk-reduction boundary, not protection
 against privileged host administrators or kernel vulnerabilities.
 
-A passing Linux backend does not imply Windows or macOS support. Those
-platforms must have their own backend and hostile-process integration proof
-before ORIX can claim enforcement there. Process control without
-`isolation: "required"` is not OS sandboxing.
+## Windows AppContainer + Job Object
+
+The Windows backend creates a unique AppContainer profile with no network
+capabilities. Before profile creation, the native launcher walks the canonical
+rootfs and its ancestors, rejects reparse points, and requires each owner to be
+the service identity, LocalSystem, local Administrators or TrustedInstaller.
+The rootfs itself must have no write-capable ACL grant to another principal.
+Ancestors must not grant untrusted principals deletion/replacement, ownership
+or ACL-control rights; ordinary sibling-creation rights on an ancestor are not
+treated as permission to modify an existing rootfs child. Any inherited
+write-capable ACE effective on the rootfs is rejected at the rootfs itself.
+This is a conservative ACL preflight, not a defense against privileged host
+administrators or a subsequent trusted-host ACL/mount change. It grants the package SID
+read/execute access to the explicit provider rootfs and confines writable
+scratch to `rootfs/tmp`, including the package-specific
+`Packages/<profile>/AC/Temp` location used by Windows temporary-file APIs. The native launcher creates the provider suspended,
+assigns it to a Job Object before resume, verifies the process token is an
+AppContainer token, and configures a 50% CPU hard cap, 512 MiB aggregate job
+memory limit, 64 active processes and kill-on-job-close. It terminates and
+waits for remaining descendants before cleanup. Windows does not expose the
+same per-process RLIMIT file-size/open-descriptor controls used by Linux and
+macOS; ORIX's parent runner still limits wall-clock time and captured output.
+The Windows hostile-process integration test checks host-file denial,
+read-only rootfs, confined writable temporary storage and loopback network
+denial, and the launcher confirms Job Object configuration.
+
+## macOS Seatbelt (experimental)
+
+The macOS backend applies a deny-by-default Seatbelt profile through a native
+launcher. The profile restricts provider reads/execution to the explicit
+rootfs and required system runtime files, allows writes only under
+`rootfs/tmp`, and denies network operations. The launcher verifies that the
+kernel sandbox is active before exec and applies inherited RLIMIT ceilings:
+60 CPU seconds, 64 MiB file size, 256 open descriptors and disabled core
+dumps. Before launch, the canonical rootfs and each ancestor must be owned by
+root or the ORIX service account and must not be group/other writable; only
+root-owned sticky ancestors (such as /tmp) are exempt, and the filesystem
+root itself is rejected. Every rootfs descendant is also checked: entries must
+be root/service-owned regular files or directories, cannot be group/other
+writable, setuid/setgid, symlinks, hard-linked files or special filesystem
+objects. The native launcher independently checks the rootfs and each
+ancestor for non-empty macOS extended ACL entries immediately before applying
+Seatbelt; it rejects ACL-bearing paths and fails closed when ACL inspection
+returns an unexpected error. The integration test adds an ACL-granted writer
+while leaving POSIX mode bits restrictive and verifies that the native
+launcher rejects it. This narrows the ACL gap but is not a race-free filesystem
+pin or protection against privileged host administrators and subsequent
+trusted-host mount/ACL changes. Hostile-process tests verify an outside-rootfs
+secret is unreadable, the rootfs cannot be modified, private temporary writes
+work and host loopback networking is blocked.
+
+macOS Seatbelt does not provide the aggregate memory/PID quotas enforced by
+Linux cgroup v2 or Windows Job Objects; ORIX does not claim those controls on
+macOS. The native integration uses Apple's reserved
+`sandbox_init_with_parameters` / `sandbox_check` interfaces rather than the
+supported signed App Sandbox entitlement model. Apple does not guarantee the
+long-term availability of these reserved interfaces, so this backend is
+experimental and must be revalidated against each supported macOS release.
+It fails closed if its compiler, Seatbelt API or policy setup is unavailable.
+
+Across all platforms, `isolation: "none"` remains explicit legacy process
+control, not an OS sandbox. `isolation: "required"` is reported as enforced
+only after the selected platform backend has successfully prepared its
+kernel-enforced restrictions. OS sandboxes are risk-reduction boundaries,
+not protection against privileged host administrators, kernel vulnerabilities
+or compromised OS security services.
