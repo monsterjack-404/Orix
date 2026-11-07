@@ -163,8 +163,10 @@ jobs:
           test -x /usr/local/bin/bwrap
           test "$(/usr/local/bin/bwrap --version)" = "bubblewrap 0.13.1"
           /usr/local/bin/bwrap --version
-      - name: Run hostile-process isolation checks
-        run: node scripts/linux-isolation-integration.mjs
+      - name: Run hostile-process and real Rizin checks with delegated cgroup limits
+        run: sudo node scripts/linux-isolation-integration.mjs
+      - name: Run real cgroup v2 resource-enforcement integration
+        run: sudo node scripts/linux-cgroup-v2-integration.mjs
 
   platform-smoke:
     name: Platform smoke / ${{ matrix.os }}
