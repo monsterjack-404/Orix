@@ -495,6 +495,64 @@ async function main() {
     assert.equal(descendantCountLater, descendantCountAfterExit,
       'A provider-spawned native descendant continued writing after its leader exited; the Job Object did not clean it up');
 
+    // Retain an independent Node/libuv compatibility regression. The C# probe
+    // above proves the Windows OS process-creation and Job Object boundary;
+    // this probe verifies that a Node-based provider can still spawn a child
+    // without inheriting console handles or requesting detached-process behavior.
+    const nodeDescendantCounter = path.join(root, 'tmp', 'node-job-descendant-counter-' + process.pid);
+    const nodeDescendantScript = [
+      'const fs = require("node:fs");',
+      'const counter = ' + JSON.stringify(nodeDescendantCounter) + ';',
+      'let count = 0;',
+      'fs.writeFileSync(counter, "0");',
+      'setInterval(() => fs.writeFileSync(counter, String(++count)), 20);',
+    ].join(String.fromCharCode(10));
+    const nodeParentScript = [
+      'const { spawn } = require("node:child_process");',
+      'const fs = require("node:fs");',
+      'const child = spawn(process.execPath, ["-e", ' + JSON.stringify(nodeDescendantScript) + '], { detached: false, stdio: "ignore", windowsHide: true });',
+      'child.once("error", error => { console.error("Node provider descendant spawn failed: " + JSON.stringify({ code: error.code, errno: error.errno, syscall: error.syscall, path: error.path, spawnargs: error.spawnargs, cwd: process.cwd(), execPath: process.execPath, execPathExists: fs.existsSync(process.execPath), systemRoot: process.env.SystemRoot, node: process.version, libuv: process.versions.uv })); process.exit(89); });',
+      'child.once("spawn", () => {',
+      '  const deadline = Date.now() + 10000;',
+      '  const timer = setInterval(() => {',
+      '    if (fs.existsSync(' + JSON.stringify(nodeDescendantCounter) + ')) {',
+      '      clearInterval(timer);',
+      '      process.stdout.write("node-provider-descendant-started");',
+      '      process.exit(0);',
+      '    }',
+      '    if (Date.now() >= deadline) {',
+      '      clearInterval(timer);',
+      '      console.error("Node provider descendant did not become ready");',
+      '      process.exit(88);',
+      '    }',
+      '  }, 25);',
+      '});',
+    ].join(String.fromCharCode(10));
+    const nodeDescendantExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      env: {},
+      args: ['-e', nodeParentScript],
+      timeout_ms: 12_000,
+      max_output_bytes: 4_096,
+    });
+    assert.equal(nodeDescendantExecution.ok, true, JSON.stringify({
+      exit_code: nodeDescendantExecution.exit_code,
+      stdout: nodeDescendantExecution.stdout,
+      stderr: nodeDescendantExecution.stderr,
+      termination_reason: nodeDescendantExecution.termination_reason,
+    }));
+    assert.match(nodeDescendantExecution.stdout, /node-provider-descendant-started/,
+      'Node provider leader must exit only after its Node/libuv child has started');
+    const nodeDescendantCountAfterExit = await readFile(nodeDescendantCounter, 'utf8');
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const nodeDescendantCountLater = await readFile(nodeDescendantCounter, 'utf8');
+    assert.equal(nodeDescendantCountLater, nodeDescendantCountAfterExit,
+      'A Node/libuv descendant continued writing after its provider leader exited; the Job Object did not clean it up');
+
     // Exercise the cleanup traversal with a real directory junction. The
     // provider process waits while the host replaces its writable Packages
     // directory with a junction to an external sentinel tree. Cleanup must
