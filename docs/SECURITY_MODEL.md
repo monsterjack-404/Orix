@@ -68,45 +68,37 @@ The provider runner compares the canonical executable with an explicit allowlist
 These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. Windows currently terminates only the direct child.
 
 
-## Enforced provider isolation (Linux implementation gate)
+## Explicit provider execution policy and enforced isolation
 
-The provider runner requires every caller to explicitly select an execution
-policy. Omitting `isolation` is rejected before launch. `isolation: "none"`
-is an explicitly unsandboxed legacy mode: it retains shell-free argv, an
-allowlisted executable, a reduced environment, a timeout and output ceiling,
-but it does not confine filesystem access, networking or descendants.
-Execution results report `isolation: "none"` and
-`isolation_enforced: false` for this mode.
+The provider runner requires every caller to explicitly select an execution policy. Omitting `isolation` is rejected before launch. `isolation: "none"` is an explicitly unsandboxed process-control mode and does not confine filesystem access, networking or descendants. `isolation: "required"` is accepted only when an explicit Linux sandbox root and the host-configured `ORIX_CGROUP_PARENT` are available. The
+Linux backend uses Bubblewrap with an unshared network namespace, explicitly
+required user/PID/IPC/UTS namespaces, a read-only sandbox-root mount, fresh
+ephemeral `/tmp`, a private `/proc` and minimal `/dev`, and an explicit working
+directory. It also applies Bubblewrap's `--disable-userns` and
+`--assert-userns-disabled` controls so the provider cannot create nested user
+namespaces to rearrange mount isolation. Unsupported Bubblewrap versions fail
+closed before provider launch.
 
-`isolation: "required"` is the enforced Linux path. It requires an explicit
-sandbox root and an administrator-provisioned delegated cgroup-v2 parent with
-the `cpu`, `memory` and `pids` controllers available. The adapter uses
-Bubblewrap with unshared network, PID, IPC, UTS and user namespaces, a
-read-only provider rootfs, a fresh ephemeral `/tmp`, private `/proc`, and
-minimal `/dev`. It disables nested user namespaces and fails closed if the
-installed Bubblewrap does not support the required controls. The provider
-executable and working directory must resolve inside the deliberately
-provisioned rootfs.
+The trusted Node bootstrap receives only the leaf `cgroup.procs` write
+capability as child FD 3. It attaches itself before starting `prlimit` and
+Bubblewrap, closes the descriptor, and never passes it to provider code. The
+host configures and reads back the fixed per-run limits: 50% CPU bandwidth,
+512 MiB memory, zero swap, whole-cgroup OOM handling, and 64 tasks. Per-process
+RLIMITs cap CPU time at 60 seconds, file size at 64 MiB, open files at 256, and
+core dumps at zero. CPU bandwidth is not a total CPU-time budget. The provider
+executable and working directory must resolve inside the rootfs; the host
+project, home directories, credentials, and cgroup hierarchy are not mounted
+into the provider namespace.
 
-Before provider execution, a trusted bootstrap moves itself into the
-per-provider cgroup; the spawned Bubblewrap and provider descendants inherit
-membership. The cgroup enforces `cpu.max=50000 100000` (50% of one CPU),
-`memory.max=536870912` (512 MiB), `memory.swap.max=0`,
-`memory.oom.group=1` and `pids.max=64`. Per-process RLIMIT ceilings are
-60 CPU seconds, 64 MiB file size, 256 open descriptors and zero core-dump
-bytes. The lifecycle kills and verifies descendants, waits for
-`cgroup.events populated=0`, removes the per-run cgroup, and surfaces
-cleanup failures instead of reporting successful execution.
+The privileged Linux integration gate exercises real kernel cgroup membership,
+CPU throttling, memory OOM, PID ceiling, host-file/network denial, descendant
+cleanup, cancellation, timeout, and empty-leaf removal on the CI Ubuntu
+runner. The host operator must provision a dedicated delegated cgroup v2
+parent owned by the ORIX service UID, not group/other writable, empty, and with
+`cpu`, `memory`, and `pids` enabled for children. Its `supervisor/` sibling
+must contain the ORIX manager process. The runtime verifies this layout and
+fails closed; it does not enable parent controllers. Run
+`node scripts/linux-cgroup-v2-preflight.mjs` under the service identity before
+deployment.
 
-The Linux hostile-process integration test exercises filesystem and network
-boundaries, nested-user-namespace denial, kernel CPU throttling, memory OOM,
-PID-limit rejection, RLIMIT values, and descendant teardown against a
-temporary delegated cgroup-v2 hierarchy. The caller must supply a correctly
-delegated, exclusively managed parent; ORIX does not change controllers on a
-parent it does not own. This is a risk-reduction boundary, not protection
-against privileged host administrators or kernel vulnerabilities.
-
-A passing Linux backend does not imply Windows or macOS support. Those
-platforms must have their own backend and hostile-process integration proof
-before ORIX can claim enforcement there. Process control without
-`isolation: "required"` is not OS sandboxing.
+This is the Linux enforced backend; it does not claim complete cross-platform isolation. Windows and macOS have no enforced backend and reject `isolation: "required"`. `isolation: "none"` is never an operating-system sandbox. Host-specific cgroup delegation, ACLs, kernel versions and distribution behavior still require operator validation.
