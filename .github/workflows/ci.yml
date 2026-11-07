@@ -40,7 +40,11 @@ jobs:
       - name: Run tests
         run: npm test
       - name: Generate coverage summary
+        if: matrix.node-version == 20
         run: npm run test:coverage
+      - name: Verify Windows helper payload is included in the npm package
+        if: matrix.node-version == 20
+        run: node scripts/verify-windows-launcher-package.mjs
 
   linux-provider-isolation:
     name: Linux Bubblewrap hostile-process isolation
@@ -76,14 +80,14 @@ jobs:
       - name: Run real delegated cgroup v2 hostile-process and resource-isolation checks
         run: sudo node scripts/linux-cgroup-v2-integration.mjs
 
-  platform-smoke:
-    name: Platform smoke / ${{ matrix.os }}
+  windows-launcher-build:
+    name: Windows launcher build / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, windows-2022]
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -93,6 +97,78 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
+      - name: Set up pinned .NET SDK for Windows launcher
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 10.0.100
+      - name: Build Windows native launcher twice (compile reproducibility check only)
+        run: |
+          dotnet clean native/windows-provider-launcher.csproj --configuration Release
+          dotnet build native/windows-provider-launcher.csproj --configuration Release --no-incremental --output artifacts/windows-helper-first
+          dotnet clean native/windows-provider-launcher.csproj --configuration Release
+          dotnet build native/windows-provider-launcher.csproj --configuration Release --no-incremental --output artifacts/windows-helper-second
+      - name: Verify Windows launcher build outputs match
+        run: |
+          $first = Join-Path $env:GITHUB_WORKSPACE 'artifacts/windows-helper-first/orix-windows-provider-launcher.exe'
+          $second = Join-Path $env:GITHUB_WORKSPACE 'artifacts/windows-helper-second/orix-windows-provider-launcher.exe'
+          if (-not (Test-Path -LiteralPath $first -PathType Leaf)) { throw 'First Windows launcher build output is missing' }
+          if (-not (Test-Path -LiteralPath $second -PathType Leaf)) { throw 'Second Windows launcher build output is missing' }
+          $firstHash = (Get-FileHash -LiteralPath $first -Algorithm SHA256).Hash
+          $secondHash = (Get-FileHash -LiteralPath $second -Algorithm SHA256).Hash
+          if ($firstHash -ne $secondHash) { throw "Windows launcher builds are not byte-for-byte reproducible: $firstHash != $secondHash" }
+          Write-Output "Reproducible Windows launcher SHA-256: $firstHash"
+      # Keep the freshly built candidate available even when the source-pinned
+      # package check below fails. This is diagnostic build output, not a
+      # runtime trust anchor; the subsequent verification remains mandatory.
+      - name: Upload Windows launcher candidate for cross-runner review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: orix-windows-launcher-${{ matrix.os }}
+          path: artifacts/windows-helper-first/orix-windows-provider-launcher.exe
+          if-no-files-found: error
+          retention-days: 7
+      - name: Validate Windows launcher PE, CLR metadata and source-pinned package identity
+        run: |
+          node scripts/verify-windows-launcher.mjs artifacts/windows-helper-first/orix-windows-provider-launcher.exe
+          node scripts/verify-windows-launcher.mjs artifacts/windows-helper-second/orix-windows-provider-launcher.exe
+
+  platform-smoke:
+    name: Platform smoke / ${{ matrix.os }} / Node.js ${{ matrix.node-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            node-version: 20
+          - os: windows-latest
+            node-version: 22
+          - os: windows-latest
+            node-version: 24
+          - os: windows-2022
+            node-version: 20
+          - os: windows-2022
+            node-version: 22
+          - os: windows-2022
+            node-version: 24
+          - os: windows-11-arm
+            node-version: 20
+          - os: windows-11-arm
+            node-version: 22
+          - os: windows-11-arm
+            node-version: 24
+          - os: macos-latest
+            node-version: 22
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ matrix.node-version }}
           cache: npm
       - name: Install locked dependencies
         run: npm ci
@@ -103,6 +179,38 @@ jobs:
       - name: Run Windows AppContainer hostile-process isolation checks
         if: runner.os == 'Windows'
         run: node scripts/windows-isolation-integration.mjs
+      - name: Run POSIX compiler process-group teardown regression
+        if: runner.os == 'macOS'
+        run: node --test platform-tests/macos-compiler-process-group.mjs
       - name: Run macOS Seatbelt hostile-process isolation checks
         if: runner.os == 'macOS'
         run: node scripts/macos-isolation-integration.mjs
+
+  windows-launcher-cross-runner-reproducibility:
+    name: Windows launcher cross-runner reproducibility
+    runs-on: ubuntu-latest
+    needs: windows-launcher-build
+    if: ${{ always() && needs.windows-launcher-build.result != 'cancelled' }}
+    steps:
+      - name: Download windows-latest launcher
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: orix-windows-launcher-windows-latest
+          path: artifacts/windows-latest
+      - name: Download windows-2022 launcher
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: orix-windows-launcher-windows-2022
+          path: artifacts/windows-2022
+      - name: Compare independent Windows runner outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          first="artifacts/windows-latest/orix-windows-provider-launcher.exe"
+          second="artifacts/windows-2022/orix-windows-provider-launcher.exe"
+          test -f "$first"
+          test -f "$second"
+          first_hash="$(sha256sum "$first" | cut -d ' ' -f 1)"
+          second_hash="$(sha256sum "$second" | cut -d ' ' -f 1)"
+          printf 'windows-latest: %s\nwindows-2022: %s\n' "$first_hash" "$second_hash"
+          test "$first_hash" = "$second_hash"

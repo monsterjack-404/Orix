@@ -350,9 +350,16 @@ test('static provider runner rejects symlinks inside executable and working-dire
   });
 });
 
-test('static provider runner rejects PATH and executable-loader environment overrides', async () => {
+test('static provider runner rejects executable-loader, runtime and crypto environment overrides', async () => {
   const executable = await node_executable();
-  for (const key of ['PATH', 'SystemRoot', 'WINDIR', 'COMSPEC', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES']) {
+  const blockedKeys = [
+    'PATH', 'SystemRoot', 'WINDIR', 'COMSPEC',
+    'NODE_OPTIONS', 'NODE_PATH', 'NODE_V8_COVERAGE', 'NODE_COMPILE_CACHE', 'NODE_ICU_DATA', 'NODE_EXTRA_CA_CERTS',
+    'GCONV_PATH', 'LD_PRELOAD', 'LD_AUDIT', 'LD_DEBUG_OUTPUT', 'ld_audit',
+    'DYLD_INSERT_LIBRARIES', 'DYLD_FALLBACK_LIBRARY_PATH', 'DYLD_ROOT_PATH',
+    'OPENSSL_CONF', 'OPENSSL_MODULES',
+  ];
+  for (const key of blockedKeys) {
     await assert.rejects(
       run_static_provider({
         manifest: manifest(),
@@ -361,6 +368,7 @@ test('static provider runner rejects PATH and executable-loader environment over
         env: { [key]: 'attacker-controlled-value' },
       }),
       /enumerable string data properties with valid names/,
+      'Untrusted environment key must be rejected: ' + key,
     );
   }
 });
