@@ -22,7 +22,7 @@ const MINIMUM_BUBBLEWRAP_VERSION = Object.freeze([0, 12, 0]);
 
 export function is_supported_bubblewrap_version(output) {
   if (typeof output !== 'string') return false;
-  const match = /^\s*bubblewrap\s+v?(\d+)\.(\d+)\.(\d+)\s*$/im.exec(output);
+  const match = /^bubblewrap\s+v?(\d+)\.(\d+)\.(\d+)$/.exec(output.trim());
   if (!match) return false;
   const version = match.slice(1, 4).map(Number);
   if (!version.every(Number.isSafeInteger)) return false;
