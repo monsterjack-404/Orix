@@ -435,14 +435,17 @@ function parse_master_resources(buffer, start, end, budget, limits, depth) {
   assert_depth(depth, limits, 'MasterResources');
   const result = { resource_ids: [], resource_names: [] };
   walk_fields(buffer, start, end, budget, (field, wire, value) => {
-    if (field === 1 && wire === 0) {
-      consume_item(budget, limits);
-      add_output(result.resource_ids, signed_int32(value), budget, limits);
-    } else if (field === 1 && wire === 2) {
-      parse_packed_varints(buffer, value, 'MasterResources.resource_ids', item => {
+    if (field === 1) {
+      if (wire === 0) {
         consume_item(budget, limits);
-        add_output(result.resource_ids, signed_int32(item), budget, limits);
-      });
+        add_output(result.resource_ids, signed_int32(value), budget, limits);
+      } else {
+        expect_wire('MasterResources', field, wire, 2);
+        parse_packed_varints(buffer, value, 'MasterResources.resource_ids', item => {
+          consume_item(budget, limits);
+          add_output(result.resource_ids, signed_int32(item), budget, limits);
+        });
+      }
     } else if (field === 2) {
       expect_wire('MasterResources', field, wire, 2);
       consume_item(budget, limits);
@@ -515,14 +518,17 @@ function parse_asset_modules_config(buffer, start, end, budget, limits, depth) {
   const result = { app_versions: [], asset_version_tag: '' };
   const seen = new Set();
   walk_fields(buffer, start, end, budget, (field, wire, value) => {
-    if (field === 1 && wire === 0) {
-      consume_item(budget, limits);
-      add_output(result.app_versions, decode_int64(value), budget, limits);
-    } else if (field === 1 && wire === 2) {
-      parse_packed_varints(buffer, value, 'AssetModulesConfig.app_version', item => {
+    if (field === 1) {
+      if (wire === 0) {
         consume_item(budget, limits);
-        add_output(result.app_versions, decode_int64(item), budget, limits);
-      });
+        add_output(result.app_versions, decode_int64(value), budget, limits);
+      } else {
+        expect_wire('AssetModulesConfig', field, wire, 2);
+        parse_packed_varints(buffer, value, 'AssetModulesConfig.app_version', item => {
+          consume_item(budget, limits);
+          add_output(result.app_versions, decode_int64(item), budget, limits);
+        });
+      }
     } else if (field === 2) {
       expect_wire('AssetModulesConfig', field, wire, 2);
       singular(seen, field, 'AssetModulesConfig');
@@ -569,7 +575,6 @@ export function parse_android_bundle_config(buffer, options = {}) {
   bounded_integer('max_string_bytes', limits.max_string_bytes, 1, 1024 * 1024);
   bounded_integer('max_total_string_bytes', limits.max_total_string_bytes, 1, 8 * 1024 * 1024);
   bounded_integer('max_output_items', limits.max_output_items, 1, 50_000);
-  if (buffer.length === 0) fail('ORIX_BUNDLE_CONFIG_EMPTY', 'BundleConfig protobuf input is empty');
   if (buffer.length > limits.max_file_bytes) fail('ORIX_BUNDLE_CONFIG_FILE_LIMIT', 'BundleConfig protobuf input exceeds the configured file-size limit', {
     actual: buffer.length, max_file_bytes: limits.max_file_bytes,
   });
