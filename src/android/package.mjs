@@ -11,9 +11,16 @@ import { hash_buffer } from '../core/hash.mjs';
 const LOCAL_HEADER = 0x04034b50;
 const BINARY_XML = 0x0003;
 
-function is_dex_entry(name) {
-  const base = name.slice(name.lastIndexOf('/') + 1);
-  return base === 'classes.dex' || /^classes(?:[2-9]|[1-9][0-9]+)\.dex$/.test(base);
+function is_dex_entry(name, is_aab) {
+  const parts = name.split('/');
+  const base = parts.at(-1);
+  const canonical_name = base === 'classes.dex' || /^classes(?:[2-9]|[1-9][0-9]+)\.dex$/.test(base);
+  if (!canonical_name) return false;
+  // APK multidex files live at the archive root; AAB DEX files live in
+  // each module's dex/ directory. Do not parse arbitrary asset subdirectories.
+  return is_aab
+    ? parts.length === 3 && parts[0].length > 0 && parts[1] === 'dex'
+    : parts.length === 1;
 }
 
 function crc32(buffer) {
@@ -129,7 +136,7 @@ export function analyze_android_package(buffer, options = {}) {
   const bundle_manifest = entries.some(entry => entry.name.endsWith('/manifest/AndroidManifest.xml'));
   const is_aab = names.has('BundleConfig.pb') || bundle_manifest;
   const is_apk = apk_manifest && !is_aab;
-  const dex_entries = entries.filter(entry => is_dex_entry(entry.name));
+  const dex_entries = entries.filter(entry => is_dex_entry(entry.name, is_aab));
   const manifest_entries = entries.filter(entry => entry.name === 'AndroidManifest.xml' || entry.name.endsWith('/manifest/AndroidManifest.xml'));
   const reported_manifest_entries = manifest_entries.slice(0, max_archive_entries);
   const native_libraries = entries.filter(entry => (entry.name.startsWith('lib/') || entry.name.includes('/lib/')) && entry.name.endsWith('.so'));
