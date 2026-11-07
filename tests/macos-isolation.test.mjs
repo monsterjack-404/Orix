@@ -53,6 +53,13 @@ test('macOS rootfs entry trust accepts root-owned, read-only directories', () =>
   }, 1000).trusted, true);
 });
 
+test('macOS compiler environment rejects NUL bytes in temporary directory', () => {
+  assert.throws(
+    () => build_macos_compiler_environment('/tmp/orix\0escape'),
+    TypeError,
+  );
+});
+
 test('macOS compiler environment ignores inherited SDK and toolchain overrides', () => {
   const temporary = '/orix-test/private-compiler-tmp';
   const environment = build_macos_compiler_environment(temporary);
