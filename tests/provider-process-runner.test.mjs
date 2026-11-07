@@ -60,6 +60,7 @@ test('static provider runner uses argv without shell interpolation and returns b
   assert.equal(result.args_count, 3);
   assert.equal(result.output.bytes_captured, result.captured_bytes);
   assert.ok(result.completed_at);
+  assert.ok(Number.isSafeInteger(result.duration_ms));
   assert.equal(result.stdout, 'literal $(not-a-shell) value');
   assert.equal(result.stderr, 'diagnostic');
   assert.equal(result.provider.id, 'test.static');
