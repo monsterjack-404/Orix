@@ -22,9 +22,9 @@ function is_decimal(value) {
 
 function is_dex_entry(name) {
   const base = name.slice(name.lastIndexOf('/') + 1);
-  if (!base.startsWith('classes') || !base.endsWith('.dex')) return false;
-  const ordinal = base.slice(7, -4);
-  return ordinal === '' || is_decimal(ordinal);
+  if (base === 'classes.dex') return true;
+  const match = base.match(/^classes([2-9][0-9]*)\.dex$/);
+  return match !== null && is_decimal(match[1]);
 }
 
 function crc32(buffer) {
