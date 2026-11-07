@@ -35,18 +35,27 @@ test('DEX decoder uses the correct 22x and 32x formats for object moves', () => 
   assert.deepEqual(move16.instructions[0].registers, [1, 16]);
 });
 
-test('DEX 35c and 45cc instructions decode C-through-G registers from the third code unit', () => {
-  const invoke = decode(words(0x556e, 0x0000, 0x4321), {
-    registers_size: 6,
+test('DEX 35c and 45cc use A as argument count and G as the fifth register', () => {
+  const shortInvoke = decode(words(0x2a6e, 0x0000, 0x4321), {
+    registers_size: 11,
     counts: { ...emptyCounts, method_ids: 1 },
   });
-  assert.deepEqual(invoke.instructions[0].registers, [1, 2, 3, 4, 5]);
-  assert.deepEqual(invoke.instructions[0].reference, { index: 0, kind: 'method_ids' });
+  assert.equal(shortInvoke.instructions[0].argument_words, 2);
+  assert.deepEqual(shortInvoke.instructions[0].registers, [1, 2]);
+  assert.deepEqual(shortInvoke.instructions[0].reference, { index: 0, kind: 'method_ids' });
 
-  const polymorphic = decode(words(0x01fa, 0x0000, 0x0007, 0x0000), {
-    registers_size: 8,
+  const fiveRegisterInvoke = decode(words(0x5a6e, 0x0000, 0x4321), {
+    registers_size: 11,
+    counts: { ...emptyCounts, method_ids: 1 },
+  });
+  assert.equal(fiveRegisterInvoke.instructions[0].argument_words, 5);
+  assert.deepEqual(fiveRegisterInvoke.instructions[0].registers, [1, 2, 3, 4, 10]);
+
+  const polymorphic = decode(words(0x19fa, 0x0000, 0x0007, 0x0000), {
+    registers_size: 10,
     counts: { ...emptyCounts, method_ids: 1, proto_ids: 1 },
   });
+  assert.equal(polymorphic.instructions[0].argument_words, 1);
   assert.deepEqual(polymorphic.instructions[0].registers, [7]);
   assert.deepEqual(polymorphic.instructions[0].reference, { index: 0, kind: 'method_ids' });
   assert.deepEqual(polymorphic.instructions[0].proto_reference, { index: 0, kind: 'proto_ids' });
