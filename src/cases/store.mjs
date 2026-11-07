@@ -130,16 +130,18 @@ async function write_new_file(file_path, bytes) {
   try { await handle.writeFile(bytes); await handle.sync(); }
   finally { await handle.close(); }
 }
-async function read_bounded_file(file_path, maximum) {
+async function read_bounded_file(file_path, maximum, options = {}) {
   let before;
   try { before = await fs.lstat(file_path); }
   catch (error) { fail('ORIX_CASE_FILE_UNAVAILABLE', 'Case file is unavailable', { path: file_path, system_code: error.code }, error); }
   if (before.isSymbolicLink() || !before.isFile() || before.size > maximum) fail('ORIX_CASE_FILE_LIMIT', 'Case file is unsafe or exceeds its read limit', { path: file_path, size: before.size, maximum });
+  if (options.reject_hardlinks === true && before.nlink > 1) fail('ORIX_CASE_HARDLINK_REJECTED', 'Case file must not have hard-link aliases', { path: file_path, link_count: before.nlink });
   let handle;
   try {
     handle = await fs.open(file_path, fs_constants.O_RDONLY | (fs_constants.O_NOFOLLOW ?? 0));
     const opened = await handle.stat();
     if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino || opened.size > maximum) fail('ORIX_CASE_FILE_CHANGED', 'Case file identity changed before reading', { path: file_path });
+    if (options.reject_hardlinks === true && opened.nlink > 1) fail('ORIX_CASE_HARDLINK_REJECTED', 'Case file acquired a hard-link alias before descriptor acquisition completed', { path: file_path, link_count: opened.nlink });
     const chunks = [];
     let total = 0;
     const chunk = Buffer.allocUnsafe(64 * 1024);
@@ -151,6 +153,7 @@ async function read_bounded_file(file_path, maximum) {
       chunks.push(Buffer.from(chunk.subarray(0, bytesRead)));
     }
     const after = await handle.stat();
+    if (options.reject_hardlinks === true && after.nlink > 1) fail('ORIX_CASE_HARDLINK_REJECTED', 'Case file acquired a hard-link alias while being read', { path: file_path, link_count: after.nlink });
     if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) fail('ORIX_CASE_FILE_CHANGED', 'Case file changed while being read', { path: file_path });
     return Buffer.concat(chunks);
   } catch (error) {
@@ -158,8 +161,8 @@ async function read_bounded_file(file_path, maximum) {
     fail('ORIX_CASE_READ_FAILED', 'Cannot read case file', { path: file_path, system_code: error.code }, error);
   } finally { await handle?.close().catch(() => {}); }
 }
-async function append_event(paths, event, payload) {
-  return append_evidence_event(paths.events_path, event, payload);
+async function append_event(paths, event, payload, options = {}) {
+  return append_evidence_event(paths.events_path, event, payload, options);
 }
 function apply_event(state, record) {
   const payload = record.payload;
@@ -205,8 +208,8 @@ function apply_event(state, record) {
       fail('ORIX_CASE_UNKNOWN_EVENT', 'Case ledger contains an unsupported event', { event: record.event, sequence: record.sequence });
   }
 }
-async function load_state(paths) {
-  const loaded = await read_evidence_ledger(paths.events_path);
+async function load_state(paths, options = {}) {
+  const loaded = await read_evidence_ledger(paths.events_path, options);
   if (!loaded.records.length) fail('ORIX_CASE_EMPTY_LEDGER', 'Case event ledger is empty');
   const state = { schema_version: CASES_FORMAT, case: null, artifacts: [], analyses: [], findings: [], notes: [], relationships: [], timeline: [], integrity: { valid: true, records: loaded.records.length, head_hash: loaded.head_hash } };
   for (const record of loaded.records) {
@@ -261,7 +264,7 @@ export async function get_case(workspace_path, case_id) {
   const paths = await case_directory(workspace_path, case_id);
   return load_state(paths);
 }
-async function verify_report_files(paths, state) {
+async function verify_report_files(paths, state, options = {}) {
   const verified = [];
   for (const analysis of state.analyses) {
     if (!safe_relative(analysis.report_path) || !/^reports\/[0-9a-f-]{36}\.json$/.test(analysis.report_path)) fail('ORIX_CASE_REPORT_PATH', 'Analysis report path is invalid', { report_path: analysis.report_path });
@@ -270,7 +273,7 @@ async function verify_report_files(paths, state) {
     try { directory_stats = await fs.lstat(reports_directory); }
     catch (error) { fail('ORIX_CASE_REPORT_MISSING', 'Case reports directory is missing', { system_code: error.code }, error); }
     if (directory_stats.isSymbolicLink() || !directory_stats.isDirectory() || await fs.realpath(reports_directory) !== reports_directory) fail('ORIX_CASE_REPORT_PATH', 'Reports directory must be a regular non-symlink directory');
-    const bytes = await read_bounded_file(path.join(paths.directory, ...analysis.report_path.split('/')), MAX_REPORT_BYTES);
+    const bytes = await read_bounded_file(path.join(paths.directory, ...analysis.report_path.split('/')), MAX_REPORT_BYTES, options);
     if (digest(bytes) !== analysis.report_sha256) fail('ORIX_CASE_REPORT_DIGEST', 'Stored analysis report SHA-256 does not match its case event', { run_id: analysis.run_id });
     let report;
     try { report = JSON.parse(bytes.toString('utf8')); } catch (error) { fail('ORIX_CASE_REPORT_INVALID', 'Stored analysis report is not valid JSON', { run_id: analysis.run_id }, error); }
