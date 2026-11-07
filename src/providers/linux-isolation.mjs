@@ -5,6 +5,7 @@
 import { access, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { OrixError } from '../core/errors.mjs';
+import { validate_linux_rootfs_directory } from './linux-rootfs-trust.mjs';
 
 function isolation_error(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
@@ -36,35 +37,7 @@ async function resolve_bwrap() {
 }
 
 async function validate_rootfs(value) {
-  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) {
-    throw new TypeError('sandbox_root must be an absolute filesystem path');
-  }
-  let info;
-  try { info = await lstat(value); }
-  catch (error) {
-    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE', 'Provider sandbox root cannot be inspected', {
-      reason: error.code ?? 'filesystem-error',
-    });
-  }
-  if (info.isSymbolicLink() || !info.isDirectory()) {
-    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID', 'Provider sandbox root must be a non-symlink directory');
-  }
-  const root = await realpath(value);
-  for (const required of ['proc', 'dev', 'tmp']) {
-    let entry;
-    try { entry = await lstat(path.join(root, required)); }
-    catch {
-      isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID', 'Sandbox root is missing a required mount point', {
-        mount_point: '/' + required,
-      });
-    }
-    if (entry.isSymbolicLink() || !entry.isDirectory()) {
-      isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_INVALID', 'Sandbox mount points must be real directories', {
-        mount_point: '/' + required,
-      });
-    }
-  }
-  return root;
+  return validate_linux_rootfs_directory(value);
 }
 
 function sandbox_path(root, host_path, label) {
@@ -83,7 +56,8 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
       { platform: process.platform },
     );
   }
-  const root = await validate_rootfs(sandbox_root);
+  const rootfs = await validate_rootfs(sandbox_root);
+  const root = rootfs.path;
   const sandboxExecutable = sandbox_path(root, executable, 'executable');
   const sandboxCwd = sandbox_path(root, cwd, 'cwd');
   const bwrap = await resolve_bwrap();
@@ -113,6 +87,11 @@ export async function prepare_linux_provider_isolation({ executable, cwd, sandbo
     bwrapArgs.push('--setenv', key, value);
   }
   bwrapArgs.push('--', sandboxExecutable, ...args);
+  const final_rootfs = await validate_rootfs(sandbox_root);
+  if (final_rootfs.path !== rootfs.path || final_rootfs.dev !== rootfs.dev || final_rootfs.ino !== rootfs.ino) {
+    isolation_error('ORIX_PROVIDER_SANDBOX_ROOT_CHANGED',
+      'Provider sandbox root directory was replaced while its launch policy was being prepared');
+  }
   return Object.freeze({
     executable: bwrap,
     args: Object.freeze(bwrapArgs),
