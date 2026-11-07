@@ -47,7 +47,7 @@ export function assess_bubblewrap_version(output) {
   if (typeof output !== 'string') {
     return Object.freeze({ version: null, supported: false });
   }
-  const match = /^bubblewrap\\s+(\\d+)\\.(\\d+)\\.(\\d+)$/.exec(output.trim());
+  const match = /^bubblewrap\s+(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(output.trim());
   if (!match) return Object.freeze({ version: null, supported: false });
   const major = Number(match[1]);
   const minor = Number(match[2]);
