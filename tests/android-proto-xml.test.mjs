@@ -127,6 +127,7 @@ function create_zip(entries) {
     local.writeUInt32LE(contents.length, 22);
     local.writeUInt16LE(name.length, 26);
     name.copy(local, 30);
+    contents.copy(local, 30 + name.length);
     locals.push(local);
 
     const central = Buffer.alloc(46 + name.length);
