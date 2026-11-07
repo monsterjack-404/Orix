@@ -1,5 +1,5 @@
 // JavaScript, src/formats/dex-semantics.mjs, Node.js 20+, bounded DEX method/field/class-data inventory.
-// This module validates DEX structures; it does not decode or execute instructions.
+// This module validates bounded DEX structures and instruction encodings; it never executes code.
 import { OrixError } from '../core/errors.mjs';
 import { decode_dex_instructions } from './dex-bytecode.mjs';
 
