@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { deflateRawSync } from 'node:zlib';
 import {
   parse_android_proto_xml,
 } from '../src/android/proto-xml.mjs';
@@ -118,24 +119,29 @@ function create_zip(entries) {
   for (const entry of entries) {
     const name = Buffer.from(entry.name, 'utf8');
     const contents = Buffer.isBuffer(entry.contents) ? entry.contents : Buffer.from(entry.contents ?? '');
+    const method = entry.method ?? 0;
+    const compressed = method === 8 ? deflateRawSync(contents) : contents;
+    if (method !== 0 && method !== 8) throw new TypeError('Unsupported test ZIP compression method');
     const checksum = crc32(contents);
-    const local = Buffer.alloc(30 + name.length + contents.length);
+    const local = Buffer.alloc(30 + name.length + compressed.length);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(method, 8);
     local.writeUInt32LE(checksum, 14);
-    local.writeUInt32LE(contents.length, 18);
+    local.writeUInt32LE(compressed.length, 18);
     local.writeUInt32LE(contents.length, 22);
     local.writeUInt16LE(name.length, 26);
     name.copy(local, 30);
-    contents.copy(local, 30 + name.length);
+    compressed.copy(local, 30 + name.length);
     locals.push(local);
 
     const central = Buffer.alloc(46 + name.length);
     central.writeUInt32LE(0x02014b50, 0);
     central.writeUInt16LE(0x0314, 4);
     central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(method, 10);
     central.writeUInt32LE(checksum, 16);
-    central.writeUInt32LE(contents.length, 20);
+    central.writeUInt32LE(compressed.length, 20);
     central.writeUInt32LE(contents.length, 24);
     central.writeUInt16LE(name.length, 28);
     central.writeUInt32LE(offset, 42);
@@ -338,4 +344,15 @@ test('protobuf XML decoder reports permission and component output truncation ex
   assert.deepEqual(parsed.permissions.map(item => item.name), ['android.permission.INTERNET']);
   assert.deepEqual(parsed.components.map(item => item.name), ['com.example.First']);
   assert.equal(parsed.output_truncated, true);
+});
+
+test('AAB raw-DEFLATE module manifests decode after bounded inflate and CRC validation', () => {
+  const report = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x0a, 0x00]) },
+    { name: 'base/manifest/AndroidManifest.xml', contents: proto_manifest(), method: 8 },
+  ]));
+  assert.equal(report.format, 'AAB');
+  assert.equal(report.manifests[0].status, 'decoded-proto-xml');
+  assert.equal(report.manifests[0].package_name, 'com.example.orix');
+  assert.deepEqual(report.manifests[0].sdk, { min_version: 23, target_version: 35, max_version: null });
 });
