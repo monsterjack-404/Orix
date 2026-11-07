@@ -127,30 +127,6 @@ jobs:
           path: artifacts/windows-helper-first/orix-windows-provider-launcher.exe
           if-no-files-found: error
           retention-days: 7
-      # Temporary maintainer-side repinning aid. This exposes only the reviewed
-      # helper bytes built from this exact source head, not runtime credentials.
-      - name: Emit candidate launcher digest and compressed bytes
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          $exe = Join-Path $env:GITHUB_WORKSPACE 'artifacts/windows-helper-first/orix-windows-provider-launcher.exe'
-          $bytes = [IO.File]::ReadAllBytes($exe)
-          $stream = [IO.MemoryStream]::new()
-          $gzip = [IO.Compression.GzipStream]::new($stream, [IO.Compression.CompressionLevel]::Optimal, $true)
-          $gzip.Write($bytes, 0, $bytes.Length)
-          $gzip.Dispose()
-          $compressed = $stream.ToArray()
-          $stream.Dispose()
-          $exeHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
-          $gzipHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($compressed)).ToLowerInvariant()
-          Write-Output "ORIX_LAUNCHER_SHA256=$exeHash"
-          Write-Output "ORIX_LAUNCHER_GZIP_SHA256=$gzipHash"
-          Write-Output 'ORIX_LAUNCHER_GZIP_BASE64_BEGIN'
-          $encoded = [Convert]::ToBase64String($compressed)
-          for ($offset = 0; $offset -lt $encoded.Length; $offset += 120) {
-            Write-Output $encoded.Substring($offset, [Math]::Min(120, $encoded.Length - $offset))
-          }
-          Write-Output 'ORIX_LAUNCHER_GZIP_BASE64_END'
       - name: Validate Windows launcher PE, CLR metadata and source-pinned package identity
         run: |
           node scripts/verify-windows-launcher.mjs artifacts/windows-helper-first/orix-windows-provider-launcher.exe
