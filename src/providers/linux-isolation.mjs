@@ -22,7 +22,7 @@ const MINIMUM_BUBBLEWRAP_VERSION = Object.freeze([0, 12, 0]);
 
 export function is_supported_bubblewrap_version(output) {
   if (typeof output !== 'string') return false;
-  const match = /^\s*bubblewrap\s+v?(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?\s*$/im.exec(output);
+  const match = /^\s*bubblewrap\s+v?(\d+)\.(\d+)\.(\d+)\s*$/im.exec(output);
   if (!match) return false;
   const version = match.slice(1, 4).map(Number);
   for (let index = 0; index < MINIMUM_BUBBLEWRAP_VERSION.length; index += 1) {
