@@ -182,7 +182,8 @@ export function parse_android_binary_xml(buffer, options = {}) {
       if (attributeStart < 20) fail('ORIX_AXML_ATTRIBUTE_START', 'Attribute array must begin after the complete attribute extension');
       const attributesOffset = cursor + 16 + attributeStart;
       need(buffer, attributesOffset, attributeCount * attributeSize, end, 'attribute array');
-      const attrs = {};
+      // Avoid the legacy __proto__ setter for untrusted manifest attribute names.
+      const attrs = Object.create(null);
       for (let i = 0; i < attributeCount; i++) {
         const at = attributesOffset + i * attributeSize;
         const ans = stringAt(strings, u32(buffer, at, end, 'attribute namespace'), 'attribute namespace');
