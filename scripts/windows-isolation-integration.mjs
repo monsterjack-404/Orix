@@ -465,7 +465,7 @@ async function main() {
       // The descendant writes only a private marker, so it does not need any
       // inherited stdio handles. Avoids coupling the Job Object containment test
       // to console-handle inheritance differences across supported Node/libuv builds.
-      'const child = spawn(process.execPath, ["-e", ' + JSON.stringify(descendantScript) + '], { detached: false, stdio: "inherit", windowsHide: false });',
+      'const child = spawn(process.execPath, ["-e", ' + JSON.stringify(descendantScript) + '], { detached: true, stdio: "inherit", windowsHide: false });',
       'child.once("error", error => { console.error("provider descendant spawn failed: " + JSON.stringify({ code: error.code, errno: error.errno, syscall: error.syscall, path: error.path, spawnargs: error.spawnargs, cwd: process.cwd(), execPath: process.execPath, execPathExists: fs.existsSync(process.execPath), execPathStat: (() => { try { const stat = fs.statSync(process.execPath); return { size: stat.size, isFile: stat.isFile() }; } catch (statError) { return { error: statError.code }; } })(), systemRoot: process.env.SystemRoot, node: process.version, libuv: process.versions.uv })); process.exit(89); });',
       'child.once("spawn", () => {',
       '  const deadline = Date.now() + 10000;',
