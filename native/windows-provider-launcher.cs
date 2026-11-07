@@ -220,6 +220,8 @@ namespace OrixWindowsSandbox {
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern IntPtr GetCurrentProcess();
     [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetProcessMitigationPolicy(IntPtr process, int policy, out uint buffer, UIntPtr length);
+    [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool DuplicateHandle(IntPtr sourceProcess, IntPtr sourceHandle, IntPtr targetProcess,
       out IntPtr targetHandle, uint desiredAccess, bool inheritHandle, uint options);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -663,6 +665,11 @@ namespace OrixWindowsSandbox {
       bool processAssignedToJob = false;
       try {
         Log("RUN:BEGIN");
+        uint helperChildPolicy;
+        if (GetProcessMitigationPolicy(GetCurrentProcess(), 13, out helperChildPolicy, new UIntPtr((uint)sizeof(uint))))
+          Log("RUN:HELPER_CHILD_PROCESS_POLICY_FLAGS=0x" + helperChildPolicy.ToString("X8"));
+        else
+          Log("RUN:HELPER_CHILD_PROCESS_POLICY_UNAVAILABLE=" + Marshal.GetLastWin32Error());
         if (!Directory.Exists(root) || !Directory.Exists(cwd))
           throw new DirectoryNotFoundException("Provider rootfs or working directory is missing");
         ValidateRootTrust(root);
@@ -739,6 +746,11 @@ namespace OrixWindowsSandbox {
         int returned;
         if (!GetTokenInformation(token, TokenIsAppContainer, tokenInfo, sizeof(int), out returned)) throw Win32("Verify AppContainer token");
         if (Marshal.ReadInt32(tokenInfo) != 1) throw new InvalidOperationException("Windows did not create the provider inside an AppContainer");
+        uint providerChildPolicy;
+        if (GetProcessMitigationPolicy(processInfo.hProcess, 13, out providerChildPolicy, new UIntPtr((uint)sizeof(uint))))
+          Log("RUN:PROVIDER_CHILD_PROCESS_POLICY_FLAGS=0x" + providerChildPolicy.ToString("X8"));
+        else
+          Log("RUN:PROVIDER_CHILD_PROCESS_POLICY_UNAVAILABLE=" + Marshal.GetLastWin32Error());
 
         Console.Error.WriteLine("ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64");
         Console.Error.WriteLine("ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED");

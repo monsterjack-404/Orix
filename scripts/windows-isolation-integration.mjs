@@ -72,6 +72,11 @@ async function main() {
     'Cleanup must not silently report success for an arbitrary SID lookup failure');
 
 
+  assert.ok(launcherSource.includes('GetProcessMitigationPolicy') &&
+    launcherSource.includes('RUN:HELPER_CHILD_PROCESS_POLICY_FLAGS') &&
+    launcherSource.includes('RUN:PROVIDER_CHILD_PROCESS_POLICY_FLAGS'),
+    'Native helper must report the effective child-process mitigation policy for the broker and AppContainer process');
+
   assert.ok(launcherSource.includes('DuplicateHandle(') &&
     launcherSource.includes('DUPLICATE_SAME_ACCESS'),
     'Native helper must duplicate standard handles instead of changing the host handle table');
