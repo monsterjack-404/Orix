@@ -76,13 +76,14 @@ test('macOS compiler cleanup kills and verifies a same-group descendant after th
   skip: process.platform === 'win32',
   timeout: 10_000,
 }, async () => {
+  const descendant_script = "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); process.stdout.write('descendant-ready');";
   const script = [
     "const { spawn } = require('node:child_process');",
-    "const descendant = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { stdio: 'ignore' });",
-    "descendant.once('spawn', () => process.stdout.write('descendant-ready'));",
+    "const descendant = spawn(process.execPath, ['-e', " + JSON.stringify(descendant_script) + "], { stdio: ['ignore', 'pipe', 'ignore'] });",
+    "descendant.stdout.once('data', () => process.stdout.write('descendant-ready'));",
     "process.on('SIGTERM', () => process.exit(0));",
     "setInterval(() => {}, 1000);",
-  ].join('\n');
+  ].join('\\n');
   const child = spawn(process.execPath, ['-e', script], {
     detached: true,
     stdio: ['ignore', 'pipe', 'ignore'],
