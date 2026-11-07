@@ -32,7 +32,7 @@ namespace OrixWindowsSandbox.Tests {
       string executable = Assembly.GetExecutingAssembly().Location;
       ProcessStartInfo start = new ProcessStartInfo();
       start.FileName = executable;
-      start.Arguments = "child " + Quote(markerPath);
+      start.Arguments = "child \\"" + markerPath + "\\\"";
       start.WorkingDirectory = Environment.CurrentDirectory;
       start.UseShellExecute = false;
       start.CreateNoWindow = true;
@@ -64,8 +64,6 @@ namespace OrixWindowsSandbox.Tests {
       // Object after this leader exits; never detach or kill the child here.
     }
 
-    private static string Quote(string value) {
-      return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-    }
+
   }
 }
