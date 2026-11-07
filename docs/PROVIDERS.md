@@ -64,7 +64,7 @@ process.stdout.write(JSON.stringify(manifest, null, 2));
 The reader:
 - Accepts only regular files and rejects symbolic links.
 - Defaults to a 64 KiB input limit (configurable up to 1 MiB).
-- Opens the file read-only and checks file identity before and after reading.
+- Opens the file read-only with `O_NOFOLLOW` where supported, then re-checks the opened handle against the path to detect a symlink/path swap during open; it also checks file identity before and after reading.
 - Rejects files that change while being read.
 - Requires valid UTF-8 and JSON.
 - Rejects unknown fields, accessors, sparse arrays, duplicate array values, and non-enumerable data.
@@ -127,7 +127,7 @@ This runner is a process-control boundary, **not an operating-system sandbox**. 
 
 ## 5. Rizin import adapter
 
-`analyze_rizin_imports` is the first concrete optional adapter. It probes the installed Rizin version, invokes the documented command-line JSON import command, normalizes import name/library/binding/type/ordinal/PLT fields, hashes the input, and rejects an input whose identity or metadata changes during the run.
+`analyze_rizin_imports` is the first concrete optional adapter. It probes the installed Rizin version, invokes the documented command-line JSON import command, normalizes import name/library/binding/type/ordinal/PLT fields, hashes the input, and rejects an input whose identity or metadata changes during the run. Before snapshot creation, it re-checks the original path after canonical resolution. It then opens the canonical input once (`O_NOFOLLOW` where supported), verifies the opened descriptor against the expected file identity and current path, and hashes and copies through that same descriptor. This prevents a later pathname replacement from redirecting the hash or snapshot to a different file; descriptor metadata is checked again after copying. Symbolic-link inputs are rejected.
 
 ~~~js
 import { analyze_rizin_imports } from '@orix/cli';
@@ -248,7 +248,7 @@ The static runner accepts two optional allowlists:
 - `allowed_executables`: absolute executable paths. If omitted, the requested `executable` is the single permitted path. If supplied, the selected executable must canonicalize to one regular, non-symlink entry.
 - `allowed_working_directories`: absolute directory roots. If omitted, the chosen `cwd` is its own permitted root (or the current process directory when `cwd` is omitted). If supplied, the canonical working directory must be equal to or beneath one of the listed regular, non-symlink roots.
 
-Allowlist arrays reject sparse entries, accessors and custom properties. The child does not inherit the full parent environment. Explicit overrides reject command-search and executable-loader keys including `PATH`, `PATHEXT`, `NODE_OPTIONS`, `NODE_PATH`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `PYTHONPATH`, `PERL5OPT` and `RUBYOPT`.
+Allowlist arrays reject sparse entries, accessors and custom properties. The child does not inherit the full parent environment. Explicit overrides reject command-search and executable-loader keys including `PATH`, `PATHEXT`, `NODE_OPTIONS`, `NODE_PATH`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, `PYTHONPATH`, `PERL5OPT` and `RUBYOPT`. Windows bootstrap variables (`SystemRoot`, `WINDIR`, `TEMP`, `TMP`, `COMSPEC`) cannot be overridden, and environment keys that differ only by letter case are rejected to avoid Windows case-insensitive collisions.
 
 Execution results include a versioned `orix.provider-execution.v1` receipt defined by [provider-execution.v1.schema.json](../schemas/provider-execution.v1.schema.json). Legacy result properties remain available for the current Rizin adapter. POSIX termination signals the detached process group; Windows currently terminates only the direct child.
 

@@ -1,11 +1,11 @@
 // JavaScript, src/providers/rizin.mjs, Node.js 20+, read-only Rizin import metadata adapter.
 
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { constants as FS_CONSTANTS, createWriteStream } from 'node:fs';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
-import { chmod, lstat, mkdtemp, realpath, rm, stat } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, open, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { OrixError } from '../core/errors.mjs';
 import { validate_provider_manifest } from './manifest.mjs';
@@ -80,6 +80,19 @@ async function file_snapshot(input_path, maximum_bytes) {
   const canonical_path = await realpath(input_path);
   const info = await stat(canonical_path);
   if (!info.isFile()) provider_error('ORIX_RIZIN_INPUT_NOT_REGULAR', 'Resolved Rizin input is not a regular file');
+  // Re-check after canonical resolution: a path swap between lstat and
+  // realpath must not redirect the initial snapshot to a different file.
+  let path_after_resolve;
+  try { path_after_resolve = await lstat(input_path); }
+  catch (error) {
+    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input path changed while it was being resolved', {
+      reason: error.code ?? 'filesystem-error',
+    });
+  }
+  if (path_after_resolve.isSymbolicLink() || !path_after_resolve.isFile() ||
+      !same_file_identity(link_info, info) || !same_file_identity(path_after_resolve, info)) {
+    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input identity changed while it was being resolved');
+  }
   if (!Number.isSafeInteger(info.size) || info.size < 0 || info.size > maximum_bytes) {
     provider_error('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin input exceeds the provider manifest byte limit', {
       size_bytes: info.size, maximum_bytes,
@@ -93,30 +106,9 @@ function same_file_identity(left, right) {
     left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 }
 
-async function sha256_file(file_path, maximum_bytes, signal) {
+async function copy_file_bounded(source, destination, maximum_bytes, signal, expected_info) {
+  let handle;
   const hash = createHash('sha256');
-  let bytes_read = 0;
-  try {
-    for await (const chunk of createReadStream(file_path, { signal })) {
-      bytes_read += chunk.length;
-      if (bytes_read > maximum_bytes) {
-        provider_error('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin input grew beyond its manifest byte limit while hashing', {
-          bytes_read, maximum_bytes,
-        });
-      }
-      hash.update(chunk);
-    }
-  } catch (error) {
-    if (error instanceof OrixError) throw error;
-    if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled while hashing its input');
-    provider_error('ORIX_RIZIN_INPUT_READ_FAILED', 'Rizin input could not be hashed before analysis', {
-      reason: error.code ?? 'read-error',
-    });
-  }
-  return { digest: hash.digest('hex'), bytes_read };
-}
-
-async function copy_file_bounded(source, destination, maximum_bytes, signal) {
   let bytes_copied = 0;
   const limiter = new Transform({
     transform(chunk, encoding, callback) {
@@ -128,16 +120,33 @@ async function copy_file_bounded(source, destination, maximum_bytes, signal) {
         }));
         return;
       }
+      hash.update(chunk);
       callback(null, chunk);
     },
   });
   try {
+    // Open once, then hash and snapshot through this descriptor. A later path
+    // replacement cannot redirect either read to a different inode.
+    handle = await open(source, FS_CONSTANTS.O_RDONLY | (FS_CONSTANTS.O_NOFOLLOW ?? 0));
+    const opened = await handle.stat();
+    if (!opened.isFile() || !same_file_identity(expected_info, opened)) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input identity changed before its private snapshot was opened');
+    }
+    const path_after_open = await lstat(source);
+    if (path_after_open.isSymbolicLink() || !path_after_open.isFile() ||
+        !same_file_identity(path_after_open, opened)) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input path changed while its private snapshot was opened');
+    }
     await pipeline(
-      createReadStream(source, { signal }),
+      handle.createReadStream({ autoClose: false, start: 0 }),
       limiter,
       createWriteStream(destination, { flags: 'wx', mode: 0o400 }),
       { signal },
     );
+    const after = await handle.stat();
+    if (!same_file_identity(opened, after)) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input changed while its private snapshot was created');
+    }
   } catch (error) {
     if (error instanceof OrixError) throw error;
     if (signal?.aborted) {
@@ -146,8 +155,57 @@ async function copy_file_bounded(source, destination, maximum_bytes, signal) {
     provider_error('ORIX_RIZIN_SNAPSHOT_CREATE_FAILED', 'A bounded private Rizin input snapshot could not be created', {
       reason: error.code ?? 'snapshot-error',
     });
+  } finally {
+    await handle?.close().catch(() => {});
   }
-  return bytes_copied;
+  return { bytes_copied, digest: hash.digest('hex') };
+}
+
+
+async function sha256_file(file_path, maximum_bytes, signal) {
+  let handle;
+  const hash = createHash('sha256');
+  let bytes_read = 0;
+  try {
+    // Verify the private snapshot through one no-follow descriptor. This
+    // avoids hashing a different file if its path is unexpectedly replaced.
+    handle = await open(file_path, FS_CONSTANTS.O_RDONLY | (FS_CONSTANTS.O_NOFOLLOW ?? 0));
+    const before = await handle.stat();
+    if (!before.isFile()) {
+      provider_error('ORIX_RIZIN_SNAPSHOT_INVALID', 'Rizin private snapshot is not a regular file');
+    }
+    if (!Number.isSafeInteger(before.size) || before.size < 0 || before.size > maximum_bytes) {
+      provider_error('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin private snapshot exceeds its manifest byte limit', {
+        size_bytes: before.size, maximum_bytes,
+      });
+    }
+    for await (const chunk of handle.createReadStream({ autoClose: false, signal })) {
+      bytes_read += chunk.length;
+      if (bytes_read > maximum_bytes) {
+        provider_error('ORIX_RIZIN_INPUT_TOO_LARGE', 'Rizin private snapshot grew beyond its manifest byte limit while being verified', {
+          bytes_read, maximum_bytes,
+        });
+      }
+      hash.update(chunk);
+    }
+    const after = await handle.stat();
+    if (!same_file_identity(before, after) || bytes_read !== before.size) {
+      provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin private snapshot changed while its digest was being verified', {
+        expected_size_bytes: before.size, actual_size_bytes: bytes_read,
+      });
+    }
+    return { digest: hash.digest('hex'), bytes_read };
+  } catch (error) {
+    if (error instanceof OrixError) throw error;
+    if (signal?.aborted) {
+      provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled while verifying its private input snapshot');
+    }
+    provider_error('ORIX_RIZIN_SNAPSHOT_VERIFY_FAILED', 'The private Rizin input snapshot could not be verified', {
+      reason: error.code ?? 'snapshot-verification-error',
+    });
+  } finally {
+    await handle?.close().catch(() => {});
+  }
 }
 
 function parse_engine_version(output) {
@@ -246,23 +304,18 @@ export async function analyze_rizin_imports(options = {}) {
   if (!Number.isSafeInteger(maximum_imports) || maximum_imports < 0 || maximum_imports > 1_000_000) {
     throw new TypeError('max_imports must be an integer between 0 and 1000000');
   }
-  if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled before input hashing');
-  const input_hash = await sha256_file(before.canonical_path, maximum_bytes, signal);
-  if (input_hash.bytes_read !== before.info.size) {
-    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input size changed while it was hashed', {
-      expected_size_bytes: before.info.size, actual_size_bytes: input_hash.bytes_read,
-    });
-  }
+  if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin analysis was cancelled before input snapshot creation');
   // Analyze a private copy so the external tool never receives the caller's original path.
-  // The copy is private to this process, read-only by default, and checked before and after use.
+  // Hashing and copying share one already-open descriptor to avoid path re-resolution.
   const snapshot_directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-'));
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
-    const snapshot_bytes = await copy_file_bounded(before.canonical_path, snapshot_path, maximum_bytes, signal);
-    if (snapshot_bytes !== input_hash.bytes_read) {
+    const copied_input = await copy_file_bounded(before.canonical_path, snapshot_path, maximum_bytes, signal, before.info);
+    const input_hash = { digest: copied_input.digest, bytes_read: copied_input.bytes_copied };
+    if (input_hash.bytes_read !== before.info.size) {
       provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input size changed while its private analysis snapshot was created', {
-        expected_size_bytes: input_hash.bytes_read, actual_size_bytes: snapshot_bytes,
+        expected_size_bytes: before.info.size, actual_size_bytes: input_hash.bytes_read,
       });
     }
     await chmod(snapshot_path, 0o400);
@@ -555,22 +608,17 @@ export async function analyze_rizin_functions(options = {}) {
 
   const analysis_started_at = Date.now();
   const before = await file_snapshot(input_path, manifest.limits.max_input_bytes);
-  if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin function analysis was cancelled before input hashing');
-  const input_hash = await sha256_file(before.canonical_path, manifest.limits.max_input_bytes, signal);
-  if (input_hash.bytes_read !== before.info.size) {
-    provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input size changed while it was hashed', {
-      expected_size_bytes: before.info.size, actual_size_bytes: input_hash.bytes_read,
-    });
-  }
+  if (signal?.aborted) provider_error('ORIX_RIZIN_CANCELLED', 'Rizin function analysis was cancelled before input snapshot creation');
 
   const snapshot_directory = await mkdtemp(path.join(tmpdir(), 'orix-rizin-functions-'));
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
   try {
-    const snapshot_bytes = await copy_file_bounded(before.canonical_path, snapshot_path, manifest.limits.max_input_bytes, signal);
-    if (snapshot_bytes !== input_hash.bytes_read) {
+    const copied_input = await copy_file_bounded(before.canonical_path, snapshot_path, manifest.limits.max_input_bytes, signal, before.info);
+    const input_hash = { digest: copied_input.digest, bytes_read: copied_input.bytes_copied };
+    if (input_hash.bytes_read !== before.info.size) {
       provider_error('ORIX_RIZIN_INPUT_CHANGED', 'Rizin input size changed while its private function-analysis snapshot was created', {
-        expected_size_bytes: input_hash.bytes_read, actual_size_bytes: snapshot_bytes,
+        expected_size_bytes: before.info.size, actual_size_bytes: input_hash.bytes_read,
       });
     }
     await chmod(snapshot_path, 0o400);

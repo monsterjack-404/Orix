@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -117,6 +117,37 @@ test('Rizin adapter rejects a missing or non-absolute input before launching a p
     analyze_rizin_imports({ input_path: 'relative.bin', executable: '/bin/false' }),
     /absolute filesystem path/,
   );
+});
+
+test('Rizin adapter rejects symlink input paths before creating a private snapshot', async () => {
+  await with_fixture(async ({ directory, input_path, executable, executable_args }) => {
+    const link_path = path.join(directory, 'input-link.bin');
+    await symlink(input_path, link_path, process.platform === 'win32' ? 'file' : undefined);
+    await assert.rejects(
+      analyze_rizin_imports({ input_path: link_path, executable, executable_args }),
+      error => error.code === 'ORIX_RIZIN_INPUT_NOT_REGULAR',
+    );
+  });
+});
+
+test('Rizin import adapter rejects original input replacement during provider execution', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({ replace_original_path: input_path });
+    await assert.rejects(
+      analyze_rizin_imports({ input_path, executable, executable_args }),
+      error => error.code === 'ORIX_RIZIN_INPUT_CHANGED',
+    );
+  });
+});
+
+test('Rizin function adapter rejects original input replacement during provider execution', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({ replace_original_path: input_path });
+    await assert.rejects(
+      analyze_rizin_functions({ input_path, executable, executable_args }),
+      error => error.code === 'ORIX_RIZIN_INPUT_CHANGED',
+    );
+  });
 });
 
 test('Rizin adapter validates import limits before launching the external process', async () => {
