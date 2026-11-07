@@ -159,6 +159,7 @@ test('AAPT2 protobuf XML decoder extracts bounded AAB manifest metadata', () => 
   assert.equal(parsed.package_name, 'com.example.orix');
   assert.equal(parsed.version_code, 42);
   assert.equal(parsed.version_name, '4.2.0');
+  assert.deepEqual(parsed.sdk, { min_version: 23, target_version: 35, max_version: null });
   assert.deepEqual(parsed.permissions, [{
     name: 'android.permission.INTERNET',
     maxSdkVersion: 34,
