@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -128,6 +128,24 @@ if (process.platform === 'linux') {
       assert.equal(report.parent.supervisor_not_group_or_other_writable, true);
       assert.equal(report.parent.cgroup_events_available, true);
       assert.equal(report.parent.cgroup_kill_available, true);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test('read-only preflight rejects symlinked delegated-parent components', { timeout: 10_000 }, async () => {
+    const fixture = await create_fake_delegated_host();
+    const mountpoint = path.join(fixture.root, 'cgroup2');
+    const alias = path.join(mountpoint, 'tenant-alias');
+    try {
+      await symlink(fixture.parent, alias, 'dir');
+      const report = await inspect_linux_cgroup_v2({
+        proc_root: path.join(fixture.root, 'proc'),
+        parent_path: alias,
+      });
+      assert.equal(report.ready, false);
+      assert.equal(report.parent.no_symlink_components, false);
+      assert.equal(report.reason, 'configured-parent-has-symlink-or-unsafe-path-component');
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
