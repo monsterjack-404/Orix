@@ -15,7 +15,8 @@
     "native_libraries",
     "signatures",
     "limitations",
-    "warnings"
+    "warnings",
+    "signing_block"
   ],
   "properties": {
     "schema_version": {
@@ -164,6 +165,13 @@
           "minimum": 0
         },
         "duplicate_manifest_paths": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "apk_signing_block_present": {
+          "type": "boolean"
+        },
+        "apk_signing_block_pairs": {
           "type": "integer",
           "minimum": 0
         }
@@ -480,7 +488,8 @@
               "invalid-local-header",
               "local-header-mismatch",
               "size-mismatch",
-              "rejected"
+              "rejected",
+              "duplicate-path"
             ]
           },
           "uncompressed_size": {
@@ -543,6 +552,38 @@
           "path_original_length": {
             "type": "integer",
             "minimum": 0
+          },
+          "proto_ids": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "field_ids": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "method_ids": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "class_data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "class_data_summary": {
+            "type": "object",
+            "additionalProperties": true
           }
         },
         "additionalProperties": true
@@ -707,6 +748,107 @@
         },
         "additionalProperties": false
       }
+    },
+    "signing_block": {
+      "type": "object",
+      "required": [
+        "status",
+        "offset",
+        "size_bytes",
+        "pair_count",
+        "schemes",
+        "unknown_ids",
+        "duplicate_ids"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "present",
+            "absent",
+            "malformed",
+            "not-applicable"
+          ]
+        },
+        "offset": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pair_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "schemes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "value_size"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^0x[a-f0-9]{8}$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "value_size": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "unknown_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^0x[a-f0-9]{8}$"
+          }
+        },
+        "duplicate_ids": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "count"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^0x[a-f0-9]{8}$"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 2
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
