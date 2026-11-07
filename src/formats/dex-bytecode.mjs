@@ -81,7 +81,13 @@ const FORMAT_UNITS = Object.freeze({
 function signed8(value) { return (value << 24) >> 24; }
 function signed16(value) { return (value << 16) >> 16; }
 function signed32(value) { return value | 0; }
-function versionNumber(version) { return Number.parseInt(version, 10); }
+const SUPPORTED_DEX_VERSIONS = new Set(['035', '037', '038', '039', '040']);
+function versionNumber(version) {
+  if (typeof version !== 'string' || !/^\\d{3}$/.test(version) || !SUPPORTED_DEX_VERSIONS.has(version)) {
+    throw new TypeError('DEX version must be one of 035, 037, 038, 039 or 040');
+  }
+  return Number(version);
+}
 function atUnit(buffer, base, unit) { return buffer.readUInt16LE(base + unit * 2); }
 function checkRegister(index, width, registersSize, pc) {
   if (!Number.isSafeInteger(index) || index < 0 || index + width > registersSize) {
