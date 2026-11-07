@@ -395,7 +395,7 @@ test('APK manifest decoder rejects mismatched end-element names', () => {
   assert.notEqual(end_element, -1);
   manifest.writeUInt32LE(0xffffffff, end_element + 20);
   const report = analyze_android_package(create_zip([{ name: 'AndroidManifest.xml', contents: manifest }]));
-  assert.equal(report.manifests[0].status, 'malformed-proto-xml');
+  assert.equal(report.manifests[0].status, 'malformed-binary-xml');
   assert.equal(report.manifests[0].error.code, 'ORIX_AXML_MISMATCHED_END_TAG');
 });
 
@@ -405,14 +405,14 @@ test('APK manifest decoder rejects attribute arrays overlapping the element exte
   assert.notEqual(start_element, -1);
   manifest.writeUInt16LE(0, start_element + 24);
   const report = analyze_android_package(create_zip([{ name: 'AndroidManifest.xml', contents: manifest }]));
-  assert.equal(report.manifests[0].status, 'malformed-proto-xml');
+  assert.equal(report.manifests[0].status, 'malformed-binary-xml');
   assert.equal(report.manifests[0].error.code, 'ORIX_AXML_ATTRIBUTE_START');
 });
 
 test('APK manifest decoder rejects trailing bytes beyond the root chunk', () => {
   const manifest = Buffer.concat([binary_manifest(), Buffer.from([0])]);
   const report = analyze_android_package(create_zip([{ name: 'AndroidManifest.xml', contents: manifest }]));
-  assert.equal(report.manifests[0].status, 'malformed-proto-xml');
+  assert.equal(report.manifests[0].status, 'unknown-or-invalid-header');
 });
 
 test('AAB inventory routes module manifests through protobuf decoding, never APK binary XML', () => {
