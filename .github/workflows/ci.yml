@@ -10,12 +10,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: orix-ci-${{ github.workflow }}-${{ github.ref }}
+  group: orix-ci-\${{ github.workflow }}-\${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
-    name: Node.js ${{ matrix.node-version }}
+    name: Node.js \${{ matrix.node-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -24,10 +24,34 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          ref: \${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact workflow checkout
+        env:
+          EXPECTED_SHA: \${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Expected source SHA is missing or malformed: $EXPECTED_SHA"
+            exit 1
+          fi
+          actual="$(git rev-parse HEAD)"
+          if [[ "$actual" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Exact-head mismatch: expected $EXPECTED_SHA but checked out $actual"
+            exit 1
+          fi
+          {
+            echo "### Exact-head verification"
+            echo "- Event: \`$GITHUB_EVENT_NAME\`"
+            echo "- Expected SHA: \`$EXPECTED_SHA\`"
+            echo "- Checked-out SHA: \`$actual\`"
+            echo "- Result: **PASS**"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: \${{ matrix.node-version }}
           cache: npm
       - name: Install locked dependencies
         run: npm ci
@@ -42,14 +66,57 @@ jobs:
   linux-provider-isolation:
     name: Linux Bubblewrap hostile-process isolation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@v7
-      - name: Install Bubblewrap
+        with:
+          ref: \${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact workflow checkout
+        env:
+          EXPECTED_SHA: \${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
         run: |
+          if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Expected source SHA is missing or malformed: $EXPECTED_SHA"
+            exit 1
+          fi
+          actual="$(git rev-parse HEAD)"
+          if [[ "$actual" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Exact-head mismatch: expected $EXPECTED_SHA but checked out $actual"
+            exit 1
+          fi
+          {
+            echo "### Exact-head verification"
+            echo "- Event: \`$GITHUB_EVENT_NAME\`"
+            echo "- Expected SHA: \`$EXPECTED_SHA\`"
+            echo "- Checked-out SHA: \`$actual\`"
+            echo "- Result: **PASS**"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build patched Bubblewrap 0.13.1 from checksum-verified upstream source
+        env:
+          BUBBLEWRAP_VERSION: 0.13.1
+          BUBBLEWRAP_SHA256: 0e85c8702248b8dd64144f594147553650cdd0e4c951690345faace79c217c4d
+        run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap
+          sudo apt-get install --yes build-essential meson ninja-build pkg-config libcap-dev curl xz-utils
+          archive="$RUNNER_TEMP/bubblewrap-\${BUBBLEWRAP_VERSION}.tar.xz"
+          source_dir="$RUNNER_TEMP/bubblewrap-\${BUBBLEWRAP_VERSION}"
+          build_dir="$RUNNER_TEMP/bubblewrap-build"
+          curl --fail --location --retry 3 --retry-delay 1 \
+            --proto '=https' --proto-redir '=https' \
+            --connect-timeout 20 --max-time 180 \
+            --output "$archive" \
+            "https://github.com/containers/bubblewrap/releases/download/v\${BUBBLEWRAP_VERSION}/bubblewrap-\${BUBBLEWRAP_VERSION}.tar.xz"
+          printf '%s  %s\n' "$BUBBLEWRAP_SHA256" "$archive" | sha256sum --check --strict -
+          mkdir -p "$source_dir"
+          tar -xJf "$archive" -C "$source_dir" --strip-components=1
+          meson setup "$build_dir" "$source_dir" --prefix=/usr/local --buildtype=release
+          meson compile -C "$build_dir"
+          sudo meson install -C "$build_dir"
+          test "$(/usr/local/bin/bwrap --version)" = "bubblewrap \${BUBBLEWRAP_VERSION}"
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
@@ -59,21 +126,22 @@ jobs:
       - name: Allow Bubblewrap user namespaces under Ubuntu AppArmor
         run: |
           if [ -r /sys/module/apparmor/parameters/enabled ] && grep -q '^Y' /sys/module/apparmor/parameters/enabled; then
-            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/local/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
             sudo apparmor_parser -r /etc/apparmor.d/bwrap || sudo apparmor_parser -a /etc/apparmor.d/bwrap
           fi
       - name: Diagnose cgroup v2 delegation (read-only)
         run: node scripts/linux-cgroup-v2-preflight.mjs
       - name: Verify Bubblewrap availability
         run: |
-          test -x /usr/bin/bwrap
-          /usr/bin/bwrap --version
+          test -x /usr/local/bin/bwrap
+          test "$(/usr/local/bin/bwrap --version)" = "bubblewrap 0.13.1"
+          /usr/local/bin/bwrap --version
       - name: Run hostile-process isolation checks
         run: node scripts/linux-isolation-integration.mjs
 
   platform-smoke:
-    name: Platform smoke / ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Platform smoke / \${{ matrix.os }}
+    runs-on: \${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -82,6 +150,30 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          ref: \${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact workflow checkout
+        env:
+          EXPECTED_SHA: \${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Expected source SHA is missing or malformed: $EXPECTED_SHA"
+            exit 1
+          fi
+          actual="$(git rev-parse HEAD)"
+          if [[ "$actual" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Exact-head mismatch: expected $EXPECTED_SHA but checked out $actual"
+            exit 1
+          fi
+          {
+            echo "### Exact-head verification"
+            echo "- Event: \`$GITHUB_EVENT_NAME\`"
+            echo "- Expected SHA: \`$EXPECTED_SHA\`"
+            echo "- Checked-out SHA: \`$actual\`"
+            echo "- Result: **PASS**"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
