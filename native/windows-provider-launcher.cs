@@ -75,9 +75,12 @@ namespace OrixWindowsSandbox {
     }
 
     const uint CREATE_SUSPENDED = 0x00000004;
+    const uint CREATE_NEW_CONSOLE = 0x00000010;
     const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
     const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
     const uint STARTF_USESTDHANDLES = 0x00000100;
+    const uint STARTF_USESHOWWINDOW = 0x00000001;
+    const short SW_HIDE = 0;
     const uint DUPLICATE_SAME_ACCESS = 0x00000002;
     const uint FILE_READ_ATTRIBUTES = 0x00000080;
     const uint FILE_SHARE_READ = 0x00000001;
@@ -807,9 +810,15 @@ namespace OrixWindowsSandbox {
           childProcessPolicy, (IntPtr)sizeof(uint), IntPtr.Zero, IntPtr.Zero))
           throw Win32("Allow Job-contained AppContainer descendants");
 
+        // Console-based AppContainer runtimes need a real console host for nested
+        // CreateProcess calls. Give the provider a fresh, hidden console rather than
+        // inheriting a host's possibly isolated console context. Keep lpDesktop null:
+        // no private desktop/window-station is created or selected by ORIX.
         STARTUPINFOEX startup = new STARTUPINFOEX();
         startup.StartupInfo.cb = (uint)Marshal.SizeOf(typeof(STARTUPINFOEX));
-        startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+        startup.StartupInfo.lpDesktop = null;
+        startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+        startup.StartupInfo.wShowWindow = SW_HIDE;
         startup.StartupInfo.hStdInput = stdin;
         startup.StartupInfo.hStdOutput = stdout;
         startup.StartupInfo.hStdError = stderr;
@@ -818,7 +827,7 @@ namespace OrixWindowsSandbox {
         string commandLine = Quote(executable) + (arguments.Length == 0 ? "" : " " + String.Join(" ", arguments.Select(Quote)));
         environmentBlock = BuildEnvironment(environment);
         if (!CreateProcessW(executable, new StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero, true,
-          CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+          CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_NEW_CONSOLE,
           environmentBlock, cwd, ref startup, out processInfo)) throw Win32("Create AppContainer provider process");
         processCreated = true;
         Log("RUN:PROCESS_CREATED_SUSPENDED");
@@ -839,6 +848,7 @@ namespace OrixWindowsSandbox {
 
         Console.Error.WriteLine("ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64");
         Console.Error.WriteLine("ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED");
+        Console.Error.WriteLine("ORIX_WINDOWS_CONSOLE=NEW_HIDDEN;DESKTOP=INHERITED");
         Log("RUN:APP_CONTAINER_VERIFIED");
         if (ResumeThread(processInfo.hThread) == 0xFFFFFFFF) throw Win32("Resume AppContainer provider");
         Log("RUN:PROCESS_RESUMED");
