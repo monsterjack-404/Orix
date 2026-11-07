@@ -96,6 +96,107 @@ function inspect_manifest(buffer, entry, central_directory_offset, options = {})
   }
 }
 
+
+const APK_SIGNING_BLOCK_MAGIC = Buffer.from('APK Sig Block 42', 'ascii');
+const APK_SIGNING_IDS = new Map([
+  [0x7109871a, 'APK Signature Scheme v2'],
+  [0xf05368c0, 'APK Signature Scheme v3'],
+  [0x1b93ad61, 'APK Signature Scheme v3.1'],
+  [0x42726577, 'Verity padding'],
+]);
+
+function inspect_apk_signing_block(buffer, central_directory_offset, options = {}) {
+  const max_bytes = options.max_signing_block_bytes ?? 64 * 1024 * 1024;
+  const max_pairs = options.max_signing_block_pairs ?? 4096;
+  if (!Number.isSafeInteger(max_bytes) || max_bytes < 32 || max_bytes > 536_870_912) {
+    throw new TypeError('max_signing_block_bytes must be between 32 and 536870912');
+  }
+  if (!Number.isSafeInteger(max_pairs) || max_pairs < 1 || max_pairs > 65_536) {
+    throw new TypeError('max_signing_block_pairs must be between 1 and 65536');
+  }
+  const absent = { status: 'absent', offset: null, size_bytes: 0, pair_count: 0, schemes: [], unknown_ids: [], duplicate_ids: [] };
+  if (!Number.isSafeInteger(central_directory_offset) || central_directory_offset < 24 ||
+      central_directory_offset > buffer.length || !buffer.subarray(central_directory_offset - 16, central_directory_offset).equals(APK_SIGNING_BLOCK_MAGIC)) {
+    return absent;
+  }
+  const malformed = (code, message, details = {}) => ({
+    ...absent,
+    status: 'malformed',
+    error: { code, message, ...details },
+  });
+  try {
+    const block_size_big = buffer.readBigUInt64LE(central_directory_offset - 24);
+    if (block_size_big < 24n || block_size_big > BigInt(Number.MAX_SAFE_INTEGER)) {
+      return malformed('ORIX_APK_SIGNING_BLOCK_SIZE', 'APK signing block declares an invalid or unsafe size');
+    }
+    const total_size = Number(block_size_big) + 8;
+    if (total_size > max_bytes) {
+      return malformed('ORIX_APK_SIGNING_BLOCK_LIMIT', 'APK signing block exceeds the configured size limit', { size_bytes: total_size, max_bytes });
+    }
+    if (total_size > central_directory_offset) {
+      return malformed('ORIX_APK_SIGNING_BLOCK_RANGE', 'APK signing block starts before the beginning of the file', { size_bytes: total_size, central_directory_offset });
+    }
+    const start = central_directory_offset - total_size;
+    const header_size = buffer.readBigUInt64LE(start);
+    if (header_size !== block_size_big) {
+      return malformed('ORIX_APK_SIGNING_BLOCK_SIZE_MISMATCH', 'APK signing block header and footer sizes do not match', {
+        header_size: String(header_size), footer_size: String(block_size_big),
+      });
+    }
+    const pairs_end = central_directory_offset - 24;
+    let cursor = start + 8;
+    const counts = new Map();
+    const schemes = [];
+    const unknown_ids = [];
+    let pair_count = 0;
+    while (cursor < pairs_end) {
+      if (pair_count >= max_pairs) {
+        return malformed('ORIX_APK_SIGNING_BLOCK_PAIR_LIMIT', 'APK signing block pair count exceeds the configured limit', { max_pairs });
+      }
+      if (pairs_end - cursor < 8) {
+        return malformed('ORIX_APK_SIGNING_BLOCK_PAIR_TRUNCATED', 'APK signing block contains a truncated pair length field', { offset: cursor });
+      }
+      const pair_length_big = buffer.readBigUInt64LE(cursor);
+      if (pair_length_big < 4n || pair_length_big > BigInt(Number.MAX_SAFE_INTEGER)) {
+        return malformed('ORIX_APK_SIGNING_BLOCK_PAIR_LENGTH', 'APK signing block contains an invalid pair length', { offset: cursor, pair_length: String(pair_length_big) });
+      }
+      const pair_length = Number(pair_length_big);
+      if (pair_length > pairs_end - cursor - 8) {
+        return malformed('ORIX_APK_SIGNING_BLOCK_PAIR_RANGE', 'APK signing block pair extends beyond the pair section', { offset: cursor, pair_length });
+      }
+      const id = buffer.readUInt32LE(cursor + 8);
+      const value_size = pair_length - 4;
+      const seen = (counts.get(id) ?? 0) + 1;
+      counts.set(id, seen);
+      const known = APK_SIGNING_IDS.get(id);
+      if (known) {
+        if (seen === 1) schemes.push({ id: '0x' + id.toString(16).padStart(8, '0'), name: known, value_size });
+      } else if (seen === 1) {
+        unknown_ids.push('0x' + id.toString(16).padStart(8, '0'));
+      }
+      pair_count += 1;
+      cursor += 8 + pair_length;
+    }
+    if (cursor !== pairs_end) {
+      return malformed('ORIX_APK_SIGNING_BLOCK_PAIR_ALIGNMENT', 'APK signing block pair sequence does not end at its declared boundary', { cursor, pairs_end });
+    }
+    const duplicate_ids = [...counts].filter(([, count]) => count > 1)
+      .map(([id, count]) => ({ id: '0x' + id.toString(16).padStart(8, '0'), count }));
+    return {
+      status: 'present',
+      offset: start,
+      size_bytes: total_size,
+      pair_count,
+      schemes,
+      unknown_ids,
+      duplicate_ids,
+      notes: ['Signing-block container and ID-value pair boundaries were inspected; cryptographic signature, content digest, certificate chain and publisher identity were not verified.'],
+    };
+  } catch (error) {
+    return malformed('ORIX_APK_SIGNING_BLOCK_READ', 'APK signing block could not be read safely', { cause_code: error.code ?? null });
+  }
+}
+
 function is_v1_signature(name) {
   if (!name.startsWith('META-INF/')) return false;
   const base = name.slice(name.lastIndexOf('/') + 1).toUpperCase();
@@ -120,12 +221,16 @@ export function analyze_android_package(buffer, options = {}) {
   const max_dex_output_items = options.max_dex_output_items ?? 1000;
   const max_archive_entries = options.max_archive_entries ?? 1000;
   const max_archive_entry_path_length = options.max_archive_entry_path_length ?? 512;
+  const max_signing_block_bytes = options.max_signing_block_bytes ?? 64 * 1024 * 1024;
+  const max_signing_block_pairs = options.max_signing_block_pairs ?? 4096;
   if (!Number.isSafeInteger(max_dex_entries) || max_dex_entries < 1 || max_dex_entries > 256) throw new TypeError('max_dex_entries must be between 1 and 256');
   if (!Number.isSafeInteger(max_dex_entry_bytes) || max_dex_entry_bytes < 112 || max_dex_entry_bytes > 536_870_912) throw new TypeError('max_dex_entry_bytes must be between 112 and 536870912');
   if (!Number.isSafeInteger(max_dex_total_bytes) || max_dex_total_bytes < 112 || max_dex_total_bytes > 1_073_741_824) throw new TypeError('max_dex_total_bytes must be between 112 and 1073741824');
   if (!Number.isSafeInteger(max_dex_output_items) || max_dex_output_items < 1 || max_dex_output_items > 10_000) throw new TypeError('max_dex_output_items must be between 1 and 10000');
   if (!Number.isSafeInteger(max_archive_entries) || max_archive_entries < 1 || max_archive_entries > 50_000) throw new TypeError('max_archive_entries must be between 1 and 50000');
   if (!Number.isSafeInteger(max_archive_entry_path_length) || max_archive_entry_path_length < 16 || max_archive_entry_path_length > 4096) throw new TypeError('max_archive_entry_path_length must be between 16 and 4096');
+  if (!Number.isSafeInteger(max_signing_block_bytes) || max_signing_block_bytes < 32 || max_signing_block_bytes > 536_870_912) throw new TypeError('max_signing_block_bytes must be between 32 and 536870912');
+  if (!Number.isSafeInteger(max_signing_block_pairs) || max_signing_block_pairs < 1 || max_signing_block_pairs > 65_536) throw new TypeError('max_signing_block_pairs must be between 1 and 65536');
   const archive = parse_zip(buffer, options.zip ?? {});
   const entries = archive.entries.filter(entry => !entry.unsafe_path && !entry.is_symlink);
   const entry_name_counts = new Map();
@@ -159,6 +264,9 @@ export function analyze_android_package(buffer, options = {}) {
   const native_libraries = entries.filter(entry => (entry.name.startsWith('lib/') || entry.name.includes('/lib/')) && entry.name.endsWith('.so'));
   const reported_native_libraries = native_libraries.slice(0, max_archive_entries);
   const signatures = entries.filter(entry => is_v1_signature(entry.name));
+  const signing_block = is_apk
+    ? inspect_apk_signing_block(buffer, archive.archive.central_directory_offset, { max_signing_block_bytes, max_signing_block_pairs })
+    : { status: 'not-applicable', offset: null, size_bytes: 0, pair_count: 0, schemes: [], unknown_ids: [], duplicate_ids: [] };
   const reported_signatures = signatures.slice(0, max_archive_entries);
   let dex_bytes_parsed = 0;
   const reported_dex_entries = dex_entries.slice(0, max_archive_entries);
@@ -237,6 +345,8 @@ export function analyze_android_package(buffer, options = {}) {
       v1_signature_files: signatures.length,
       v1_signature_files_reported: reported_signatures.length,
       v1_signature_files_omitted: Math.max(0, signatures.length - reported_signatures.length),
+      apk_signing_block_present: signing_block.status === 'present',
+      apk_signing_block_pairs: signing_block.pair_count,
     },
     manifests: reported_manifest_entries.map(entry => {
       const path = entry.name.slice(0, max_archive_entry_path_length);
@@ -259,15 +369,17 @@ export function analyze_android_package(buffer, options = {}) {
       uncompressed_size: entry.uncompressed_size,
     })),
     signatures: reported_signatures.map(entry => entry.name.slice(0, max_archive_entry_path_length)),
+    signing_block,
     limitations: [
       'ZIP entries are inventoried without extraction or decompression; DEX metadata is inspected only when the entry is stored, unencrypted and its local header matches the central directory.',
       'APK binary XML manifests are decoded only from stored, unencrypted entries whose local ZIP header and CRC match, within explicit chunk/string/element/attribute limits; compressed/encrypted manifests are inventoried only. AAB protobuf manifests and resource-reference resolution are not decoded.',
-      'DEX string, type and class-definition metadata is decoded within explicit bounds; method/field table contents, bytecode, resources and native library contents are not decoded.',
-      'APK/AAB signing blocks, certificate chains, signatures and publisher identity are not verified; v1 signature filenames are inventory hints only.',
+      'DEX strings (including Modified UTF-8), type/field/method/prototype identifiers, class-data indexes and bounded code-item structure are inspected; instruction opcodes, operands, control flow, annotations, debug programs and decompilation are not decoded.',
+      'For APK files, the APK Signing Block container and ID-value pair boundaries are inventoried (v2/v3/v3.1 and unknown IDs); cryptographic signatures, content digests, certificate chains, v1 JAR signatures and publisher identity are not verified.',
       'This is offline file analysis. No Android device, adb command, app installation, emulator or application code is accessed or executed.',
     ],
     warnings: [
       ...dex.filter(item => item.status !== 'metadata-parsed').map(item => ({ path: item.path, reason: item.status })),
+      ...(signing_block.status === 'malformed' ? [{ path: 'APK Signing Block', reason: signing_block.error.code }] : []),
       ...reported_manifest_entries.filter(entry => duplicate_manifest_paths.has(entry.name)).map(entry => ({
         path: entry.name.slice(0, max_archive_entry_path_length), reason: 'duplicate-path',
       })),
@@ -376,6 +488,7 @@ export function render_android_package_markdown(report) {
     '- **Native libraries:** ' + report.summary.native_libraries + ' (' + report.summary.native_libraries_reported + ' reported)',
     '- **Manifest entries:** ' + report.summary.manifest_entries + ' (' + report.summary.manifest_entries_reported + ' reported)',
     '- **V1 signature files:** ' + report.summary.v1_signature_files + ' (' + report.summary.v1_signature_files_reported + ' reported)',
+    '- **APK Signing Block:** ' + markdown_cell(report.signing_block.status) + (report.signing_block.status === 'present' ? ' (' + report.signing_block.pair_count + ' pairs)' : ''),
     '',
     '## Archive entries',
     '',
@@ -416,6 +529,14 @@ export function render_android_package_markdown(report) {
     const entry_path = item.path + (item.path_truncated ? '… (' + item.path_original_length + ' chars total)' : '');
     lines.push('- ' + markdown_cell(entry_path) + ' (' + item.uncompressed_size + ' bytes)');
   }
+  lines.push('', '## APK signing-block inventory', '');
+  if (report.signing_block.status === 'present') {
+    lines.push('- Offset: ' + report.signing_block.offset);
+    lines.push('- Size: ' + report.signing_block.size_bytes + ' bytes');
+    lines.push('- Signature-scheme IDs: ' + (report.signing_block.schemes.length ? report.signing_block.schemes.map(item => markdown_cell(item.name + ' (' + item.id + ')')).join(', ') : 'none recognized'));
+    lines.push('- Unknown IDs: ' + (report.signing_block.unknown_ids.length ? report.signing_block.unknown_ids.join(', ') : 'none'));
+    if (report.signing_block.duplicate_ids.length) lines.push('- Duplicate IDs: ' + report.signing_block.duplicate_ids.map(item => item.id + ' ×' + item.count).join(', '));
+  } else lines.push('Signing-block status: ' + markdown_cell(report.signing_block.status));
   lines.push('', '## V1 signature filename hints', '');
   if (report.signatures.length === 0) lines.push('No v1 signature filenames were reported.');
   for (const name of report.signatures) lines.push('- ' + markdown_cell(name));
