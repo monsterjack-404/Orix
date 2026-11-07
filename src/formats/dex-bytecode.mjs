@@ -174,7 +174,7 @@ function readOperands(buffer, base, pc, spec) {
     case '45cc': {
       const argumentWords = a4;
       if (argumentWords > 5) fail('ORIX_DEX_BYTECODE_ARGUMENT_COUNT', 'DEX 35c/45cc instruction argument count exceeds five registers', { pc, argument_words: argumentWords });
-      const nibbleRegs = [second & 0x0f, (second >>> 4) & 0x0f, (second >>> 8) & 0x0f, second >>> 12, (first >>> 12) & 0x0f];
+      const nibbleRegs = [third & 0x0f, (third >>> 4) & 0x0f, (third >>> 8) & 0x0f, third >>> 12, (first >>> 12) & 0x0f];
       out.registers = nibbleRegs.slice(0, argumentWords);
       out.argument_words = argumentWords;
       out.reference = { index: third };
@@ -216,17 +216,17 @@ function validateRegisters(opcode, operands, registersSize, pc, format) {
   const wide = new Set();
   const addWide = index => wide.add(index);
   if (format === '12x') {
-    if ([0x04, 0x7d, 0x7e, 0x86, 0x8b].includes(opcode)) { addWide(0); addWide(1); }
-    if (opcode === 0x81 || opcode === 0x86 || opcode === 0x8b) addWide(0);
+    if ([0x04, 0x7d, 0x7e, 0x80, 0x86, 0x8b].includes(opcode)) { addWide(0); addWide(1); }
+    if ([0x81, 0x83, 0x86, 0x88, 0x89, 0x8b].includes(opcode)) addWide(0);
     if ([0x84, 0x85, 0x86, 0x8a, 0x8b, 0x8c].includes(opcode)) addWide(1);
-    if (opcode >= 0xbb && opcode <= 0xc2) { addWide(0); addWide(1); }
-    if (opcode >= 0xc3 && opcode <= 0xc5) addWide(0);
+    if (opcode >= 0xbb && opcode <= 0xc5) { addWide(0); addWide(1); }
     if (opcode >= 0xcb && opcode <= 0xcf) { addWide(0); addWide(1); }
   } else if (format === '22x' && opcode === 0x05) { addWide(0); addWide(1); }
   else if (format === '32x' && opcode === 0x06) { addWide(0); addWide(1); }
   else if (format === '11x' && (opcode === 0x0b || opcode === 0x10)) addWide(0);
   else if (['21s', '21h', '21c', '31i'].includes(format) && [0x16, 0x17, 0x18, 0x19].includes(opcode)) addWide(0);
   else if (format === '22c' && (opcode === 0x53 || opcode === 0x5a)) addWide(0);
+  else if (format === '51l') { addWide(0); }
   else if (format === '23x') {
     if (opcode === 0x45 || opcode === 0x4c) addWide(0);
     if (opcode === 0x2f || opcode === 0x30 || opcode === 0x31) { addWide(1); addWide(2); }
