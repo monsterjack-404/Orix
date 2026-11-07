@@ -8,7 +8,7 @@ import os_host from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
 import { prepare_windows_provider_isolation } from '../src/providers/windows-isolation.mjs';
-import { decodeWindowsProviderLauncher, WINDOWS_PROVIDER_LAUNCHER_SHA256 } from '../src/providers/windows-launcher-integrity.mjs';
+import { decodeWindowsProviderLauncher, decodeWindowsProviderLauncherBase64, WINDOWS_PROVIDER_LAUNCHER_SHA256 } from '../src/providers/windows-launcher-integrity.mjs';
 
 function manifest() {
   return {
@@ -100,7 +100,14 @@ async function main() {
     'Windows runtime must load the prebuilt source-pinned launcher');
   assert.match(isolationSource, /RUN:TEARDOWN_INCOMPLETE[\s\S]*?ORIX_PROVIDER_WINDOWS_TEARDOWN_UNVERIFIED/,
     'Host cleanup must refuse to traverse AppContainer state after unverified provider teardown');
-  const packagedPayload = await readFile(new URL('../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
+  const packagedPayloadParts = [
+    new URL('../native/bin/win32-anycpu/launcher-payload-01.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-02.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-03.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-04.b64', import.meta.url),
+  ];
+  const packagedPayloadBase64 = (await Promise.all(packagedPayloadParts.map(url => readFile(url, 'utf8')))).join('');
+  const packagedPayload = decodeWindowsProviderLauncherBase64(packagedPayloadBase64);
   const packagedLauncher = decodeWindowsProviderLauncher(packagedPayload);
   assert.equal(createHash('sha256').update(packagedLauncher).digest('hex'), WINDOWS_PROVIDER_LAUNCHER_SHA256,
     'Packaged Windows launcher does not match its source-pinned digest');
