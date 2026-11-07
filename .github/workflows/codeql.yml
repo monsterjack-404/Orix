@@ -44,10 +44,10 @@ jobs:
           fi
           {
             echo "### Exact-head verification"
-            echo "- Event: `$GITHUB_EVENT_NAME`"
-            echo "- Expected SHA: `$EXPECTED_SHA`"
-            echo "- Checked-out SHA: `$actual`"
-            echo "- Result: **PASS**"
+            printf '- Event: %s\n' "$GITHUB_EVENT_NAME"
+            printf '- Expected SHA: %s\n' "$EXPECTED_SHA"
+            printf '- Checked-out SHA: %s\n' "$actual"
+            printf '- Result: PASS\n'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Initialize CodeQL
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4 (Node 24)
