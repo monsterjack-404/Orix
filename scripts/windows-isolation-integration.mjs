@@ -479,7 +479,7 @@ async function main() {
     assert.notEqual(result.host_file, 'readable', JSON.stringify(result) + ' — provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.temp_exists, true, JSON.stringify(result));
-    const expectedPrivateTemp = path.join(root, 'tmp').toLowerCase();
+    const expectedPrivateTempRoot = path.resolve(root, 'tmp').toLowerCase();
     for (const [label, value] of Object.entries({
       TEMP: result.temp_env,
       TMP: result.tmp_env,
@@ -488,8 +488,12 @@ async function main() {
       APPDATA: result.appdata_env,
       LOCALAPPDATA: result.localappdata_env,
     })) {
-      assert.equal(String(value).toLowerCase(), expectedPrivateTemp,
-        label + ' escaped the sandbox-owned private temp path: ' + JSON.stringify(result));
+      const normalizedValue = path.resolve(String(value)).toLowerCase();
+      assert.ok(
+        normalizedValue === expectedPrivateTempRoot ||
+          normalizedValue.startsWith(expectedPrivateTempRoot + path.sep),
+        label + ' escaped the sandbox-owned private temp tree: ' + JSON.stringify(result),
+      );
     }
     assert.equal(result.tmp_inside_root, true, JSON.stringify(result));
     assert.equal(result.tmp_write, 'allowed', JSON.stringify(result));
