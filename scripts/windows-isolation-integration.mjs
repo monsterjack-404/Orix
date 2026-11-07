@@ -1,7 +1,7 @@
 // Windows AppContainer + Job Object hostile-process integration gate.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { access, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
+import { access, copyFile, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
 import { execFileSync, spawn } from 'node:child_process';
 import net from 'node:net';
 import os_host from 'node:os';
@@ -242,6 +242,35 @@ async function main() {
         unsafeNested, '/remove:g', '*S-1-1-0',
       ], { encoding: 'utf8', windowsHide: true });
     }
+
+    // A hard link inside the rootfs can alias an otherwise external file.
+    // Reject it before GrantTree adds the AppContainer SID to the shared file ACL.
+    const hardLinkRoot = path.join(base, 'hardlink-rootfs');
+    await mkdir(path.join(hardLinkRoot, 'work'), { recursive: true });
+    await mkdir(path.join(hardLinkRoot, 'tmp'), { recursive: true });
+    await copyFile(process.execPath, path.join(hardLinkRoot, 'node.exe'));
+    const externalHardLinkTarget = path.join(base, 'external-hardlink-target.txt');
+    const externalHardLinkValue = 'ORIX external hard-link sentinel';
+    await writeFile(externalHardLinkTarget, externalHardLinkValue, 'utf8');
+    await link(externalHardLinkTarget, path.join(hardLinkRoot, 'linked-secret.txt'));
+    const hardLinkedExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: path.join(hardLinkRoot, 'node.exe'),
+      cwd: path.join(hardLinkRoot, 'work'),
+      sandbox_root: hardLinkRoot,
+      isolation: 'required',
+      env: {},
+      args: ['-e', 'process.stdout.write("must-not-run")'],
+      timeout_ms: 12_000,
+      max_output_bytes: 4_096,
+    });
+    assert.equal(hardLinkedExecution.ok, false,
+      'Windows isolation must reject rootfs files that alias paths outside the rootfs');
+    assert.match(hardLinkedExecution.stderr, /ORIX_WINDOWS_ROOTFS_UNTRUSTED: hard-linked files are not allowed/,
+      'Native launcher did not reject the rootfs hard link before granting AppContainer file access');
+    assert.equal(hardLinkedExecution.stdout, '', 'Provider executed despite the rootfs hard-link violation');
+    assert.equal(await readFile(externalHardLinkTarget, 'utf8'), externalHardLinkValue,
+      'Hard-link preflight must not modify the external target');
 
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
 

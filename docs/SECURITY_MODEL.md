@@ -130,6 +130,12 @@ Before profile creation, the native launcher walks the canonical rootfs and
 its ancestors, rejects reparse points, and requires each owner to be the
 service identity, LocalSystem, local Administrators or TrustedInstaller.
 The rootfs itself must have no write-capable ACL grant to another principal.
+Regular files must also have exactly one filesystem link. The native
+preflight reads link counts from opened file handles and rejects hard links
+before granting the AppContainer SID read access: NTFS hard links refer to
+the same file object, so changing the ACL through an in-root name can affect
+every other name for that file, including a name outside the rootfs. This is
+a preflight check, not a race-free filesystem pin.
 Ancestors must not grant untrusted principals deletion/replacement, ownership
 or ACL-control rights; ordinary sibling-creation rights on an ancestor are
 not treated as permission to modify an existing rootfs child. Any inherited

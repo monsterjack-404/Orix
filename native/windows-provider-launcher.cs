@@ -79,6 +79,13 @@ namespace OrixWindowsSandbox {
     const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
     const uint STARTF_USESTDHANDLES = 0x00000100;
     const uint DUPLICATE_SAME_ACCESS = 0x00000002;
+    const uint FILE_READ_ATTRIBUTES = 0x00000080;
+    const uint FILE_SHARE_READ = 0x00000001;
+    const uint FILE_SHARE_WRITE = 0x00000002;
+    const uint FILE_SHARE_DELETE = 0x00000004;
+    const uint OPEN_EXISTING = 3;
+    const uint FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
+    const uint FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400;
     const uint JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x00000008;
     const uint JOB_OBJECT_LIMIT_JOB_MEMORY = 0x00000200;
     const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
@@ -121,6 +128,25 @@ namespace OrixWindowsSandbox {
       public uint dwProcessId, dwThreadId;
     }
     [StructLayout(LayoutKind.Sequential)]
+    struct FILETIME_DATA {
+      public uint LowDateTime;
+      public uint HighDateTime;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct BY_HANDLE_FILE_INFORMATION {
+      public uint FileAttributes;
+      public FILETIME_DATA CreationTime;
+      public FILETIME_DATA LastAccessTime;
+      public FILETIME_DATA LastWriteTime;
+      public uint VolumeSerialNumber;
+      public uint FileSizeHigh;
+      public uint FileSizeLow;
+      public uint NumberOfLinks;
+      public uint FileIndexHigh;
+      public uint FileIndexLow;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
       public long PerProcessUserTimeLimit;
       public long PerJobUserTimeLimit;
@@ -162,6 +188,11 @@ namespace OrixWindowsSandbox {
     [DllImport("advapi32.dll", SetLastError = true)]
     static extern IntPtr FreeSid(IntPtr sid);
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr CreateFileW(string fileName, uint desiredAccess, uint shareMode,
+      IntPtr securityAttributes, uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetFileInformationByHandle(IntPtr file, out BY_HANDLE_FILE_INFORMATION information);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern IntPtr CreateJobObject(IntPtr attributes, string name);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -247,11 +278,37 @@ namespace OrixWindowsSandbox {
       throw new InvalidOperationException("Could not create or derive the AppContainer SID");
     }
 
+    // NTFS hard links are multiple names for one file object. Granting the
+    // AppContainer SID read access through an in-root name would also change
+    // the shared file ACL seen by every name, potentially widening access to
+    // an out-of-rootfs path. Inspect the open file handle and fail closed unless
+    // the regular file has exactly one link.
+    static void ValidateSingleLinkFile(string path) {
+      IntPtr handle = CreateFileW(path, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, IntPtr.Zero);
+      if (handle == IntPtr.Zero || handle == INVALID_HANDLE_VALUE)
+        throw Win32("Open rootfs file for hard-link inspection");
+      try {
+        BY_HANDLE_FILE_INFORMATION information;
+        if (!GetFileInformationByHandle(handle, out information))
+          throw Win32("Read rootfs file hard-link metadata");
+        if ((information.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+          throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: reparse-point file changed during hard-link inspection: " + path);
+        if (information.NumberOfLinks != 1)
+          throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: hard-linked files are not allowed in the provider rootfs: " +
+            path + " (linkCount=" + information.NumberOfLinks + ")");
+      } finally {
+        CloseHandle(handle);
+      }
+    }
+
     static void ValidateTree(string path, SecurityIdentifier serviceSid) {
       FileAttributes attributes = File.GetAttributes(path);
       if ((attributes & FileAttributes.ReparsePoint) != 0)
         throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: reparse points are not allowed in the provider rootfs: " + path);
       bool directory = (attributes & FileAttributes.Directory) != 0;
+      if (!directory) ValidateSingleLinkFile(path);
       FileSystemSecurity security = directory
         ? (FileSystemSecurity)Directory.GetAccessControl(path, AccessControlSections.Owner | AccessControlSections.Access)
         : (FileSystemSecurity)File.GetAccessControl(path, AccessControlSections.Owner | AccessControlSections.Access);
