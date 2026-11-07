@@ -652,6 +652,9 @@ export function render_android_package_markdown(report) {
     if (item.decoded) {
       lines.push('  - Package: ' + markdown_cell(item.package_name ?? '—'));
       lines.push('  - Version: ' + markdown_cell(item.version_name ?? item.version_code ?? '—'));
+      if (item.sdk) lines.push('  - SDK: min=' + markdown_cell(item.sdk.min_version ?? 'unspecified') +
+        ', target=' + markdown_cell(item.sdk.target_version ?? 'unspecified') +
+        ', max=' + markdown_cell(item.sdk.max_version ?? 'unspecified'));
       if (item.application) lines.push('  - Application: debuggable=' + markdown_cell(item.application.debuggable ?? 'unspecified') +
         ', allowBackup=' + markdown_cell(item.application.allowBackup ?? 'unspecified') +
         ', cleartext=' + markdown_cell(item.application.usesCleartextTraffic ?? 'unspecified'));
