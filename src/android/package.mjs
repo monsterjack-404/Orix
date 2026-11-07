@@ -117,6 +117,10 @@ export function analyze_android_package(buffer, options = {}) {
   if (!Number.isSafeInteger(max_archive_entry_path_length) || max_archive_entry_path_length < 16 || max_archive_entry_path_length > 4096) throw new TypeError('max_archive_entry_path_length must be between 16 and 4096');
   const archive = parse_zip(buffer, options.zip ?? {});
   const entries = archive.entries.filter(entry => !entry.unsafe_path && !entry.is_symlink);
+  const entry_name_counts = new Map();
+  for (const entry of entries) entry_name_counts.set(entry.name, (entry_name_counts.get(entry.name) ?? 0) + 1);
+  const duplicate_path_names = [...entry_name_counts].filter(([, count]) => count > 1);
+  const duplicate_path_entries = duplicate_path_names.reduce((total, [, count]) => total + count - 1, 0);
   const archive_entries = entries.slice(0, max_archive_entries).map(entry => ({
     path: entry.name.slice(0, max_archive_entry_path_length),
     path_truncated: entry.name.length > max_archive_entry_path_length,
@@ -138,6 +142,8 @@ export function analyze_android_package(buffer, options = {}) {
   const is_apk = apk_manifest && !is_aab;
   const dex_entries = entries.filter(entry => is_dex_entry(entry.name, is_aab));
   const manifest_entries = entries.filter(entry => entry.name === 'AndroidManifest.xml' || entry.name.endsWith('/manifest/AndroidManifest.xml'));
+  const duplicate_dex_paths = new Set(dex_entries.filter(entry => (entry_name_counts.get(entry.name) ?? 0) > 1).map(entry => entry.name));
+  const duplicate_manifest_paths = new Set(manifest_entries.filter(entry => (entry_name_counts.get(entry.name) ?? 0) > 1).map(entry => entry.name));
   const reported_manifest_entries = manifest_entries.slice(0, max_archive_entries);
   const native_libraries = entries.filter(entry => (entry.name.startsWith('lib/') || entry.name.includes('/lib/')) && entry.name.endsWith('.so'));
   const reported_native_libraries = native_libraries.slice(0, max_archive_entries);
@@ -150,6 +156,7 @@ export function analyze_android_package(buffer, options = {}) {
     const path_truncated = entry.name.length > max_archive_entry_path_length;
     const path_original_length = entry.name.length;
     if (index >= max_dex_entries) return { path, path_truncated, path_original_length, status: 'entry-limit', uncompressed_size: entry.uncompressed_size };
+    if (duplicate_dex_paths.has(entry.name)) return { path, path_truncated, path_original_length, status: 'duplicate-path', uncompressed_size: entry.uncompressed_size };
     if (entry.uncompressed_size > max_dex_entry_bytes) return { path, path_truncated, path_original_length, status: 'entry-size-limit', uncompressed_size: entry.uncompressed_size };
     if (dex_bytes_parsed + entry.uncompressed_size > max_dex_total_bytes) return { path, path_truncated, path_original_length, status: 'aggregate-size-limit', uncompressed_size: entry.uncompressed_size };
     const data = local_stored_prefix(buffer, entry, entry.uncompressed_size, archive.archive.central_directory_offset);
@@ -189,6 +196,8 @@ export function analyze_android_package(buffer, options = {}) {
       entry_count: archive.entries.length,
       safe_entry_count: entries.length,
       unsafe_or_symlink_entries: archive.summary.unsafe_or_symlink_entries,
+      duplicate_path_names: duplicate_path_names.length,
+      duplicate_path_entries,
       entries_reported: archive_entries.length,
       entries_omitted: Math.max(0, entries.length - archive_entries.length),
       zip64: archive.archive.zip64,
@@ -200,6 +209,8 @@ export function analyze_android_package(buffer, options = {}) {
       dex_entries_omitted: Math.max(0, dex_entries.length - dex.length),
       dex_metadata_parsed: dex.filter(item => item.status === 'metadata-parsed').length,
       dex_entries_not_inspected: dex_entries.length - dex.filter(item => item.status === 'metadata-parsed').length,
+      duplicate_dex_paths: duplicate_dex_paths.size,
+      duplicate_manifest_paths: duplicate_manifest_paths.size,
       native_libraries: native_libraries.length,
       native_libraries_reported: reported_native_libraries.length,
       native_libraries_omitted: Math.max(0, native_libraries.length - reported_native_libraries.length),
@@ -211,12 +222,18 @@ export function analyze_android_package(buffer, options = {}) {
       v1_signature_files_reported: reported_signatures.length,
       v1_signature_files_omitted: Math.max(0, signatures.length - reported_signatures.length),
     },
-    manifests: reported_manifest_entries.map(entry => ({
-      ...inspect_manifest(buffer, entry, archive.archive.central_directory_offset, options),
-      path: entry.name.slice(0, max_archive_entry_path_length),
-      path_truncated: entry.name.length > max_archive_entry_path_length,
-      path_original_length: entry.name.length,
-    })),
+    manifests: reported_manifest_entries.map(entry => {
+      const path = entry.name.slice(0, max_archive_entry_path_length);
+      const path_truncated = entry.name.length > max_archive_entry_path_length;
+      const path_original_length = entry.name.length;
+      if (duplicate_manifest_paths.has(entry.name)) {
+        return { path, path_truncated, path_original_length, status: 'duplicate-path', binary_xml: null };
+      }
+      return {
+        ...inspect_manifest(buffer, entry, archive.archive.central_directory_offset, options),
+        path, path_truncated, path_original_length,
+      };
+    }),
     dex,
     native_libraries: reported_native_libraries.map(entry => ({
       path: entry.name.slice(0, max_archive_entry_path_length),
@@ -233,7 +250,12 @@ export function analyze_android_package(buffer, options = {}) {
       'APK/AAB signing blocks, certificate chains, signatures and publisher identity are not verified; v1 signature filenames are inventory hints only.',
       'This is offline file analysis. No Android device, adb command, app installation, emulator or application code is accessed or executed.',
     ],
-    warnings: dex.filter(item => item.status !== 'metadata-parsed').map(item => ({ path: item.path, reason: item.status })),
+    warnings: [
+      ...dex.filter(item => item.status !== 'metadata-parsed').map(item => ({ path: item.path, reason: item.status })),
+      ...reported_manifest_entries.filter(entry => duplicate_manifest_paths.has(entry.name)).map(entry => ({
+        path: entry.name.slice(0, max_archive_entry_path_length), reason: 'duplicate-path',
+      })),
+    ],
   };
 }
 
