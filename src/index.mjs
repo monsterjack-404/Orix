@@ -53,3 +53,4 @@ export { parse_har, analyze_har_file, render_har_markdown } from './network/har.
 
 export { analyze_android_package, analyze_android_package_file, render_android_package_markdown } from './android/package.mjs';
 export { parse_android_binary_xml } from './android/binary-xml.mjs';
+export { parse_android_proto_xml } from './android/proto-xml.mjs';
