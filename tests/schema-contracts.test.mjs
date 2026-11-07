@@ -108,6 +108,10 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.ok(androidPackage.required.includes('summary'));
   assert.ok(androidPackage.required.includes('archive_entries'));
   assert.ok(androidPackage.properties.archive.required.includes('entries_omitted'));
+  assert.ok(androidPackage.properties.archive.required.includes('duplicate_path_names'));
+  assert.ok(androidPackage.properties.archive.required.includes('duplicate_path_entries'));
+  assert.ok(androidPackage.properties.summary.required.includes('duplicate_dex_paths'));
+  assert.ok(androidPackage.properties.summary.required.includes('duplicate_manifest_paths'));
   assert.ok(androidPackage.properties.summary.required.includes('dex_entries_omitted'));
   assert.ok(androidPackage.properties.manifests.items.required.includes('path_original_length'));
   assert.ok(androidPackage.properties.source.properties.sha256.pattern.includes('a-f'));
