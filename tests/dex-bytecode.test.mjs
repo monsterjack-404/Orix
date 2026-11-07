@@ -69,7 +69,7 @@ test('DEX decoder reads aligned packed-switch payload and validates case targets
   assert.equal(result.instructions[2].mnemonic, 'packed-switch');
   assert.equal(result.instructions[2].payload_offset, 4);
   assert.deepEqual(result.instructions[2].switch.targets, [{ key: 10, target: 0, offset: -2 }]);
-  assert.equal(result.instructions[3].kind, 'packed-switch');
+  assert.equal(result.instructions[4].kind, 'packed-switch');
 });
 
 test('DEX decoder rejects unsorted sparse-switch keys', () => {
@@ -92,9 +92,9 @@ test('DEX decoder validates bounded fill-array-data payloads', () => {
   ), { registers_size: 1 });
   assert.equal(result.payload_count, 1);
   assert.equal(result.instructions[0].payload_offset, 2);
-  assert.equal(result.instructions[1].kind, 'fill-array-data');
-  assert.equal(result.instructions[1].element_width, 1);
-  assert.equal(result.instructions[1].data_bytes, 4);
+  assert.equal(result.instructions[2].kind, 'fill-array-data');
+  assert.equal(result.instructions[2].element_width, 1);
+  assert.equal(result.instructions[2].data_bytes, 4);
 });
 
 test('DEX decoder rejects invalid payload widths, alignment and aggregate payload budgets', () => {
