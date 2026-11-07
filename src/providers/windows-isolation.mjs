@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OrixError } from '../core/errors.mjs';
-import { decodeWindowsProviderLauncher, WINDOWS_PROVIDER_LAUNCHER_SHA256, WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256, WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES } from './windows-launcher-integrity.mjs';
+import { decodeWindowsProviderLauncher, decodeWindowsProviderLauncherBase64, WINDOWS_PROVIDER_LAUNCHER_SHA256, WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256, WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES } from './windows-launcher-integrity.mjs';
 
 function isolation_error(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
@@ -52,41 +52,56 @@ function same_file_identity(left, right) {
   return left.dev === right.dev && left.ino === right.ino && left.size === right.size &&
     left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 }
-async function load_windows_launcher_payload() {
-  const payloadPath = fileURLToPath(new URL('../../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
+async function read_launcher_payload_part(url, index) {
+  const payloadPath = fileURLToPath(url);
   let handle;
   try {
-    // Open first, then inspect the opened object. All bytes are read from this
-    // retained handle, so a later path replacement cannot redirect the read.
+    // Open first and verify the opened object against the path entry. Read all
+    // bytes from the retained handle so a later path replacement cannot redirect it.
     handle = await open(payloadPath, 'r');
     const opened = await handle.stat();
     const pathEntry = await lstat(payloadPath);
     if (pathEntry.isSymbolicLink() || !pathEntry.isFile() ||
         !opened.isFile() || !same_file_identity(opened, pathEntry) ||
-        opened.size <= 0 || opened.size > WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES) {
-      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The packaged Windows AppContainer launcher payload is not a stable bounded regular file');
+        opened.size <= 0 || opened.size > 8192) {
+      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'Windows launcher payload segment ' + index + ' is not a stable bounded regular file');
     }
-    const compressed = await handle.readFile();
+    const encoded = await handle.readFile('utf8');
     const afterHandle = await handle.stat();
-    if (!same_file_identity(opened, afterHandle) || compressed.length !== afterHandle.size) {
-      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The opened Windows launcher payload changed while being read');
+    if (!same_file_identity(opened, afterHandle) || Buffer.byteLength(encoded, 'utf8') !== afterHandle.size ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'Windows launcher payload segment ' + index + ' changed or contains invalid data');
     }
-    try {
-      const launcherBytes = decodeWindowsProviderLauncher(compressed);
-      if (createHash('sha256').update(compressed).digest('hex') !== WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256 ||
-          createHash('sha256').update(launcherBytes).digest('hex') !== WINDOWS_PROVIDER_LAUNCHER_SHA256) {
-        isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The packaged Windows launcher failed its source-pinned integrity check');
-      }
-      return launcherBytes;
-    } catch (error) {
-      if (error instanceof OrixError) throw error;
-      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The packaged Windows launcher failed its source-pinned integrity check', { reason: error.message });
-    }
+    return encoded;
   } catch (error) {
     if (error instanceof OrixError) throw error;
-    isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The Windows launcher payload could not be safely read', { reason: error.code ?? error.name });
+    isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'Windows launcher payload segment ' + index + ' could not be safely read', { reason: error.code ?? error.name });
   } finally {
     await handle?.close().catch(() => {});
+  }
+}
+async function load_windows_launcher_payload() {
+  const payloadUrls = [
+    new URL('../../native/bin/win32-anycpu/launcher-payload-01.b64', import.meta.url),
+    new URL('../../native/bin/win32-anycpu/launcher-payload-02.b64', import.meta.url),
+    new URL('../../native/bin/win32-anycpu/launcher-payload-03.b64', import.meta.url),
+    new URL('../../native/bin/win32-anycpu/launcher-payload-04.b64', import.meta.url),
+  ];
+  try {
+    const segments = await Promise.all(payloadUrls.map((url, index) => read_launcher_payload_part(url, index + 1)));
+    const compressed = decodeWindowsProviderLauncherBase64(segments.join(''));
+    if (compressed.length > WINDOWS_PROVIDER_LAUNCHER_MAX_COMPRESSED_BYTES) {
+      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The assembled Windows launcher payload exceeds its compressed size limit');
+    }
+    const launcherBytes = decodeWindowsProviderLauncher(compressed);
+    if (createHash('sha256').update(compressed).digest('hex') !== WINDOWS_PROVIDER_LAUNCHER_GZIP_SHA256 ||
+        createHash('sha256').update(launcherBytes).digest('hex') !== WINDOWS_PROVIDER_LAUNCHER_SHA256) {
+      isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The packaged Windows launcher failed its source-pinned integrity check');
+    }
+    return launcherBytes;
+  } catch (error) {
+    if (error instanceof OrixError) throw error;
+    isolation_error('ORIX_PROVIDER_ISOLATION_UNAVAILABLE', 'The Windows launcher payload could not be safely assembled or verified', { reason: error.message });
   }
 }
 async function run_native_helper(executable, args, cwd, environment, logPath, timeoutMs = 30_000) {
