@@ -405,7 +405,7 @@ test('APK manifest decoder rejects attribute arrays overlapping the element exte
   assert.notEqual(start_element, -1);
   manifest.writeUInt16LE(0, start_element + 24);
   const report = analyze_android_package(create_zip([{ name: 'AndroidManifest.xml', contents: manifest }]));
-  assert.equal(report.manifests[0].status, 'malformed-binary-xml');
+  assert.equal(report.manifests[0].status, 'malformed-proto-xml');
   assert.equal(report.manifests[0].error.code, 'ORIX_AXML_ATTRIBUTE_START');
 });
 
@@ -753,7 +753,7 @@ test('android CLI writes a JSON APK report and refuses to overwrite output', asy
 });
 
 
-test('AAB inventory recognizes BundleConfig and module manifest/DEX paths without protobuf claims', () => {
+test('AAB inventory recognizes BundleConfig and reports malformed protobuf module manifests', () => {
   const manifest = Buffer.alloc(8);
   manifest.writeUInt16LE(0x0003, 0);
   manifest.writeUInt16LE(8, 2);
@@ -770,14 +770,14 @@ test('AAB inventory recognizes BundleConfig and module manifest/DEX paths withou
   assert.equal(report.manifests[0].status, 'malformed-binary-xml');
   assert.equal(report.summary.dex_entries, 1);
   assert.equal(report.dex[0].status, 'metadata-parsed');
-  assert.ok(report.limitations.some(note => note.includes('AAB protobuf manifests')));
+  assert.ok(report.limitations.some(note => note.includes('BundleConfig.pb, resources.pb, dependency graph and split/install relationships remain unsupported')));
   assert.ok(report.limitations.some(note => note.includes('raw-DEFLATE, unencrypted entries')));
   assert.ok(report.limitations.some(note => note.includes('instruction opcodes')));
 });
 
 
 
-test('AAB module inventory separates base and feature paths without decoding protobuf data', () => {
+test('AAB module inventory separates base and feature paths while reporting malformed manifests', () => {
   const report = analyze_android_package(create_zip([
     { name: 'BundleConfig.pb', contents: Buffer.from([0x0a, 0x00]) },
     { name: 'base/manifest/AndroidManifest.xml', contents: Buffer.alloc(8) },
@@ -803,6 +803,7 @@ test('AAB module inventory separates base and feature paths without decoding pro
   assert.equal(report.bundle.modules[0].asset_paths, 1);
   assert.equal(report.bundle.modules[0].root_paths, 1);
   assert.equal(report.bundle.modules[1].manifest_present, true);
+  assert.deepEqual(report.manifests.map(item => item.status), ['malformed-proto-xml', 'malformed-proto-xml']);
   assert.equal(report.bundle.modules[1].dex_entries, 1);
   assert.equal(report.bundle.modules[1].resource_paths, 1);
   assert.ok(report.limitations.some(note => note.includes('bounded module manifest metadata is decoded')));
