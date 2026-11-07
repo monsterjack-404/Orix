@@ -61,3 +61,8 @@ This is deliberately fail-closed. It can leave a profile, ACL entries or tempora
 - The launcher is managed .NET Framework 4.8. Hosts without that runtime cannot use this backend; ORIX fails closed rather than compiling at runtime.
 - Keep the PR draft until current exact-head Node, Linux, Windows and macOS checks pass and the native launcher lifecycle remains reviewed.
 
+## Child-process and Job Object policy
+
+The trusted, non-AppContainer launcher explicitly sets `PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY` to `PROCESS_CREATION_CHILD_PROCESS_OVERRIDE` when it creates the provider. This allows the provider to create descendants while preserving the AppContainer token and the already-assigned Job Object. The Job Object is not configured with breakaway permissions, so descendants remain subject to the same CPU, memory and active-process limits and are terminated with the job. The Windows integration test verifies that the child starts under the provider, the launcher reports the override policy, and the child stops writing after its provider leader exits.
+
+The override is applied only by the trusted host launcher; it does not remove the provider's AppContainer identity or grant host filesystem/network access. If descendant containment cannot be verified, the integration gate must fail rather than interpreting a blocked child spawn as proof of Job Object cleanup.
