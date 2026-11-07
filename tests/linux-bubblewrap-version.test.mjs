@@ -12,6 +12,19 @@ test('Linux provider isolation requires the Bubblewrap release that fixes CVE-20
   }
 });
 
+test('Bubblewrap version parsing requires one complete, unambiguous version line', () => {
+  for (const output of [
+    'banner\\nbubblewrap 0.13.1',
+    'bubblewrap 0.13.1\\nbanner',
+    'bubblewrap 999999999999999999999999.0.0',
+    'bubblewrap 0.13.1 extra',
+  ]) {
+    assert.equal(is_supported_bubblewrap_version(output), false, JSON.stringify(output));
+  }
+
+  assert.equal(is_supported_bubblewrap_version('bubblewrap 0.13.1\\n'), true);
+});
+
 test('Linux provider isolation rejects malformed and prerelease Bubblewrap version output', () => {
   for (const output of [
     '',
