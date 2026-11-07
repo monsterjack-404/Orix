@@ -11,10 +11,10 @@ import { validate_provider_manifest } from './manifest.mjs';
 
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const BLOCKED_ENVIRONMENT_KEYS = new Set([
-  'PATH', 'PATHEXT', 'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
-  'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'DYLD_FRAMEWORK_PATH',
-  'PYTHONPATH', 'PYTHONHOME', 'PERL5OPT', 'RUBYOPT', 'BASH_ENV', 'ENV', 'IFS',
+  'PATH', 'PATHEXT', 'NODE_OPTIONS', 'NODE_PATH', 'NODE_V8_COVERAGE', 'NODE_COMPILE_CACHE',
+  'GCONV_PATH', 'PYTHONPATH', 'PYTHONHOME', 'PERL5OPT', 'RUBYOPT', 'BASH_ENV', 'ENV', 'IFS',
 ]);
+const BLOCKED_ENVIRONMENT_PREFIXES = ['LD_', 'DYLD_'];
 const MAX_ARGUMENTS = 256;
 const MAX_ARGUMENT_BYTES = 32 * 1024;
 const MAX_TOTAL_ARGUMENT_BYTES = 64 * 1024;
@@ -107,7 +107,10 @@ function validate_environment(value) {
   let total = 0;
   for (const key of entries) {
     const descriptor = descriptors[key];
-    if (typeof key !== 'string' || !ENV_KEY.test(key) || BLOCKED_ENVIRONMENT_KEYS.has(key.toUpperCase()) ||
+    const normalized_key = typeof key === 'string' ? key.toUpperCase() : '';
+    if (typeof key !== 'string' || !ENV_KEY.test(key) ||
+        BLOCKED_ENVIRONMENT_KEYS.has(normalized_key) ||
+        BLOCKED_ENVIRONMENT_PREFIXES.some(prefix => normalized_key.startsWith(prefix)) ||
         !descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) {
       throw new TypeError('env must contain enumerable string data properties with valid names');
     }
