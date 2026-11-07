@@ -183,6 +183,16 @@ test('DEX decoder rejects invalid payload widths, alignment and aggregate payloa
   );
 });
 
+test('DEX decoder rejects malformed and unsupported version identifiers', () => {
+  for (const dex_version of ['40', '40x', '036', '041', '999', 40]) {
+    assert.throws(
+      () => decode(words(0x000e), { registers_size: 0, dex_version }),
+      TypeError,
+      'Unsupported DEX version should be rejected: ' + dex_version,
+    );
+  }
+});
+
 test('DEX decoder rejects unused, truncated and version-gated opcodes', () => {
   assert.throws(() => decode(words(0x003e)), error => error.code === 'ORIX_DEX_BYTECODE_OPCODE');
   assert.throws(() => decode(words(0x0014, 0x0000)), error => error.code === 'ORIX_DEX_BYTECODE_TRUNCATED');
