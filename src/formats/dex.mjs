@@ -8,7 +8,35 @@ const MAP_NAMES=new Map([[0,'header_item'],[1,'string_id_item'],[2,'type_id_item
 function fail(code,message,details={}){throw new OrixError(code,message,{details,recoverable:true});}
 function range(count,off,size,label,fileSize){if(count===0){if(off!==0)fail('ORIX_DEX_EMPTY_TABLE_OFFSET','DEX empty '+label+' table must have offset zero',{count,off});return;}const bytes=count*size;if(!Number.isSafeInteger(bytes)||off<HEADER||off%4!==0||off>fileSize-bytes)fail('ORIX_DEX_TABLE_RANGE','DEX '+label+' table exceeds file bounds or is misaligned',{count,off,size,fileSize});}
 function uleb(b,off,end){let v=0;for(let i=0;i<5;i++){if(off+i>=end)fail('ORIX_DEX_LEB128_TRUNCATED','DEX ULEB128 is truncated',{off});const x=b[off+i];if(i===4&&(x&0xf0))fail('ORIX_DEX_LEB128_OVERFLOW','DEX ULEB128 exceeds 32 bits',{off});v|=(x&127)<<(i*7);if(!(x&128))return {value:v>>>0,bytes:i+1};}fail('ORIX_DEX_LEB128_OVERFLOW','DEX ULEB128 exceeds five bytes',{off});}
-function readString(b,off,end,max){const n=uleb(b,off,end),start=off+n.bytes,limit=Math.min(end,start+max);let stop=start;while(stop<limit&&b[stop]!==0)stop++;if(stop>=limit)fail('ORIX_DEX_STRING_LIMIT','DEX string is unterminated or exceeds per-string limit',{off,max});const bytes=b.subarray(start,stop);return {utf16_length:n.value,byte_length:bytes.length,value:bytes.every(x=>x<128)?bytes.toString('ascii'):null};}
+function readString(b,off,end,max){
+ const n=uleb(b,off,end),start=off+n.bytes,scanEnd=Math.min(end,start+max+1);
+ let stop=start;
+ while(stop<scanEnd&&b[stop]!==0)stop++;
+ if(stop>=scanEnd)fail('ORIX_DEX_STRING_LIMIT','DEX string is unterminated or exceeds per-string limit',{off,max});
+ const bytes=b.subarray(start,stop),pieces=[],chunk=[];
+ let units=0;
+ const append=unit=>{chunk.push(unit);units++;if(chunk.length===8192)pieces.push(String.fromCharCode(...chunk.splice(0,chunk.length)));};
+ for(let i=0;i<bytes.length;){
+  const first=bytes[i++];
+  if(first>=0x01&&first<=0x7f){append(first);continue;}
+  if((first&0xe0)===0xc0){
+   if(i>=bytes.length||(bytes[i]&0xc0)!==0x80)fail('ORIX_DEX_STRING_ENCODING','DEX MUTF-8 has an invalid two-byte sequence',{off,byte_offset:i-1});
+   const second=bytes[i++],unit=((first&0x1f)<<6)|(second&0x3f);
+   if((unit===0&&(first!==0xc0||second!==0x80))||(unit!==0&&unit<0x80))fail('ORIX_DEX_STRING_ENCODING','DEX MUTF-8 contains a non-canonical two-byte sequence',{off,byte_offset:i-2});
+   append(unit);continue;
+  }
+  if((first&0xf0)===0xe0){
+   if(i+1>=bytes.length||(bytes[i]&0xc0)!==0x80||(bytes[i+1]&0xc0)!==0x80)fail('ORIX_DEX_STRING_ENCODING','DEX MUTF-8 has an invalid three-byte sequence',{off,byte_offset:i-1});
+   const second=bytes[i++],third=bytes[i++],unit=((first&0x0f)<<12)|((second&0x3f)<<6)|(third&0x3f);
+   if(unit<0x800)fail('ORIX_DEX_STRING_ENCODING','DEX MUTF-8 contains a non-canonical three-byte sequence',{off,byte_offset:i-3});
+   append(unit);continue;
+  }
+  fail('ORIX_DEX_STRING_ENCODING','DEX string contains a byte forbidden by MUTF-8',{off,byte_offset:i-1,byte:first});
+ }
+ if(units!==n.value)fail('ORIX_DEX_STRING_LENGTH','DEX MUTF-8 decoded UTF-16 length does not match utf16_size',{off,declared:n.value,actual:units});
+ if(chunk.length)pieces.push(String.fromCharCode(...chunk));
+ return {utf16_length:n.value,byte_length:bytes.length,value:pieces.join('')};
+}
 function parseMap(b,off,end,max){if(!off||off%4||off>end-4)fail('ORIX_DEX_MAP_RANGE','DEX map_list offset is invalid',{off,end});const count=b.readUInt32LE(off);if(count>max||off>end-(4+count*12))fail('ORIX_DEX_MAP_LIMIT','DEX map_list exceeds bounds or configured item limit',{count,max});const out=[],seen=new Set();let prev=-1;for(let i=0;i<count;i++){const p=off+4+i*12,type=b.readUInt16LE(p),unused=b.readUInt16LE(p+2),size=b.readUInt32LE(p+4),itemOff=b.readUInt32LE(p+8);if(unused||!size||seen.has(type)||itemOff>=end||(i>0&&itemOff<=prev))fail('ORIX_DEX_MAP_INVALID','DEX map item has invalid reserved field, size, type or ordering',{i,type,size,itemOff,prev});seen.add(type);prev=itemOff;out.push({type,name:MAP_NAMES.get(type)??'unknown',size,offset:itemOff});}if(!out.some(x=>x.type===0&&x.size===1&&x.offset===0)||!out.some(x=>x.type===0x1000&&x.size===1&&x.offset===off))fail('ORIX_DEX_MAP_REQUIRED_ITEMS','DEX map must describe its header and map_list');return out;}
 /** Parse DEX 035-040 header, index tables, class definitions and map metadata. */
 export function parse_dex(buffer,options={}){
