@@ -22,7 +22,7 @@
 | Optional reverse-engineering tools | Partial | Rizin version probe, imports, bounded function inventory, address-scoped disassembly and opt-in `rz-ghidra` pseudocode; no dedicated Ghidra/JADX/Apktool adapter yet |
 | JavaScript and source projects | Partial | Bounded JavaScript/TypeScript lexical import and declaration analysis, project graph and Electron static triage for direct literal webPreferences settings | Full ECMAScript/TypeScript AST, type/data-flow, IPC/preload/renderer runtime observation |
 | .NET | Partial | PE/CLI header, CLR runtime flags, entry-point token and bounded metadata stream inventory | Metadata tables/heaps, IL bodies/instructions, PDB/debug data and decompilation |
-| Android | Partial | Bounded APK ZIP entry reads with CRC32 validation, binary/plain XML manifest metadata, DEX header/link/data/table validation, class descriptors, native ABI and signer-entry inventory | DEX bytecode/methods, resources.arsc, intent filters, cryptographic signer verification, AAB and device/runtime observations |
+| Android | Partial | Existing APK parser: bounded stored/raw-DEFLATE reads with CRC32 checks, binary/plain XML manifest, DEX tables/classes and native ABI/signature inventory. Added package report: safe APK/AAB ZIP inventory, APK binary-XML permissions/components, stored unencrypted DEX map/string/type/class metadata, source identity checks and SHA-256 receipt, CLI/API/MCP | DEX bytecode/methods, resources.arsc/resources.pb, intent-filter semantics, AAB protobuf manifests, signing verification and device/runtime observations |
 | Website and browser | Partial / planned | Offline HTML structure and heuristic findings; linked/inline JavaScript static import/symbol inventory and bounded local module graph; offline HAR 1.2 analysis | Standards-complete DOM/CSS/source-map analysis, live browser observation, console/network trace and screenshots |
 | Network traces | Partial | Offline HAR 1.2 and classic PCAP 2.4 metadata analysis; no PCAPNG, live capture or payload inspection |
 | Firmware | Partial | Bounded raw CPIO newc/CRC-newc metadata parser plus GZIP member decompression, CRC/ISIZE verification and nested CPIO analysis; no filesystem extraction | TAR/GZIP wrappers, SquashFS, cramfs, ext, UBI/UBIFS, boot images, device-tree blobs and filesystem semantics |
@@ -61,9 +61,9 @@ Acceptance: versioned .NET fixtures, malformed metadata heap/table indices, over
 ## Workstream 3 — Android APK, AAB and device observations
 
 **Static package analysis**
-- Implemented first slice: bounded ZIP entry extraction with CRC32 checks, AndroidManifest.xml binary/plain XML metadata, DEX header/link/data/table validation, class descriptor inventory, native ABI library inventory and signer-related entry inventory.
-- Remaining: resources.arsc, intent-filter/component correlation, DEX instructions/method bodies, ODEX/VDEX, signer-block parsing and cryptographic certificate verification.
-- AAB: bundle metadata and module/split inventory; do not assume an AAB is directly installable.
+- Implemented first slice: existing APK parser reads bounded stored/raw-DEFLATE entries with CRC32 checks and provides binary/plain XML manifest, DEX table/class and native-library metadata. New package inventory adds bounded ZIP metadata, APK binary-XML permissions/components, stored unencrypted DEX map/string/type/class metadata, source-file identity checks and SHA-256 receipt; exposed through CLI/API/MCP.
+- Remaining: resources.arsc/resources.pb, intent-filter/component correlation, DEX instructions/method bodies, ODEX/VDEX, AAB protobuf manifests, signer-block parsing and cryptographic certificate verification.
+- AAB: BundleConfig.pb and module manifest-path presence are inventoried; protobuf manifest/resources and full module/split relationships remain unsupported. Do not assume an AAB is directly installable.
 - Correlate manifest components and permissions with DEX references, exported components, intent filters, network-security configuration, native libraries and resources.
 - Add optional JADX and Apktool adapters using explicit executable paths and the bounded provider runner.
 
