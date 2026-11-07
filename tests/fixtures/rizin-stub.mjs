@@ -14,6 +14,16 @@ const command_index = args.indexOf('-c');
 const command = command_index >= 0 ? args[command_index + 1] : null;
 
 if (command === 'iij') {
+  if (config.require_input_exists) {
+    const snapshot_path = args.at(-1);
+    try {
+      await readFile(snapshot_path);
+    } catch (error) {
+      process.stderr.write('Required provider-visible Rizin snapshot is unreadable: ' +
+        (error.code || error.name || 'read-failed'));
+      process.exit(66);
+    }
+  }
   if (config.delay_import_ms) await new Promise(resolve => setTimeout(resolve, config.delay_import_ms));
   if (config.mutate_snapshot) {
     const snapshot_path = args.at(-1);

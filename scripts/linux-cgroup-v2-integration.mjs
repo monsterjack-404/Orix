@@ -8,6 +8,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
+import { analyze_rizin_imports } from '../src/providers/rizin.mjs';
 import { prepare_linux_provider_cgroup } from '../src/providers/linux-cgroup-v2-manager.mjs';
 import { parse_cgroup2_mounts } from '../src/providers/linux-cgroup-v2-preflight.mjs';
 import { assert_linux_cgroup_integration_authorized } from '../src/providers/linux-cgroup-v2-test-gate.mjs';
@@ -288,6 +289,30 @@ async function main() {
     const root = path.join(base, 'rootfs');
     await mkdir(root);
     const nodePath = await make_minimal_rootfs(root);
+
+    // Exercise Rizin's actual provider path through Bubblewrap + cgroup v2.
+    // The stub refuses to run unless the snapshot path it receives is readable
+    // from inside the provider's mount namespace.
+    const rizinStubSource = path.join(process.cwd(), 'tests', 'fixtures', 'rizin-stub.mjs');
+    const rizinStubPath = path.join(root, 'work', 'rizin-stub.mjs');
+    const rizinConfigPath = path.join(root, 'work', 'rizin-stub-config.json');
+    const rizinInputPath = path.join(base, 'rizin-input.elf');
+    await copyFile(rizinStubSource, rizinStubPath);
+    await chmod(rizinStubPath, 0o444);
+    await writeFile(rizinConfigPath, JSON.stringify({ require_input_exists: true }), { mode: 0o444 });
+    await writeFile(rizinInputPath, Buffer.from('ORIX isolated Rizin input fixture'), { flag: 'wx', mode: 0o600 });
+    const rizinReport = await analyze_rizin_imports({
+      input_path: rizinInputPath,
+      executable: nodePath,
+      executable_args: ['/work/rizin-stub.mjs', '/work/rizin-stub-config.json'],
+      isolation: 'required',
+      sandbox_root: root,
+      cwd: root,
+    });
+    assert.equal(rizinReport.summary.imports, 2, 'Rizin imports must be returned from inside the required Bubblewrap/cgroup sandbox');
+    assert.equal(rizinReport.artifact.stable_during_analysis, true);
+    assert.ok(rizinReport.notes.some(note => note.includes('Required Linux isolation used Bubblewrap')));
+
     const rootfsMarkerValue = 'rootfs-only-' + process.pid + '-' + randomUUID();
     await writeFile(path.join(root, 'work', 'orix-rootfs-marker'), rootfsMarkerValue, { flag: 'wx', mode: 0o400 });
     await writeFile(hostSecret, hostSecretValue, { flag: 'wx', mode: 0o600 });
