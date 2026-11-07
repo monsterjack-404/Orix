@@ -254,6 +254,25 @@ test('nested DEX inventory is bounded and reports omitted entries explicitly', (
   assert.equal(report.dex[1].path, 'classes2.dex');
 });
 
+test('duplicate Android manifest and DEX paths are reported and never parsed', () => {
+  const report = analyze_android_package(create_zip([
+    { name: 'AndroidManifest.xml', contents: binary_manifest() },
+    { name: 'AndroidManifest.xml', contents: binary_manifest() },
+    { name: 'classes.dex', contents: create_dex_fixture() },
+    { name: 'classes.dex', contents: create_dex_fixture() },
+    { name: 'classes2.dex', contents: create_dex_fixture() },
+  ]));
+  assert.equal(report.format, 'APK');
+  assert.equal(report.archive.duplicate_path_names, 2);
+  assert.equal(report.archive.duplicate_path_entries, 2);
+  assert.equal(report.summary.duplicate_manifest_paths, 1);
+  assert.equal(report.summary.duplicate_dex_paths, 1);
+  assert.deepEqual(report.manifests.map(item => item.status), ['duplicate-path', 'duplicate-path']);
+  assert.deepEqual(report.dex.map(item => item.status), ['duplicate-path', 'duplicate-path', 'metadata-parsed']);
+  assert.equal(report.summary.dex_metadata_parsed, 1);
+  assert.equal(report.warnings.filter(item => item.reason === 'duplicate-path').length, 4);
+});
+
 test('multidex names accept canonical ordinals and reject noncanonical ordinals', () => {
   const report = analyze_android_package(create_zip([
     { name: 'AndroidManifest.xml', contents: binary_manifest() },
