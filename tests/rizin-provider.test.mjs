@@ -118,6 +118,35 @@ test('Rizin function adapter returns bounded cross-references and a resolved cal
   });
 });
 
+test('Rizin reference membership remains correct across overlapping function ranges', async () => {
+  await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
+    await write_config({
+      function_output: JSON.stringify([
+        { offset: 4198400, name: 'sym.outer', size: 100, bits: 64, type: 'fcn' },
+        { offset: 4198450, name: 'sym.inner', size: 10, bits: 64, type: 'fcn' },
+      ]),
+      references_output: JSON.stringify([
+        { from: 4198455, to: 4198460, type: 'CALL' },
+        { from: 4198460, to: 4198455, type: 'CALL' },
+        { from: 4198460, to: 4198500, type: 'CALL' },
+      ]),
+    });
+    const report = await analyze_rizin_functions({
+      input_path, executable, executable_args, include_references: true,
+    });
+    assert.deepEqual(report.references.map(item => item.from_function_offset), [
+      4198450, 4198400, 4198400,
+    ]);
+    assert.deepEqual(report.references.map(item => item.to_function_offset), [
+      4198400, 4198450, null,
+    ]);
+    assert.equal(report.call_graph.edges.length, 3);
+    assert.equal(report.call_graph.edges[0].from_function_offset, 4198450);
+    assert.equal(report.call_graph.edges[0].to_function_offset, 4198400);
+    assert.equal(report.call_graph.edges[2].to_function_offset, null);
+  });
+});
+
 test('Rizin function adapter rejects malformed cross-reference JSON', async () => {
   await with_fixture(async ({ input_path, executable, executable_args, write_config }) => {
     await write_config({ references_output: 'not-json' });
