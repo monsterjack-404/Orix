@@ -62,6 +62,7 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.equal(schemas[8].properties.schema_version.const, 'orix.provider-execution.v1');
   assert.equal(schemas[8].additionalProperties, false);
   assert.ok(schemas[8].required.includes('termination_reason'));
+  assert.equal(schemas[8].properties.duration_ms.type, 'integer');
   assert.ok(schemas[8].required.includes('launch_setup_failed'));
   assert.ok(schemas[8].required.includes('process_group_cleanup'));
   assert.ok(schemas[8].required.includes('isolation_cleanup'));
