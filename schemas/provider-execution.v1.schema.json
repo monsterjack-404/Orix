@@ -5,59 +5,355 @@
   "description": "Versioned process outcome metadata; not proof of provider trust or operating-system sandboxing.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "provider", "executable", "args_count", "started_at", "completed_at", "duration_ms", "exit_code", "signal", "termination_reason", "success", "timed_out", "cancelled", "output_limited", "ok", "output", "stdout", "stderr", "stdout_bytes", "stderr_bytes", "captured_bytes", "output_truncated", "limits"],
+  "required": [
+    "schema_version",
+    "provider",
+    "executable",
+    "args_count",
+    "started_at",
+    "completed_at",
+    "duration_ms",
+    "exit_code",
+    "signal",
+    "termination_reason",
+    "success",
+    "timed_out",
+    "cancelled",
+    "output_limited",
+    "ok",
+    "output",
+    "stdout",
+    "stderr",
+    "stdout_bytes",
+    "stderr_bytes",
+    "captured_bytes",
+    "output_truncated",
+    "limits",
+    "launch_setup_failed",
+    "process_group_cleanup",
+    "isolation_cleanup"
+  ],
   "properties": {
-    "schema_version": { "const": "orix.provider-execution.v1" },
+    "schema_version": {
+      "const": "orix.provider-execution.v1"
+    },
     "provider": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "version"],
+      "required": [
+        "id",
+        "version"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 3, "maxLength": 96 },
-        "version": { "type": "string", "minLength": 5, "maxLength": 128 }
+        "id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 96
+        },
+        "version": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 128
+        }
       }
     },
-    "executable": { "type": "string", "minLength": 1 },
-    "args_count": { "type": "integer", "minimum": 0, "maximum": 256 },
-    "started_at": { "type": "string", "format": "date-time" },
-    "completed_at": { "type": "string", "format": "date-time" },
-    "duration_ms": { "type": "integer", "minimum": 0 },
-    "exit_code": { "type": ["integer", "null"] },
-    "signal": { "type": ["string", "null"] },
-    "termination_reason": { "enum": ["timeout", "cancelled", "output-limit", null] },
-    "success": { "type": "boolean" },
-    "timed_out": { "type": "boolean" },
-    "cancelled": { "type": "boolean" },
-    "output_limited": { "type": "boolean" },
-    "ok": { "type": "boolean" },
+    "executable": {
+      "type": "string",
+      "minLength": 1
+    },
+    "args_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 256
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "exit_code": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "signal": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "termination_reason": {
+      "enum": [
+        "timeout",
+        "cancelled",
+        "output-limit",
+        "process-group-cleanup-failed",
+        "isolation-cleanup-failed",
+        "launch-setup-failed",
+        null
+      ]
+    },
+    "success": {
+      "type": "boolean"
+    },
+    "timed_out": {
+      "type": "boolean"
+    },
+    "cancelled": {
+      "type": "boolean"
+    },
+    "output_limited": {
+      "type": "boolean"
+    },
+    "ok": {
+      "type": "boolean"
+    },
     "output": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["stdout", "stderr", "stdout_bytes", "stderr_bytes", "bytes_observed", "bytes_captured", "truncated"],
+      "required": [
+        "stdout",
+        "stderr",
+        "stdout_bytes",
+        "stderr_bytes",
+        "bytes_observed",
+        "bytes_captured",
+        "truncated"
+      ],
       "properties": {
-        "stdout": { "type": "string" },
-        "stderr": { "type": "string" },
-        "stdout_bytes": { "type": "integer", "minimum": 0 },
-        "stderr_bytes": { "type": "integer", "minimum": 0 },
-        "bytes_observed": { "type": "integer", "minimum": 0 },
-        "bytes_captured": { "type": "integer", "minimum": 0 },
-        "truncated": { "type": "boolean" }
+        "stdout": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "stdout_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderr_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes_observed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes_captured": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        }
       }
     },
-    "stdout": { "type": "string" },
-    "stderr": { "type": "string" },
-    "stdout_bytes": { "type": "integer", "minimum": 0 },
-    "stderr_bytes": { "type": "integer", "minimum": 0 },
-    "captured_bytes": { "type": "integer", "minimum": 0 },
-    "output_truncated": { "type": "boolean" },
+    "stdout": {
+      "type": "string"
+    },
+    "stderr": {
+      "type": "string"
+    },
+    "stdout_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stderr_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "captured_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "output_truncated": {
+      "type": "boolean"
+    },
     "limits": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["timeout_ms", "max_output_bytes", "kill_grace_ms"],
+      "required": [
+        "timeout_ms",
+        "max_output_bytes",
+        "kill_grace_ms"
+      ],
       "properties": {
-        "timeout_ms": { "type": "integer", "minimum": 1, "maximum": 600000 },
-        "max_output_bytes": { "type": "integer", "minimum": 1, "maximum": 268435456 },
-        "kill_grace_ms": { "type": "integer", "minimum": 0, "maximum": 10000 }
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600000
+        },
+        "max_output_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 268435456
+        },
+        "kill_grace_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      }
+    },
+    "launch_setup_failed": {
+      "type": "boolean"
+    },
+    "process_group_cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempted",
+        "force_kill_sent",
+        "verified_empty",
+        "failed"
+      ],
+      "properties": {
+        "attempted": {
+          "type": "boolean"
+        },
+        "force_kill_sent": {
+          "type": "boolean"
+        },
+        "verified_empty": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "failed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "isolation_cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempted",
+        "complete",
+        "failed",
+        "reason",
+        "error",
+        "report"
+      ],
+      "properties": {
+        "attempted": {
+          "type": "boolean"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "failed": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "code",
+                "message",
+                "details"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "details": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "report": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "memory_events",
+                "cpu_stat",
+                "pids_events",
+                "limits",
+                "removed"
+              ],
+              "properties": {
+                "memory_events": {
+                  "type": "string"
+                },
+                "cpu_stat": {
+                  "type": "string"
+                },
+                "pids_events": {
+                  "type": "string"
+                },
+                "limits": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "cpu.max",
+                    "memory.max",
+                    "memory.swap.max",
+                    "memory.oom.group",
+                    "pids.max"
+                  ],
+                  "properties": {
+                    "cpu.max": {
+                      "type": "string"
+                    },
+                    "memory.max": {
+                      "type": "string"
+                    },
+                    "memory.swap.max": {
+                      "type": "string"
+                    },
+                    "memory.oom.group": {
+                      "type": "string"
+                    },
+                    "pids.max": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "removed": {
+                  "type": "boolean"
+                }
+              }
+            }
+          ]
+        }
       }
     }
   }
