@@ -100,7 +100,7 @@ async function install_verified_upstream_rizin(root, base) {
     const normalized = member.replace(/^\.\//, '');
     assert.equal(path.posix.isAbsolute(normalized), false, 'Rizin archive contains an absolute path');
     assert.equal(normalized.split('/').includes('..'), false, 'Rizin archive contains a parent traversal path');
-    assert.equal(normalized.includes('\\0'), false, 'Rizin archive contains a NUL path');
+    assert.equal(normalized.includes('\0'), false, 'Rizin archive contains a NUL path');
   }
 
   execFileSync('tar', [
@@ -120,7 +120,7 @@ async function install_verified_upstream_rizin(root, base) {
   assert.equal(relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative), false,
     'Resolved Rizin executable escaped its installed prefix');
   process.stdout.write('Verified upstream Rizin ' + RIZIN_RELEASE_VERSION +
-    ' static archive: official release SHA-256 matched and portable prefix installed in the sandbox rootfs.\\n');
+    ' static archive: official release SHA-256 matched and portable prefix installed in the sandbox rootfs.\n');
   return canonical;
 }
 
@@ -133,7 +133,7 @@ async function verify_real_upstream_rizin_under_bubblewrap(root, base) {
     '__attribute__((noinline)) int orix_rizin_probe_symbol(int value) { return value + 42; }',
     'int main(void) { puts("ORIX real Rizin + Bubblewrap integration"); return orix_rizin_probe_symbol(0) == 42 ? 0 : 1; }',
     '',
-  ].join('\\n'));
+  ].join('\n'));
   execFileSync('cc', [
     '-O0', '-g', '-fno-pie', '-no-pie', '-fno-omit-frame-pointer',
     '-o', input_path, source_path,
@@ -160,7 +160,7 @@ async function verify_real_upstream_rizin_under_bubblewrap(root, base) {
   const inventory = await analyze_rizin_functions(common);
   assert.equal(inventory.provider.engine_version, RIZIN_RELEASE_VERSION);
   assert.ok(inventory.functions.length > 0, 'Real Rizin must return a non-empty function inventory');
-  const main_function = inventory.functions.find(item => /^(?:sym\\.)?main$/.test(item.name));
+  const main_function = inventory.functions.find(item => /^(?:sym\.)?main$/.test(item.name));
   assert.ok(main_function, 'Real Rizin must identify the compiled sample main function');
 
   const disassembly = await analyze_rizin_functions({
@@ -177,7 +177,7 @@ async function verify_real_upstream_rizin_under_bubblewrap(root, base) {
   const leftovers = (await readdir(root)).filter(name => name.startsWith('.orix-rizin-'));
   assert.deepEqual(leftovers, [], 'Real Rizin private snapshots must be removed after successful isolated analysis');
   process.stdout.write('Real upstream Rizin ' + RIZIN_RELEASE_VERSION +
-    ' + Bubblewrap passed: version, ELF imports, main-function inventory, bounded disassembly, stable input digest and snapshot cleanup.\\n');
+    ' + Bubblewrap passed: version, ELF imports, main-function inventory, bounded disassembly, stable input digest and snapshot cleanup.\n');
 }
 
 async function verify_rizin_adapter_under_bubblewrap(root, node_path, base) {
