@@ -270,6 +270,47 @@ export async function cleanup_macos_compiler_process_group(pid, options = {}) {
   return Object.freeze({ term_signal_sent, force_kill_sent, verified_empty: true });
 }
 
+
+/**
+ * Remove compiler inputs/outputs only after the compiler process group is
+ * known to be empty. On an unverified teardown, retain the private workspace
+ * so a surviving descendant cannot race its deletion.
+ */
+export async function cleanup_macos_compiler_workspace(temporary, compiler_error, remove = rm) {
+  if (typeof temporary !== 'string' || !path.isAbsolute(temporary) || typeof remove !== 'function') {
+    throw new TypeError('invalid macOS compiler workspace cleanup arguments');
+  }
+  if (compiler_error?.code === 'ORIX_PROVIDER_MACOS_COMPILER_CLEANUP_FAILED') {
+    throw new OrixError(
+      'ORIX_PROVIDER_MACOS_COMPILER_CLEANUP_FAILED',
+      'Compiler process group could not be proven empty; temporary workspace was preserved for operator recovery',
+      {
+        details: {
+          ...(compiler_error.details ?? {}),
+          workspace_path: temporary,
+          workspace_preserved: true,
+        },
+        cause: compiler_error,
+        recoverable: true,
+      },
+    );
+  }
+  try {
+    await remove(temporary, { recursive: true, force: true });
+  } catch (error) {
+    throw new OrixError(
+      'ORIX_PROVIDER_MACOS_CLEANUP_FAILED',
+      'Could not remove the temporary Seatbelt compiler workspace',
+      {
+        details: { workspace_path: temporary, reason: error.code ?? error.name },
+        cause: error,
+        recoverable: true,
+      },
+    );
+  }
+  return Object.freeze({ workspace_preserved: false });
+}
+
 async function run_compiler(executable, args, cwd, env) {
   return new Promise((resolve, reject) => {
     let stdout = '';
@@ -452,7 +493,8 @@ export async function prepare_macos_provider_isolation({
     await run_compiler(compiler, ['-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', source, '-lsandbox', '-o', launcher],
       temporary, hostEnvironment);
   } catch (error) {
-    await rm(temporary, { recursive: true, force: true }).catch(() => {});
+    // Never delete compiler files while a descendant may still be using them.
+    await cleanup_macos_compiler_workspace(temporary, error);
     throw error;
   }
 

@@ -188,6 +188,14 @@ macOS. The native integration uses Apple's reserved
 supported signed App Sandbox entitlement model. Apple does not guarantee the
 long-term availability of these reserved interfaces, so this backend is
 experimental and must be revalidated against each supported macOS release.
+The host-side clang compiler runs in its own process group. After compiler
+exit or timeout, ORIX sends TERM, escalates to KILL when required, and waits
+for the complete group to disappear before removing compiler inputs or
+outputs. If the OS does not confirm an empty group, ORIX preserves the
+private compiler workspace and returns its path for operator recovery; it
+never treats an unverified process-group cleanup as permission to delete
+files that a descendant may still be using. Operators must verify the group
+is gone before removing that preserved directory.
 It fails closed if its compiler, Seatbelt API or policy setup is unavailable.
 
 Across all platforms, `isolation: "none"` remains explicit legacy process
