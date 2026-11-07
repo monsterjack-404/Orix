@@ -510,7 +510,7 @@ async function main() {
     const nodeParentScript = [
       'const { spawn } = require("node:child_process");',
       'const fs = require("node:fs");',
-      'const child = spawn(process.execPath, ["-e", ' + JSON.stringify(nodeDescendantScript) + '], { detached: false, stdio: "ignore", windowsHide: true });',
+      'const child = spawn(process.execPath, ["-e", ' + JSON.stringify(nodeDescendantScript) + '], { detached: false, stdio: "inherit", windowsHide: true });',
       'child.once("error", error => { console.error("Node provider descendant spawn failed: " + JSON.stringify({ code: error.code, errno: error.errno, syscall: error.syscall, path: error.path, spawnargs: error.spawnargs, cwd: process.cwd(), execPath: process.execPath, execPathExists: fs.existsSync(process.execPath), systemRoot: process.env.SystemRoot, node: process.version, libuv: process.versions.uv })); process.exit(89); });',
       'child.once("spawn", () => {',
       '  const deadline = Date.now() + 10000;',
