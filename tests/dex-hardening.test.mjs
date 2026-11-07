@@ -96,7 +96,7 @@ test('DEX parser supports only the explicitly listed versions', () => {
     assert.equal(parse_dex(fixture).version, version);
   }
   const unsupported = create_dex_fixture();
-  unsupported.write('dex\n040\0', 0, 'ascii');
+  unsupported.write('dex\n041\0', 0, 'ascii');
   assert.throws(() => parse_dex(unsupported), error => error.code === 'ORIX_DEX_UNSUPPORTED_VERSION');
 });
 
@@ -134,24 +134,20 @@ test('DEX parser rejects non-fixed map entries that point before data_off', () =
   assert.throws(() => parse_dex(fixture), error => error.code === 'ORIX_DEX_MAP_DATA_RANGE');
 });
 
-test('DEX parser rejects call-site and method-handle map sections that overlap data', () => {
+test('DEX parser rejects call-site map entries that point into data', () => {
   const fixture = create_dex_fixture();
-  // Add call_site_id_item after the existing fixed map record and before map_list.
   const mapOffset = fixture.readUInt32LE(52);
   const oldCount = fixture.readUInt32LE(mapOffset);
-  const enlarged = Buffer.concat([fixture.subarray(0, mapOffset), Buffer.alloc(12), fixture.subarray(mapOffset)]);
+  const enlarged = Buffer.concat([fixture, Buffer.alloc(12)]);
   enlarged.writeUInt32LE(enlarged.length, 32);
+  enlarged.writeUInt32LE(40, 104);
   enlarged.writeUInt32LE(oldCount + 1, mapOffset);
-  enlarged.writeUInt16LE(7, mapOffset + 4 + oldCount * 12);
-  enlarged.writeUInt32LE(1, mapOffset + 4 + oldCount * 12 + 4);
-  enlarged.writeUInt32LE(112, mapOffset + 4 + oldCount * 12 + 8);
-  enlarged.writeUInt32LE(mapOffset + 12, 52);
-  // Move the map_list map item's offset to its new location and make the
-  // call-site table extend into data, which must fail closed.
-  enlarged.writeUInt32LE(mapOffset + 12, mapOffset + 4 + 3 * 12 + 8);
-  enlarged.writeUInt32LE(112, mapOffset + 4 + oldCount * 12 + 8);
-  assert.throws(() => parse_dex(enlarged), error =>
-    error.code === 'ORIX_DEX_MAP_PRE_DATA_RANGE' || error.code === 'ORIX_DEX_MAP_INVALID');
+  const item = mapOffset + 4 + oldCount * 12;
+  enlarged.writeUInt16LE(7, item);
+  enlarged.writeUInt16LE(0, item + 2);
+  enlarged.writeUInt32LE(1, item + 4);
+  enlarged.writeUInt32LE(116, item + 8);
+  assert.throws(() => parse_dex(enlarged), error => error.code === 'ORIX_DEX_MAP_PRE_DATA_RANGE');
 });
 
 test('DEX parser rejects trailing bytes not included in the declared file_size', () => {
