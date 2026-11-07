@@ -244,7 +244,6 @@ async function main() {
     }
 
     // A hard link inside the rootfs can alias an otherwise external file.
-    // Reject it before GrantTree adds the AppContainer SID to the shared file ACL.
     const hardLinkRoot = path.join(base, 'hardlink-rootfs');
     await mkdir(path.join(hardLinkRoot, 'work'), { recursive: true });
     await mkdir(path.join(hardLinkRoot, 'tmp'), { recursive: true });
@@ -253,25 +252,79 @@ async function main() {
     const externalHardLinkValue = 'ORIX external hard-link sentinel';
     await writeFile(externalHardLinkTarget, externalHardLinkValue, 'utf8');
     await link(externalHardLinkTarget, path.join(hardLinkRoot, 'linked-secret.txt'));
-    const hardLinkedExecution = await run_static_provider({
-      manifest: manifest(),
-      executable: path.join(hardLinkRoot, 'node.exe'),
-      cwd: path.join(hardLinkRoot, 'work'),
-      sandbox_root: hardLinkRoot,
-      isolation: 'required',
-      env: {},
-      args: ['-e', 'process.stdout.write("must-not-run")'],
-      timeout_ms: 12_000,
-      max_output_bytes: 4_096,
-    });
-    assert.equal(hardLinkedExecution.ok, false,
-      'Windows isolation must reject rootfs files that alias paths outside the rootfs');
-    assert.match(hardLinkedExecution.stderr, /ORIX_WINDOWS_ROOTFS_UNTRUSTED: hard-linked files are not allowed/,
-      'Native launcher did not reject the rootfs hard link before granting AppContainer file access');
-    assert.equal(hardLinkedExecution.stdout, '', 'Provider executed despite the rootfs hard-link violation');
-    assert.equal(await readFile(externalHardLinkTarget, 'utf8'), externalHardLinkValue,
-      'Hard-link preflight must not modify the external target');
 
+    // The JavaScript preflight must reject the alias before staging a helper.
+    let nodeHardLinkError = null;
+    try {
+      await run_static_provider({
+        manifest: manifest(),
+        executable: path.join(hardLinkRoot, 'node.exe'),
+        cwd: path.join(hardLinkRoot, 'work'),
+        sandbox_root: hardLinkRoot,
+        isolation: 'required',
+        env: {},
+        args: ['-e', 'process.stdout.write("must-not-run")'],
+        timeout_ms: 12_000,
+        max_output_bytes: 4_096,
+      });
+    } catch (error) {
+      nodeHardLinkError = error;
+    }
+    assert.ok(nodeHardLinkError, 'Windows JavaScript preflight must reject a rootfs hard link');
+    assert.equal(nodeHardLinkError.code, 'ORIX_PROVIDER_SANDBOX_PATH_DENIED');
+    assert.match(nodeHardLinkError.message, /must not contain hard-linked files/);
+    assert.equal(await readFile(externalHardLinkTarget, 'utf8'), externalHardLinkValue,
+      'JavaScript hard-link preflight must not modify the external target');
+
+    // Invoke the package-owned native helper directly to exercise its independent
+    // handle-based link-count check, bypassing the JavaScript preflight above.
+    const hardLinkHelperWorkspace = path.join(base, 'hardlink-native-helper');
+    await mkdir(hardLinkHelperWorkspace, { recursive: true });
+    const launcherPayload = await readFile(new URL('../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
+    const launcherBytes = decodeWindowsProviderLauncher(launcherPayload);
+    const nativeLauncher = path.join(hardLinkHelperWorkspace, 'orix-windows-provider-launcher.exe');
+    await writeFile(nativeLauncher, launcherBytes);
+    const nativeConfigPath = path.join(hardLinkHelperWorkspace, 'hardlink-provider.json');
+    const nativeLogPath = path.join(hardLinkHelperWorkspace, 'hardlink-provider.log');
+    const trustedSystemRoot = process.env.SystemRoot || process.env.WINDIR;
+    await writeFile(nativeConfigPath, JSON.stringify({
+      executable: path.join(hardLinkRoot, 'node.exe'),
+      args: ['-e', 'process.stdout.write("must-not-run")'],
+      cwd: path.join(hardLinkRoot, 'work'),
+      sandboxRoot: hardLinkRoot,
+      profileName: 'ORIX-HL-PROBE-' + process.pid,
+      logPath: nativeLogPath,
+      environment: {
+        SystemRoot: trustedSystemRoot,
+        WINDIR: trustedSystemRoot,
+        PATH: process.env.PATH || '',
+        TEMP: path.join(hardLinkRoot, 'tmp'),
+        TMP: path.join(hardLinkRoot, 'tmp'),
+        HOME: hardLinkRoot,
+        USERPROFILE: hardLinkRoot,
+        LOCALAPPDATA: hardLinkRoot,
+        APPDATA: hardLinkRoot,
+      },
+    }), 'utf8');
+    let nativeHardLinkError = null;
+    try {
+      execFileSync(nativeLauncher, ['run', nativeConfigPath], {
+        cwd: hardLinkHelperWorkspace,
+        env: { ...process.env },
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    } catch (error) {
+      nativeHardLinkError = error;
+    }
+    assert.ok(nativeHardLinkError, 'Native Windows launcher must independently reject a rootfs hard link');
+    assert.equal(nativeHardLinkError.status, 125,
+      'Native hard-link rejection must fail closed with exit code 125');
+    assert.match(String(nativeHardLinkError.stderr),
+      /ORIX_WINDOWS_ISOLATION_ERROR=.*ORIX_WINDOWS_ROOTFS_UNTRUSTED: hard-linked files are not allowed/,
+      'Native launcher did not reject the hard link using the file handle link count');
+    assert.equal(await readFile(externalHardLinkTarget, 'utf8'), externalHardLinkValue,
+      'Native hard-link preflight must not modify the external target');
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
 
     server = net.createServer();
