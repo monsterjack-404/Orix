@@ -881,3 +881,68 @@ test('APK without a signing block and AAB package report distinguish not-applica
   ]);
   assert.equal(analyze_android_package(aab).signing_block.status, 'not-applicable');
 });
+
+
+test('AAB BundleConfig is decoded through bounded stored and DEFLATE ZIP entry readers', () => {
+  const version = Buffer.from('1.18.0', 'utf8');
+  const bundletool = Buffer.concat([Buffer.from([0x12, version.length]), version]);
+  const config = Buffer.concat([
+    Buffer.from([0x0a, bundletool.length]),
+    bundletool,
+    Buffer.from([0x40, 0x01]), // BundleType.APEX
+  ]);
+
+  const stored = analyze_android_package(create_zip([{ name: 'BundleConfig.pb', contents: config }]));
+  assert.equal(stored.format, 'AAB');
+  assert.equal(stored.bundle.bundle_config.status, 'decoded');
+  assert.equal(stored.bundle.bundle_config.config.bundletool.version, '1.18.0');
+  assert.equal(stored.bundle.bundle_config.config.type.name, 'APEX');
+
+  const compressed = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: config, method: 8 },
+  ]));
+  assert.equal(compressed.bundle.bundle_config.status, 'decoded');
+  assert.equal(compressed.bundle.bundle_config.config.bundletool.version, '1.18.0');
+});
+
+test('AAB BundleConfig reports duplicate, missing, size-limited and CRC-invalid entries without false decoding', () => {
+  const config = Buffer.from([0x40, 0x00]); // Empty/default REGULAR bundle type.
+  const duplicate = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: config },
+    { name: 'BundleConfig.pb', contents: config },
+  ]));
+  assert.equal(duplicate.bundle.bundle_config.status, 'duplicate-path');
+  assert.ok(duplicate.warnings.some(item => item.path === 'BundleConfig.pb' && item.reason === 'duplicate-path'));
+
+  const limited = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.alloc(16, 0) },
+  ]), { max_bundle_config_bytes: 8 });
+  assert.equal(limited.bundle.bundle_config.status, 'size-limit');
+
+  const malformed = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x08, 0x80]) },
+  ]));
+  assert.equal(malformed.bundle.bundle_config.status, 'malformed');
+  assert.equal(malformed.bundle.bundle_config.error.code, 'ORIX_BUNDLE_CONFIG_VARINT_TRUNCATED');
+
+  const corrupted = create_zip([{ name: 'BundleConfig.pb', contents: config }]);
+  const parsed = parse_zip(corrupted);
+  const entry = parsed.entries.find(item => item.name === 'BundleConfig.pb');
+  const payload_offset = entry.local_header_offset + 30 + Buffer.byteLength('BundleConfig.pb');
+  corrupted[payload_offset] ^= 0x01;
+  const crc_report = analyze_android_package(corrupted);
+  assert.equal(crc_report.bundle.bundle_config.status, 'crc-mismatch');
+  assert.equal(crc_report.bundle.bundle_config.config, null);
+});
+
+test('AAB without BundleConfig reports absent metadata and APKs mark it not applicable', () => {
+  const absent = analyze_android_package(create_zip([
+    { name: 'base/manifest/AndroidManifest.xml', contents: Buffer.from([0x0a, 0x00]) },
+  ]));
+  assert.equal(absent.format, 'AAB');
+  assert.equal(absent.bundle.bundle_config.status, 'absent');
+
+  const apk = analyze_android_package(make_apk());
+  assert.equal(apk.bundle.status, 'not-applicable');
+  assert.equal(apk.bundle.bundle_config.status, 'not-applicable');
+});
