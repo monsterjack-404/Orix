@@ -36,6 +36,12 @@ Both independent Windows CI runners built the launcher from the exact PR head. T
 
 CI also checks that `npm pack --dry-run --json` contains both the integrity module and the compressed launcher. The Windows hostile-process smoke test runs through the actual runtime path using the packaged executable, rather than treating a compiler-success step as proof of isolation.
 
+## Rootfs path and ACL trust
+
+Before creating the AppContainer, the native helper checks the rootfs and each existing ancestor for reparse points and trusted ownership. It rejects write-capable grants on the rootfs itself and destructive grants on ancestor directories.
+
+The volume root is not renameable as a path component, but its ACL still matters: an untrusted `DeleteSubdirectoriesAndFiles` (Windows `FILE_DELETE_CHILD`) grant on `C:\\` can delete or replace a child rootfs directory. The helper therefore applies the destructive ancestor mask at the volume root as well, while continuing to tolerate ordinary volume namespace create-file/create-directory grants. It does not skip the volume-root ACL entirely.
+
 ## Process-tree teardown and cleanup ordering
 
 The native launcher now treats process termination as an operation that must be observed, not merely requested.
