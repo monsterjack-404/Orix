@@ -331,10 +331,10 @@ export async function call_orix_tool(name, args = {}, options = {}) {
     case 'orix.case.get': {
       const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
       if (!['list', 'show', 'verify'].includes(args.action)) throw new TypeError('Case get action must be list, show or verify');
-      if (args.action === 'list') return list_cases(workspace.path, { max_cases: args.max_cases });
+      if (args.action === 'list') return list_cases(workspace.path, { max_cases: args.max_cases, reject_hardlinks: true });
       if (!args.case_id) throw new TypeError('Case show and verify require case_id');
-      if (args.action === 'show') return get_case(workspace.path, args.case_id);
-      return verify_case(workspace.path, args.case_id);
+      if (args.action === 'show') return get_case(workspace.path, args.case_id, { reject_hardlinks: true });
+      return verify_case(workspace.path, args.case_id, { reject_hardlinks: true });
     }
     case 'orix.case.mutate': {
       if (!['add_artifact','record_analysis','add_finding','add_note','relationship','finding_status','status'].includes(args.action)) throw new TypeError('Unsupported case mutation action');
@@ -346,13 +346,13 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       if (args.action === 'record_analysis') {
         const target = await resolve_workspace_path(args.report_path, roots, { kind: 'file' });
         const report = await read_workspace_json(target.path, roots, { max_bytes: 2 * 1024 * 1024 });
-        return record_case_analysis(workspace.path, args.case_id, { report, tool: args.tool ?? 'orix', tool_version: args.tool_version ?? null });
+        return record_case_analysis(workspace.path, args.case_id, { report, tool: args.tool ?? 'orix', tool_version: args.tool_version ?? null }, { reject_hardlinks: true });
       }
-      if (args.action === 'add_finding') return add_case_finding(workspace.path, args.case_id, args);
-      if (args.action === 'add_note') return add_case_note(workspace.path, args.case_id, args.text);
-      if (args.action === 'finding_status') return change_case_finding_status(workspace.path, args.case_id, args.finding_id, args.status, args.reason ?? '');
-      if (args.action === 'status') return change_case_status(workspace.path, args.case_id, args.status, args.reason ?? '');
-      return add_case_relationship(workspace.path, args.case_id, args);
+      if (args.action === 'add_finding') return add_case_finding(workspace.path, args.case_id, args, { reject_hardlinks: true });
+      if (args.action === 'add_note') return add_case_note(workspace.path, args.case_id, args.text, {}, { reject_hardlinks: true });
+      if (args.action === 'finding_status') return change_case_finding_status(workspace.path, args.case_id, args.finding_id, args.status, args.reason ?? '', { reject_hardlinks: true });
+      if (args.action === 'status') return change_case_status(workspace.path, args.case_id, args.status, args.reason ?? '', { reject_hardlinks: true });
+      return add_case_relationship(workspace.path, args.case_id, args, { reject_hardlinks: true });
     }
     case 'orix.case.exchange': {
       if (!['export','import'].includes(args.action)) throw new TypeError('Case exchange action must be export or import');
@@ -360,10 +360,10 @@ export async function call_orix_tool(name, args = {}, options = {}) {
       const workspace = await resolve_workspace_path(args.workspace, roots, { kind: 'directory' });
       if (args.action === 'export') {
         const parent = await resolve_workspace_path(path.dirname(path.resolve(args.path)), roots, { kind: 'directory' });
-        return export_case_bundle(workspace.path, args.case_id, path.join(parent.path, path.basename(args.path)));
+        return export_case_bundle(workspace.path, args.case_id, path.join(parent.path, path.basename(args.path)), { reject_hardlinks: true });
       }
       const bundle = await resolve_workspace_path(args.path, roots, { kind: 'directory' });
-      return import_case_bundle(workspace.path, bundle.path);
+      return import_case_bundle(workspace.path, bundle.path, { reject_hardlinks: true });
     }
     case 'orix.inspect_file': {
       const limits = {};
