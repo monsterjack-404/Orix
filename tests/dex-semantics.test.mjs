@@ -41,7 +41,7 @@ function require_crypto() {
 import * as crypto_module from 'node:crypto';
 
 function create_semantic_dex() {
-  const strings = ['Lcom/example/App;', 'Ljava/lang/Object;', 'run', 'V', 'value', 'I'];
+  const strings = ['I', 'Lcom/example/App;', 'Ljava/lang/Object;', 'V', 'run', 'value'];
   const string_ids_off = 112;
   const type_ids_off = string_ids_off + strings.length * 4;
   const proto_ids_off = type_ids_off + 4 * 4;
@@ -102,22 +102,22 @@ function create_semantic_dex() {
     buffer.writeUInt32LE(offset, string_ids_off + index * 4);
     encoded_strings[index].copy(buffer, offset);
   });
-  [0, 1, 3, 5].forEach((string_index, index) => {
+  [0, 1, 2, 3].forEach((string_index, index) => {
     buffer.writeUInt32LE(string_index, type_ids_off + index * 4);
   });
   buffer.writeUInt32LE(3, proto_ids_off);
-  buffer.writeUInt32LE(2, proto_ids_off + 4);
+  buffer.writeUInt32LE(3, proto_ids_off + 4);
   buffer.writeUInt32LE(0, proto_ids_off + 8);
-  buffer.writeUInt16LE(0, field_ids_off);
-  buffer.writeUInt16LE(3, field_ids_off + 2);
-  buffer.writeUInt32LE(4, field_ids_off + 4);
-  buffer.writeUInt16LE(0, method_ids_off);
+  buffer.writeUInt16LE(1, field_ids_off);
+  buffer.writeUInt16LE(0, field_ids_off + 2);
+  buffer.writeUInt32LE(5, field_ids_off + 4);
+  buffer.writeUInt16LE(1, method_ids_off);
   buffer.writeUInt16LE(0, method_ids_off + 2);
-  buffer.writeUInt32LE(2, method_ids_off + 4);
+  buffer.writeUInt32LE(4, method_ids_off + 4);
 
-  buffer.writeUInt32LE(0, class_defs_off);
+  buffer.writeUInt32LE(1, class_defs_off);
   buffer.writeUInt32LE(1, class_defs_off + 4);
-  buffer.writeUInt32LE(1, class_defs_off + 8);
+  buffer.writeUInt32LE(2, class_defs_off + 8);
   buffer.writeUInt32LE(0, class_defs_off + 12);
   buffer.writeUInt32LE(0xffffffff, class_defs_off + 16);
   buffer.writeUInt32LE(0, class_defs_off + 20);
@@ -174,7 +174,7 @@ test('DEX semantic parser rejects an encoded method index outside method_ids', (
 
 test('DEX semantic parser rejects method records owned by another class', () => {
   const fixture = create_semantic_dex();
-  fixture.writeUInt16LE(1, 172); // method_id.class_idx points to java.lang.Object instead of this class.
+  fixture.writeUInt16LE(0, 172); // method_id.class_idx points to the int primitive type instead of this class.
   assert.throws(() => parse_dex(fixture), error => error.code === 'ORIX_DEX_CLASS_DATA_METHOD_INDEX');
 });
 
@@ -188,10 +188,49 @@ test('DEX semantic parser rejects out-of-range code_item offsets', () => {
 test('DEX semantic parser enforces a total instruction-unit budget', () => {
   const fixture = create_semantic_dex();
   const class_data_off = fixture.readUInt32LE(180 + 24);
-  const code_off = fixture.readUInt32LE(class_data_off + 7) ?? 0;
   // The fixture's concrete code_item starts 12 bytes after class_data_off.
   fixture.writeUInt32LE(2, class_data_off + 12 + 12);
   assert.throws(() => parse_dex(fixture, { max_instruction_units: 1 }), error => error.code === 'ORIX_DEX_INSTRUCTION_BUDGET');
+});
+
+
+test('DEX semantic parser rejects a class_data_item map count that disagrees with class_def references', () => {
+  const fixture = create_semantic_dex();
+  const map_off = fixture.readUInt32LE(52);
+  const map_count = fixture.readUInt32LE(map_off);
+  let found = false;
+  for (let index = 0; index < map_count; index += 1) {
+    const item = map_off + 4 + index * 12;
+    if (fixture.readUInt16LE(item) === 0x2000) {
+      fixture.writeUInt32LE(2, item + 4);
+      found = true;
+      break;
+    }
+  }
+  assert.equal(found, true);
+  assert.throws(() => parse_dex(fixture), error => error.code === 'ORIX_DEX_CLASS_DATA_MAP_COUNT');
+});
+
+test('DEX semantic output ceiling applies across class, field and method records', () => {
+  const parsed = parse_dex(create_semantic_dex(), { max_output_items: 1 });
+  assert.equal(parsed.class_data_summary.output_items_reported, 1);
+  assert.equal(parsed.class_data_summary.output_items_omitted, 2);
+  assert.equal(parsed.class_data_summary.output_truncated, true);
+  assert.equal(parsed.class_data[0].static_fields.length, 0);
+  assert.equal(parsed.class_data[0].direct_methods.length, 0);
+  assert.equal(parsed.class_data[0].output_truncated, true);
+});
+
+test('DEX parser rejects duplicate or unsorted string_ids and type_ids', () => {
+  const duplicate_strings = create_semantic_dex();
+  const second_string = duplicate_strings.readUInt32LE(112 + 4);
+  duplicate_strings.writeUInt32LE(second_string, 112);
+  assert.throws(() => parse_dex(duplicate_strings), error => error.code === 'ORIX_DEX_STRING_ORDER');
+
+  const unsorted_types = create_semantic_dex();
+  const type_ids_off = unsorted_types.readUInt32LE(68);
+  unsorted_types.writeUInt32LE(2, type_ids_off);
+  assert.throws(() => parse_dex(unsorted_types), error => error.code === 'ORIX_DEX_TYPE_ORDER');
 });
 
 test('DEX checksum and SHA-1 fields are independently verified without claiming publisher authenticity', () => {
