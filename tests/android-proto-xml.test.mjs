@@ -300,13 +300,18 @@ test('protobuf XML decoder validates wire types of skipped known metadata fields
     error.code === 'ORIX_PROTO_XML_WIRE_MISMATCH');
 
   // XmlAttribute.compiled_item is a length-delimited Item message (field 6).
-  const bad_attribute = Buffer.concat([
-    field_bytes(1, xml_element('manifest', {
-      attributes: [{ name: 'package', value: 'com.example.orix' }],
-    })),
+  const malformed_attribute = Buffer.concat([
+    field_string(2, 'package'),
+    field_string(3, 'com.example.orix'),
+    varint(6 * 8),
+    varint(1),
   ]);
-  const nested = bad_attribute;
-  assert.equal(parse_android_proto_xml(nested).package_name, 'com.example.orix');
+  const malformed_element = Buffer.concat([
+    field_string(3, 'manifest'),
+    field_bytes(4, malformed_attribute),
+  ]);
+  assert.throws(() => parse_android_proto_xml(xml_node(malformed_element)), error =>
+    error.code === 'ORIX_PROTO_XML_WIRE_MISMATCH');
 });
 
 test('protobuf XML decoder reports permission and component output truncation explicitly', () => {
