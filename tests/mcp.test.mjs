@@ -10,6 +10,7 @@ import { PassThrough } from 'node:stream';
 import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool, start_mcp_server } from '../src/mcp/server.mjs';
 import { inspect_file } from '../src/core/inspect.mjs';
 import { append_ledger, verify_ledger } from '../src/evidence/ledger.mjs';
+import { create_zip_entries } from './helpers.mjs';
 
 test('MCP case tools create, mutate, verify, export and import a workspace-confined case', async t => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-'));
@@ -207,6 +208,43 @@ test('MCP HAR tool analyzes only workspace-confined captures and omits secret va
       call_orix_tool('orix.analyze_har', { path: path.resolve('README.md') }, { roots: [workspace] }),
       /workspace|outside|root/i,
     );
+  }
+});
+
+test('MCP Android package tool enforces workspace confinement and report bounds', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'orix-mcp-android-'));
+  try {
+    const file = path.join(directory, 'sample.apk');
+    const manifest = Buffer.alloc(8);
+    manifest.writeUInt16LE(0x0003, 0);
+    manifest.writeUInt16LE(8, 2);
+    manifest.writeUInt32LE(8, 4);
+    await writeFile(file, create_zip_entries([{ name: 'AndroidManifest.xml', contents: manifest }]), { flag: 'wx', mode: 0o600 });
+
+    const report = await call_orix_tool('orix.analyze_android_package', {
+      path: file, max_archive_entries: 1,
+    }, { roots: [directory] });
+    assert.equal(report.schema_version, 'orix.android-package.v1');
+    assert.equal(report.format, 'APK');
+    assert.equal(report.detected, true);
+    assert.equal(report.summary.manifest_entries, 1);
+    assert.equal(report.archive.entries_reported, 1);
+    assert.equal(report.manifests[0].status, 'malformed-binary-xml');
+
+    await assert.rejects(
+      call_orix_tool('orix.analyze_android_package', { path: path.resolve('README.md') }, { roots: [directory] }),
+      /workspace|outside|root/i,
+    );
+    await assert.rejects(
+      call_orix_tool('orix.analyze_android_package', { path: file, max_archive_entries: 0 }, { roots: [directory] }),
+      /integer between 1 and 50000/,
+    );
+    await assert.rejects(
+      call_orix_tool('orix.analyze_android_package', { path: file, max_file_mib: 0 }, { roots: [directory] }),
+      /integer between 1 and 1024/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

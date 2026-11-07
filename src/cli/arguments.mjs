@@ -3,7 +3,7 @@
 import { OrixError } from '../core/errors.mjs';
 import { DEFAULT_LIMITS } from '../core/limits.mjs';
 
-const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-nodes','--max-edges','--max-hotspots','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports','--max-functions','--address','--max-instructions','--max-packages','--max-advisories','--max-network-mib','--max-har-entries','--max-har-hosts']);
+const VALUE_OPTIONS = new Set(['--format','--out','--ledger','--max-files','--max-directories','--max-entries','--max-depth','--max-nodes','--max-edges','--max-hotspots','--max-read-mib','--max-file-mib','--concurrency','--strings-limit','--executable','--timeout-ms','--max-output-kib','--max-imports','--max-functions','--address','--max-instructions','--max-packages','--max-advisories','--max-network-mib','--max-har-entries','--max-har-hosts','--max-archive-entries']);
 const BOOLEAN_OPTIONS = new Set(['--json','--markdown','--no-strings','--osv','--decompile','--help','-h']);
 
 function positive_integer(value, option, minimum, maximum) {
@@ -73,6 +73,7 @@ export function parse_arguments(argv) {
       else if (token === '--max-network-mib') result.flags.max_osv_response_bytes = positive_integer(raw, token, 1, 128) * 1024 * 1024;
       else if (token === '--max-har-entries') result.flags.max_har_entries = positive_integer(raw, token, 1, 100_000);
       else if (token === '--max-har-hosts') result.flags.max_har_hosts = positive_integer(raw, token, 1, 10_000);
+      else if (token === '--max-archive-entries') result.flags.max_archive_entries = positive_integer(raw, token, 1, 50_000);
       continue;
     }
     if (token.startsWith('-')) throw new OrixError('ORIX_CLI_UNKNOWN_OPTION', `Unknown option: ${token}`, { recoverable: true });

@@ -20,6 +20,7 @@ const schema_paths = [
   new URL('../schemas/capabilities.v1.schema.json', import.meta.url),
   new URL('../schemas/har.v1.schema.json', import.meta.url),
   new URL('../schemas/rizin-functions.v1.schema.json', import.meta.url),
+  new URL('../schemas/android-package.v1.schema.json', import.meta.url),
   new URL('../schemas/case.v1.schema.json', import.meta.url),
   new URL('../schemas/case-bundle.v1.schema.json', import.meta.url),
 ];
@@ -101,4 +102,18 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.equal(rizinFunctions.properties.disassembly.oneOf.length, 2);
   assert.equal(rizinFunctions.properties.decompilation.oneOf.length, 2);
   assert.ok(rizinFunctions.properties.summary.required.includes('decompilation_included'));
+  const androidPackage = schemas.find(schema => schema.properties.schema_version?.const === 'orix.android-package.v1');
+  assert.ok(androidPackage, 'Android package schema must be registered in schema contract tests');
+  assert.equal(androidPackage.additionalProperties, false);
+  assert.ok(androidPackage.required.includes('summary'));
+  assert.ok(androidPackage.required.includes('archive_entries'));
+  assert.ok(androidPackage.properties.archive.required.includes('entries_omitted'));
+  assert.ok(androidPackage.properties.archive.required.includes('duplicate_path_names'));
+  assert.ok(androidPackage.properties.archive.required.includes('duplicate_path_entries'));
+  assert.ok(androidPackage.properties.summary.required.includes('duplicate_dex_paths'));
+  assert.ok(androidPackage.properties.summary.required.includes('duplicate_manifest_paths'));
+  assert.ok(androidPackage.properties.summary.required.includes('dex_entries_omitted'));
+  assert.ok(androidPackage.properties.manifests.items.required.includes('path_original_length'));
+  assert.ok(androidPackage.properties.source.properties.sha256.pattern.includes('a-f'));
+  assert.equal(androidPackage.properties.format.enum.includes('AAB'), true);
 });

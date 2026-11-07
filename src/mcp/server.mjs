@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { inspect_file } from '../core/inspect.mjs';
 import { analyze_har_file } from '../network/har.mjs';
+import { analyze_android_package_file } from '../android/package.mjs';
 import { scan_directory } from '../analyzer/scan.mjs';
 import { scan_project } from '../project/intelligence.mjs';
 import { analyze_project_architecture } from '../project/architecture.mjs';
@@ -137,6 +138,25 @@ export const ORIX_MCP_TOOLS = Object.freeze([
         path: { type: 'string', minLength: 1 },
         max_entries: integer('Maximum HAR transactions analyzed.', 100000, 1),
         max_hosts: integer('Maximum distinct hosts returned.', 10000, 1),
+      },
+      required: ['path'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'orix.analyze_android_package',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    description: 'Analyze a workspace-confined APK/AAB offline. Inventories bounded safe ZIP entries, decodes bounded APK binary-XML manifest metadata, inventories native-library paths and signature filenames, and inspects DEX metadata only for stored, unencrypted entries. Does not extract, decompress, execute, decode AAB protobuf manifests or verify signatures.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', minLength: 1 },
+        max_file_mib: integer('Maximum APK/AAB file size in MiB.', 1024, 1),
+        max_archive_entries: integer('Maximum safe ZIP entries included in the report.', 50000, 1),
+        max_dex_entries: integer('Maximum DEX entries inspected.', 256, 1),
+        max_dex_entry_mib: integer('Maximum size of one DEX entry in MiB.', 512, 1),
+        max_dex_total_mib: integer('Maximum aggregate DEX bytes inspected in MiB.', 1024, 1),
+        max_dex_output_items: integer('Maximum strings, types and classes returned per DEX entry.', 10000, 1),
       },
       required: ['path'],
       additionalProperties: false,
@@ -423,6 +443,19 @@ export async function call_orix_tool(name, args = {}, options = {}) {
     case 'orix.analyze_har': {
       const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
       return analyze_har_file(target.path, { max_entries: args.max_entries, max_hosts: args.max_hosts, reject_hardlinks: true });
+    }
+    case 'orix.analyze_android_package': {
+      // resolve_workspace_path checks workspace confinement, symlinks and
+      // hard-link counts before the Android parser reads the package bytes.
+      const target = await resolve_workspace_path(args.path, roots, { kind: 'file' });
+      return analyze_android_package_file(target.path, {
+        max_file_bytes: args.max_file_mib === undefined ? undefined : args.max_file_mib * 1024 * 1024,
+        max_archive_entries: args.max_archive_entries,
+        max_dex_entries: args.max_dex_entries,
+        max_dex_entry_bytes: args.max_dex_entry_mib === undefined ? undefined : args.max_dex_entry_mib * 1024 * 1024,
+        max_dex_total_bytes: args.max_dex_total_mib === undefined ? undefined : args.max_dex_total_mib * 1024 * 1024,
+        max_dex_output_items: args.max_dex_output_items,
+      });
     }
     case 'orix.formats':
       return { schema_version: 'orix.formats.v1', formats: list_format_capabilities() };
