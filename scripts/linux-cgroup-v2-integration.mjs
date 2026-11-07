@@ -606,6 +606,24 @@ async function main() {
       'Concurrent cleanup calls returned inconsistent results');
     assert.equal(emptyCleanupA.removed, true,
       'Idempotent cleanup did not remove the empty provider cgroup');
+    assert.equal(emptyCleanupA.retry_count, 0,
+      'A normal empty-cgroup cleanup should not need a retry');
+
+    // Force one transient EBUSY by placing an empty nested cgroup under the
+    // run leaf. Remove it during the bounded backoff; cleanup must retain the
+    // delegated parent FD, reopen the leaf, and succeed on attempt two.
+    const retryRun = await prepare_linux_provider_cgroup();
+    const nestedCgroup = path.join(retryRun.path, 'orix-transient-cleanup-probe');
+    await mkdir(nestedCgroup, { mode: 0o700 });
+    const nestedRemoval = new Promise((resolve, reject) => {
+      setTimeout(() => rmdir(nestedCgroup).then(resolve, reject), 25);
+    });
+    const retryReport = await retryRun.cleanup();
+    await nestedRemoval;
+    assert.equal(retryReport.retry_count, 1,
+      'Transient cgroup removal failure was not retried exactly once');
+    assert.equal(retryReport.removed, true,
+      'Retry did not remove the provider cgroup after the nested child disappeared');
 
     // A signal already aborted before launch must still roll back the prepared
     // cgroup and must never reach provider spawn.
