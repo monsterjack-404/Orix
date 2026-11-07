@@ -393,6 +393,8 @@ async function main() {
     }));
     assert.match(execution.stderr, /ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64/,
       'AppContainer token and Job Object limits were not confirmed by the native launcher');
+    assert.match(execution.stderr, /ORIX_CLEANUP:ANCESTOR_TRAVERSE_PURGED/,
+      'Per-profile traverse-only ancestor ACL grants were not removed after provider teardown');
     const result = JSON.parse(execution.stdout);
     assert.ok(result.system_root, 'Provider did not receive the trusted SystemRoot required by the Windows runtime');
     assert.equal(result.windir.toLowerCase(), result.system_root.toLowerCase(), 'WINDIR and SystemRoot disagree');
@@ -466,6 +468,8 @@ async function main() {
       'Native launcher did not confirm AppContainer and Job Object limits for the descendant test');
     assert.match(descendantExecution.stderr, /ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED/,
       'Native launcher did not explicitly permit child creation inside the inherited AppContainer Job Object');
+    assert.match(descendantExecution.stderr, /ORIX_CLEANUP:ANCESTOR_TRAVERSE_PURGED/,
+      'Ancestor traversal ACLs must be purged after the descendant Job Object becomes empty');
     const descendantCountAfterExit = await readFile(descendantCounter, 'utf8');
     await new Promise(resolve => setTimeout(resolve, 250));
     const descendantCountLater = await readFile(descendantCounter, 'utf8');
