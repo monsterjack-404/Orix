@@ -40,7 +40,8 @@ if (process.platform === 'linux') {
       prepare_linux_provider_cgroup('relative/cgroup'),
       error => error.code === 'ORIX_CGROUP_PARENT_REQUIRED',
     );
-  })
+  });
+
   test('required cgroup manager rejects an ordinary filesystem directory without mutating it', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'orix-cgroup-manager-untrusted-'));
     try {
@@ -55,5 +56,4 @@ if (process.platform === 'linux') {
       await rm(directory, { recursive: true, force: true });
     }
   });
-;
 }
