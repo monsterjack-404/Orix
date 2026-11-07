@@ -33,8 +33,13 @@ function sleb(buffer, offset, end, label) {
   for (let index = 0; index < 5; index += 1) {
     need(buffer, offset + index, 1, end, label + ' SLEB128');
     const byte = buffer[offset + index];
-    if (index === 4 && (byte & 0x70) !== 0 && (byte & 0x70) !== 0x70) {
-      fail('ORIX_DEX_SEMANTIC_LEB_OVERFLOW', 'DEX ' + label + ' SLEB128 exceeds signed 32-bit range', { offset });
+    if (index === 4) {
+      // A 32-bit SLEB128 has only four payload bits left in byte five.
+      // Its upper three payload bits must repeat the sign bit (bit 3).
+      const sign_extension = (byte & 0x08) !== 0 ? 0x70 : 0;
+      if ((byte & 0x70) !== sign_extension) {
+        fail('ORIX_DEX_SEMANTIC_LEB_OVERFLOW', 'DEX ' + label + ' SLEB128 exceeds signed 32-bit range', { offset });
+      }
     }
     value |= (byte & 0x7f) << shift;
     shift += 7;
