@@ -14,6 +14,7 @@ import {
 } from '../src/android/package.mjs';
 import * as public_api from '../src/index.mjs';
 import { parse_android_binary_xml } from '../src/android/binary-xml.mjs';
+import { parse_zip } from '../src/formats/zip.mjs';
 
 const repository_root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cli_path = path.join(repository_root, 'src', 'cli.mjs');
@@ -287,6 +288,34 @@ function find_binary_xml_chunk(buffer, expected_type) {
     offset += size;
   }
   return -1;
+}
+
+
+function add_apk_signing_block(apk, pairs) {
+  const archive = parse_zip(apk);
+  const encoded_pairs = pairs.map(({ id, value = Buffer.alloc(0) }) => {
+    const pair = Buffer.alloc(12 + value.length);
+    pair.writeBigUInt64LE(BigInt(4 + value.length), 0);
+    pair.writeUInt32LE(id >>> 0, 8);
+    value.copy(pair, 12);
+    return pair;
+  });
+  const pair_bytes = Buffer.concat(encoded_pairs);
+  const size_of_block = BigInt(pair_bytes.length + 24);
+  const block = Buffer.alloc(8 + pair_bytes.length + 24);
+  block.writeBigUInt64LE(size_of_block, 0);
+  pair_bytes.copy(block, 8);
+  block.writeBigUInt64LE(size_of_block, 8 + pair_bytes.length);
+  Buffer.from('APK Sig Block 42', 'ascii').copy(block, 16 + pair_bytes.length);
+  const central_directory_offset = archive.archive.central_directory_offset;
+  const eocd_offset = archive.archive.eocd_offset;
+  const result = Buffer.concat([
+    apk.subarray(0, central_directory_offset),
+    block,
+    apk.subarray(central_directory_offset),
+  ]);
+  result.writeUInt32LE(central_directory_offset + block.length, eocd_offset + block.length + 16);
+  return result;
 }
 
 function make_apk() {
@@ -661,4 +690,61 @@ test('AAB inventory recognizes BundleConfig and module manifest/DEX paths withou
   assert.ok(report.limitations.some(note => note.includes('AAB protobuf manifests')));
   assert.ok(report.limitations.some(note => note.includes('compressed/encrypted manifests are inventoried only')));
   assert.ok(report.limitations.some(note => note.includes('method/field table contents')));
+});
+
+
+test('APK Signing Block inventory recognizes v2/v3/v3.1 IDs and retains unknown IDs without claiming verification', () => {
+  const apk = add_apk_signing_block(make_apk(), [
+    { id: 0x7109871a, value: Buffer.from([1, 2, 3]) },
+    { id: 0xf05368c0, value: Buffer.from([4, 5]) },
+    { id: 0x1b93ad61, value: Buffer.from([6]) },
+    { id: 0xdeadbeef, value: Buffer.from([7, 8, 9]) },
+    { id: 0x7109871a, value: Buffer.from([10]) },
+  ]);
+  const report = analyze_android_package(apk);
+  assert.equal(report.signing_block.status, 'present');
+  assert.equal(report.signing_block.pair_count, 5);
+  assert.deepEqual(report.signing_block.schemes.map(item => item.name), [
+    'APK Signature Scheme v2',
+    'APK Signature Scheme v3',
+    'APK Signature Scheme v3.1',
+  ]);
+  assert.deepEqual(report.signing_block.unknown_ids, ['0xdeadbeef']);
+  assert.deepEqual(report.signing_block.duplicate_ids, [{ id: '0x7109871a', count: 2 }]);
+  assert.equal(report.summary.apk_signing_block_present, true);
+  assert.ok(report.limitations.some(note => note.includes('cryptographic signatures')));
+});
+
+test('APK Signing Block inventory rejects mismatched size fields and reports the malformed block', () => {
+  const apk = add_apk_signing_block(make_apk(), [
+    { id: 0x7109871a, value: Buffer.from([1]) },
+  ]);
+  const central_directory_offset = parse_zip(apk).archive.central_directory_offset;
+  apk.writeBigUInt64LE(0n, central_directory_offset - 24);
+  const report = analyze_android_package(apk);
+  assert.equal(report.signing_block.status, 'malformed');
+  assert.equal(report.signing_block.error.code, 'ORIX_APK_SIGNING_BLOCK_SIZE_MISMATCH');
+  assert.ok(report.warnings.some(item => item.reason === 'ORIX_APK_SIGNING_BLOCK_SIZE_MISMATCH'));
+});
+
+test('APK Signing Block parser enforces configured size and pair-count budgets', () => {
+  const apk = add_apk_signing_block(make_apk(), [
+    { id: 0x7109871a, value: Buffer.alloc(8) },
+    { id: 0xf05368c0, value: Buffer.alloc(8) },
+  ]);
+  const size_limited = analyze_android_package(apk, { max_signing_block_bytes: 32 });
+  assert.equal(size_limited.signing_block.status, 'malformed');
+  assert.equal(size_limited.signing_block.error.code, 'ORIX_APK_SIGNING_BLOCK_LIMIT');
+  const pair_limited = analyze_android_package(apk, { max_signing_block_pairs: 1 });
+  assert.equal(pair_limited.signing_block.status, 'malformed');
+  assert.equal(pair_limited.signing_block.error.code, 'ORIX_APK_SIGNING_BLOCK_PAIR_LIMIT');
+});
+
+test('APK without a signing block and AAB package report distinguish not-applicable signing metadata', () => {
+  assert.equal(analyze_android_package(make_apk()).signing_block.status, 'absent');
+  const aab = create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x0a, 0x00]) },
+    { name: 'base/manifest/AndroidManifest.xml', contents: Buffer.alloc(8) },
+  ]);
+  assert.equal(analyze_android_package(aab).signing_block.status, 'not-applicable');
 });
