@@ -1,6 +1,6 @@
 # ORIX Provider Manifests and Registry
 
-The provider layer validates metadata, maintains an in-memory capability catalog, and supports an opt-in bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, or grant authorization. Process execution is not sandboxed by default; the Linux Bubblewrap backend is a separate opt-in isolation mode. ORIX does not claim that a provider is available before it has actually been located and invoked.
+The provider layer validates metadata, maintains an in-memory capability catalog, and supports a bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, or grant authorization. Every process execution must explicitly select `isolation: 'none'` (unsandboxed process controls) or `isolation: 'required'` (enforced Linux Bubblewrap plus delegated cgroup-v2 limits). Omitting the policy is rejected before launch. ORIX does not claim that a provider is available before it has actually been located and invoked.
 
 
 
@@ -116,6 +116,7 @@ const result = await run_static_provider({
   args: ['-N', '-q', '-c', 'iij', '/evidence/sample.bin'],
   timeout_ms: 30000,
   max_output_bytes: 4 * 1024 * 1024,
+  isolation: 'none', // explicit unsandboxed legacy process-control mode
 });
 
 if (!result.ok) {
@@ -125,7 +126,7 @@ if (!result.ok) {
 
 On POSIX, the runner checks for remaining members of the provider's process group when the leader exits; it sends SIGTERM, escalates to SIGKILL after the configured grace period, and then waits up to five additional seconds for the kernel to report that the group is empty. If the group remains present, the execution is marked unsuccessful with `process-group-cleanup-failed`. This does not catch descendants that deliberately create a new session/process group, and it is not a kernel-owned process-tree container. Windows legacy mode signals only the direct child; process-tree teardown is not guaranteed.
 
-Without `isolation: 'required'`, this runner is a process-control boundary, **not an operating-system sandbox**: it cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. On Linux, the explicit `isolation: 'required'` mode wraps the selected executable with Bubblewrap namespace and read-only-root filesystem isolation, and fails closed when its rootfs or namespace prerequisites are unavailable. Windows and macOS currently have no enforced backend and therefore reject required isolation. Bubblewrap isolation does not enforce cgroup CPU, memory, or task-count limits. POSIX process groups are still signalled on timeout/cancellation, and Windows process-tree teardown is not guaranteed. Do not treat the default runner as safe for hostile binaries.
+`isolation: 'none'` is an explicit unsandboxed process-control choice, **not an operating-system sandbox**: it cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. On Linux, `isolation: 'required'` combines Bubblewrap namespace/read-only-root filesystem isolation with an administrator-delegated cgroup-v2 run cgroup. The cgroup applies aggregate CPU, memory, swap and task-count limits, and cleanup must verify the run cgroup is empty before reporting success. Required mode fails closed when Bubblewrap, the trusted rootfs, or the delegated cgroup-v2 prerequisites are unavailable. Windows and macOS currently have no enforced backend and therefore reject required isolation. POSIX process groups are also cleaned up as a secondary control; Windows legacy mode signals only the direct child and does not guarantee process-tree teardown. Do not treat `none` mode as safe for hostile binaries.
 
 ## 5. Rizin import adapter
 
@@ -137,6 +138,7 @@ import { analyze_rizin_imports } from '@orix/cli';
 const report = await analyze_rizin_imports({
   executable: '/opt/rizin/bin/rizin',
   input_path: '/evidence/sample.elf',
+  isolation: 'none', // explicit unsandboxed process-control mode
 });
 
 console.log(report.provider.engine_version);
@@ -149,7 +151,7 @@ The adapter report contract is defined in [rizin-imports.v1.schema.json](../sche
 
 ### Opt-in Linux process isolation
 
-The Rizin JavaScript adapter functions `analyze_rizin_imports`, `analyze_rizin_functions`, and `probe_rizin` accept the same optional `isolation` and `sandbox_root` fields as `run_static_provider`. The default remains `isolation: 'none'`. On Linux, request the required Bubblewrap namespace/filesystem backend explicitly:
+The Rizin JavaScript adapter functions `analyze_rizin_imports`, `analyze_rizin_functions`, and `probe_rizin` accept the same optional `isolation` and `sandbox_root` fields as `run_static_provider`. The caller must explicitly choose `isolation: 'none'` or `isolation: 'required'`; omission is rejected. On Linux, request the enforced Bubblewrap plus cgroup-v2 backend explicitly:
 
 ~~~js
 const report = await analyze_rizin_imports({
@@ -164,7 +166,7 @@ The sandbox root must contain the selected Rizin executable, the configured work
 
 The Bubblewrap rootfs must be owned by root or the ORIX service effective UID and must not be group- or other-writable. Every canonical ancestor is checked as well: ancestors must be root- or service-owned and non-writable by group/other, except a root-owned sticky directory such as `/tmp`. The filesystem root itself is rejected. These checks reduce rootfs replacement and mutation risks before launch; they are a preflight, not a race-free filesystem pin or a scan of every rootfs file. Administrators must still protect the rootfs contents, ACLs, mount configuration and deployment lifecycle from untrusted writers.
 
-This option supplies Bubblewrap namespace and filesystem isolation only. It does **not** enable cgroup CPU, memory, or process-count enforcement. The caller remains responsible for constructing and maintaining a safe root filesystem and for validating the deployment environment.
+This option supplies Bubblewrap namespace/filesystem isolation plus per-provider cgroup-v2 CPU, memory, swap and process-count enforcement. The administrator must provision an exclusively managed delegated cgroup-v2 parent with `cpu`, `memory` and `pids` controllers enabled and configure `ORIX_CGROUP_PARENT`. The caller remains responsible for constructing and maintaining a safe root filesystem and for validating the deployment environment. The rootfs ownership/mode checks are preflight checks, not a race-free filesystem pin or a scan of every file.
 
 The CLI exposes the same opt-in mode with `--isolation required --sandbox-root <path>`; the sandbox root can alternatively be supplied by the local operator through `ORIX_PROVIDER_SANDBOX_ROOT`. The MCP `orix.rizin_functions` tool accepts only the isolation mode, not an arbitrary filesystem path from the client. Its rootfs must be configured by the MCP server administrator through `ORIX_PROVIDER_SANDBOX_ROOT` as an absolute path. This keeps the sandbox boundary under server-operator control.
 
@@ -182,6 +184,7 @@ const report = await analyze_rizin_functions({
   address: '0x401000',
   max_instructions: 100,
   decompile: true, // optional; requires rz-ghidra to be installed in Rizin
+  isolation: 'none', // explicit unsandboxed process-control mode
 });
 
 console.log(report.functions);
@@ -202,7 +205,7 @@ node src/cli.mjs providers list --json
 Check an explicit Rizin installation without opening an artifact:
 
 ~~~sh
-node src/cli.mjs providers rizin doctor --executable /opt/rizin/bin/rizin --json
+node src/cli.mjs providers rizin doctor --executable /opt/rizin/bin/rizin --isolation none --json
 ~~~
 
 The doctor command launches only the version probe. It never searches PATH and does not prove that all Rizin analysis commands work.
@@ -215,7 +218,8 @@ node src/cli.mjs providers rizin imports ./sample.elf \
   --format json \
   --timeout-ms 30000 \
   --max-output-kib 4096 \
-  --max-imports 100000
+  --max-imports 100000 \
+  --isolation none
 ~~~
 
 The timeout applies to the complete adapter workflow, including the version and import probes. The output cap is applied per process and covers combined stdout/stderr capture. The Markdown renderer displays at most 2,000 rows by default; use JSON to preserve the complete normalized result.
@@ -223,8 +227,8 @@ The timeout applies to the complete adapter workflow, including the version and 
 Run bounded function inventory and an optional instruction window:
 
 ~~~sh
-orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --max-functions 10000 --json
-orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --address 0x401000 --max-instructions 100 --json
+orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --max-functions 10000 --isolation none --json
+orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --address 0x401000 --max-instructions 100 --isolation none --json
 ~~~
 
 

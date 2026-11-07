@@ -285,6 +285,8 @@ async function main() {
     else execution = await runPromise;
 
     assert.equal(execution.ok, true, execution.stderr || 'Cgroup-isolated provider failed');
+    assert.equal(execution.isolation, 'required', 'Execution result did not preserve the explicitly requested isolation policy');
+    assert.equal(execution.isolation_enforced, true, 'Execution result claimed no enforced isolation after the required backend succeeded');
     const result = JSON.parse(execution.stdout);
     assert.equal(providerSeen, true, 'Provider process was not observed in its run cgroup before execution completed');
     assert.ok(peakMemory > 250 * 1024 * 1024, 'Kernel did not account the provider memory allocation in memory.current');
@@ -342,6 +344,8 @@ async function main() {
     if (!oomDone) oomExecution = await oomPromise;
     else if (oomExecution instanceof Error) throw oomExecution;
     assert.equal(oomExecution.ok, false, 'Provider unexpectedly survived an allocation above memory.max');
+    assert.equal(oomExecution.isolation, 'required', 'OOM execution result lost the required isolation policy');
+    assert.equal(oomExecution.isolation_enforced, true, 'OOM execution did not report the successfully prepared isolation backend');
     assert.equal(oomExecution.isolation_cleanup.complete, true);
     assert.equal(oomExecution.isolation_cleanup.failed, false);
     assert.equal(oomExecution.isolation_cleanup.report.removed, true);
