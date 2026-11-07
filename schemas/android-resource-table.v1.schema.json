@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orix.dev/schemas/android-resource-table.v1.schema.json",
+  "title": "ORIX AAPT2 ResourceTable Metadata v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_pool",
+    "packages",
+    "overlayables",
+    "tool_fingerprints",
+    "dynamic_ref_tables",
+    "summary",
+    "coverage",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": { "const": "orix.android-resource-table.v1" },
+    "source_pool": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["size_bytes", "sha256", "decoded"],
+          "properties": {
+            "size_bytes": { "type": "integer", "minimum": 0 },
+            "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+            "decoded": { "const": false }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "packages": { "type": "array", "items": { "$ref": "#/$defs/package" } },
+    "overlayables": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "tool_fingerprints": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "dynamic_ref_tables": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "summary": {
+      "type": "object",
+      "required": [
+        "package_count",
+        "type_count",
+        "entry_count",
+        "variant_count",
+        "disabled_variant_count",
+        "direct_references",
+        "compound_value_kinds",
+        "output_truncated"
+      ],
+      "properties": {
+        "package_count": { "type": "integer", "minimum": 0 },
+        "type_count": { "type": "integer", "minimum": 0 },
+        "entry_count": { "type": "integer", "minimum": 0 },
+        "variant_count": { "type": "integer", "minimum": 0 },
+        "disabled_variant_count": { "type": "integer", "minimum": 0 },
+        "direct_references": { "type": "integer", "minimum": 0 },
+        "compound_value_kinds": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "output_truncated": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "fields_seen",
+        "items_seen",
+        "items_reported",
+        "items_omitted",
+        "unknown_fields",
+        "opaque_fields_skipped",
+        "string_bytes",
+        "output_truncated",
+        "counts"
+      ],
+      "properties": {
+        "fields_seen": { "type": "integer", "minimum": 0 },
+        "items_seen": { "type": "integer", "minimum": 0 },
+        "items_reported": { "type": "integer", "minimum": 0 },
+        "items_omitted": { "type": "integer", "minimum": 0 },
+        "unknown_fields": { "type": "integer", "minimum": 0 },
+        "opaque_fields_skipped": { "type": "integer", "minimum": 0 },
+        "string_bytes": { "type": "integer", "minimum": 0 },
+        "output_truncated": { "type": "boolean" },
+        "counts": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "additionalProperties": false
+    },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "enum_value": {
+      "type": "object",
+      "required": ["value", "name", "known"],
+      "properties": {
+        "value": { "type": "integer" },
+        "name": { "type": "string" },
+        "known": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "reference": {
+      "type": "object",
+      "required": ["type", "resource_id", "name", "private", "dynamic", "type_flags", "allow_raw"],
+      "properties": {
+        "type": { "$ref": "#/$defs/enum_value" },
+        "resource_id": { "type": ["integer", "null"] },
+        "name": { "type": "string" },
+        "private": { "type": "boolean" },
+        "dynamic": { "type": "boolean" },
+        "type_flags": { "type": "integer" },
+        "allow_raw": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "item": {
+      "type": "object",
+      "required": ["kind", "value", "flag_status", "flag_negated", "flag_name"],
+      "properties": {
+        "kind": { "type": ["string", "null"] },
+        "value": {},
+        "flag_status": { "type": "integer" },
+        "flag_negated": { "type": "boolean" },
+        "flag_name": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "value": {
+      "type": "object",
+      "required": ["comment", "weak", "kind", "item", "compound_kind"],
+      "properties": {
+        "comment": { "type": "string" },
+        "weak": { "type": "boolean" },
+        "kind": { "type": ["string", "null"] },
+        "item": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/item" }] },
+        "compound_kind": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "config_value": {
+      "type": "object",
+      "required": ["configuration", "value"],
+      "properties": {
+        "configuration": { "type": "object", "additionalProperties": true },
+        "value": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/value" }] }
+      },
+      "additionalProperties": true
+    },
+    "entry": {
+      "type": "object",
+      "required": [
+        "entry_id",
+        "name",
+        "visibility",
+        "allow_new",
+        "overlayable_item",
+        "config_values",
+        "flag_disabled_config_values",
+        "staged_id",
+        "resource_id",
+        "value_kind_counts"
+      ],
+      "properties": {
+        "entry_id": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "object", "required": ["id"], "properties": { "id": { "type": ["integer", "null"] } }, "additionalProperties": false }
+          ]
+        },
+        "name": { "type": "string" },
+        "visibility": { "type": ["object", "null"], "additionalProperties": true },
+        "allow_new": { "type": ["object", "null"], "additionalProperties": true },
+        "overlayable_item": { "type": ["object", "null"], "additionalProperties": true },
+        "config_values": { "type": "array", "items": { "$ref": "#/$defs/config_value" } },
+        "flag_disabled_config_values": { "type": "array", "items": { "$ref": "#/$defs/config_value" } },
+        "staged_id": { "type": ["object", "null"], "additionalProperties": true },
+        "resource_id": { "type": ["string", "null"], "pattern": "^0x[a-f0-9]{8}$" },
+        "value_kind_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+      },
+      "additionalProperties": false
+    },
+    "type": {
+      "type": "object",
+      "required": ["type_id", "name", "entries", "entry_count"],
+      "properties": {
+        "type_id": { "type": ["object", "null"], "additionalProperties": true },
+        "name": { "type": "string" },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/entry" } },
+        "entry_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "package": {
+      "type": "object",
+      "required": ["package_id", "name", "types", "type_count"],
+      "properties": {
+        "package_id": { "type": ["integer", "null"] },
+        "name": { "type": "string" },
+        "types": { "type": "array", "items": { "$ref": "#/$defs/type" } },
+        "type_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
