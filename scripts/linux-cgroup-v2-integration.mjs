@@ -387,6 +387,7 @@ async function main() {
     assert.deepEqual(result.rlimits.open_files, ['256', '256']);
     assert.equal(execution.isolation_cleanup.complete, true);
     assert.equal(execution.isolation_cleanup.failed, false);
+    assert.equal(execution.isolation_cleanup.error, null);
     assert.equal(execution.isolation_cleanup.report.removed, true);
     assert.ok(Number(execution.isolation_cleanup.report.cpu_stat.match(/^nr_throttled (\d+)$/m)?.[1] || 0) > 0,
       'Final cgroup cpu.stat did not record quota throttling');
@@ -427,6 +428,7 @@ async function main() {
     assert.equal(oomExecution.ok, false, 'Provider unexpectedly survived an allocation above memory.max');
     assert.equal(oomExecution.isolation_cleanup.complete, true);
     assert.equal(oomExecution.isolation_cleanup.failed, false);
+    assert.equal(oomExecution.isolation_cleanup.error, null);
     assert.equal(oomExecution.isolation_cleanup.report.removed, true);
     assert.ok(Number(oomExecution.isolation_cleanup.report.memory_events.match(/^oom_kill (\d+)$/m)?.[1] || 0) > 0,
       'memory.max did not produce a kernel OOM kill event');
@@ -471,6 +473,7 @@ async function main() {
     assert.equal(cancelledExecution.termination_reason, 'cancelled');
     assert.equal(cancelledExecution.isolation_cleanup.complete, true);
     assert.equal(cancelledExecution.isolation_cleanup.failed, false);
+    assert.equal(cancelledExecution.isolation_cleanup.error, null);
     assert.equal(cancelledExecution.isolation_cleanup.report.removed, true);
     for (const pid of cancellationSample.sleep_pids) {
       const command = await readFile('/proc/' + pid + '/cmdline', 'utf8').catch(error => {
@@ -517,6 +520,7 @@ async function main() {
     assert.equal(timedOutExecution.termination_reason, 'timeout');
     assert.equal(timedOutExecution.isolation_cleanup.complete, true);
     assert.equal(timedOutExecution.isolation_cleanup.failed, false);
+    assert.equal(timedOutExecution.isolation_cleanup.error, null);
     assert.equal(timedOutExecution.isolation_cleanup.report.removed, true);
     for (const pid of timeoutSample.sleep_pids) {
       const command = await readFile('/proc/' + pid + '/cmdline', 'utf8').catch(error => {
@@ -562,6 +566,7 @@ async function main() {
     assert.equal(outputLimitedExecution.termination_reason, 'output-limit');
     assert.equal(outputLimitedExecution.isolation_cleanup.complete, true);
     assert.equal(outputLimitedExecution.isolation_cleanup.failed, false);
+    assert.equal(outputLimitedExecution.isolation_cleanup.error, null);
     assert.equal(outputLimitedExecution.isolation_cleanup.report.removed, true);
     for (const pid of outputLimitSample.sleep_pids) {
       const command = await readFile('/proc/' + pid + '/cmdline', 'utf8').catch(error => {
