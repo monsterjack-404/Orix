@@ -103,7 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes build-essential meson ninja-build pkg-config libcap-dev curl xz-utils
+          sudo apt-get install --yes build-essential meson ninja-build pkg-config libcap-dev libselinux1-dev python3-seccomp curl xz-utils
           archive="$RUNNER_TEMP/bubblewrap-${BUBBLEWRAP_VERSION}.tar.xz"
           source_dir="$RUNNER_TEMP/bubblewrap-${BUBBLEWRAP_VERSION}"
           build_dir="$RUNNER_TEMP/bubblewrap-build"
@@ -125,7 +125,6 @@ jobs:
           tar -xJf "$archive" -C "$source_dir" --strip-components=1
           meson setup "$build_dir" "$source_dir" --prefix=/usr/local --buildtype=release
           meson compile -C "$build_dir"
-          meson test -C "$build_dir" --print-errorlogs
           sudo meson install -C "$build_dir"
           if [ -u /usr/local/bin/bwrap ]; then
             echo "::error::Bubblewrap must not be installed setuid"
@@ -138,12 +137,25 @@ jobs:
           node-version: 22
       - name: Install locked dependencies
         run: npm ci
-      - name: Allow Bubblewrap user namespaces under Ubuntu AppArmor
+      - name: Allow Bubblewrap build and installed binaries under Ubuntu AppArmor
+        shell: bash
         run: |
           if [ -r /sys/module/apparmor/parameters/enabled ] && grep -q '^Y' /sys/module/apparmor/parameters/enabled; then
-            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/local/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
-            sudo apparmor_parser -r /etc/apparmor.d/bwrap || sudo apparmor_parser -a /etc/apparmor.d/bwrap
+            printf '%s\n' \
+              'abi <abi/4.0>,' \
+              'include <tunables/global>' \
+              "profile orix-bwrap-build \"$RUNNER_TEMP/bubblewrap-build/bwrap\" flags=(unconfined) {" \
+              '  userns,' \
+              '  include if exists <local/bwrap>' \
+              '}' \
+              'profile orix-bwrap-installed /usr/local/bin/bwrap flags=(unconfined) {' \
+              '  userns,' \
+              '  include if exists <local/bwrap>' \
+              '}' | sudo tee /etc/apparmor.d/orix-bwrap >/dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/orix-bwrap || sudo apparmor_parser -a /etc/apparmor.d/orix-bwrap
           fi
+      - name: Run upstream Bubblewrap regression suite
+        run: meson test -C "$RUNNER_TEMP/bubblewrap-build" --print-errorlogs
       - name: Diagnose cgroup v2 delegation (read-only)
         run: node scripts/linux-cgroup-v2-preflight.mjs
       - name: Verify Bubblewrap availability
