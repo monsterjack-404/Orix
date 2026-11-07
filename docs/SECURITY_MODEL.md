@@ -68,10 +68,9 @@ The provider runner compares the canonical executable with an explicit allowlist
 These controls reduce accidental path substitution and environment injection but do not confine filesystem reads/writes, network access or provider-spawned descendants. A privileged actor can still replace an executable or its dependencies between validation and launch. Windows currently terminates only the direct child.
 
 
-## Enforced provider isolation (Linux implementation in PR #64)
+## Explicit provider execution policy and enforced isolation
 
-The provider runner accepts `isolation: "required"` only when an explicit Linux
-sandbox root and the host-configured `ORIX_CGROUP_PARENT` are available. The
+The provider runner requires every caller to explicitly select an execution policy. Omitting `isolation` is rejected before launch. `isolation: "none"` is an explicitly unsandboxed process-control mode and does not confine filesystem access, networking or descendants. `isolation: "required"` is accepted only when an explicit Linux sandbox root and the host-configured `ORIX_CGROUP_PARENT` are available. The
 Linux backend uses Bubblewrap with an unshared network namespace, explicitly
 required user/PID/IPC/UTS namespaces, a read-only sandbox-root mount, fresh
 ephemeral `/tmp`, a private `/proc` and minimal `/dev`, and an explicit working
@@ -102,10 +101,4 @@ fails closed; it does not enable parent controllers. Run
 `node scripts/linux-cgroup-v2-preflight.mjs` under the service identity before
 deployment.
 
-This is an opt-in Linux implementation in the PR #64 branch, not a claim of
-complete cross-platform isolation or availability from the unmerged `main`
-branch. Windows and macOS have no enforced backend and reject
-`isolation: "required"`. Without the explicit mode, the runner remains a
-process-control boundary, not an operating-system sandbox. Host-specific
-cgroup delegation, ACLs, kernel versions and distribution behavior still
-require operator validation.
+This is the Linux enforced backend; it does not claim complete cross-platform isolation. Windows and macOS have no enforced backend and reject `isolation: "required"`. `isolation: "none"` is never an operating-system sandbox. Host-specific cgroup delegation, ACLs, kernel versions and distribution behavior still require operator validation.
