@@ -207,6 +207,8 @@ test('AAB inventory recognizes bundle layout without mislabeling protobuf manife
     { name: 'BundleConfig.pb', contents: Buffer.from([0x0a, 0x00]) },
     { name: 'base/manifest/AndroidManifest.xml', contents: Buffer.from([0x0a, 0x02, 0x08, 0x01, 0x12, 0x02, 0x08, 0x01]) },
     { name: 'base/dex/classes.dex', contents: create_dex_fixture() },
+    { name: 'base/assets/classes2.dex', contents: create_dex_fixture() },
+    { name: 'feature/classes.dex', contents: create_dex_fixture() },
   ]));
   assert.equal(report.schema_version, 'orix.android-package.v1');
   assert.equal(report.format, 'AAB');
@@ -261,6 +263,8 @@ test('multidex names accept canonical ordinals and reject noncanonical ordinals'
     { name: 'classes.dex', contents: create_dex_fixture() },
     { name: 'classes2.dex', contents: create_dex_fixture() },
     { name: 'classes10.dex', contents: create_dex_fixture() },
+    { name: 'assets/classes3.dex', contents: create_dex_fixture() },
+    { name: 'res/raw/classes4.dex', contents: create_dex_fixture() },
   ]));
   assert.equal(report.summary.dex_entries, 3);
   assert.deepEqual(report.dex.map(item => item.path), ['classes.dex', 'classes2.dex', 'classes10.dex']);
