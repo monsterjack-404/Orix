@@ -572,6 +572,50 @@ test('MCP confines artifact access to configured roots and rejects symlinks', as
   }
 });
 
+test('MCP case read, verification and mutation reject hard-linked case ledgers', async () => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-ledger-hardlink-'));
+  const alias_dir = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-ledger-alias-'));
+  try {
+    const created = await call_orix_tool('orix.case.create', {
+      workspace, title: 'Case ledger alias',
+    }, { roots: [workspace] });
+    const events = path.join(workspace, '.orix', 'cases', created.case.id, 'events.jsonl');
+    const alias = path.join(alias_dir, 'outside-ledger-alias.jsonl');
+    const { link } = await import('node:fs/promises');
+    await link(events, alias);
+    const before = await readFile(events, 'utf8');
+
+    await assert.rejects(
+      call_orix_tool('orix.case.get', {
+        workspace, case_id: created.case.id, action: 'show',
+      }, { roots: [workspace] }),
+      error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+    );
+    await assert.rejects(
+      call_orix_tool('orix.case.get', {
+        workspace, case_id: created.case.id, action: 'verify',
+      }, { roots: [workspace] }),
+      error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+    );
+    await assert.rejects(
+      call_orix_tool('orix.case.mutate', {
+        workspace, case_id: created.case.id, action: 'add_note', text: 'must not append',
+      }, { roots: [workspace] }),
+      error => error.code === 'ORIX_LEDGER_HARDLINK_REJECTED',
+    );
+    const listed = await call_orix_tool('orix.case.get', {
+      workspace, action: 'list',
+    }, { roots: [workspace] });
+    assert.equal(listed.cases.length, 0);
+    assert.equal(listed.coverage.skipped_entries, 1);
+    assert.equal(await readFile(events, 'utf8'), before);
+    assert.equal(await readFile(alias, 'utf8'), before);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(alias_dir, { recursive: true, force: true });
+  }
+});
+
 test('MCP case artifact intake rejects hard-linked source files', async () => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-hardlink-'));
   try {
