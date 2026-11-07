@@ -66,7 +66,7 @@ export const HELP_TEXT = [
   '  --max-network-mib <n> Maximum aggregate OSV response bytes in MiB (1–128).',
   '  --max-har-entries <n> Maximum HAR transactions analyzed (1–100,000).',
   '  --max-har-hosts <n>   Maximum distinct hosts returned (1–10,000).',
-  '  --max-archive-entries <n> Maximum safe Android archive entries reported (1–50,000).'
+  '  --max-archive-entries <n> Maximum safe Android archive entries reported (1–50,000).',
   '  --no-strings         Disable printable ASCII and UTF-16LE string extraction.',
   '  --strings-limit <n>  Maximum strings retained per file.',
   '  --max-files <n>      Maximum directory files.',
