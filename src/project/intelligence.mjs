@@ -1,0 +1,299 @@
+// JavaScript, src/project/intelligence.mjs, Node.js 20+, bounded read-only repository intelligence.
+import { createHash } from 'node:crypto';
+import { constants as fs_constants, promises as fs } from 'node:fs';
+import path from 'node:path';
+import { parse_lockfile } from './lockfiles.mjs';
+import { scan_git_metadata } from './git-metadata.mjs';
+import { analyze_javascript_source } from './javascript.mjs';
+import { analyze_electron_project } from './electron.mjs';
+import { analyze_website_project } from './website.mjs';
+
+const DEFAULTS={max_files:50000,max_entries:200000,max_depth:24,max_file_bytes:1048576,max_total_bytes:134217728,max_symbols_per_file:100,max_imports_per_file:200,max_lockfile_packages:100000,max_lockfile_edges:500000,max_git_refs:5000,max_git_ref_depth:24,max_git_metadata_bytes:4194304,max_git_object_bytes:2097152,max_git_pack_files:1000,include_hidden:false};
+const IGNORED=new Set(['.git','.hg','.svn','node_modules','vendor','dist','build','coverage','.next','.nuxt','.turbo','.cache','.venv','venv','__pycache__','target','bin','obj']);
+const EXT={
+ '.js':'JavaScript','.mjs':'JavaScript','.cjs':'JavaScript','.jsx':'JavaScript','.ts':'TypeScript','.mts':'TypeScript','.cts':'TypeScript','.tsx':'TypeScript',
+ '.py':'Python','.pyi':'Python','.pyx':'Cython','.go':'Go','.rs':'Rust',
+ '.c':'C','.h':'C/C++','.cc':'C++','.cpp':'C++','.cxx':'C++','.hpp':'C++','.hh':'C++','.hxx':'C++',
+ '.m':'Objective-C','.mm':'Objective-C++','.java':'Java','.kt':'Kotlin','.kts':'Kotlin','.swift':'Swift','.cs':'C#','.csx':'C#',
+ '.php':'PHP','.phtml':'PHP','.rb':'Ruby','.rake':'Ruby','.sh':'Shell','.bash':'Shell','.zsh':'Shell','.fish':'Shell',
+ '.sql':'SQL','.dart':'Dart','.scala':'Scala','.sc':'Scala','.lua':'Lua','.pl':'Perl','.pm':'Perl','.r':'R','.R':'R',
+ '.ex':'Elixir','.exs':'Elixir','.hs':'Haskell','.lhs':'Haskell','.clj':'Clojure','.cljs':'Clojure','.cljc':'Clojure',
+ '.fs':'F#','.fsx':'F#','.vb':'Visual Basic','.ps1':'PowerShell','.psm1':'PowerShell',
+ '.html':'HTML','.htm':'HTML','.xhtml':'HTML','.css':'CSS','.xml':'XML','.yaml':'YAML','.yml':'YAML','.toml':'TOML','.json':'JSON','.md':'Markdown','.mdx':'MDX','.vue':'Vue','.svelte':'Svelte'
+};
+const LOCKFILES=new Set(['package-lock.json','yarn.lock','Cargo.lock','pnpm-lock.yaml','composer.lock','poetry.lock','Pipfile.lock','uv.lock','go.sum','packages.lock.json','gradle.lockfile','Gemfile.lock']);
+const LOCKFILE_FAILURE_IDENTITIES = Object.freeze({
+ 'package-lock.json': { ecosystem: 'npm', format: 'npm-package-lock' },
+ 'yarn.lock': { ecosystem: 'npm', format: 'yarn-lock' },
+ 'Cargo.lock': { ecosystem: 'cargo', format: 'cargo-lock' },
+ 'pnpm-lock.yaml': { ecosystem: 'pnpm', format: 'pnpm-lock' },
+ 'composer.lock': { ecosystem: 'composer', format: 'composer-lock' },
+ 'poetry.lock': { ecosystem: 'python', format: 'poetry-lock' },
+ 'Pipfile.lock': { ecosystem: 'python', format: 'pipfile-lock' },
+ 'uv.lock': { ecosystem: 'python', format: 'uv-lock' },
+ 'go.sum': { ecosystem: 'go', format: 'go-sum' },
+ 'Gemfile.lock': { ecosystem: 'rubygems', format: 'gemfile-lock' },
+ 'packages.lock.json': { ecosystem: 'nuget', format: 'nuget-packages-lock' },
+ 'gradle.lockfile': { ecosystem: 'maven', format: 'gradle-lock' },
+});
+const MANIFESTS=new Set(['package.json','requirements.txt','pyproject.toml','Cargo.toml','go.mod','composer.json','pom.xml','Gemfile','Pipfile','packages.config','Directory.Packages.props']);
+const SECRET_RULES=[
+ ['ORIX-PROJECT-SECRET-AWS-001','AWS access-key identifier',/\bAKIA[0-9A-Z]{16}\b/g],
+ ['ORIX-PROJECT-SECRET-GITHUB-001','GitHub token-shaped value',/\bgh[pousr]_[A-Za-z0-9]{30,255}\b/g],
+ ['ORIX-PROJECT-SECRET-PEM-001','Private-key PEM marker',/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g],
+ ['ORIX-PROJECT-SECRET-GENERIC-001','Credential-like assignment',/\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*["'][^"'\s]{12,}["']/gi],
+];
+const unique=values=>[...new Set(values)].sort((a,b)=>String(a).localeCompare(String(b)));
+const digest=value=>createHash('sha256').update(value).digest('hex');
+function get_limits(input){const source=input.limits??input,result={...DEFAULTS};for(const key of Object.keys(DEFAULTS)){if(key==='include_hidden'){if(typeof source[key]==='boolean')result[key]=source[key];continue;}if(source[key]===undefined)continue;const value=Number(source[key]);const minimum=key.startsWith('max_git_')?1:0;if(!Number.isSafeInteger(value)||value<minimum)throw new TypeError('Invalid project limit: '+key);result[key]=Math.min(value,DEFAULTS[key]);}return result;}
+function add_dep(out,name,version,ecosystem,kind='runtime'){const clean=String(name??'').trim();if(clean&&clean.length<=256)out.push({name:clean,version:String(version??'*').slice(0,160),ecosystem,dependency_type:kind});}
+function manifest_entries(data, field, warnings) {
+ const value=data[field];
+ if(value===undefined)return [];
+ if(!value||typeof value!=='object'||Array.isArray(value)){
+  warnings.push(field+' must be an object; invalid declarations were ignored.');
+  return [];
+ }
+ return Object.entries(value);
+}
+function parse_manifest(file,text){
+ const base=path.posix.basename(file),dependencies=[],scripts=[],warnings=[];let ecosystem=null,name=null,version=null;
+ try{
+  if(base==='package.json'||base==='composer.json'){
+   const data=JSON.parse(text);
+   if(!data||typeof data!=='object'||Array.isArray(data))throw new TypeError('Manifest root must be a JSON object');
+   ecosystem=base==='package.json'?'npm':'composer';
+   name=typeof data.name==='string'?data.name:null;
+   version=typeof data.version==='string'?data.version:null;
+   const fields=base==='package.json'?['dependencies','devDependencies','peerDependencies','optionalDependencies']:['require','require-dev'];
+   for(const field of fields)for(const [dep,value]of manifest_entries(data,field,warnings)){
+    if(typeof value!=='string'){warnings.push(field+' entry '+dep+' must be a version string; declaration was ignored.');continue;}
+    add_dep(dependencies,dep,value,ecosystem,field);
+   }
+   if(base==='package.json')for(const [key,command]of manifest_entries(data,'scripts',warnings)){
+    if(typeof command!=='string'){warnings.push('scripts entry '+key+' must be a string; script metadata was ignored.');continue;}
+    scripts.push({name:key,command:command.slice(0,500)});
+   }
+  }
+  else if(base==='requirements.txt'){ecosystem='pip';for(const line of text.split(/\r?\n/)){const value=line.trim();if(!value||value.startsWith('#')||value.startsWith('-'))continue;const m=/^([A-Za-z0-9_.-]+)\s*(?:==|~=|>=|<=|!=|>|<)\s*([A-Za-z0-9_.+!-]+)/.exec(value);if(m)add_dep(dependencies,m[1],m[2],ecosystem);else if(/^[A-Za-z0-9_.-]+$/.test(value))add_dep(dependencies,value,'*',ecosystem);}}
+  else if(base==='go.mod'){ecosystem='go';name=/^module\s+(\S+)/m.exec(text)?.[1]??null;let block=false;for(const line of text.split(/\r?\n/)){const value=line.trim();if(/^require\s*\($/.test(value)){block=true;continue;}if(block&&value===')'){block=false;continue;}const m=/^(?:require\s+)?([A-Za-z0-9._~/-]+)\s+(v[0-9][A-Za-z0-9.+-]*)/.exec(value);if(m)add_dep(dependencies,m[1],m[2],ecosystem);}}
+  else if(base==='Cargo.toml'){ecosystem='cargo';let section='';for(const line of text.split(/\r?\n/)){const h=/^\s*\[([^\]]+)\]\s*$/.exec(line);if(h){section=h[1];continue;}if(!['dependencies','dev-dependencies','build-dependencies'].includes(section))continue;const m=/^\s*([A-Za-z0-9_-]+)\s*=\s*(?:["']([^"']+)["']|\{[^}]*version\s*=\s*["']([^"']+)["'])/.exec(line);if(m)add_dep(dependencies,m[1],m[2]??m[3],ecosystem,section);}name=/^name\s*=\s*["']([^"']+)["']/m.exec(text)?.[1]??null;version=/^version\s*=\s*["']([^"']+)["']/m.exec(text)?.[1]??null;}
+  else if(base==='Pipfile'){ecosystem='python';let section='';for(const line of text.split(/\r?\n/)){const header=/^\s*\[([^\]]+)\]\s*$/.exec(line);if(header){section=header[1];continue;}if(!['packages','dev-packages'].includes(section))continue;const field=/^\s*['"]?([^'"=]+?)['"]?\s*=\s*(.*?)\s*$/.exec(line);if(!field)continue;const dep_name=field[1].trim();if(dep_name.toLowerCase()==='python')continue;const inline=/\bversion\s*=\s*['"]([^'"]+)['"]/.exec(field[2]);const version_value=inline?.[1]??field[2].replace(/^['"]|['"]$/g,'');add_dep(dependencies,dep_name,version_value,ecosystem,section==='dev-packages'?'dev':'runtime');}}
+  else if(base==='pyproject.toml'){ecosystem='python';name=/^\s*name\s*=\s*["']([^"']+)["']/m.exec(text)?.[1]??null;version=/^\s*version\s*=\s*["']([^"']+)["']/m.exec(text)?.[1]??null;const block=/^\s*dependencies\s*=\s*\[([\s\S]*?)\]/m.exec(text);if(block)for(const m of block[1].matchAll(/["']([A-Za-z0-9_.-]+)\s*(?:[=<>!~]+)\s*([^"']+)["']/g))add_dep(dependencies,m[1],m[2],ecosystem);let section='';for(const line of text.split(/\r?\n/)){const header=/^\s*\[([^\]]+)\]\s*$/.exec(line);if(header){section=header[1];continue;}if(section!=='tool.poetry.dependencies'&&section!=='tool.poetry.dev-dependencies'&&!/^tool\.poetry\.group\.[^.]+\.dependencies$/.test(section))continue;const field=/^\s*['"]?([^'"=]+?)['"]?\s*=\s*(.*?)\s*$/.exec(line);if(!field)continue;const dep_name=field[1].trim();if(dep_name.toLowerCase()==='python')continue;const inline=/\bversion\s*=\s*['"]([^'"]+)['"]/.exec(field[2]);const dep_version=inline?.[1]??field[2].replace(/^['"]|['"]$/g,'');const group=/^tool\.poetry\.group\.([^.]+)\.dependencies$/.exec(section)?.[1];const kind=section==='tool.poetry.dev-dependencies'||group==='dev'||group==='test'?'dev':'runtime';add_dep(dependencies,dep_name,dep_version,ecosystem,kind);}}
+  else if(base==='pom.xml'){ecosystem='maven';for(const m of text.matchAll(/<dependency>\s*<groupId>([^<]+)<\/groupId>\s*<artifactId>([^<]+)<\/artifactId>\s*(?:<version>([^<]+)<\/version>)?/g))add_dep(dependencies,m[1]+':'+m[2],m[3]??'*',ecosystem);}
+  else if(base.endsWith('.csproj')||base==='Directory.Packages.props'||base==='packages.config'){ecosystem='nuget';for(const m of text.matchAll(/<PackageReference\s+Include=["']([^"']+)["']\s+Version=["']([^"']+)["']/gi))add_dep(dependencies,m[1],m[2],ecosystem);for(const m of text.matchAll(/<package\s+id=["']([^"']+)["']\s+version=["']([^"']+)["']/gi))add_dep(dependencies,m[1],m[2],ecosystem);}
+  else if(base==='Gemfile'){ecosystem='rubygems';for(const m of text.matchAll(/^\s*gem\s+["']([^"']+)["'](?:\s*,\s*["']([^"']+)["'])?/gm))add_dep(dependencies,m[1],m[2]??'*',ecosystem);}
+  else return null;
+ }catch(error){warnings.push('Manifest parse failed: '+String(error.message).slice(0,160));}
+ return{path:file,ecosystem,name,version,dependencies,scripts,warnings};
+}
+const IMPORTS={
+ JavaScript:[/(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g,/require\s*\(\s*["']([^"']+)["']\s*\)/g,/import\s*\(\s*["']([^"']+)["']\s*\)/g],
+ TypeScript:[/(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g,/require\s*\(\s*["']([^"']+)["']\s*\)/g],
+ Python:[/^\s*(?:from\s+([.A-Za-z0-9_]+)\s+import|import\s+([A-Za-z0-9_., ]+))/gm],
+ Go:[/^\s*(?:import\s+)?(?:"([^"]+)"|[A-Za-z_]\w*\s+"([^"]+)")/gm],
+ Rust:[/^\s*(?:pub(?:\([^)]*\))?\s+)?(?:use|mod)\s+([A-Za-z0-9_:]+)/gm],
+ C:[/^\s*#\s*(?:include|import)\s*[<"]([^>"]+)[>"]/gm],
+ 'C/C++':[/^\s*#\s*(?:include|import)\s*[<"]([^>"]+)[>"]/gm],
+ 'C++':[/^\s*#\s*(?:include|import)\s*[<"]([^>"]+)[>"]/gm],
+ 'Objective-C':[/^\s*#\s*(?:import|include)\s*[<"]([^>"]+)[>"]/gm],
+ 'Objective-C++':[/^\s*#\s*(?:import|include)\s*[<"]([^>"]+)[>"]/gm],
+ Java:[/^\s*import\s+(?:static\s+)?([A-Za-z0-9_.*]+)/gm],
+ Kotlin:[/^\s*import\s+([A-Za-z0-9_.*]+)/gm],
+ 'C#':[/^\s*using\s+(?:static\s+)?([A-Za-z0-9_.]+)/gm],
+ Swift:[/^\s*import\s+(?:class|struct|enum|protocol|func|var|let|typealias)?\s*([A-Za-z_][A-Za-z0-9_.]*)/gm],
+ PHP:[/^\s*(?:use\s+([A-Za-z_\\][A-Za-z0-9_\\]*)|(?:require|require_once|include|include_once)\s*\(?\s*['"]([^'"]+)['"])/gm],
+ Ruby:[/^\s*require(?:_relative)?\s+['"]([^'"]+)['"]/gm],
+ Shell:[/^\s*(?:source|\.)\s+['"]?([^'"\s;]+)['"]?/gm],
+ Dart:[/^\s*(?:import|export|part)\s+['"]([^'"]+)['"]/gm],
+ Scala:[/^\s*import\s+([A-Za-z0-9_.*{} ,]+)/gm],
+ Lua:[/\brequire\s*\(?\s*['"]([^'"]+)['"]\s*\)?/g],
+ Elixir:[/^\s*(?:alias|import|require|use)\s+([A-Z][A-Za-z0-9_.]*)/gm],
+ Haskell:[/^\s*import\s+(?:qualified\s+)?([A-Z][A-Za-z0-9_.]*)/gm],
+ Clojure:[/^\s*\((?:ns|require|use)\s+([A-Za-z0-9_.-]+)/gm],
+ PowerShell:[/^\s*(?:Import-Module|using\s+module)\s+['"]?([A-Za-z0-9_.\\-]+)/gim],
+};
+const SYMBOLS={
+ JavaScript:/^\s*(?:export\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)|^\s*export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm,
+ TypeScript:/^\s*(?:export\s+)?(?:declare\s+)?(?:abstract\s+)?(?:async\s+)?(?:function|class|interface|type|enum|namespace)\s+([A-Za-z_$][\w$]*)|^\s*export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm,
+ Python:/^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_]\w*)/gm,
+ Go:/^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)|^\s*type\s+([A-Za-z_]\w*)\s+(?:struct|interface)/gm,
+ Rust:/^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:fn|struct|enum|trait|type|mod)\s+([A-Za-z_]\w*)/gm,
+ C:/^\s*(?:typedef\s+)?(?:struct|enum|union)\s+([A-Za-z_]\w*)|^\s*(?:static\s+)?(?:inline\s+)?(?:[A-Za-z_*][\w\s*]+)\s+([A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{/gm,
+ 'C/C++':/^\s*(?:class|struct|enum|namespace)\s+([A-Za-z_]\w*)/gm,
+ 'C++':/^\s*(?:class|struct|enum|namespace)\s+([A-Za-z_]\w*)|^\s*(?:[A-Za-z_:~][\w:<>*& ,]+)\s+([A-Za-z_~]\w*)\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?\{/gm,
+ 'Objective-C':/^\s*@interface\s+([A-Za-z_]\w*)|^\s*@implementation\s+([A-Za-z_]\w*)/gm,
+ 'Objective-C++':/^\s*@interface\s+([A-Za-z_]\w*)|^\s*@implementation\s+([A-Za-z_]\w*)/gm,
+ Java:/^\s*(?:(?:public|protected|private|abstract|final|static|sealed|non-sealed)\s+)*(?:class|interface|enum|record)\s+([A-Za-z_]\w*)/gm,
+ Kotlin:/^\s*(?:(?:public|internal|private|protected|data|sealed|abstract|open|enum|annotation)\s+)*(?:class|interface|object|fun|typealias)\s+([A-Za-z_]\w*)/gm,
+ 'C#':/^\s*(?:(?:public|private|protected|internal|abstract|sealed|static|partial|readonly)\s+)*(?:class|interface|struct|record|enum|delegate)\s+([A-Za-z_]\w*)/gm,
+ Swift:/^\s*(?:(?:public|private|fileprivate|internal|open|final|indirect|actor)\s+)*(?:class|struct|enum|protocol|func|actor|typealias)\s+([A-Za-z_]\w*)/gm,
+ PHP:/^\s*(?:(?:abstract|final|readonly)\s+)*(?:class|interface|trait|enum|function)\s+([A-Za-z_]\w*)/gm,
+ Ruby:/^\s*(?:class|module|def)\s+([A-Za-z_][A-Za-z0-9_!?=]*)/gm,
+ Shell:/^\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))/gm,
+ SQL:/^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:TEMP(?:ORARY)?\s+)?(?:TABLE|VIEW|FUNCTION|PROCEDURE|INDEX|TRIGGER)\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?([A-Za-z_][A-Za-z0-9_]*)/gim,
+ Dart:/^\s*(?:(?:abstract|base|final|interface|sealed)\s+)*(?:class|mixin|enum|extension|typedef)\s+([A-Za-z_]\w*)|^\s*(?:Future<[^>]+>|void|[A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*\(/gm,
+ Scala:/^\s*(?:(?:sealed|abstract|final|case)\s+)*(?:class|object|trait|enum|def|type)\s+([A-Za-z_]\w*)/gm,
+ Lua:/^\s*function\s+([A-Za-z_][A-Za-z0-9_.:]*)/gm,
+ Perl:/^\s*sub\s+([A-Za-z_]\w*)/gm,
+ R:/^\s*([A-Za-z.][A-Za-z0-9._]*)\s*<-\s*function\s*\(/gm,
+ Elixir:/^\s*(?:defmodule|defprotocol|defimpl|def(?:p|macro|macrop)?)\s+([A-Za-z_!?][A-Za-z0-9_!?]*)/gm,
+ Haskell:/^\s*([a-z][A-Za-z0-9_']*)\s*(?:::|[^=]*=)/gm,
+ Clojure:/^\s*\(def(?:n|macro|once)?\s+([A-Za-z_*!?+<>.-]+)/gm,
+ 'F#':/^\s*let\s+(?:rec\s+)?([A-Za-z_][A-Za-z0-9_']*)/gm,
+ 'Visual Basic':/^\s*(?:(?:Public|Private|Protected|Friend|Shared|Partial|MustInherit|NotInheritable)\s+)*(?:Class|Interface|Structure|Module|Enum|Sub|Function)\s+([A-Za-z_]\w*)/gim,
+ PowerShell:/^\s*function\s+([A-Za-z_][A-Za-z0-9_-]*)/gim,
+};
+function extract(regexes,text,limit){const out=[];for(const regex of regexes??[])for(const match of text.matchAll(regex)){const value=match[1]??match[2];if(value&&value.length<=300)out.push(value);if(out.length>=limit)break;}return unique(out).slice(0,limit);}
+function symbol_list(regex,text,limit){if(!regex)return[];const out=[];for(const m of text.matchAll(regex)){const name=m[1]??m[2];if(name)out.push({name,kind:'declaration-candidate',line:text.slice(0,m.index).split('\n').length,confidence:'syntax-pattern'});if(out.length>=limit)break;}return out;}
+function resolve_import(source,specifier,known){if(!specifier.startsWith('.'))return null;if(/\.(?:py|pyi)$/i.test(source)){const python_relative=/^(\.+)(.+)$/.exec(specifier);if(python_relative)specifier='../'.repeat(Math.max(0,python_relative[1].length-1))+python_relative[2].replaceAll('.','/');}const base=path.posix.normalize(path.posix.join(path.posix.dirname(source),specifier));const candidates=[base,...['.js','.mjs','.cjs','.jsx','.ts','.tsx','.mts','.cts','.py','.pyi','.go','.rs','.c','.h','.cc','.cpp','.hpp','.java','.kt','.kts','.swift','.cs','.php','.rb','.sh','.sql','.dart','.scala','.lua','.ex','.exs','.hs','.clj','.fs','.fsx','.ps1','.json'].map(ext=>base+ext),...['index.js','index.ts','index.tsx','index.py','index.dart','index.php','__init__.py','mod.rs','lib.rs','main.rs'].map(file=>path.posix.join(base,file))];return candidates.find(item=>known.has(item))??null;}
+function secret_findings(file,text){const out=[],lines=text.split('\n');for(let i=0;i<lines.length;i++)for(const [rule,label,regex]of SECRET_RULES){regex.lastIndex=0;if(regex.test(lines[i]))out.push({rule_id:rule,severity:'high',confidence:'heuristic',file,line:i+1,label,evidence:'Credential-shaped match; value redacted.'});}return out.slice(0,100);}
+function signals(paths){const names=new Set(paths.map(x=>path.posix.basename(x)));return{package_managers:unique([...(names.has('package.json')?['npm-compatible']:[]),...(names.has('pnpm-lock.yaml')?['pnpm']:[]),...(names.has('yarn.lock')?['yarn']:[]),...(names.has('requirements.txt')||names.has('pyproject.toml')?['python']:[]),...(names.has('Cargo.toml')?['cargo']:[]),...(names.has('go.mod')?['go-modules']:[]),...(names.has('composer.json')?['composer']:[]),...(names.has('pom.xml')||names.has('build.gradle')?['jvm-build']:[]),([...names].some(x=>x.endsWith('.csproj'))?['dotnet']:[])]),has_readme:[...names].some(x=>/^readme(?:\..+)?$/i.test(x)),has_license:[...names].some(x=>/^licen[cs]e(?:\..+)?$/i.test(x)),has_ci:paths.some(x=>x.startsWith('.github/workflows/')||x.startsWith('.circleci/')||x.startsWith('.gitlab-ci')),has_tests:paths.some(x=>/(^|\/)(test|tests|spec|specs|__tests__)(\/|$)/i.test(x)),has_container:names.has('Dockerfile')||names.has('compose.yaml')||names.has('docker-compose.yml')};}
+export async function scan_project(root_path,input={}){
+ const limits=get_limits(input),root=path.resolve(root_path),root_stat=await fs.lstat(root);if(!root_stat.isDirectory()||root_stat.isSymbolicLink())throw new TypeError('Project target must be a real directory');
+ const raw=[],skipped=[];let entries_seen=0,total_bytes=0,truncated=false;
+ async function visit(dir,depth){if(depth>limits.max_depth){truncated=true;skipped.push({path:path.relative(root,dir),reason:'maximum-depth'});return;}let entries;try{entries=await fs.readdir(dir,{withFileTypes:true});}catch(error){truncated=true;skipped.push({path:path.relative(root,dir),reason:'unreadable-directory',message:String(error.message).slice(0,160)});return;}entries.sort((a,b)=>a.name.localeCompare(b.name));for(const entry of entries){entries_seen++;const absolute=path.join(dir,entry.name),relative=path.relative(root,absolute).split(path.sep).join('/');if(entries_seen>limits.max_entries||raw.length>=limits.max_files){truncated=true;return;}if(entry.isSymbolicLink()){skipped.push({path:relative,reason:'symbolic-link'});continue;}if(entry.isDirectory()){if(IGNORED.has(entry.name)||(!limits.include_hidden&&entry.name.startsWith('.')&&!['.github','.circleci'].includes(entry.name))){skipped.push({path:relative,reason:'ignored-directory'});continue;}await visit(absolute,depth+1);if(truncated&&(entries_seen>limits.max_entries||raw.length>=limits.max_files))return;continue;}if(!entry.isFile()){skipped.push({path:relative,reason:'non-regular-entry'});continue;}let handle,stat,buffer;
+try{
+ const before_stat=await fs.lstat(absolute);
+ if(before_stat.isSymbolicLink()||!before_stat.isFile()){truncated=true;skipped.push({path:relative,reason:'file-changed-before-read'});continue;}
+ const flags=fs_constants.O_RDONLY|(fs_constants.O_NOFOLLOW??0);
+ handle=await fs.open(absolute,flags);
+ stat=await handle.stat();
+ if(!stat.isFile()||stat.dev!==before_stat.dev||stat.ino!==before_stat.ino){truncated=true;skipped.push({path:relative,reason:'file-changed-before-read'});continue;}
+ if(stat.size>limits.max_file_bytes){truncated=true;skipped.push({path:relative,reason:'file-size-limit',size_bytes:stat.size});continue;}
+ if(total_bytes+stat.size>limits.max_total_bytes){truncated=true;skipped.push({path:relative,reason:'total-byte-limit'});return;}
+ buffer=Buffer.alloc(stat.size);
+ let offset=0;
+ while(offset<buffer.length){const result=await handle.read(buffer,offset,buffer.length-offset,offset);if(result.bytesRead===0)break;offset+=result.bytesRead;}
+ const after=await handle.stat();
+ if(offset!==stat.size||after.size!==stat.size||after.mtimeMs!==stat.mtimeMs||after.ctimeMs!==stat.ctimeMs||after.dev!==stat.dev||after.ino!==stat.ino){truncated=true;skipped.push({path:relative,reason:'file-changed-during-read'});continue;}
+}catch(error){truncated=true;skipped.push({path:relative,reason:'read-failed',message:String(error.message).slice(0,160)});continue;}
+finally{if(handle)await handle.close().catch(()=>{});}
+total_bytes+=buffer.length;
+const text=!buffer.includes(0)?buffer.toString('utf8'):null;
+raw.push({path:relative,size_bytes:buffer.length,sha256:digest(buffer),language:EXT[path.extname(relative).toLowerCase()]??'Unknown',extension:path.extname(relative).toLowerCase(),text});}}
+ await visit(root,0);
+ const git=await scan_git_metadata(root,{max_refs:limits.max_git_refs,max_ref_depth:limits.max_git_ref_depth,max_metadata_bytes:limits.max_git_metadata_bytes,max_object_bytes:limits.max_git_object_bytes,max_pack_files:limits.max_git_pack_files});
+ const known=new Set(raw.map(x=>x.path)),files=[],manifests=[],dependencies=[],symbols=[],findings=[],edges=[],lockfiles=[],resolved_dependencies=[],dependency_edges=[];
+ for(const item of raw){const record={path:item.path,size_bytes:item.size_bytes,sha256:item.sha256,language:item.language,extension:item.extension,text_analyzed:item.text!==null,imports:[],symbols:[]};if(item.text!==null){if(item.language==='JavaScript'||item.language==='TypeScript'){const javascript=analyze_javascript_source(item.text,{max_imports:limits.max_imports_per_file,max_symbols:limits.max_symbols_per_file});record.imports=javascript.imports.map(entry=>({...entry,resolved_path:resolve_import(item.path,entry.specifier,known)}));record.symbols=javascript.symbols.map(({name,kind,line,confidence})=>({name,kind,line,confidence}));record.javascript_analysis={...javascript.coverage,limitations:javascript.limitations};}else{record.imports=extract(IMPORTS[item.language],item.text,limits.max_imports_per_file).map(specifier=>({specifier,resolved_path:resolve_import(item.path,specifier,known)}));record.symbols=symbol_list(SYMBOLS[item.language],item.text,limits.max_symbols_per_file);}for(const symbol of record.symbols)symbols.push({file:item.path,...symbol,language:item.language});for(const edge of record.imports)if(edge.resolved_path)edges.push({from:item.path,to:edge.resolved_path,kind:'source-import',label:edge.specifier});findings.push(...secret_findings(item.path,item.text));const manifest_name=path.posix.basename(item.path);if(MANIFESTS.has(manifest_name)||manifest_name.endsWith('.csproj')){const manifest=parse_manifest(item.path,item.text);if(manifest){manifests.push(manifest);dependencies.push(...manifest.dependencies.map(dep=>({...dep,manifest:item.path})));}}}files.push(record);}
+ for(const item of raw){
+  if(!LOCKFILES.has(path.posix.basename(item.path)))continue;
+  try {
+   const parsed=parse_lockfile(item.path,item.text??'',limits,manifests);
+   if(!parsed)continue;
+   lockfiles.push(parsed);
+   for(const dependency of parsed.packages??[])resolved_dependencies.push({...dependency,id:item.path+'#'+(dependency.location??dependency.name+'@'+dependency.version),manifest:item.path,lockfile_path:item.path});
+   for(const edge of parsed.edges??[])dependency_edges.push({...edge,from:item.path+'#'+edge.from,to:item.path+'#'+edge.to,lockfile:item.path});
+   for(const edge of parsed.root_edges??[])dependency_edges.push({...edge,from:'root',to:item.path+'#'+edge.to,lockfile:item.path});
+  } catch(error) {
+   const identity = LOCKFILE_FAILURE_IDENTITIES[path.posix.basename(item.path)] ?? { ecosystem: 'unknown', format: 'unknown-lockfile' };
+   lockfiles.push({
+    path: item.path,
+    ecosystem: identity.ecosystem,
+    format: identity.format,
+    packages: [],
+    edges: [],
+    root_dependencies: [],
+    root_edges: [],
+    warnings: [{ code: error.code ?? 'ORIX_LOCKFILE_PARSE_FAILED' }],
+    complete: false,
+   });
+  }
+ }
+ const secret_pattern_matches=findings.length;const electron=analyze_electron_project(raw);findings.push(...electron.findings);const website=analyze_website_project(raw);findings.push(...website.findings);
+ const paths=files.map(x=>x.path),counts={};for(const file of files)counts[file.language]=(counts[file.language]??0)+1;
+ return{schema_version:'orix.project.v1',project:{root,name:path.basename(root),scanned_at:new Date().toISOString()},git,summary:{git_present:git.present,files_analyzed:files.length,entries_seen,bytes_analyzed:total_bytes,languages:Object.fromEntries(Object.entries(counts).sort(([a],[b])=>a.localeCompare(b))),manifests:manifests.length,declared_dependencies:dependencies.length,locked_packages:resolved_dependencies.length,dependency_edges:dependency_edges.length,lockfile_edges:lockfiles.reduce((total,item)=>total+(item.edges?.length??0),0),source_symbols:symbols.length,source_import_edges:edges.length,secret_pattern_matches,electron_findings:electron.findings.length,website_findings:website.findings.length},detection:signals(paths),electron,website,manifests,dependencies:dependencies.sort((a,b)=>a.ecosystem.localeCompare(b.ecosystem)||a.name.localeCompare(b.name)),lockfiles,resolved_dependencies:resolved_dependencies.sort((a,b)=>a.ecosystem.localeCompare(b.ecosystem)||a.name.localeCompare(b.name)||String(a.version).localeCompare(String(b.version))),dependency_graph:{nodes:resolved_dependencies.map(item=>({id:item.id,name:item.name,version:item.version,ecosystem:item.ecosystem})),edges:dependency_edges.sort((a,b)=>a.from.localeCompare(b.from)||a.to.localeCompare(b.to))},files:files.sort((a,b)=>a.path.localeCompare(b.path)),symbols:symbols.sort((a,b)=>a.file.localeCompare(b.file)||a.line-b.line),graph:{nodes:files.map(x=>({id:x.path,type:'file',language:x.language})),edges:edges.sort((a,b)=>a.from.localeCompare(b.from)||a.to.localeCompare(b.to))},findings:findings.sort((a,b)=>a.file.localeCompare(b.file)||a.line-b.line),coverage:{complete:!truncated,truncated,limits,skipped:skipped.length,skipped_entries:skipped.slice(0,500)},warnings:lockfiles.flatMap(item=>item.warnings??[])};
+}
+function markdown_cell(value) {
+  return String(value ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function render_project_markdown(report) {
+  const lines = [
+    '# ORIX Project Intelligence Report',
+    '',
+    '- **Project:** ' + markdown_cell(report.project.name),
+    '- **Root:** ' + markdown_cell(report.project.root),
+    '- **Scanned at:** ' + markdown_cell(report.project.scanned_at),
+    '- **Files analyzed:** ' + report.summary.files_analyzed,
+    '- **Bytes analyzed:** ' + report.summary.bytes_analyzed,
+    '- **Complete inventory:** ' + (report.coverage.complete ? 'yes' : 'no — limits or unreadable entries affected coverage'),
+    '- **Declared dependencies:** ' + report.summary.declared_dependencies,
+    '- **Resolved lockfile packages:** ' + (report.summary.locked_packages ?? report.resolved_dependencies?.length ?? 0),
+    '- **Dependency edges:** ' + (report.summary.dependency_edges ?? report.dependency_graph?.edges?.length ?? 0),
+    '- **Source symbols:** ' + report.summary.source_symbols,
+    '- **Source import edges:** ' + report.summary.source_import_edges,
+    '- **Credential-shaped matches:** ' + report.summary.secret_pattern_matches,
+    '- **Website pages:** ' + (report.website?.summary?.pages_analyzed ?? 0),
+    '- **Website triage findings:** ' + (report.summary.website_findings ?? 0),
+    '',
+    '## Project signals',
+    '',
+    '- **Package managers:** ' + (report.detection.package_managers.join(', ') || 'not detected'),
+    '- **README:** ' + (report.detection.has_readme ? 'present' : 'not detected'),
+    '- **License:** ' + (report.detection.has_license ? 'present' : 'not detected'),
+    '- **CI:** ' + (report.detection.has_ci ? 'present' : 'not detected'),
+    '- **Tests:** ' + (report.detection.has_tests ? 'present' : 'not detected'),
+    '- **Container:** ' + (report.detection.has_container ? 'present' : 'not detected'),
+    '',
+    '## Languages',
+    '',
+    '| Language | Files |',
+    '|---|---:|',
+    ...Object.entries(report.summary.languages).map(([name, count]) => '| ' + markdown_cell(name) + ' | ' + count + ' |'),
+    '',
+    '## Dependency manifests',
+    '',
+    '| Path | Ecosystem | Declarations | Warnings |',
+    '|---|---|---:|---:|',
+    ...(report.manifests ?? []).map(item => '| ' + markdown_cell(item.path) + ' | ' + markdown_cell(item.ecosystem ?? 'unknown') + ' | ' + item.dependencies.length + ' | ' + item.warnings.length + ' |'),
+    '',
+    '## Lockfile inventory',
+    '',
+    '| Path | Format | Packages | Package edges | Root edges | Status |',
+    '|---|---|---:|---:|---:|---|',
+    ...(report.lockfiles ?? []).map(item => '| ' + markdown_cell(item.path) + ' | ' + markdown_cell(item.format) + ' | ' + (item.packages?.length ?? 0) + ' | ' + (item.edges?.length ?? 0) + ' | ' + (item.root_edges?.length ?? 0) + ' | ' + (item.complete ? 'complete' : 'partial') + ' |'),
+    '',
+    '## Resolved package sample',
+    '',
+    '| Ecosystem | Package | Version | Classification | Source lockfile |',
+    '|---|---|---|---|---|',
+    ...(report.resolved_dependencies ?? []).slice(0, 100).map(item => '| ' + markdown_cell(item.ecosystem) + ' | ' + markdown_cell(item.name) + ' | ' + markdown_cell(item.version) + ' | ' + markdown_cell(item.dependency_type) + ' | ' + markdown_cell(item.lockfile_path ?? item.manifest) + ' |'),
+    '',
+    '## Source graph',
+    '',
+    '- File nodes: ' + report.graph.nodes.length,
+    '- Resolved local import edges: ' + report.graph.edges.length,
+    '- Package nodes: ' + (report.dependency_graph?.nodes?.length ?? 0),
+    '- Package dependency edges: ' + (report.dependency_graph?.edges?.length ?? 0),
+    '',
+    '## Findings',
+    '',
+  ];
+  if (report.findings.length) {
+    lines.push('| Severity | Rule | File | Line | Description |', '|---|---|---|---:|---|');
+    for (const item of report.findings) {
+      lines.push('| ' + markdown_cell(item.severity) + ' | ' + markdown_cell(item.rule_id) + ' | ' + markdown_cell(item.file) + ' | ' + item.line + ' | ' + markdown_cell(item.label) + ' — matched value redacted |');
+    }
+  } else {
+    lines.push('No built-in credential-shaped patterns matched.');
+  }
+  if ((report.warnings ?? []).length) {
+    lines.push('', '## Lockfile and parser warnings', '');
+    for (const warning of report.warnings.slice(0, 100)) {
+      lines.push('- ' + markdown_cell(warning.code ?? 'ORIX_WARNING') + ' — ' + markdown_cell(warning.file ?? warning.path ?? warning.dependency ?? warning.name ?? 'review lockfile metadata'));
+    }
+  }
+  lines.push(
+    '',
+    '## Coverage',
+    '',
+    '- Skipped entries: ' + report.coverage.skipped,
+    '- Truncated: ' + (report.coverage.truncated ? 'yes' : 'no'),
+    '- Complete: ' + (report.coverage.complete ? 'yes' : 'no'),
+    '',
+    'Project scripts, builds, tests, binaries, package managers, registries and plugins are never executed. Import and symbol extraction are heuristic. Dependency declarations and lockfile metadata are inventory, not vulnerability findings or publisher-authenticity proof. Credential matches are redacted and require manual review.',
+    '',
+  );
+  return lines.join('\n');
+}

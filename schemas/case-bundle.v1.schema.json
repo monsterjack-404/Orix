@@ -1,0 +1,16 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://orix.dev/schemas/case-bundle.v1.schema.json",
+  "title":"ORIX Portable Case Bundle Manifest","type":"object",
+  "required":["schema_version","case_id","exported_at","case_head_hash","event_count","files","source_artifacts_embedded","limitations"],
+  "properties":{
+    "schema_version":{"const":"orix.case-bundle.v1"},
+    "case_id":{"type":"string","format":"uuid"},
+    "exported_at":{"type":"string","format":"date-time"},
+    "case_head_hash":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+    "event_count":{"type":"integer","minimum":1},
+    "files":{"type":"array","minItems":1,"maxItems":512,"items":{"type":"object","required":["path","size_bytes","sha256"],"properties":{"path":{"type":"string","pattern":"^(events\\.jsonl|reports/[0-9a-f-]{36}\\.json)$"},"size_bytes":{"type":"integer","minimum":0},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"additionalProperties":false}},
+    "source_artifacts_embedded":{"const":false},
+    "limitations":{"type":"array","items":{"type":"string"}}
+  },"additionalProperties":false
+}

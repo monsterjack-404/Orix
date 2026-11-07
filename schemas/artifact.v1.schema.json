@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orix.artifact.v1.schema.json",
+  "title": "ORIX Artifact Report v1",
+  "type": "object",
+  "required": ["schema_version", "artifact", "integrity", "detection", "parser", "metrics", "evidence", "warnings", "limits"],
+  "properties": {
+    "schema_version": { "const": "orix.artifact.v1" },
+    "artifact": {
+      "type": "object",
+      "required": ["path", "name", "extension", "size_bytes", "modified_at", "readable_bytes", "analysis_complete_for_file"],
+      "properties": {
+        "path": { "type": "string" },
+        "name": { "type": "string" },
+        "extension": { "type": "string" },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "modified_at": { "type": "string", "format": "date-time" },
+        "readable_bytes": { "type": "integer", "minimum": 0 },
+        "analysis_complete_for_file": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "integrity": {
+      "type": "object",
+      "required": ["algorithm", "digest", "stable_during_read"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "stable_during_read": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "detection": { "type": "object", "required": ["format", "confidence"], "additionalProperties": true },
+    "parser": { "type": "object", "required": ["status", "result", "error"], "additionalProperties": true },
+    "metrics": { "type": "object", "required": ["entropy", "strings", "hex_preview", "hex_preview_bytes"], "additionalProperties": true },
+    "evidence": { "type": "array", "items": { "type": "object", "required": ["id", "kind", "summary", "source", "confidence"], "additionalProperties": true } },
+    "indicators": { "type": "array", "items": { "$ref": "indicator.v1.schema.json" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "limits": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+  },
+  "additionalProperties": true
+}

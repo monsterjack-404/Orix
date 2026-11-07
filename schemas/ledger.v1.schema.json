@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orix.ledger.v1.schema.json",
+  "title": "ORIX Evidence Ledger Record v1",
+  "type": "object",
+  "required": [
+    "format",
+    "sequence",
+    "record_id",
+    "timestamp",
+    "event",
+    "payload",
+    "previous_hash",
+    "hash"
+  ],
+  "properties": {
+    "format": {
+      "const": "orix.evidence-ledger.v1"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "record_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "event": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{1,79}$"
+    },
+    "payload": {
+      "type": [
+        "object",
+        "array",
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ]
+    },
+    "previous_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "additionalProperties": false
+}

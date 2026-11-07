@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orix.rizin-imports.v1.schema.json",
+  "title": "ORIX Rizin Imports Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "provider", "artifact", "imports", "summary", "diagnostics", "notes"],
+  "properties": {
+    "schema_version": { "const": "orix.rizin-imports.v1" },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "adapter_version", "engine_version", "executable"],
+      "properties": {
+        "id": { "const": "rizin.static" },
+        "adapter_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "engine_version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "executable": { "type": "string", "minLength": 1, "maxLength": 4096 }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "size_bytes", "sha256", "stable_during_analysis"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "stable_during_analysis": { "const": true }
+      }
+    },
+    "imports": {
+      "type": "array",
+      "maxItems": 1000000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "library", "ordinal", "bind", "type", "plt"],
+        "properties": {
+          "name": { "type": ["string", "null"], "maxLength": 512 },
+          "library": { "type": ["string", "null"], "maxLength": 512 },
+          "ordinal": { "type": ["integer", "null"], "minimum": 0 },
+          "bind": { "type": ["string", "null"], "maxLength": 64 },
+          "type": { "type": ["string", "null"], "maxLength": 64 },
+          "plt": {
+            "oneOf": [
+              { "type": "integer", "minimum": 0 },
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ]
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["imports", "libraries"],
+      "properties": {
+        "imports": { "type": "integer", "minimum": 0 },
+        "libraries": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version_probe_duration_ms", "import_scan_duration_ms", "stderr"],
+      "properties": {
+        "version_probe_duration_ms": { "type": "integer", "minimum": 0 },
+        "import_scan_duration_ms": { "type": "integer", "minimum": 0 },
+        "stderr": { "type": "string", "maxLength": 1024 }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 1024 }
+    }
+  }
+}
