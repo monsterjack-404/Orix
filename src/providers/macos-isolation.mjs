@@ -375,14 +375,19 @@ async function run_compiler(executable, args, cwd, env) {
     child.once('error', error => {
       spawnError = error;
       childClosed = true;
-      void start_group_cleanup();
+      // The close/error event can arrive after timeout cleanup has already
+      // completed. Always re-run finish after the shared cleanup promise.
+      void start_group_cleanup().finally(finish);
     });
     child.once('close', (code, signal) => {
       closeResult = { code, signal };
       childClosed = true;
       // Even a successful compiler leader may have left a same-group child.
       // Verify group emptiness before its temporary directory can be removed.
-      void start_group_cleanup();
+      // Chain finish explicitly: timeout cleanup may have settled before this
+      // close event, in which case the shared promise's original finally ran
+      // while childClosed was still false.
+      void start_group_cleanup().finally(finish);
     });
 
     timer = setTimeout(() => {

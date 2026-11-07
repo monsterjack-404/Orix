@@ -85,18 +85,25 @@ async function assert_extended_acl_denied(target, label, executable, root) {
 async function main() {
   assert.equal(process.platform, 'darwin', 'This integration gate must run on macOS');
   const isolationSource = await readFile(new URL('../src/providers/macos-isolation.mjs', import.meta.url), 'utf8');
+  const finishFunction = isolationSource.indexOf('const finish = () => {');
+  const compilerTimeout = isolationSource.indexOf('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', finishFunction);
+  const closeHandler = isolationSource.indexOf("child.once('close', (code, signal) => {");
+  const closeCleanup = isolationSource.indexOf('void start_group_cleanup().finally(finish);', closeHandler);
   const timeoutRequest = isolationSource.indexOf('timedOut = true;');
   const cleanupFunctionCall = isolationSource.indexOf('cleanup_macos_compiler_process_group(child.pid)');
   const cleanupStartedAfterTimeout = isolationSource.indexOf('void start_group_cleanup();', timeoutRequest);
-  const closeHandler = isolationSource.indexOf("child.once('close', (code, signal) => {", timeoutRequest);
-  const compilerTimeout = isolationSource.indexOf('ORIX_PROVIDER_MACOS_COMPILER_TIMEOUT', closeHandler);
   const groupKill = isolationSource.indexOf("process.kill(-pid, 'SIGKILL')");
   const groupVerification = isolationSource.indexOf('await wait_until_empty(Date.now() + verify_timeout_ms)');
   assert.match(isolationSource, /detached: true/,
     'Compiler must run in its own process group for descendant teardown');
-  assert.ok(timeoutRequest >= 0 && cleanupFunctionCall > 0 &&
-    cleanupStartedAfterTimeout > timeoutRequest && closeHandler > timeoutRequest &&
-    compilerTimeout > closeHandler && groupKill > 0 && groupVerification > groupKill,
+  // finish() and the child close handler are deliberately declared before the
+  // timeout callback. Check their real control-flow contracts, not an assumed
+  // lexical order that would reject the correct event-registration sequence.
+  assert.ok(finishFunction >= 0 && compilerTimeout > finishFunction &&
+    closeHandler > compilerTimeout && closeCleanup > closeHandler &&
+    timeoutRequest > closeCleanup && cleanupFunctionCall > 0 &&
+    cleanupStartedAfterTimeout > timeoutRequest && groupKill > 0 &&
+    groupVerification > groupKill,
   'Compiler timeout/exit must await TERM/KILL process-group teardown and a final empty-group verification');
   const base = await mkdtemp(path.join(os.tmpdir(), 'orix-seatbelt-integration-'));
   const root = path.join(base, 'rootfs');
