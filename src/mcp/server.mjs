@@ -146,7 +146,7 @@ export const ORIX_MCP_TOOLS = Object.freeze([
   {
     name: 'orix.analyze_android_package',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    description: 'Analyze a workspace-confined APK/AAB offline. Inventories bounded safe ZIP entries, decodes bounded APK binary-XML manifest metadata, inventories native-library paths and signature filenames, and inspects DEX metadata only for stored, unencrypted entries. Does not extract, decompress, execute, decode AAB protobuf manifests or verify signatures.',
+    description: 'Analyze a workspace-confined APK/AAB offline. Inventories bounded safe ZIP entries, expands selected stored/raw-DEFLATE manifest and DEX entries in memory under per-entry and aggregate byte ceilings, decodes bounded APK binary-XML manifest metadata, and inventories native-library paths and signing-block IDs. Does not extract entries to disk, execute app code, decode AAB protobuf manifests or cryptographically verify signatures.',
     inputSchema: {
       type: 'object',
       properties: {
