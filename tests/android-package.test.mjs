@@ -415,7 +415,7 @@ test('APK manifest decoder rejects trailing bytes beyond the root chunk', () => 
   assert.equal(report.manifests[0].status, 'malformed-proto-xml');
 });
 
-test('AAB inventory recognizes bundle layout without mislabeling protobuf manifest as binary XML', () => {
+test('AAB inventory routes module manifests through protobuf decoding, never APK binary XML', () => {
   const report = analyze_android_package(create_zip([
     { name: 'BundleConfig.pb', contents: Buffer.from([0x0a, 0x00]) },
     { name: 'base/manifest/AndroidManifest.xml', contents: Buffer.from([0x0a, 0x02, 0x08, 0x01, 0x12, 0x02, 0x08, 0x01]) },
@@ -429,7 +429,8 @@ test('AAB inventory recognizes bundle layout without mislabeling protobuf manife
   assert.equal(report.summary.dex_entries, 1);
   assert.equal(report.summary.dex_metadata_parsed, 1);
   assert.equal(report.manifests[0].binary_xml, false);
-  assert.equal(report.manifests[0].status, 'unknown-or-invalid-header');
+  assert.equal(report.manifests[0].status, 'malformed-proto-xml');
+  assert.equal(report.manifests[0].proto_xml, true);
 });
 
 test('raw-DEFLATE DEX entries are bounded, expanded in memory and parsed', () => {
@@ -475,13 +476,13 @@ test('raw-DEFLATE manifest entries with mismatched CRC metadata are not decoded'
 });
 
 test('manifest decompression shares an aggregate budget across AAB modules', () => {
-  const manifest = binary_manifest();
+  const manifest = Buffer.concat([Buffer.from([0x0a, 0x0a, 0x1a, 0x08]), Buffer.from('manifest')]);
   const report = analyze_android_package(create_zip([
     { name: 'BundleConfig.pb', contents: Buffer.from([0x0a, 0x00]) },
     { name: 'base/manifest/AndroidManifest.xml', contents: manifest, method: 8 },
     { name: 'feature/manifest/AndroidManifest.xml', contents: manifest, method: 8 },
   ]), { max_manifest_total_bytes: manifest.length + 8 });
-  assert.equal(report.manifests[0].status, 'malformed-proto-xml');
+  assert.equal(report.manifests[0].status, 'decoded-proto-xml');
   assert.equal(report.manifests[1].status, 'aggregate-size-limit');
 });
 
@@ -767,7 +768,8 @@ test('AAB inventory recognizes BundleConfig and reports malformed protobuf modul
   assert.equal(report.detected, true);
   assert.equal(report.summary.manifest_entries, 1);
   assert.equal(report.manifests[0].path, 'base/manifest/AndroidManifest.xml');
-  assert.equal(report.manifests[0].status, 'malformed-binary-xml');
+  assert.equal(report.manifests[0].status, 'malformed-proto-xml');
+  assert.equal(report.manifests[0].proto_xml, true);
   assert.equal(report.summary.dex_entries, 1);
   assert.equal(report.dex[0].status, 'metadata-parsed');
   assert.ok(report.limitations.some(note => note.includes('BundleConfig.pb, resources.pb, dependency graph and split/install relationships remain unsupported')));
@@ -777,17 +779,18 @@ test('AAB inventory recognizes BundleConfig and reports malformed protobuf modul
 
 
 
-test('AAB module inventory separates base and feature paths while reporting malformed manifests', () => {
+test('AAB module inventory separates base and feature paths and decodes each bounded manifest', () => {
+  const manifest = Buffer.concat([Buffer.from([0x0a, 0x0a, 0x1a, 0x08]), Buffer.from('manifest')]);
   const report = analyze_android_package(create_zip([
     { name: 'BundleConfig.pb', contents: Buffer.from([0x0a, 0x00]) },
-    { name: 'base/manifest/AndroidManifest.xml', contents: Buffer.alloc(8) },
+    { name: 'base/manifest/AndroidManifest.xml', contents: manifest },
     { name: 'base/dex/classes.dex', contents: create_dex_fixture() },
     { name: 'base/resources.pb', contents: Buffer.from([0x0a, 0x00]) },
     { name: 'base/res/drawable/icon.png', contents: Buffer.from([1]) },
     { name: 'base/assets/config.json', contents: Buffer.from('{}') },
     { name: 'base/root/etc/config.ini', contents: Buffer.from('safe=true') },
     { name: 'base/lib/arm64-v8a/libbase.so', contents: Buffer.from([1]) },
-    { name: 'feature_camera/manifest/AndroidManifest.xml', contents: Buffer.alloc(8) },
+    { name: 'feature_camera/manifest/AndroidManifest.xml', contents: manifest },
     { name: 'feature_camera/dex/classes2.dex', contents: create_dex_fixture() },
     { name: 'feature_camera/res/drawable/camera.png', contents: Buffer.from([2]) },
   ]));
@@ -803,7 +806,7 @@ test('AAB module inventory separates base and feature paths while reporting malf
   assert.equal(report.bundle.modules[0].asset_paths, 1);
   assert.equal(report.bundle.modules[0].root_paths, 1);
   assert.equal(report.bundle.modules[1].manifest_present, true);
-  assert.deepEqual(report.manifests.map(item => item.status), ['malformed-proto-xml', 'malformed-proto-xml']);
+  assert.deepEqual(report.manifests.map(item => item.status), ['decoded-proto-xml', 'decoded-proto-xml']);
   assert.equal(report.bundle.modules[1].dex_entries, 1);
   assert.equal(report.bundle.modules[1].resource_paths, 1);
   assert.ok(report.limitations.some(note => note.includes('bounded module manifest metadata is decoded')));
