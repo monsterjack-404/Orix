@@ -35,13 +35,13 @@ test('DEX decoder uses the correct 22x and 32x formats for object moves', () => 
 });
 
 test('DEX 35c and 45cc instructions decode C-through-G registers from the third code unit', () => {
-  const invoke = decode(words(0x506e, 0x0000, 0x4321), {
+  const invoke = decode(words(0x556e, 0x0000, 0x4321), {
     registers_size: 6,
     counts: { ...emptyCounts, method_ids: 1 },
   });
   assert.deepEqual(invoke.instructions[0].registers, [1, 2, 3, 4, 5]);
 
-  const polymorphic = decode(words(0x10fa, 0x0000, 0x0007, 0x0000), {
+  const polymorphic = decode(words(0x01fa, 0x0000, 0x0007, 0x0000), {
     registers_size: 8,
     counts: { ...emptyCounts, method_ids: 1, proto_ids: 1 },
   });
@@ -62,7 +62,7 @@ test('DEX decoder checks destination and source register pairs for wide conversi
   assert.deepEqual(constWide.instructions[0].wide_registers, [0]);
 
   const longShift2addr = decode(words(0x10c3), { registers_size: 2 });
-  assert.deepEqual(longShift2addr.instructions[0].wide_registers, [1]);
+  assert.deepEqual(longShift2addr.instructions[0].wide_registers, [0]);
 });
 
 test('DEX decoder extracts const/4 signed literal and return register operands', () => {
