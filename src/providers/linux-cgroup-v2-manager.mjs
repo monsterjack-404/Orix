@@ -304,50 +304,82 @@ export async function prepare_linux_provider_cgroup(parent_path = process.env.OR
     const cleanup = () => {
       if (cleanup_promise) return cleanup_promise;
       cleanup_promise = (async () => {
-        const deadline = performance.now() + 5000;
-        try {
-          close_attach_fd();
-          write_control(child_fd, 'cgroup.kill', '1');
-          while (performance.now() < deadline) {
-            const events = read_control(child_fd, 'cgroup.events');
-            if (/^populated 0$/m.test(events)) {
-              cleanup_report.memory_events = read_control(child_fd, 'memory.events');
-              cleanup_report.cpu_stat = read_control(child_fd, 'cpu.stat');
-              cleanup_report.pids_events = read_control(child_fd, 'pids.events');
-              closeSync(child_fd);
-              child_fd = undefined;
-              rmdirSync(fd_path(parent_fd, child_name));
-              child_created = false;
-              closeSync(parent_fd);
-              parent_fd = undefined;
-              return Object.freeze({
-                memory_events: cleanup_report.memory_events,
-                cpu_stat: cleanup_report.cpu_stat,
-                pids_events: cleanup_report.pids_events,
-                limits: cleanup_report.limits,
-                removed: true,
-              });
+        let first_error = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            close_attach_fd();
+            // A failed rmdir can occur after the leaf descriptor was closed.
+            // Keep the delegated parent FD alive between attempts so the leaf
+            // can be reopened without resolving the host path again.
+            if (child_created && child_fd === undefined) {
+              child_fd = open_directory_at(parent_fd, child_name);
             }
-            await new Promise(resolve => setTimeout(resolve, 25));
-          }
-          cgroup_error('ORIX_CGROUP_CLEANUP_TIMEOUT',
-            'Provider cgroup remained populated after the kernel kill request', { cgroup: parent_path + '/' + child_name });
-        } catch (error) {
-          throw error;
-        } finally {
-          if (attach_open) {
-            try { close_attach_fd(); } catch { /* preserve cleanup failure */ }
-          }
-          if (child_fd !== undefined) {
-            try { closeSync(child_fd); } catch { /* preserve cleanup failure */ }
-            child_fd = undefined;
-          }
-          if (parent_fd !== undefined) {
-            try { closeSync(parent_fd); } catch { /* preserve cleanup failure */ }
-            parent_fd = undefined;
+            const deadline = performance.now() + 5000;
+            write_control(child_fd, 'cgroup.kill', '1');
+            while (performance.now() < deadline) {
+              const events = read_control(child_fd, 'cgroup.events');
+              if (/^populated 0$/m.test(events)) {
+                cleanup_report.memory_events = read_control(child_fd, 'memory.events');
+                cleanup_report.cpu_stat = read_control(child_fd, 'cpu.stat');
+                cleanup_report.pids_events = read_control(child_fd, 'pids.events');
+                closeSync(child_fd);
+                child_fd = undefined;
+                // Do not mark the cgroup removed until rmdir succeeds. If the
+                // kernel reports EBUSY, retry through the still-open parent FD.
+                rmdirSync(fd_path(parent_fd, child_name));
+                child_created = false;
+                cleanup_report.retry_count = attempt;
+                if (parent_fd !== undefined) {
+                  try { closeSync(parent_fd); } catch { /* cgroup is already removed */ }
+                  parent_fd = undefined;
+                }
+                return Object.freeze({
+                  memory_events: cleanup_report.memory_events,
+                  cpu_stat: cleanup_report.cpu_stat,
+                  pids_events: cleanup_report.pids_events,
+                  limits: cleanup_report.limits,
+                  retry_count: cleanup_report.retry_count,
+                  removed: true,
+                });
+              }
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            cgroup_error('ORIX_CGROUP_CLEANUP_TIMEOUT',
+              'Provider cgroup remained populated after the kernel kill request', {
+                cgroup: parent_path + '/' + child_name,
+                attempt: attempt + 1,
+              });
+          } catch (error) {
+            if (attempt === 0) {
+              first_error = error;
+              await new Promise(resolve => setTimeout(resolve, 50));
+              continue;
+            }
+            const failure = new AggregateError(
+              [first_error, error].filter(Boolean),
+              'Provider cgroup cleanup failed after one bounded retry',
+              { cause: error },
+            );
+            failure.code = error?.code ?? first_error?.code ?? 'ORIX_CGROUP_CLEANUP_FAILED';
+            throw failure;
           }
         }
-      })();
+      })().catch(error => {
+        // Preserve the original cleanup failure if best-effort descriptor
+        // release also fails. No descriptor is discarded between attempts.
+        if (attach_open) {
+          try { close_attach_fd(); } catch { /* preserve cleanup failure */ }
+        }
+        if (child_fd !== undefined) {
+          try { closeSync(child_fd); } catch { /* preserve cleanup failure */ }
+          child_fd = undefined;
+        }
+        if (parent_fd !== undefined) {
+          try { closeSync(parent_fd); } catch { /* preserve cleanup failure */ }
+          parent_fd = undefined;
+        }
+        throw error;
+      });
       return cleanup_promise;
     };
 
