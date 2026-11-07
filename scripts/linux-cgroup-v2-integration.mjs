@@ -1,6 +1,7 @@
 // Real-kernel cgroup v2 integration gate. Run as root on a writable cgroup2 host.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rmdir, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
@@ -211,8 +212,8 @@ async function remove_delegated_parent(state) {
     assert.ok(name.startsWith('orix-provider-'), 'Refusing to clean an unknown delegated child cgroup: ' + name);
     const cgroup = path.join(parent, name);
     await write_control(path.join(cgroup, 'cgroup.kill'), '1');
-    const deadline = Date.now() + 5_000;
-    while (Date.now() < deadline) {
+    const deadline = performance.now() + 5_000;
+    while (performance.now() < deadline) {
       if (/^populated 0$/m.test(await read_control(path.join(cgroup, 'cgroup.events')))) break;
       await delay(25);
     }
@@ -300,9 +301,9 @@ async function main() {
       }
       await new Promise(resolve => setTimeout(resolve, 250));
       result.pids_limit_hits = pids_limit_hits;
-      const cpuStart = Date.now();
+      const cpuStart = performance.now();
       let cpuIterations = 0;
-      while (Date.now() - cpuStart < 1500) cpuIterations += 1;
+      while (performance.now() - cpuStart < 1500) cpuIterations += 1;
       result.cpu_probe = cpuIterations > 0;
       result.host_network = await new Promise(resolve => {
         const socket = net.createConnection({ host: '127.0.0.1', port: ${port} });
