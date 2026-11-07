@@ -205,7 +205,7 @@ function readOperands(buffer, base, pc, spec) {
       const nibbleRegs = [third & 0x0f, (third >>> 4) & 0x0f, (third >>> 8) & 0x0f, third >>> 12, (first >>> 12) & 0x0f];
       out.registers = nibbleRegs.slice(0, argumentWords);
       out.argument_words = argumentWords;
-      out.reference = { index: third };
+      out.reference = { index: second };
       if (spec.format === '45cc') out.proto_reference = { index: fourth };
       break;
     }
