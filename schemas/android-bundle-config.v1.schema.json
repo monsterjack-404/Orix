@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orix.dev/schemas/android-bundle-config.v1.schema.json",
+  "title": "ORIX Android BundleConfig Metadata v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "bundletool",
+    "type",
+    "type_present",
+    "compression",
+    "optimizations",
+    "master_resources",
+    "apex_config",
+    "unsigned_embedded_apk_config",
+    "asset_modules_config",
+    "locales",
+    "coverage",
+    "notes"
+  ],
+  "$defs": {
+    "enum_value": {
+      "type": "object",
+      "required": ["value", "name", "known"],
+      "properties": {
+        "value": { "type": "integer" },
+        "name": { "type": "string" },
+        "known": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "message": {
+      "type": "object",
+      "description": "Recognized metadata fields for this BundleConfig message. Unknown wire-valid fields are skipped and counted in coverage.",
+      "additionalProperties": true
+    },
+    "nullable_message": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/message" }
+      ]
+    }
+  },
+  "properties": {
+    "schema_version": { "const": "orix.android-bundle-config.v1" },
+    "bundletool": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["version"],
+          "properties": {
+            "version": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "type": { "$ref": "#/$defs/enum_value" },
+    "type_present": { "type": "boolean" },
+    "compression": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": [
+            "uncompressed_globs",
+            "install_time_asset_module_default_compression",
+            "apk_compression_algorithm"
+          ],
+          "properties": {
+            "uncompressed_globs": { "type": "array", "items": { "type": "string" } },
+            "install_time_asset_module_default_compression": { "$ref": "#/$defs/enum_value" },
+            "apk_compression_algorithm": { "$ref": "#/$defs/enum_value" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "optimizations": { "$ref": "#/$defs/nullable_message" },
+    "master_resources": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["resource_ids", "resource_names"],
+          "properties": {
+            "resource_ids": { "type": "array", "items": { "type": "integer" } },
+            "resource_names": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "apex_config": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["embedded_apks", "supported_abi_sets"],
+          "properties": {
+            "embedded_apks": { "type": "array", "items": { "$ref": "#/$defs/message" } },
+            "supported_abi_sets": { "type": "array", "items": { "$ref": "#/$defs/message" } }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "unsigned_embedded_apk_config": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": { "path": { "type": "string" } },
+        "additionalProperties": false
+      }
+    },
+    "asset_modules_config": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["app_versions", "asset_version_tag"],
+          "properties": {
+            "app_versions": { "type": "array", "items": { "type": ["integer", "string"] } },
+            "asset_version_tag": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "locales": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["inject_locale_config"],
+          "properties": { "inject_locale_config": { "type": "boolean" } },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "fields_seen",
+        "items_seen",
+        "items_reported",
+        "items_omitted",
+        "unknown_fields",
+        "string_bytes",
+        "output_truncated"
+      ],
+      "properties": {
+        "fields_seen": { "type": "integer", "minimum": 0 },
+        "items_seen": { "type": "integer", "minimum": 0 },
+        "items_reported": { "type": "integer", "minimum": 0 },
+        "items_omitted": { "type": "integer", "minimum": 0 },
+        "unknown_fields": { "type": "integer", "minimum": 0 },
+        "string_bytes": { "type": "integer", "minimum": 0 },
+        "output_truncated": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}
