@@ -418,9 +418,34 @@ namespace OrixWindowsSandbox {
       }
     }
 
+    // ALL APPLICATION PACKAGES is a built-in AppContainer token group. If
+    // an ancestor already grants that group traverse/read-execute, adding a
+    // per-profile ACE would be redundant and may require WRITE_DAC on protected
+    // Windows directories (for example Program Files). Respect deny ACEs and
+    // add a narrow per-profile FILE_TRAVERSE rule only when the existing DACL
+    // does not already provide traversal to AppContainer tokens.
+    static bool HasAppContainerTraversalGrant(DirectorySecurity security, SecurityIdentifier sid) {
+      SecurityIdentifier allApplicationPackages = new SecurityIdentifier("S-1-15-2-1");
+      SecurityIdentifier allRestrictedApplicationPackages = new SecurityIdentifier("S-1-15-2-2");
+      AuthorizationRuleCollection rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier));
+      bool allowed = false;
+      foreach (FileSystemAccessRule rule in rules) {
+        SecurityIdentifier principal = rule.IdentityReference as SecurityIdentifier;
+        if (principal == null) continue;
+        bool applies = principal.Equals(sid) ||
+          principal.Equals(allApplicationPackages) ||
+          principal.Equals(allRestrictedApplicationPackages);
+        if (!applies || (rule.FileSystemRights & FileSystemRights.Traverse) == 0) continue;
+        if (rule.AccessControlType == AccessControlType.Deny) return false;
+        if (rule.AccessControlType == AccessControlType.Allow) allowed = true;
+      }
+      return allowed;
+    }
+
     // A child process opened by an AppContainer must resolve the executable path
     // using the AppContainer token. Grant only FILE_TRAVERSE on each trusted
-    // ancestor; do not grant directory listing or file-read access outside rootfs.
+    // ancestor that does not already provide it to AppContainer token groups;
+    // do not grant directory listing or file-read access outside rootfs.
     // These per-profile ACEs are removed after the provider Job Object is empty.
     static void GrantAncestorTraversal(string root, SecurityIdentifier sid) {
       string fullRoot = Path.GetFullPath(root);
@@ -430,20 +455,38 @@ namespace OrixWindowsSandbox {
         if ((attributes & FileAttributes.ReparsePoint) != 0)
           throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: reparse-point ancestor appeared before traversal grant: " + current.FullName);
         DirectorySecurity security = Directory.GetAccessControl(current.FullName, AccessControlSections.Access);
-        security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.Traverse, AccessControlType.Allow));
-        Directory.SetAccessControl(current.FullName, security);
-        Log("RUN:ANCESTOR_TRAVERSE_GRANTED:" + current.FullName);
+        if (HasAppContainerTraversalGrant(security, sid)) {
+          Log("RUN:ANCESTOR_TRAVERSE_INHERITED:" + current.FullName);
+        } else {
+          security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.Traverse, AccessControlType.Allow));
+          Directory.SetAccessControl(current.FullName, security);
+          Log("RUN:ANCESTOR_TRAVERSE_GRANTED:" + current.FullName);
+        }
         current = current.Parent;
       }
     }
 
+    // Only rewrite an ancestor DACL when this invocation actually inserted an
+    // explicit ACE for its unique AppContainer SID. This avoids needless writes
+    // to protected inherited-only ancestors and preserves unrelated ACEs.
     static void PurgeAncestorTraversal(string root, SecurityIdentifier sid) {
       string fullRoot = Path.GetFullPath(root);
       DirectoryInfo current = Directory.GetParent(fullRoot);
       while (current != null) {
+        FileAttributes attributes = File.GetAttributes(current.FullName);
+        if ((attributes & FileAttributes.ReparsePoint) != 0)
+          throw new InvalidOperationException("ORIX_WINDOWS_CLEANUP_REPARSE_POINT: refusing to purge ancestor traversal through reparse point: " + current.FullName);
         DirectorySecurity security = Directory.GetAccessControl(current.FullName, AccessControlSections.Access);
-        security.PurgeAccessRules(sid);
-        Directory.SetAccessControl(current.FullName, security);
+        AuthorizationRuleCollection rules = security.GetAccessRules(true, false, typeof(SecurityIdentifier));
+        bool hasExplicitProfileRule = rules.Cast<FileSystemAccessRule>().Any(rule =>
+          rule.IdentityReference.Equals(sid) && !rule.IsInherited);
+        if (hasExplicitProfileRule) {
+          security.PurgeAccessRules(sid);
+          Directory.SetAccessControl(current.FullName, security);
+          Log("CLEANUP:ANCESTOR_TRAVERSE_REMOVED:" + current.FullName);
+        } else {
+          Log("CLEANUP:ANCESTOR_TRAVERSE_UNCHANGED:" + current.FullName);
+        }
         current = current.Parent;
       }
     }
