@@ -70,7 +70,6 @@ jobs:
           test "$(git -C "$source_dir" rev-parse HEAD)" = "$BWRAP_COMMIT"
           meson setup "$build_dir" "$source_dir" --prefix=/usr -Dselinux=disabled -Dman=disabled -Dtests=true
           meson compile -C "$build_dir"
-          meson test -C "$build_dir" --print-errorlogs
           sudo meson install -C "$build_dir"
           test "$(/usr/bin/bwrap --version)" = "bubblewrap 0.12.0"
       - name: Set up Node.js
@@ -82,9 +81,16 @@ jobs:
       - name: Allow Bubblewrap user namespaces under Ubuntu AppArmor
         run: |
           if [ -r /sys/module/apparmor/parameters/enabled ] && grep -q '^Y' /sys/module/apparmor/parameters/enabled; then
-            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
+            {
+              printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>'
+              printf '%s\n' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}'
+              printf 'profile bwrap-ci-build %s/bwrap flags=(unconfined) {\n' "$RUNNER_TEMP/bubblewrap-build"
+              printf '%s\n' '  userns,' '  include if exists <local/bwrap>' '}'
+            } | sudo tee /etc/apparmor.d/bwrap >/dev/null
             sudo apparmor_parser -r /etc/apparmor.d/bwrap || sudo apparmor_parser -a /etc/apparmor.d/bwrap
           fi
+      - name: Run upstream Bubblewrap 0.12.0 test suite
+        run: meson test -C "$RUNNER_TEMP/bubblewrap-build" --print-errorlogs
       - name: Diagnose cgroup v2 delegation (read-only)
         run: node scripts/linux-cgroup-v2-preflight.mjs
       - name: Verify Bubblewrap availability
