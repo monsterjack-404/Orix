@@ -46,6 +46,8 @@ The volume root is not renameable as a path component, but its ACL still matters
 
 The native launcher now treats process termination as an operation that must be observed, not merely requested.
 
+Before launch, it sets `PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY` with `PROCESS_CREATION_CHILD_PROCESS_OVERRIDE` so the provider can spawn required descendants. The launcher is trusted and not itself an AppContainer; the provider's descendants inherit the provider's AppContainer token and remain inside the assigned non-breakaway Job Object.
+
 - After the provider is assigned to its Job Object, teardown checks whether the job is already signaled; otherwise it calls `TerminateJobObject` and waits up to five seconds for the Job Object to become empty.
 - If process creation succeeded but Job Object assignment did not, teardown terminates the direct suspended process and waits for its process handle to become signaled.
 - A failed or timed-out wait emits the durable `RUN:TEARDOWN_INCOMPLETE` marker and returns a distinct failure. The native `Main` path skips profile ACL, AppContainer scratch and profile deletion in that case.
