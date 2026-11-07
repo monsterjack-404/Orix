@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { inspectWindowsLauncher, verifyWindowsLauncher } from '../scripts/verify-windows-launcher.mjs';
-import { decodeWindowsProviderLauncher, WINDOWS_PROVIDER_LAUNCHER_SHA256 } from '../src/providers/windows-launcher-integrity.mjs';
+import { decodeWindowsProviderLauncher, decodeWindowsProviderLauncherBase64, WINDOWS_PROVIDER_LAUNCHER_SHA256 } from '../src/providers/windows-launcher-integrity.mjs';
 
 function makeAnyCpuPe() {
   const bytes = Buffer.alloc(0x400);
@@ -31,6 +31,16 @@ function makeAnyCpuPe() {
   bytes.writeUInt32LE(1, clr + 16);
   bytes.writeUInt32LE(0x424a5342, 0x280);
   return bytes;
+}
+async function readPackagedLauncherPayload() {
+  const parts = [
+    new URL('../native/bin/win32-anycpu/launcher-payload-01.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-02.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-03.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-04.b64', import.meta.url),
+  ];
+  const encoded = (await Promise.all(parts.map(url => readFile(url, 'utf8')))).join('');
+  return decodeWindowsProviderLauncherBase64(encoded);
 }
 
 test('Windows launcher artifact verifier accepts IL-only architecture-neutral AnyCPU PE images', () => {
@@ -62,16 +72,21 @@ test('Windows launcher artifact verifier rejects a CLR directory extending past 
   assert.throws(() => inspectWindowsLauncher(truncatedDirectory), /CLR directory extends beyond section raw data/);
 });
 
-test('source-pinned Windows launcher payload decodes to the exact reviewed AnyCPU executable', async () => {
-  const payload = await readFile(new URL('../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
+test('source-pinned launcher payload segments decode to the exact reviewed AnyCPU executable', async () => {
+  const payload = await readPackagedLauncherPayload();
   const bytes = decodeWindowsProviderLauncher(payload);
   assert.equal(createHash('sha256').update(bytes).digest('hex'), WINDOWS_PROVIDER_LAUNCHER_SHA256);
   assert.equal(bytes.toString('ascii', 0, 2), 'MZ');
   assert.equal(inspectWindowsLauncher(bytes).machine, 0x014c);
 });
 
-test('source-pinned Windows launcher payload rejects modified compressed bytes', async () => {
-  const payload = await readFile(new URL('../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
+test('launcher payload base64 rejects malformed and non-canonical input', () => {
+  assert.throws(() => decodeWindowsProviderLauncherBase64('%%%='), /invalid size or alphabet/);
+  assert.throws(() => decodeWindowsProviderLauncherBase64('AB=='), /non-canonical/);
+});
+
+test('source-pinned launcher payload rejects modified compressed bytes', async () => {
+  const payload = await readPackagedLauncherPayload();
   const changed = Buffer.from(payload);
   changed[changed.length - 1] ^= 0x01;
   assert.throws(() => decodeWindowsProviderLauncher(changed), /SHA-256 mismatch/);
