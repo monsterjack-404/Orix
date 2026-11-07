@@ -359,6 +359,36 @@ test('APK inventory identifies manifest, multidomain assets and valid stored DEX
 });
 
 
+test('APK binary XML node extensions honor headerSize and reject truncated node headers', () => {
+  const malformed = Buffer.from(binary_manifest());
+  const malformedStart = find_binary_xml_chunk(malformed, 0x0102);
+  assert.notEqual(malformedStart, -1);
+  malformed.writeUInt16LE(8, malformedStart + 2);
+  assert.throws(
+    () => parse_android_binary_xml(malformed),
+    error => error.code === 'ORIX_AXML_NODE_HEADER',
+  );
+
+  const extended = Buffer.from(binary_manifest());
+  const startElement = find_binary_xml_chunk(extended, 0x0102);
+  assert.notEqual(startElement, -1);
+  const oldChunkSize = extended.readUInt32LE(startElement + 4);
+  const oldRootSize = extended.readUInt32LE(4);
+  const withExtendedNodeHeader = Buffer.concat([
+    extended.subarray(0, startElement + 16),
+    Buffer.alloc(4),
+    extended.subarray(startElement + 16),
+  ]);
+  withExtendedNodeHeader.writeUInt16LE(20, startElement + 2);
+  withExtendedNodeHeader.writeUInt32LE(oldChunkSize + 4, startElement + 4);
+  withExtendedNodeHeader.writeUInt32LE(oldRootSize + 4, 4);
+
+  const decoded = parse_android_binary_xml(withExtendedNodeHeader);
+  assert.equal(decoded.package_name, 'com.example.orix');
+  assert.deepEqual(decoded.permissions.map(item => item.name), ['android.permission.INTERNET']);
+  assert.equal(decoded.components[0].exported, true);
+});
+
 test('APK manifest decoder rejects mismatched end-element names', () => {
   const manifest = Buffer.from(binary_manifest());
   const end_element = find_binary_xml_chunk(manifest, 0x0103);
