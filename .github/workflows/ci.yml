@@ -73,7 +73,7 @@ jobs:
           test -x /usr/bin/bwrap
           /usr/bin/bwrap --version
       - name: Run real delegated cgroup v2 hostile-process and resource-isolation checks
-        run: sudo "$(command -v node)" scripts/linux-cgroup-v2-integration.mjs
+        run: sudo env GITHUB_ACTIONS=true ORIX_CGROUP_TEST_ALLOW_ROOT_MUTATION=GITHUB_ACTIONS_DISPOSABLE_VM "$(command -v node)" scripts/linux-cgroup-v2-integration.mjs
 
   platform-smoke:
     name: Platform smoke / ${{ matrix.os }}
