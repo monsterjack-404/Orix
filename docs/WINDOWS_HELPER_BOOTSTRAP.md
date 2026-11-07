@@ -74,3 +74,19 @@ This is deliberately fail-closed. It can leave a profile, ACL entries or tempora
 The trusted, non-AppContainer launcher explicitly sets `PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY` to `PROCESS_CREATION_CHILD_PROCESS_OVERRIDE` when it creates the provider. This allows the provider to create descendants while preserving the AppContainer token and the already-assigned Job Object. The Job Object is not configured with breakaway permissions, so descendants remain subject to the same CPU, memory and active-process limits and are terminated with the job. The Windows integration test verifies that the child starts under the provider, the launcher reports the override policy, and the child stops writing after its provider leader exits.
 
 The override is applied only by the trusted host launcher; it does not remove the provider's AppContainer identity or grant host filesystem/network access. If descendant containment cannot be verified, the integration gate must fail rather than interpreting a blocked child spawn as proof of Job Object cleanup.
+
+
+## Reviewed runtime payload identity
+
+The runtime package payload is generated from the reviewed source in
+`native/windows-provider-launcher.cs`. The executable and compressed bytes
+are separately pinned in `src/providers/windows-launcher-integrity.mjs`:
+
+- Executable SHA-256: `17f4420aa2bcd43b1f6bcaa70e094f64decab30c084658f79762b476e855b060`
+- Compressed payload SHA-256: `20fab442f82ca85df1037309b920515ff47fb60cc47bbe06976a2d3851111a76`
+
+The four base64 segments under `native/bin/win32-anycpu/` are the runtime
+representation of that exact reviewed executable. Windows CI must build the
+helper from source on independent Windows runners, require byte-identical
+outputs, and verify each build against the source-pinned payload identity.
+The digest establishes byte integrity only; it is not a publisher signature.
