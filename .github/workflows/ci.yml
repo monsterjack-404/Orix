@@ -152,6 +152,12 @@ jobs:
             node-version: 22
           - os: windows-2022
             node-version: 24
+          - os: windows-11-arm
+            node-version: 20
+          - os: windows-11-arm
+            node-version: 22
+          - os: windows-11-arm
+            node-version: 24
           - os: macos-latest
             node-version: 22
     steps:
@@ -171,7 +177,7 @@ jobs:
       - name: Run tests
         run: npm test
       - name: Run Windows AppContainer hostile-process isolation checks
-        if: runner.os == 'Windows' && matrix.node-version == 22
+        if: runner.os == 'Windows'
         run: node scripts/windows-isolation-integration.mjs
       - name: Run POSIX compiler process-group teardown regression
         if: runner.os == 'macOS'
