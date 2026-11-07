@@ -633,6 +633,9 @@ export async function analyze_rizin_functions(options = {}) {
   });
   const extension = path.extname(before.canonical_path).slice(0, 16);
   const snapshot_path = path.join(snapshot_directory, 'artifact' + extension);
+  const provider_snapshot_path = await provider_visible_input_path(
+    snapshot_path, isolation, descriptors.sandbox_root?.value,
+  );
   try {
     const snapshot_bytes = await copy_file_bounded(before.canonical_path, snapshot_path, manifest.limits.max_input_bytes, signal);
     if (snapshot_bytes !== input_hash.bytes_read) {
