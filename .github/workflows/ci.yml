@@ -45,10 +45,10 @@ jobs:
           fi
           {
             echo "### Exact-head verification"
-            echo "- Event: `$GITHUB_EVENT_NAME`"
-            echo "- Expected SHA: `$EXPECTED_SHA`"
-            echo "- Checked-out SHA: `$actual`"
-            echo "- Result: **PASS**"
+            printf '%s\n' "- Event: $GITHUB_EVENT_NAME"
+            printf '%s\n' "- Expected SHA: $EXPECTED_SHA"
+            printf '%s\n' "- Checked-out SHA: $actual"
+            printf '%s\n' "- Result: PASS"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -91,10 +91,10 @@ jobs:
           fi
           {
             echo "### Exact-head verification"
-            echo "- Event: `$GITHUB_EVENT_NAME`"
-            echo "- Expected SHA: `$EXPECTED_SHA`"
-            echo "- Checked-out SHA: `$actual`"
-            echo "- Result: **PASS**"
+            printf '%s\n' "- Event: $GITHUB_EVENT_NAME"
+            printf '%s\n' "- Expected SHA: $EXPECTED_SHA"
+            printf '%s\n' "- Checked-out SHA: $actual"
+            printf '%s\n' "- Result: PASS"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Install Bubblewrap
         run: |
@@ -151,10 +151,10 @@ jobs:
           fi
           {
             echo "### Exact-head verification"
-            echo "- Event: `$GITHUB_EVENT_NAME`"
-            echo "- Expected SHA: `$EXPECTED_SHA`"
-            echo "- Checked-out SHA: `$actual`"
-            echo "- Result: **PASS**"
+            printf '%s\n' "- Event: $GITHUB_EVENT_NAME"
+            printf '%s\n' "- Expected SHA: $EXPECTED_SHA"
+            printf '%s\n' "- Checked-out SHA: $actual"
+            printf '%s\n' "- Result: PASS"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Set up Node.js
         uses: actions/setup-node@v7
