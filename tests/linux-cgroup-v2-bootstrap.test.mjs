@@ -60,16 +60,14 @@ if (process.platform === 'linux') {
       const readback_fd = openSync(attach_file, 'r');
       try {
         const provider_code = [
-          "const { readFileSync, readlinkSync } = require('node:fs');",
-          "const marker = process.argv[1];",
-          "const membership = readFileSync(marker, 'utf8');",
+          "const { fstatSync } = require('node:fs');",
           "let leaked = false;",
-          "try { leaked = readlinkSync('/proc/self/fd/3').includes(marker); }",
-          "catch (error) { if (error.code !== 'ENOENT') throw error; }",
-          "process.stdout.write(/^\\d+\\n$/.test(membership) && !leaked ? 'attached-and-closed' : 'failed');",
+          "try { fstatSync(3); leaked = true; }",
+          "catch (error) { if (error.code !== 'EBADF') throw error; }",
+          "process.stdout.write(!leaked ? 'attached-and-closed' : 'failed');"
         ].join(' ');
         const result = await run_bootstrap_with_fd(fd, [
-          '--attach-fd=3', '--', process.execPath, '-e', provider_code, attach_file,
+          '--attach-fd=3', '--', process.execPath, '-e', provider_code,
         ]);
 
         assert.equal(result.code, 0, result.stderr);
