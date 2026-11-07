@@ -32,7 +32,7 @@ namespace OrixWindowsSandbox.Tests {
       string executable = Assembly.GetExecutingAssembly().Location;
       ProcessStartInfo start = new ProcessStartInfo();
       start.FileName = executable;
-      start.Arguments = "child \\"" + markerPath + "\\\"";
+      start.Arguments = "child \"" + markerPath + "\"";
       start.WorkingDirectory = Environment.CurrentDirectory;
       start.UseShellExecute = false;
       start.CreateNoWindow = true;
@@ -63,7 +63,5 @@ namespace OrixWindowsSandbox.Tests {
       // The outer ORIX native launcher owns and terminates the provider Job
       // Object after this leader exits; never detach or kill the child here.
     }
-
-
   }
 }
