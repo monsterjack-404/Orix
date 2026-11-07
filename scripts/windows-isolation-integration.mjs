@@ -287,7 +287,14 @@ async function main() {
     // handle-based link-count check, bypassing the JavaScript preflight above.
     const hardLinkHelperWorkspace = path.join(base, 'hardlink-native-helper');
     await mkdir(hardLinkHelperWorkspace, { recursive: true });
-    const launcherPayload = await readFile(new URL('../native/bin/win32-anycpu/orix-windows-provider-launcher.exe.gz', import.meta.url));
+    const launcherPayloadParts = [
+      new URL('../native/bin/win32-anycpu/launcher-payload-01.b64', import.meta.url),
+      new URL('../native/bin/win32-anycpu/launcher-payload-02.b64', import.meta.url),
+      new URL('../native/bin/win32-anycpu/launcher-payload-03.b64', import.meta.url),
+      new URL('../native/bin/win32-anycpu/launcher-payload-04.b64', import.meta.url),
+    ];
+    const launcherPayloadBase64 = (await Promise.all(launcherPayloadParts.map(url => readFile(url, 'utf8')))).join('');
+    const launcherPayload = decodeWindowsProviderLauncherBase64(launcherPayloadBase64);
     const launcherBytes = decodeWindowsProviderLauncher(launcherPayload);
     const nativeLauncher = path.join(hardLinkHelperWorkspace, 'orix-windows-provider-launcher.exe');
     await writeFile(nativeLauncher, launcherBytes);
