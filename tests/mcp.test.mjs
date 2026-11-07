@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { PassThrough } from 'node:stream';
 import { handle_mcp_message, ORIX_MCP_TOOLS, call_orix_tool, start_mcp_server } from '../src/mcp/server.mjs';
 import { append_ledger } from '../src/evidence/ledger.mjs';
-import { create_zip_fixture } from './helpers.mjs';
+import { create_zip_entries } from './helpers.mjs';
 
 test('MCP case tools create, mutate, verify, export and import a workspace-confined case', async t => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'orix-mcp-case-'));
@@ -218,7 +218,7 @@ test('MCP Android package tool enforces workspace confinement and report bounds'
     manifest.writeUInt16LE(0x0003, 0);
     manifest.writeUInt16LE(8, 2);
     manifest.writeUInt32LE(8, 4);
-    await writeFile(file, create_zip_fixture('AndroidManifest.xml', manifest), { flag: 'wx', mode: 0o600 });
+    await writeFile(file, create_zip_entries([{ name: 'AndroidManifest.xml', contents: manifest }]), { flag: 'wx', mode: 0o600 });
 
     const report = await call_orix_tool('orix.analyze_android_package', {
       path: file, max_archive_entries: 1,
