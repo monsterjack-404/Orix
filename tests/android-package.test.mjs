@@ -252,15 +252,18 @@ test('nested DEX inventory is bounded and reports omitted entries explicitly', (
   assert.equal(report.dex[1].path, 'classes2.dex');
 });
 
-test('noncanonical DEX entry ordinals are not treated as multidex files', () => {
+test('multidex names accept canonical ordinals and reject noncanonical ordinals', () => {
   const report = analyze_android_package(create_zip([
     { name: 'AndroidManifest.xml', contents: binary_manifest() },
     { name: 'classes0.dex', contents: create_dex_fixture() },
     { name: 'classes1.dex', contents: create_dex_fixture() },
     { name: 'classes02.dex', contents: create_dex_fixture() },
+    { name: 'classes.dex', contents: create_dex_fixture() },
+    { name: 'classes2.dex', contents: create_dex_fixture() },
+    { name: 'classes10.dex', contents: create_dex_fixture() },
   ]));
-  assert.equal(report.summary.dex_entries, 0);
-  assert.equal(report.dex.length, 0);
+  assert.equal(report.summary.dex_entries, 3);
+  assert.deepEqual(report.dex.map(item => item.path), ['classes.dex', 'classes2.dex', 'classes10.dex']);
 });
 
 test('archive entry names are length-bounded with an explicit truncation marker', () => {
