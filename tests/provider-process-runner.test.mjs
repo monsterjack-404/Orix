@@ -56,6 +56,7 @@ test('static provider runner uses argv without shell interpolation and returns b
   assert.equal(result.schema_version, 'orix.provider-execution.v1');
   assert.equal(result.success, true);
   assert.equal(result.termination_reason, null);
+  assert.equal(result.isolation_cleanup.error, null);
   assert.equal(result.args_count, 3);
   assert.equal(result.output.bytes_captured, result.captured_bytes);
   assert.ok(result.completed_at);
