@@ -861,11 +861,11 @@ namespace OrixWindowsSandbox {
 
         STARTUPINFOEX startup = new STARTUPINFOEX();
         startup.StartupInfo.cb = (uint)Marshal.SizeOf(typeof(STARTUPINFOEX));
-        // Do not inherit a service/runner's private Window Station or Desktop.
-        // An empty lpDesktop lets Windows select/create the appropriate station and
-        // desktop for this AppContainer console host. A fresh hidden console allows
-        // descendants while preserving the same AppContainer token and Job Object.
-        startup.StartupInfo.lpDesktop = String.Empty;
+        // Console-based AppContainer runtimes need a real console host for nested
+        // CreateProcess calls. Give the provider a fresh, hidden console rather than
+        // inheriting a host's possibly isolated console context. Keep lpDesktop null:
+        // no private desktop/window-station is created or selected by ORIX.
+        startup.StartupInfo.lpDesktop = null;
         startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
         startup.StartupInfo.wShowWindow = SW_HIDE;
         startup.StartupInfo.hStdInput = stdin;
@@ -910,7 +910,7 @@ namespace OrixWindowsSandbox {
 
         Console.Error.WriteLine("ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64");
         Console.Error.WriteLine("ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED");
-        Console.Error.WriteLine("ORIX_WINDOWS_DESKTOP=NO_INHERIT;CONSOLE=NEW_HIDDEN");
+        Console.Error.WriteLine("ORIX_WINDOWS_CONSOLE=NEW_HIDDEN;DESKTOP=INHERITED");
         Log("RUN:APP_CONTAINER_VERIFIED");
         if (ResumeThread(processInfo.hThread) == 0xFFFFFFFF) throw Win32("Resume AppContainer provider");
         Log("RUN:PROCESS_RESUMED");

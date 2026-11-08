@@ -19,45 +19,130 @@ function within(root, candidate) {
     !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
 }
 
+const MINIMUM_BUBBLEWRAP_VERSION = Object.freeze([0, 12, 0]);
+
+/**
+ * Bubblewrap <0.12.0 is vulnerable to GHSA-pxhw-h44j-8pfx / CVE-2026-87766,
+ * which can follow an untrusted sandbox-root symlink into the host while the
+ * sandbox is being prepared. Reject unknown, malformed and prerelease labels.
+ */
+export function assess_bubblewrap_version(output) {
+  if (typeof output !== 'string') return Object.freeze({ supported: false, version: null });
+  const match = /^\s*bubblewrap\s+v?(\d+)\.(\d+)\.(\d+)\s*$/i.exec(output);
+  if (!match) return Object.freeze({ supported: false, version: null });
+  const version = match.slice(1, 4).map(Number);
+  if (!version.every(Number.isSafeInteger)) return Object.freeze({ supported: false, version: null });
+  let supported = true;
+  for (let index = 0; index < MINIMUM_BUBBLEWRAP_VERSION.length; index += 1) {
+    if (version[index] > MINIMUM_BUBBLEWRAP_VERSION[index]) break;
+    if (version[index] < MINIMUM_BUBBLEWRAP_VERSION[index]) {
+      supported = false;
+      break;
+    }
+  }
+  return Object.freeze({
+    supported,
+    version: version.join('.'),
+    minimum_version: MINIMUM_BUBBLEWRAP_VERSION.join('.'),
+  });
+}
+
+export function assess_trusted_system_path_component(metadata, expected_type = 'directory') {
+  const valid = metadata !== null && typeof metadata === 'object' &&
+    Number.isSafeInteger(metadata.uid) && Number.isSafeInteger(metadata.mode);
+  const is_directory = valid && metadata.is_directory === true;
+  const is_file = valid && metadata.is_file === true;
+  const is_symlink = !valid || metadata.is_symlink === true;
+  const expected_type_matches = expected_type === 'directory'
+    ? is_directory
+    : expected_type === 'file' ? is_file : false;
+  const owner_is_root = valid && metadata.uid === 0;
+  const not_group_or_other_writable = valid && (metadata.mode & 0o022) === 0;
+  return Object.freeze({
+    expected_type_matches,
+    is_symlink,
+    owner_is_root,
+    not_group_or_other_writable,
+    trusted: expected_type_matches && !is_symlink && owner_is_root && not_group_or_other_writable,
+  });
+}
+
+function stat_metadata(info) {
+  return {
+    uid: info.uid,
+    mode: info.mode,
+    is_directory: info.isDirectory(),
+    is_file: info.isFile(),
+    is_symlink: info.isSymbolicLink(),
+  };
+}
+
+async function trusted_system_path(canonical) {
+  const root = path.parse(canonical).root;
+  if (!root) return { trusted: false, reason: 'canonical-path-has-no-filesystem-root' };
+  let current = root;
+  let info;
+  try {
+    info = await lstat(current);
+    let assessment = assess_trusted_system_path_component(stat_metadata(info), 'directory');
+    if (!assessment.trusted) {
+      return { trusted: false, component: current, expected_type: 'directory', metadata: stat_metadata(info), assessment };
+    }
+    const relative = path.relative(root, canonical);
+    const components = relative.split(path.sep).filter(Boolean);
+    if (components.length === 0) return { trusted: false, reason: 'canonical-path-is-filesystem-root' };
+    for (let index = 0; index < components.length; index += 1) {
+      current = path.join(current, components[index]);
+      info = await lstat(current);
+      const expected_type = index === components.length - 1 ? 'file' : 'directory';
+      assessment = assess_trusted_system_path_component(stat_metadata(info), expected_type);
+      if (!assessment.trusted) {
+        return { trusted: false, component: current, expected_type, metadata: stat_metadata(info), assessment };
+      }
+    }
+    return { trusted: true };
+  } catch (error) {
+    return { trusted: false, component: current, reason: error.code ?? 'filesystem-error' };
+  }
+}
+
 async function resolve_trusted_executable(candidates, label) {
+  const rejected_candidates = [];
   for (const candidate of candidates) {
     try {
       const info = await lstat(candidate);
-      if (info.isSymbolicLink() || !info.isFile()) continue;
+      if (info.isSymbolicLink() || !info.isFile()) {
+        rejected_candidates.push({ candidate, reason: info.isSymbolicLink() ? 'candidate-is-symlink' : 'candidate-is-not-file' });
+        continue;
+      }
       const canonical = await realpath(candidate);
+      const trust = await trusted_system_path(canonical);
+      if (!trust.trusted) {
+        rejected_candidates.push({ candidate, canonical, ...trust });
+        continue;
+      }
       await access(canonical, 1);
       return canonical;
-    } catch {
-      // Only fixed system locations are considered; never search PATH.
+    } catch (error) {
+      rejected_candidates.push({ candidate, reason: error.code ?? 'filesystem-error' });
     }
   }
   isolation_error(
     'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
     label + ' is not installed at a trusted system path; required isolation cannot start',
-    { platform: process.platform, backend: label },
+    { platform: process.platform, backend: label, rejected_candidates },
   );
-}
-
-const MINIMUM_BUBBLEWRAP_VERSION = Object.freeze([0, 12, 0]);
-
-export function is_supported_bubblewrap_version(output) {
-  if (typeof output !== 'string') return false;
-  const match = /^\s*bubblewrap\s+v?(\d+)\.(\d+)\.(\d+)\s*$/im.exec(output);
-  if (!match) return false;
-  const version = match.slice(1, 4).map(Number);
-  if (!version.every(Number.isSafeInteger)) return false;
-  for (let index = 0; index < MINIMUM_BUBBLEWRAP_VERSION.length; index += 1) {
-    if (version[index] > MINIMUM_BUBBLEWRAP_VERSION[index]) return true;
-    if (version[index] < MINIMUM_BUBBLEWRAP_VERSION[index]) return false;
-  }
-  return true;
 }
 
 async function resolve_bwrap() {
-  const canonical = await resolve_trusted_executable(
-    ['/usr/local/bin/bwrap', '/usr/bin/bwrap', '/bin/bwrap'],
-    'bubblewrap',
-  );
+  // Prefer the CI-built, checksum-verified copy. System installations are
+  // accepted only after the same root-owned path checks and a runtime version
+  // probe; PATH is never searched.
+  const canonical = await resolve_trusted_executable([
+    '/usr/lib/orix-system-binaries/bin/bwrap',
+    '/usr/bin/bwrap',
+    '/bin/bwrap',
+  ], 'bubblewrap');
   let version_output;
   try {
     version_output = execFileSync(canonical, ['--version'], {
@@ -74,12 +159,16 @@ async function resolve_bwrap() {
       { path: canonical, reason: error.code ?? error.name ?? 'version-probe-failed' },
     );
   }
-
-  if (!is_supported_bubblewrap_version(version_output)) {
+  const assessment = assess_bubblewrap_version(version_output);
+  if (!assessment.supported) {
     isolation_error(
       'ORIX_PROVIDER_BUBBLEWRAP_VERSION_UNSUPPORTED',
-      'Bubblewrap 0.12.0 or newer is required because older releases contain a sandbox-setup symlink escape',
-      { path: canonical, reported_version: version_output.trim().slice(0, 128), minimum_version: '0.12.0' },
+      'Bubblewrap 0.12.0 or newer is required due to GHSA-pxhw-h44j-8pfx / CVE-2026-87766',
+      {
+        path: canonical,
+        reported_version: String(version_output).trim().slice(0, 128),
+        minimum_version: MINIMUM_BUBBLEWRAP_VERSION.join('.'),
+      },
     );
   }
   return canonical;

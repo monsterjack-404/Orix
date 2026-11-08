@@ -5,25 +5,53 @@ import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  assess_bubblewrap_version,
+  assess_trusted_system_path_component,
   assess_rootfs_directory_permissions,
-  is_supported_bubblewrap_version,
   prepare_linux_provider_isolation,
 } from '../src/providers/linux-isolation.mjs';
 
-test('Linux provider isolation requires Bubblewrap 0.12.0 or newer', () => {
-  for (const version of ['bubblewrap 0.8.0', 'bubblewrap 0.9.0', 'bubblewrap 0.11.2']) {
-    assert.equal(is_supported_bubblewrap_version(version), false, version + ' must be rejected');
+test('Bubblewrap security floor rejects versions vulnerable to GHSA-pxhw-h44j-8pfx', () => {
+  for (const output of [
+    'bubblewrap 0.8.0',
+    'bubblewrap 0.9.0',
+    'bubblewrap 0.11.2',
+  ]) {
+    assert.equal(assess_bubblewrap_version(output).supported, false, output);
   }
-  for (const version of ['bubblewrap 0.12.0', 'bubblewrap 0.12.1', 'bubblewrap 0.13.0', 'bubblewrap 0.13.1', 'bubblewrap 1.0.0']) {
-    assert.equal(is_supported_bubblewrap_version(version), true, version + ' must be accepted');
+  for (const output of [
+    'bubblewrap 0.12.0',
+    'bubblewrap 0.12.1',
+    'bubblewrap 0.13.1',
+    'bubblewrap 1.0.0',
+  ]) {
+    assert.equal(assess_bubblewrap_version(output).supported, true, output);
   }
 });
 
-test('Linux provider isolation rejects malformed and prerelease Bubblewrap versions', () => {
-  for (const output of ['', 'bwrap 0.13.1', 'bubblewrap unknown', 'bubblewrap 0.12',
-    'bubblewrap 0.12.0-rc1', 'bubblewrap 0.12.0+vendor', null, 0.13]) {
-    assert.equal(is_supported_bubblewrap_version(output), false, String(output));
+test('Bubblewrap security floor rejects unknown, malformed and prerelease version output', () => {
+  for (const output of [
+    '', 'bwrap 0.13.1', 'bubblewrap unknown', 'bubblewrap 0.12',
+    'bubblewrap 0.12.0-rc1', 'bubblewrap 0.12.0+vendor', null, 0.13,
+  ]) {
+    assert.equal(assess_bubblewrap_version(output).supported, false, String(output));
   }
+});
+
+test('trusted system executable paths require root-owned non-writable real components', () => {
+  const safeDirectory = {
+    uid: 0, mode: 0o40755, is_directory: true, is_file: false, is_symlink: false,
+  };
+  const safeExecutable = {
+    uid: 0, mode: 0o100755, is_directory: false, is_file: true, is_symlink: false,
+  };
+  assert.equal(assess_trusted_system_path_component(safeDirectory, 'directory').trusted, true);
+  assert.equal(assess_trusted_system_path_component(safeExecutable, 'file').trusted, true);
+  assert.equal(assess_trusted_system_path_component({ ...safeDirectory, uid: 1000 }, 'directory').trusted, false);
+  assert.equal(assess_trusted_system_path_component({ ...safeDirectory, mode: 0o40775 }, 'directory').trusted, false);
+  assert.equal(assess_trusted_system_path_component({ ...safeDirectory, is_symlink: true }, 'directory').trusted, false);
+  assert.equal(assess_trusted_system_path_component(safeExecutable, 'directory').trusted, false);
+  assert.equal(assess_trusted_system_path_component({ ...safeExecutable, mode: 0o100775 }, 'file').trusted, false);
 });
 
 test('rootfs trust assessment accepts service-owned and root-owned non-writable directories', () => {
