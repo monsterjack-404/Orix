@@ -465,6 +465,8 @@ function parse_configuration(buffer, start, end, budget, limits, depth) {
 
 function parse_reference(buffer, start, end, budget, limits, depth) {
   assert_depth(depth, limits, 'Reference');
+  // Count every Reference protobuf, including nested compound-value references.
+  budget.reference_count += 1;
   const result = { type: 0, id: null, name: null, private: false, dynamic: false };
   const seen = new Set();
   walk_fields(buffer, start, end, budget, (field, wire, value) => {
@@ -888,7 +890,6 @@ function parse_config_value(buffer, start, end, budget, limits, depth) {
     } else if (result.value.kind === 'compound') {
       budget.compound_kinds[result.value.detail_kind] = (budget.compound_kinds[result.value.detail_kind] ?? 0) + 1;
     }
-    if (result.value.reference) budget.reference_count += 1;
   }
   return result;
 }
