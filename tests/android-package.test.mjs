@@ -817,7 +817,7 @@ test('AAB inventory recognizes BundleConfig and reports malformed protobuf modul
   assert.equal(report.manifests[0].proto_xml, true);
   assert.equal(report.summary.dex_entries, 1);
   assert.equal(report.dex[0].status, 'metadata-parsed');
-  assert.ok(report.limitations.some(note => note.includes('BundleConfig.pb is parsed for tool version, bundle type, compression globs')));
+  assert.ok(report.limitations.some(note => note.includes('bounded module manifests, BundleConfig.pb metadata and AAPT2 resources.pb package/type/entry/configuration/value-kind metadata are decoded')));
   assert.ok(report.limitations.some(note => note.includes('raw-DEFLATE, unencrypted entries')));
   assert.ok(report.limitations.some(note => note.includes('instruction opcodes')));
 });
@@ -854,7 +854,7 @@ test('AAB module inventory separates base and feature paths and decodes each bou
   assert.deepEqual(report.manifests.map(item => item.status), ['decoded-proto-xml', 'decoded-proto-xml']);
   assert.equal(report.bundle.modules[1].dex_entries, 1);
   assert.equal(report.bundle.modules[1].resource_paths, 1);
-  assert.ok(report.limitations.some(note => note.includes('bounded module manifest metadata is decoded')));
+  assert.ok(report.limitations.some(note => note.includes('AAPT2 resources.pb package/type/entry/configuration/value-kind metadata are decoded')));
 });
 
 test('AAB module inventory reports omitted modules under a configured output ceiling', () => {
