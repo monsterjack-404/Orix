@@ -311,7 +311,7 @@ function parse_item(buffer, start, end, budget, limits, depth) {
       if (field === 1) reference = parse_reference(buffer, value.start, value.end, budget, limits, depth + 1);
       else {
         // Validate the nested message framing even when only the value kind is inventoried.
-        walk_fields(buffer, value.start, value.end, budget, () => { budget.unknown_fields += 1; }, 'Item.' + kind);
+        walk_fields(buffer, value.start, value.end, budget, () => {}, 'Item.' + kind);
       }
     } else if (field === 8 || field === 9) {
       expect_wire('Item', field, wire, 0);
@@ -340,7 +340,7 @@ function parse_compound_value(buffer, start, end, budget, depth, limits) {
         });
       }
       kind = COMPOUND_KINDS[field];
-      walk_fields(buffer, value.start, value.end, budget, () => { budget.unknown_fields += 1; }, 'CompoundValue.' + kind);
+      walk_fields(buffer, value.start, value.end, budget, () => {}, 'CompoundValue.' + kind);
     } else if (field === 7 || field === 8) {
       expect_wire('CompoundValue', field, wire, 0);
       singular(seen, field, 'CompoundValue');
@@ -363,7 +363,7 @@ function parse_value(buffer, start, end, budget, limits, depth) {
     if (field === 1) {
       expect_wire('Value', field, wire, 2);
       singular(seen, field, 'Value');
-      walk_fields(buffer, value.start, value.end, budget, () => { budget.unknown_fields += 1; }, 'Value.source');
+      walk_fields(buffer, value.start, value.end, budget, () => {}, 'Value.source');
     } else if (field === 2) {
       expect_wire('Value', field, wire, 2);
       singular(seen, field, 'Value');
@@ -468,7 +468,7 @@ function parse_entry(buffer, start, end, budget, limits, depth) {
       }
     } else if (field === 4 || field === 5 || field === 7) {
       expect_wire('Entry', field, wire, 2);
-      walk_fields(buffer, value.start, value.end, budget, () => { budget.unknown_fields += 1; }, 'Entry.metadata.' + field);
+      walk_fields(buffer, value.start, value.end, budget, () => {}, 'Entry.metadata.' + field);
     } else {
       budget.unknown_fields += 1;
     }
@@ -572,7 +572,7 @@ function parse_overlayable(buffer, start, end, budget, limits, depth) {
     } else if (field === 2) {
       expect_wire('Overlayable', field, wire, 2);
       singular(seen, field, 'Overlayable');
-      walk_fields(buffer, value.start, value.end, budget, () => { budget.unknown_fields += 1; }, 'Overlayable.source');
+      walk_fields(buffer, value.start, value.end, budget, () => {}, 'Overlayable.source');
     } else budget.unknown_fields += 1;
   }, 'Overlayable');
   return result;
@@ -676,16 +676,19 @@ export function parse_android_resource_table(buffer, options = {}) {
       if (!add_output(result.packages, item, budget)) result.packages_omitted += 1;
     } else if (field === 3) {
       expect_wire('ResourceTable', field, wire, 2);
+      consume_item(budget, limits, 'Overlayable');
       result.overlayable_count += 1;
       const item = parse_overlayable(buffer, value.start, value.end, budget, limits, 1);
       if (!add_output(result.overlayables, item, budget)) result.overlayables_omitted += 1;
     } else if (field === 4) {
       expect_wire('ResourceTable', field, wire, 2);
+      consume_item(budget, limits, 'ToolFingerprint');
       result.tool_fingerprint_count += 1;
       const item = parse_tool_fingerprint(buffer, value.start, value.end, budget, limits, 1);
       if (!add_output(result.tool_fingerprints, item, budget)) result.tool_fingerprints_omitted += 1;
     } else if (field === 5) {
       expect_wire('ResourceTable', field, wire, 2);
+      consume_item(budget, limits, 'DynamicRefTable');
       result.dynamic_ref_table_count += 1;
       const item = parse_dynamic_ref_table(buffer, value.start, value.end, budget, limits, 1);
       if (!add_output(result.dynamic_ref_tables, item, budget)) result.dynamic_ref_tables_omitted += 1;
