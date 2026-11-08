@@ -204,7 +204,8 @@ function inspect_resource_tables(buffer, entries, central_directory_offset, opti
   if (!Number.isSafeInteger(max_tables) || max_tables < 1 || max_tables > 4096) {
     throw new TypeError('max_resource_tables must be between 1 and 4096');
   }
-  const matches = entries.filter(entry => entry.name.includes('/') && entry.name.endsWith('/resources.pb'));
+  const matches = entries.filter(entry => entry.name.includes('/') &&
+    !entry.name.startsWith('BUNDLE-METADATA/') && entry.name.endsWith('/resources.pb'));
   const counts = new Map();
   for (const entry of matches) counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
   const tables = [];
@@ -434,7 +435,8 @@ export function analyze_android_package(buffer, options = {}) {
   const names = new Set(entries.map(entry => entry.name));
   const apk_manifest = names.has('AndroidManifest.xml');
   const bundle_manifest = entries.some(entry => entry.name.endsWith('/manifest/AndroidManifest.xml'));
-  const is_aab = names.has('BundleConfig.pb') || bundle_manifest;
+  const is_aab = names.has('BundleConfig.pb') || bundle_manifest ||
+    entries.some(entry => entry.name.includes('/') && !entry.name.startsWith('BUNDLE-METADATA/') && entry.name.endsWith('/resources.pb'));
   const is_apk = apk_manifest && !is_aab;
   const dex_entries = entries.filter(entry => is_dex_entry(entry.name, is_aab));
   const manifest_entries = entries.filter(entry => entry.name === 'AndroidManifest.xml' || entry.name.endsWith('/manifest/AndroidManifest.xml'));
