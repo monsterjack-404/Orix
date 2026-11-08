@@ -105,7 +105,6 @@ async function sample_cgroup(parent, marker) {
     throw error;
   }
   if (!cgroup) return null;
-
   try {
     let provider_seen = false;
     let sleep_pids = [];
@@ -128,10 +127,15 @@ async function sample_cgroup(parent, marker) {
     const oomKills = Number(memoryEvents.match(/^oom_kill (\d+)$/m)?.[1] || 0);
     return { cgroup, provider_seen, sleep_pids, throttled, memory, pidsCurrent, oomKills };
   } catch (error) {
-    // Kernel cgroup teardown can invalidate virtual control-file reads with
-    // ENODEV after a leaf was discovered. Treat it like a vanished snapshot;
-    // the integration assertions still require the live probes to be seen.
-    if (error.code === 'ENOENT' || error.code === 'ENODEV') return null;
+    if (error.code === 'ENOENT' || error.code === 'ENODEV') {
+      // A disappearing control file is benign only when the leaf itself is gone.
+      try {
+        await lstat(cgroup);
+      } catch (directoryError) {
+        if (directoryError.code === 'ENOENT' || directoryError.code === 'ENODEV') return null;
+        throw directoryError;
+      }
+    }
     throw error;
   }
 }
