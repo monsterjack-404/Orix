@@ -295,3 +295,5 @@ jobs:
           second_hash="$(sha256sum "$second" | cut -d ' ' -f 1)"
           printf 'windows-latest: %s\nwindows-2022: %s\n' "$first_hash" "$second_hash"
           test "$first_hash" = "$second_hash"
+
+# Exact-head revalidation trigger; no runtime or test behavior changed.
