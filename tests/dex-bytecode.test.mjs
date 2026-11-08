@@ -248,11 +248,11 @@ test('DEX 20t, 30t and 32x instructions reject nonzero reserved bytes', () => {
     );
   }
 
-  const goto16 = decode(words(0x0029, 0x0001, 0x000e), { registers_size: 0 });
+  const goto16 = decode(words(0x0029, 0x0002, 0x000e), { registers_size: 0 });
   assert.equal(goto16.instructions[0].mnemonic, 'goto/16');
   assert.equal(goto16.instructions[0].branch_target, 1);
 
-  const goto32 = decode(words(0x002a, 0x0001, 0x0000, 0x000e), { registers_size: 0 });
+  const goto32 = decode(words(0x002a, 0x0003, 0x0000, 0x000e), { registers_size: 0 });
   assert.equal(goto32.instructions[0].mnemonic, 'goto/32');
   assert.equal(goto32.instructions[0].branch_target, 1);
 
