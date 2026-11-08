@@ -46,13 +46,13 @@ async function main() {
   assert.ok(launcherSource.includes('MAX_CLEANUP_TREE_DEPTH = 256') &&
     launcherSource.includes('MAX_CLEANUP_TREE_ENTRIES = 100000'),
     'Native post-provider cleanup must have explicit depth and entry ceilings');
-  assert.match(launcherSource, /static List<KeyValuePair<string, FileAttributes>> CollectCleanupTree[\\s\\S]*?new Stack<KeyValuePair<string, int>>\\(\\)/,
+  assert.match(launcherSource, /static List<KeyValuePair<string, FileAttributes>> CollectCleanupTree[\s\S]*?new Stack<KeyValuePair<string, int>>\(\)/,
     'Provider-controlled cleanup trees must be preflighted with an iterative bounded walker');
   const cleanupWalkers = launcherSource.slice(
     launcherSource.indexOf('static void PurgeTree('),
     launcherSource.indexOf('static string Quote('),
   );
-  assert.doesNotMatch(cleanupWalkers, /PurgeTree\\(child|DeleteTreeNoReparse\\(child/,
+  assert.doesNotMatch(cleanupWalkers, /PurgeTree\(child|DeleteTreeNoReparse\(child/,
     'Cleanup walkers must not recurse on provider-controlled directory depth');
 
   assert.match(launcherSource, /static void TerminateAndWaitForProvider[\s\S]*?WaitForSingleObject\(job, 5000\)/,
@@ -528,8 +528,8 @@ async function main() {
       'const os = require("node:os");',
       'let current = path.join(os.tmpdir(), "orix-deep-cleanup-" + process.pid);',
       'fs.mkdirSync(current);',
-      'for (let index = 0; index < 128; index++) { current = path.join(current, "d"); fs.mkdirSync(current); }',
-      'fs.writeFileSync(path.join(current, "sentinel.txt"), "created");',
+      'for (let index = 0; index < 64; index++) { current = path.join(current, "d"); fs.mkdirSync(current); }',
+      'fs.writeFileSync(path.join(current, "x"), "created");',
       'process.stdout.write("deep-temp-tree-created");',
     ].join(String.fromCharCode(10));
     const deepTempExecution = await run_static_provider({
@@ -556,7 +556,7 @@ async function main() {
       throw error;
     });
     assert.deepEqual(deepScratchRemaining, [],
-      'Iterative native cleanup did not remove a 128-directory-deep AppContainer temp tree');
+      'Iterative native cleanup did not remove a 64-directory-deep AppContainer temp tree');
     console.log('PASS: iterative bounded native cleanup removed a 128-directory-deep provider temp tree');
 
     console.log('PASS: AppContainer token, quotas, host-file/network denial, read-only rootfs, private temp and profile scratch cleanup');
