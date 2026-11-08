@@ -5,7 +5,7 @@
   "type": "object",
   "required": [
     "schema_version", "source_pool_present", "source_pool_data_bytes",
-    "source_pool_string_count", "source_pool_style_count", "source_pool_encoding",
+    "source_pool_string_count", "source_pool_style_count", "source_pool_style_span_count", "source_pool_encoding",
     "source_paths", "source_paths_omitted", "source_path_references", "source_paths_resolved", "source_paths_unresolved",
     "package_count", "packages_reported", "packages_omitted", "packages",
     "overlayable_count", "overlayables_reported", "overlayables_omitted", "overlayables",
@@ -19,6 +19,7 @@
     "source_pool_data_bytes": { "type": ["integer", "null"], "minimum": 0 },
     "source_pool_string_count": { "type": "integer", "minimum": 0 },
     "source_pool_style_count": { "type": "integer", "minimum": 0 },
+    "source_pool_style_span_count": { "type": "integer", "minimum": 0 },
     "source_pool_encoding": { "enum": ["utf-8", "utf-16le", null] },
     "source_paths": {
       "type": "array",
