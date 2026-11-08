@@ -201,7 +201,7 @@ function singular(seen, field, label) {
   seen.add(field);
 }
 
-function parse_id_message(buffer, start, end, budget, label, maximum) {
+function parse_id_message(buffer, start, end, budget, label, maximum, minimum = 0) {
   let id = null;
   const seen = new Set();
   walk_fields(buffer, start, end, budget, (field, wire, value) => {
@@ -209,8 +209,8 @@ function parse_id_message(buffer, start, end, budget, label, maximum) {
       expect_wire(label, field, wire, 0);
       singular(seen, field, label);
       id = uint32(value, label + '.id');
-      if (id > maximum) {
-        fail('ORIX_RESOURCE_TABLE_ID_RANGE', label + ' identifier is outside its format range', { id, maximum });
+      if (id < minimum || id > maximum) {
+        fail('ORIX_RESOURCE_TABLE_ID_RANGE', label + ' identifier is outside its format range', { id, minimum, maximum });
       }
     } else {
       budget.unknown_fields += 1;
@@ -490,7 +490,7 @@ function parse_type(buffer, start, end, budget, limits, depth) {
     if (field === 1) {
       expect_wire('Type', field, wire, 2);
       singular(seen, field, 'Type');
-      result.id = parse_id_message(buffer, value.start, value.end, budget, 'TypeId', 0xff);
+      result.id = parse_id_message(buffer, value.start, value.end, budget, 'TypeId', 0xff, 1);
     } else if (field === 2) {
       expect_wire('Type', field, wire, 2);
       singular(seen, field, 'Type');
