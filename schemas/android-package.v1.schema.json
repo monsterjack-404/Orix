@@ -99,7 +99,12 @@
         "v1_signature_files_reported",
         "v1_signature_files_omitted",
         "duplicate_dex_paths",
-        "duplicate_manifest_paths"
+        "duplicate_manifest_paths",
+        "resource_tables",
+        "resource_tables_reported",
+        "resource_tables_omitted",
+        "resource_table_packages",
+        "resource_table_entries"
       ],
       "properties": {
         "dex_entries": {
