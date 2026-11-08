@@ -256,3 +256,49 @@ test('ResourceTable rejects unknown Reference.type enum values', () => {
     error => error.code === 'ORIX_RESOURCE_TABLE_REFERENCE_TYPE',
   );
 });
+
+test('ResourceTable validates nested string UTF-8 and Primitive oneof structure', () => {
+  const invalid_string_item = field_bytes(2, field_bytes(1, Buffer.from([0xff])));
+  const invalid_string_value = field_bytes(4, invalid_string_item);
+  const invalid_string_config = field_bytes(2, invalid_string_value);
+  const invalid_string_entry = Buffer.concat([
+    field_bytes(1, field_varint(1, 1)),
+    field_bytes(6, invalid_string_config),
+  ]);
+  const invalid_string_type = Buffer.concat([
+    field_bytes(1, field_varint(1, 1)),
+    field_bytes(3, invalid_string_entry),
+  ]);
+  const invalid_string_package = Buffer.concat([
+    field_bytes(1, field_varint(1, 0x7f)),
+    field_bytes(3, invalid_string_type),
+  ]);
+  assert.throws(
+    () => parse_android_resource_table(field_bytes(2, invalid_string_package)),
+    error => error.code === 'ORIX_RESOURCE_TABLE_UTF8',
+  );
+
+  const invalid_primitive = Buffer.concat([
+    field_varint(6, 1),
+    field_varint(7, 1),
+  ]);
+  const invalid_primitive_item = field_bytes(7, invalid_primitive);
+  const invalid_primitive_value = field_bytes(4, invalid_primitive_item);
+  const invalid_primitive_config = field_bytes(2, invalid_primitive_value);
+  const invalid_primitive_entry = Buffer.concat([
+    field_bytes(1, field_varint(1, 1)),
+    field_bytes(6, invalid_primitive_config),
+  ]);
+  const invalid_primitive_type = Buffer.concat([
+    field_bytes(1, field_varint(1, 1)),
+    field_bytes(3, invalid_primitive_entry),
+  ]);
+  const invalid_primitive_package = Buffer.concat([
+    field_bytes(1, field_varint(1, 0x7f)),
+    field_bytes(3, invalid_primitive_type),
+  ]);
+  assert.throws(
+    () => parse_android_resource_table(field_bytes(2, invalid_primitive_package)),
+    error => error.code === 'ORIX_RESOURCE_TABLE_ONEOF',
+  );
+});
