@@ -120,10 +120,14 @@ jobs:
           printf '%s  %s\n' "$BUBBLEWRAP_SHA256" "$archive" | sha256sum --check --strict -
           mkdir -p "$source_dir"
           tar -xJf "$archive" -C "$source_dir" --strip-components=1
-          meson setup "$build_dir" "$source_dir" --prefix=/usr/local --buildtype=release
+          sudo install -d -o root -g root -m 0755 /opt/orix-system-binaries /opt/orix-system-binaries/bin
+          test ! -L /opt/orix-system-binaries
+          test ! -L /opt/orix-system-binaries/bin
+          test "$(stat -c '%u:%a' /opt)" = "0:755"
+          meson setup "$build_dir" "$source_dir" --prefix=/opt/orix-system-binaries --buildtype=release
           meson compile -C "$build_dir"
           sudo meson install -C "$build_dir"
-          test "$(/usr/local/bin/bwrap --version)" = "bubblewrap ${BUBBLEWRAP_VERSION}"
+          test "$(/opt/orix-system-binaries/bin/bwrap --version)" = "bubblewrap ${BUBBLEWRAP_VERSION}"
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -133,16 +137,20 @@ jobs:
       - name: Allow Bubblewrap user namespaces under Ubuntu AppArmor
         run: |
           if [ -r /sys/module/apparmor/parameters/enabled ] && grep -q '^Y' /sys/module/apparmor/parameters/enabled; then
-            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/local/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /opt/orix-system-binaries/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
             sudo apparmor_parser -r /etc/apparmor.d/bwrap || sudo apparmor_parser -a /etc/apparmor.d/bwrap
           fi
       - name: Diagnose cgroup v2 delegation (read-only)
         run: node scripts/linux-cgroup-v2-preflight.mjs
       - name: Verify Bubblewrap availability
         run: |
-          test -x /usr/local/bin/bwrap
-          test "$(/usr/local/bin/bwrap --version)" = "bubblewrap 0.13.1"
-          /usr/local/bin/bwrap --version
+          test -x /opt/orix-system-binaries/bin/bwrap
+          test ! -L /opt/orix-system-binaries/bin/bwrap
+          test "$(stat -c '%u:%a' /opt/orix-system-binaries)" = "0:755"
+          test "$(stat -c '%u:%a' /opt/orix-system-binaries/bin)" = "0:755"
+          test "$(stat -c '%u:%a' /opt/orix-system-binaries/bin/bwrap)" = "0:755"
+          test "$(/opt/orix-system-binaries/bin/bwrap --version)" = "bubblewrap 0.13.1"
+          /opt/orix-system-binaries/bin/bwrap --version
       - name: Run real delegated cgroup v2 hostile-process and resource-isolation checks
         run: sudo node scripts/linux-cgroup-v2-integration.mjs
 
