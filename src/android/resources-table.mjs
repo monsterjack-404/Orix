@@ -907,19 +907,22 @@ function parse_source_position(buffer, start, end, budget, limits, depth) {
 function parse_source(buffer, start, end, budget, limits, depth) {
   assert_depth(depth, limits, 'Source');
   const seen = new Set();
+  // Proto3 uint32 defaults to zero when omitted; Source.path_idx therefore
+  // still refers to source-pool entry zero if the field is not serialized.
+  let path_idx = 0;
   walk_fields(buffer, start, end, budget, (field, wire, value) => {
     if (field === 1) {
       expect_wire('Source', field, wire, 0);
       singular(seen, field, 'Source');
-      const path_idx = uint32(value, 'Source.path_idx');
-      budget.source_path_references += 1;
-      budget.source_path_indexes.set(path_idx, (budget.source_path_indexes.get(path_idx) ?? 0) + 1);
+      path_idx = uint32(value, 'Source.path_idx');
     } else if (field === 2) {
       expect_wire('Source', field, wire, 2);
       singular(seen, field, 'Source');
       parse_source_position(buffer, value.start, value.end, budget, limits, depth + 1);
     } else budget.unknown_fields += 1;
   }, 'Source');
+  budget.source_path_references += 1;
+  budget.source_path_indexes.set(path_idx, (budget.source_path_indexes.get(path_idx) ?? 0) + 1);
 }
 
 function parse_visibility(buffer, start, end, budget, limits, depth) {
