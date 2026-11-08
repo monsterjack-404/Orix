@@ -350,7 +350,13 @@ function switchPayloadTargets(buffer, base, payloadPc, switchPc, kind, maxTarget
     validateBranchTarget(target, boundaries, totalUnits, switchPc);
     if (index < maxTargets) targets.push({ key, target, offset: delta });
   }
-  return { count: size, first_key: firstKey, targets, targets_truncated: size > maxTargets };
+  return {
+    count: size,
+    first_key: firstKey,
+    targets,
+    targets_omitted: size - targets.length,
+    targets_truncated: size > targets.length,
+  };
 }
 
 /** Decode and structurally validate one DEX code_item instruction stream without executing it. */
@@ -365,6 +371,7 @@ export function decode_dex_instructions(buffer, options = {}) {
   const maxOutput = options.max_output_instructions ?? 10_000;
   const maxPayloadBytes = options.max_payload_bytes ?? 16 * 1024 * 1024;
   const maxSwitchTargets = options.max_switch_targets ?? 1_024;
+  const maxOutputSwitchTargets = options.max_output_switch_targets ?? 4_096;
   const requiredInstructionBoundaries = options.required_instruction_boundaries ?? [];
   if (!Array.isArray(requiredInstructionBoundaries) || requiredInstructionBoundaries.length > 1_000_000) {
     throw new TypeError('DEX required instruction-boundary references exceed their supported range');
@@ -372,7 +379,8 @@ export function decode_dex_instructions(buffer, options = {}) {
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(instructionUnits) || instructionUnits < 0 ||
       !Number.isSafeInteger(registersSize) || registersSize < 0 || !Number.isSafeInteger(maxOutput) || maxOutput < 0 || maxOutput > 100_000 ||
       !Number.isSafeInteger(maxPayloadBytes) || maxPayloadBytes < 0 || maxPayloadBytes > 128 * 1024 * 1024 ||
-      !Number.isSafeInteger(maxSwitchTargets) || maxSwitchTargets < 0 || maxSwitchTargets > 65_535) {
+      !Number.isSafeInteger(maxSwitchTargets) || maxSwitchTargets < 0 || maxSwitchTargets > 65_535 ||
+      !Number.isSafeInteger(maxOutputSwitchTargets) || maxOutputSwitchTargets < 0 || maxOutputSwitchTargets > 100_000) {
     throw new TypeError('DEX bytecode option is outside its supported range');
   }
   if (offset > buffer.length || instructionUnits > Math.floor((buffer.length - offset) / 2)) {
@@ -437,6 +445,9 @@ export function decode_dex_instructions(buffer, options = {}) {
   const instructions = [];
   const opcodeCounts = Object.create(null);
   let branchReferenceCount = 0;
+  let switchTargetCount = 0;
+  let switchTargetOutputCount = 0;
+  let switchTargetOutputOmitted = 0;
   pc = 0;
   while (pc < instructionUnits) {
     const flags = boundaries[pc];
@@ -481,7 +492,12 @@ export function decode_dex_instructions(buffer, options = {}) {
         validateBranchTarget(target, boundaries, instructionUnits, pc, expected);
         item.payload_offset = target;
         if (opcode === 0x2b || opcode === 0x2c) {
-          item.switch = switchPayloadTargets(buffer, offset, target, pc, expected, maxSwitchTargets, boundaries, instructionUnits);
+          const remainingOutputBudget = Math.max(0, maxOutputSwitchTargets - switchTargetOutputCount);
+          const perPayloadOutputLimit = Math.min(maxSwitchTargets, remainingOutputBudget);
+          item.switch = switchPayloadTargets(buffer, offset, target, pc, expected, perPayloadOutputLimit, boundaries, instructionUnits);
+          switchTargetCount += item.switch.count;
+          switchTargetOutputCount += item.switch.targets.length;
+          switchTargetOutputOmitted += item.switch.targets_omitted;
         }
       } else {
         validateBranchTarget(target, boundaries, instructionUnits, pc);
@@ -500,9 +516,13 @@ export function decode_dex_instructions(buffer, options = {}) {
     payload_count: payloadCount,
     instruction_output_count: instructions.length,
     instruction_output_omitted: totalInstructions + payloadCount - instructions.length,
-    instructions_truncated: totalInstructions + payloadCount > instructions.length,
+    instructions_truncated: totalInstructions + payloadCount > instructions.length || switchTargetOutputOmitted > 0,
     payload_bytes: payloadBytes,
     branch_reference_count: branchReferenceCount,
+    switch_target_count: switchTargetCount,
+    switch_target_output_count: switchTargetOutputCount,
+    switch_target_output_omitted: switchTargetOutputOmitted,
+    switch_targets_truncated: switchTargetOutputOmitted > 0,
     opcode_counts: opcodeCounts,
     instructions,
     notes: [
