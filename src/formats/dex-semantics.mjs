@@ -113,6 +113,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
     registers_size,
     dex_version,
     counts,
+    include_instruction_boundary_map: true,
     max_output_instructions: Math.max(0, limits.max_decoded_instructions - state.decoded_instruction_items),
     max_payload_bytes: limits.max_payload_bytes,
     max_switch_targets: limits.max_switch_targets,
@@ -147,6 +148,9 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
       if (insn_count === 0 || !Number.isSafeInteger(end_addr) || end_addr > insns_size || start_addr < previous_end) {
         fail('ORIX_DEX_CODE_TRY_BOUNDS', 'DEX code_item try ranges are empty, overlapping, unsorted or out of bounds', { offset, index, start_addr, insn_count, insns_size, previous_end });
       }
+      if (decoded.instruction_boundary_map[start_addr] !== 1) {
+        fail('ORIX_DEX_CODE_TRY_START_BOUNDARY', 'DEX try block must start at an instruction boundary, not inside an instruction or payload', { offset, index, start_addr, boundary_kind: decoded.instruction_boundary_map[start_addr] ?? 0 });
+      }
       previous_end = end_addr;
       try_items.push({ start_addr, insn_count, handler_off });
     }
@@ -177,6 +181,12 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
             offset, index, item, type_index: type.value, type_count, address: address.value, insns_size,
           });
         }
+        if (decoded.instruction_boundary_map[address.value] !== 1) {
+          fail('ORIX_DEX_CODE_HANDLER_BOUNDARY', 'DEX typed exception handler must target an instruction boundary, not the middle of an instruction or a payload', {
+            offset, index, item, address: address.value, boundary_kind: decoded.instruction_boundary_map[address.value] ?? 0,
+            handler_kind: 'typed',
+          });
+        }
       }
       if (size.value <= 0) {
         const catch_all = uleb(buffer, cursor, data.end, 'catch-all handler address');
@@ -184,6 +194,12 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
         if (catch_all.value >= insns_size) {
           fail('ORIX_DEX_CODE_HANDLER_TARGET', 'DEX catch-all handler address is outside the instruction array', {
             offset, index, address: catch_all.value, insns_size,
+          });
+        }
+        if (decoded.instruction_boundary_map[catch_all.value] !== 1) {
+          fail('ORIX_DEX_CODE_HANDLER_BOUNDARY', 'DEX catch-all handler must target an instruction boundary, not the middle of an instruction or a payload', {
+            offset, index, address: catch_all.value, boundary_kind: decoded.instruction_boundary_map[catch_all.value] ?? 0,
+            handler_kind: 'catch-all',
           });
         }
       }
