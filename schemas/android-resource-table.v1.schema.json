@@ -5,6 +5,8 @@
   "type": "object",
   "required": [
     "schema_version", "source_pool_present", "source_pool_data_bytes",
+    "source_pool_string_count", "source_pool_style_count", "source_pool_encoding",
+    "source_paths", "source_paths_omitted", "source_path_references", "source_paths_resolved", "source_paths_unresolved",
     "package_count", "packages_reported", "packages_omitted", "packages",
     "overlayable_count", "overlayables_reported", "overlayables_omitted", "overlayables",
     "tool_fingerprint_count", "tool_fingerprints_reported", "tool_fingerprints_omitted", "tool_fingerprints",
@@ -15,6 +17,26 @@
     "schema_version": { "const": "orix.android-resource-table.v1" },
     "source_pool_present": { "type": "boolean" },
     "source_pool_data_bytes": { "type": ["integer", "null"], "minimum": 0 },
+    "source_pool_string_count": { "type": "integer", "minimum": 0 },
+    "source_pool_style_count": { "type": "integer", "minimum": 0 },
+    "source_pool_encoding": { "enum": ["utf-8", "utf-16le", null] },
+    "source_paths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["index", "path", "reference_count"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+          "path": { "type": "string" },
+          "reference_count": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "source_paths_omitted": { "type": "integer", "minimum": 0 },
+    "source_path_references": { "type": "integer", "minimum": 0 },
+    "source_paths_resolved": { "type": "integer", "minimum": 0 },
+    "source_paths_unresolved": { "type": "integer", "minimum": 0 },
     "package_count": { "type": "integer", "minimum": 0 },
     "packages_reported": { "type": "integer", "minimum": 0 },
     "packages_omitted": { "type": "integer", "minimum": 0 },
@@ -125,7 +147,8 @@
       "type": "object",
       "required": [
         "package_count", "type_count", "entry_count", "config_value_count",
-        "flag_disabled_config_value_count", "item_kinds", "compound_kinds", "reference_count"
+        "flag_disabled_config_value_count", "item_kinds", "compound_kinds", "reference_count",
+        "source_path_references", "source_paths_resolved", "source_paths_unresolved"
       ],
       "properties": {
         "package_count": { "type": "integer", "minimum": 0 },
@@ -135,7 +158,10 @@
         "flag_disabled_config_value_count": { "type": "integer", "minimum": 0 },
         "item_kinds": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
         "compound_kinds": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
-        "reference_count": { "type": "integer", "minimum": 0 }
+        "reference_count": { "type": "integer", "minimum": 0 },
+        "source_path_references": { "type": "integer", "minimum": 0 },
+        "source_paths_resolved": { "type": "integer", "minimum": 0 },
+        "source_paths_unresolved": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": false
     },
