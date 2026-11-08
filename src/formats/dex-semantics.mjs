@@ -210,11 +210,15 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
     max_output_instructions: Math.max(0, limits.max_decoded_instructions - state.decoded_instruction_items),
     max_payload_bytes: limits.max_payload_bytes,
     max_switch_targets: limits.max_switch_targets,
+    max_output_switch_targets: Math.max(0, limits.max_output_switch_targets - state.switch_target_output_items),
     required_instruction_boundaries: code_address_references,
   });
   state.decoded_instruction_items += decoded.instruction_count + decoded.payload_count;
   state.instruction_output_items += decoded.instructions.length;
   state.instruction_output_omitted += decoded.instruction_output_omitted;
+  state.switch_target_count += decoded.switch_target_count;
+  state.switch_target_output_items += decoded.switch_target_output_count;
+  state.switch_target_output_omitted += decoded.switch_target_output_omitted;
   state.code_bytes += cursor - offset;
   return {
     offset,
@@ -231,6 +235,9 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
     instruction_count: decoded.instruction_count,
     payload_count: decoded.payload_count,
     instruction_output_omitted: decoded.instruction_output_omitted,
+    switch_target_count: decoded.switch_target_count,
+    switch_target_output_count: decoded.switch_target_output_count,
+    switch_target_output_omitted: decoded.switch_target_output_omitted,
     instructions_truncated: decoded.instructions_truncated,
     opcode_counts: decoded.opcode_counts,
     instructions: decoded.instructions,
@@ -246,9 +253,10 @@ export function parse_dex_semantics({
   max_output_items = 10_000, max_instruction_units = 20_000_000,
   dex_version = '040', max_decoded_instructions = 10_000,
   max_payload_bytes = 16 * 1024 * 1024, max_switch_targets = 1_024,
+  max_output_switch_targets = 4_096,
 } = {}) {
   if (!Buffer.isBuffer(buffer)) throw new TypeError('parse_dex_semantics requires a Buffer');
-  const limits = { max_items, max_instruction_units, max_decoded_instructions, max_payload_bytes, max_switch_targets };
+  const limits = { max_items, max_instruction_units, max_decoded_instructions, max_payload_bytes, max_switch_targets, max_output_switch_targets };
   for (const [name, value, min, max] of [
     ['max_items', max_items, 1, 1_000_000],
     ['max_output_items', max_output_items, 1, 100_000],
@@ -256,6 +264,7 @@ export function parse_dex_semantics({
     ['max_decoded_instructions', max_decoded_instructions, 0, 100_000],
     ['max_payload_bytes', max_payload_bytes, 0, 128 * 1024 * 1024],
     ['max_switch_targets', max_switch_targets, 0, 65_535],
+    ['max_output_switch_targets', max_output_switch_targets, 0, 100_000],
   ]) {
     if (!Number.isSafeInteger(value) || value < min || value > max) {
       throw new TypeError(name + ' is outside its supported range');
@@ -373,7 +382,7 @@ export function parse_dex_semantics({
     if (index < max_output_items) method_ids.push(item);
   }
 
-  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0, code_address_references: 0, decoded_instruction_items: 0, instruction_output_items: 0, instruction_output_omitted: 0, output_items: 0, output_items_omitted: 0 };
+  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0, code_address_references: 0, decoded_instruction_items: 0, instruction_output_items: 0, instruction_output_omitted: 0, switch_target_count: 0, switch_target_output_items: 0, switch_target_output_omitted: 0, output_items: 0, output_items_omitted: 0 };
   const class_data = [];
   const class_data_counts = { classes_with_data: 0, static_fields: 0, instance_fields: 0, direct_methods: 0, virtual_methods: 0 };
   for (let class_index = 0; class_index < counts.class_defs; class_index += 1) {
@@ -517,9 +526,12 @@ export function parse_dex_semantics({
       decoded_instruction_items: state.decoded_instruction_items,
       instruction_output_items: state.instruction_output_items,
       instruction_output_omitted: state.instruction_output_omitted,
+      switch_target_count: state.switch_target_count,
+      switch_target_output_items: state.switch_target_output_items,
+      switch_target_output_omitted: state.switch_target_output_omitted,
       output_items_reported: state.output_items,
       output_items_omitted: state.output_items_omitted,
-      output_truncated: state.output_items_omitted > 0 || counts.proto_ids > max_output_items ||
+      output_truncated: state.output_items_omitted > 0 || state.switch_target_output_omitted > 0 || counts.proto_ids > max_output_items ||
         counts.field_ids > max_output_items || counts.method_ids > max_output_items ||
         state.class_data_items > max_output_items ||
         state.total_data_items > max_output_items,
