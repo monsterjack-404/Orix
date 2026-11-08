@@ -467,7 +467,7 @@ export function decode_dex_instructions(buffer, options = {}) {
     if (instructions.length < maxOutput) instructions.push(item);
     pc += item.code_units;
   }
-  return {
+  const result = {
     instruction_units: instructionUnits,
     instruction_count: totalInstructions,
     payload_count: payloadCount,
@@ -483,4 +483,8 @@ export function decode_dex_instructions(buffer, options = {}) {
       'This is instruction inventory and structural validation, not bytecode execution, full semantic verification, control-flow graph reconstruction or decompilation.',
     ],
   };
+  // The semantic parser needs the full, already-budgeted map to verify try/handler
+  // addresses. Keep it out of the normal public result to avoid output amplification.
+  if (options.include_instruction_boundary_map === true) result.instruction_boundary_map = boundaries;
+  return result;
 }
