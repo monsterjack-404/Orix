@@ -1,9 +1,21 @@
 // JavaScript, src/formats/dex-semantics.mjs, Node.js 20+, bounded DEX method/field/class-data inventory.
-// This module validates DEX structures; it does not decode or execute instructions.
+// This module validates bounded DEX structures and instruction encodings; it never executes code.
 import { OrixError } from '../core/errors.mjs';
+import { decode_dex_instructions } from './dex-bytecode.mjs';
+
+const MAX_CODE_ADDRESS_REFERENCES = 1_000_000;
 
 function fail(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
+}
+
+function check_exception_handler_opcode(buffer, code_item_offset, address, handler_kind) {
+  const opcode = buffer.readUInt16LE(code_item_offset + 16 + address * 2) & 0xff;
+  if (opcode === 0x0a || opcode === 0x0b || opcode === 0x0c) {
+    fail('ORIX_DEX_CODE_HANDLER_MOVE_RESULT', 'DEX exception handler must not begin with a move-result instruction', {
+      code_item_offset, address, opcode, handler_kind,
+    });
+  }
 }
 
 function need(buffer, offset, size, end, label) {
@@ -75,7 +87,7 @@ function parse_type_list(buffer, offset, data, type_count, max_items, aggregate)
   return result;
 }
 
-function parse_code_item(buffer, offset, data, type_count, limits, state) {
+function parse_code_item(buffer, offset, data, type_count, limits, state, dex_version, counts) {
   if (!offset || offset < data.offset || offset % 4 !== 0 || offset > data.end - 16) {
     fail('ORIX_DEX_CODE_ITEM_RANGE', 'DEX code_item offset is invalid or unaligned', { offset, data });
   }
@@ -106,7 +118,20 @@ function parse_code_item(buffer, offset, data, type_count, limits, state) {
       max_instruction_units: limits.max_instruction_units,
     });
   }
+  // Parse code_item metadata first so every referenced code address can be
+  // checked against the decoded instruction-boundary map in one bounded pass.
   let cursor = offset + 16 + instruction_bytes;
+  const code_address_references = [];
+  const handler_instruction_targets = [];
+  const remember_code_address = value => {
+    if (state.code_address_references >= MAX_CODE_ADDRESS_REFERENCES) {
+      fail('ORIX_DEX_CODE_ADDRESS_LIMIT', 'DEX aggregate try/catch code-address references exceed the configured safety limit', {
+        max_code_address_references: MAX_CODE_ADDRESS_REFERENCES,
+      });
+    }
+    state.code_address_references += 1;
+    code_address_references.push(value);
+  };
   const try_items = [];
   const handler_offsets = new Set();
   let handler_count = 0;
@@ -135,6 +160,8 @@ function parse_code_item(buffer, offset, data, type_count, limits, state) {
       }
       previous_end = end_addr;
       try_items.push({ start_addr, insn_count, handler_off });
+      remember_code_address(start_addr);
+      remember_code_address(end_addr);
     }
     cursor += tries_bytes;
     const handler_list_start = cursor;
@@ -163,6 +190,8 @@ function parse_code_item(buffer, offset, data, type_count, limits, state) {
             offset, index, item, type_index: type.value, type_count, address: address.value, insns_size,
           });
         }
+        remember_code_address(address.value);
+        handler_instruction_targets.push({ address: address.value, handler_kind: 'typed' });
       }
       if (size.value <= 0) {
         const catch_all = uleb(buffer, cursor, data.end, 'catch-all handler address');
@@ -172,6 +201,8 @@ function parse_code_item(buffer, offset, data, type_count, limits, state) {
             offset, index, address: catch_all.value, insns_size,
           });
         }
+        remember_code_address(catch_all.value);
+        handler_instruction_targets.push({ address: catch_all.value, handler_kind: 'catch-all' });
       }
     }
     for (const item of try_items) {
@@ -182,6 +213,31 @@ function parse_code_item(buffer, offset, data, type_count, limits, state) {
       }
     }
   }
+  const decoded = decode_dex_instructions(buffer, {
+    offset: offset + 16,
+    instruction_units: insns_size,
+    registers_size,
+    outs_size,
+    dex_version,
+    counts,
+    max_output_instructions: Math.max(0, limits.max_decoded_instructions - state.decoded_instruction_items),
+    max_payload_bytes: limits.max_payload_bytes,
+    max_switch_targets: limits.max_switch_targets,
+    max_output_switch_targets: Math.max(0, limits.max_output_switch_targets - state.switch_target_output_items),
+    required_instruction_boundaries: code_address_references,
+    max_instruction_units: limits.max_instruction_units,
+  });
+  // Required address validation above establishes that each handler is at a
+  // real instruction boundary before reading its opcode.
+  for (const target of handler_instruction_targets) {
+    check_exception_handler_opcode(buffer, offset, target.address, target.handler_kind);
+  }
+  state.decoded_instruction_items += decoded.instruction_count + decoded.payload_count;
+  state.instruction_output_items += decoded.instructions.length;
+  state.instruction_output_omitted += decoded.instruction_output_omitted;
+  state.switch_target_count += decoded.switch_target_count;
+  state.switch_target_output_items += decoded.switch_target_output_count;
+  state.switch_target_output_omitted += decoded.switch_target_output_omitted;
   state.code_bytes += cursor - offset;
   return {
     offset,
@@ -194,7 +250,16 @@ function parse_code_item(buffer, offset, data, type_count, limits, state) {
     instruction_units: insns_size,
     instruction_bytes,
     item_bytes: cursor - offset,
-    instructions_decoded: false,
+    instructions_decoded: true,
+    instruction_count: decoded.instruction_count,
+    payload_count: decoded.payload_count,
+    instruction_output_omitted: decoded.instruction_output_omitted,
+    switch_target_count: decoded.switch_target_count,
+    switch_target_output_count: decoded.switch_target_output_count,
+    switch_target_output_omitted: decoded.switch_target_output_omitted,
+    instructions_truncated: decoded.instructions_truncated,
+    opcode_counts: decoded.opcode_counts,
+    instructions: decoded.instructions,
   };
 }
 
@@ -205,13 +270,20 @@ function parse_code_item(buffer, offset, data, type_count, limits, state) {
 export function parse_dex_semantics({
   buffer, offsets, counts, data, types, strings, map_items = [], max_items = 250_000,
   max_output_items = 10_000, max_instruction_units = 20_000_000,
+  dex_version = '040', max_decoded_instructions = 10_000,
+  max_payload_bytes = 16 * 1024 * 1024, max_switch_targets = 1_024,
+  max_output_switch_targets = 4_096,
 } = {}) {
   if (!Buffer.isBuffer(buffer)) throw new TypeError('parse_dex_semantics requires a Buffer');
-  const limits = { max_items, max_instruction_units };
+  const limits = { max_items, max_instruction_units, max_decoded_instructions, max_payload_bytes, max_switch_targets, max_output_switch_targets };
   for (const [name, value, min, max] of [
     ['max_items', max_items, 1, 1_000_000],
     ['max_output_items', max_output_items, 1, 100_000],
     ['max_instruction_units', max_instruction_units, 1, 100_000_000],
+    ['max_decoded_instructions', max_decoded_instructions, 0, 100_000],
+    ['max_payload_bytes', max_payload_bytes, 0, 128 * 1024 * 1024],
+    ['max_switch_targets', max_switch_targets, 0, 65_535],
+    ['max_output_switch_targets', max_output_switch_targets, 0, 100_000],
   ]) {
     if (!Number.isSafeInteger(value) || value < min || value > max) {
       throw new TypeError(name + ' is outside its supported range');
@@ -329,7 +401,7 @@ export function parse_dex_semantics({
     if (index < max_output_items) method_ids.push(item);
   }
 
-  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0, output_items: 0, output_items_omitted: 0 };
+  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0, code_address_references: 0, decoded_instruction_items: 0, instruction_output_items: 0, instruction_output_omitted: 0, switch_target_count: 0, switch_target_output_items: 0, switch_target_output_omitted: 0, output_items: 0, output_items_omitted: 0 };
   const class_data = [];
   const class_data_counts = { classes_with_data: 0, static_fields: 0, instance_fields: 0, direct_methods: 0, virtual_methods: 0 };
   for (let class_index = 0; class_index < counts.class_defs; class_index += 1) {
@@ -425,7 +497,12 @@ export function parse_dex_semantics({
             class_index, label, method_index, access_flags: access.value, code_off: code.value,
           });
         }
-        const body = code.value === 0 ? null : parse_code_item(buffer, code.value, data, counts.type_ids, limits, state);
+        const referenceCounts = {
+          ...counts,
+          call_site_ids: map_items.find(item => item.type === 7)?.size ?? 0,
+          method_handles: map_items.find(item => item.type === 8)?.size ?? 0,
+        };
+        const body = code.value === 0 ? null : parse_code_item(buffer, code.value, data, counts.type_ids, limits, state, dex_version, referenceCounts);
         if (visible && state.output_items < max_output_items) {
           groups[label].push({ ...method, access_flags: access.value, code_off: code.value, code: body });
           state.output_items += 1;
@@ -465,17 +542,23 @@ export function parse_dex_semantics({
       code_items: state.code_items,
       instruction_units: state.instruction_units,
       code_bytes: state.code_bytes,
+      decoded_instruction_items: state.decoded_instruction_items,
+      instruction_output_items: state.instruction_output_items,
+      instruction_output_omitted: state.instruction_output_omitted,
+      switch_target_count: state.switch_target_count,
+      switch_target_output_items: state.switch_target_output_items,
+      switch_target_output_omitted: state.switch_target_output_omitted,
       output_items_reported: state.output_items,
       output_items_omitted: state.output_items_omitted,
-      output_truncated: state.output_items_omitted > 0 || counts.proto_ids > max_output_items ||
+      output_truncated: state.output_items_omitted > 0 || state.switch_target_output_omitted > 0 || counts.proto_ids > max_output_items ||
         counts.field_ids > max_output_items || counts.method_ids > max_output_items ||
         state.class_data_items > max_output_items ||
         state.total_data_items > max_output_items,
     },
     notes: [
       'Prototype, field, method and class-data indexes are structurally validated; class data is reported within output limits.',
-      'Method code_item headers, instruction-array extents, try ranges and catch-handler references are bounded and validated.',
-      'DEX bytecode opcodes, operands, control flow, annotations, debug programs and decompilation are not decoded.',
+      'Method code_item headers, Dalvik opcodes and operands, register/reference bounds, branch targets, payload layouts, try ranges and catch-handler references are bounded and validated.',
+      'Bytecode is statically decoded for inventory and structural validation only; it is not executed, fully verified, converted into a complete control-flow graph or decompiled.',
     ],
   };
 }
