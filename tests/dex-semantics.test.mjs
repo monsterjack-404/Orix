@@ -414,7 +414,7 @@ test('DEX typed and catch-all exception handlers reject move-result variants', (
       'typed exception handler must reject move-result opcode ' + opcode.toString(16),
     );
     assert.throws(
-      () => parse_dex(create_semantic_dex({ ...common, catch_handler_size_bytes: [0x7f] })),
+      () => parse_dex(create_semantic_dex({ ...common, catch_handler_size_bytes: [0x00] })),
       error => error.code === 'ORIX_DEX_CODE_HANDLER_MOVE_RESULT' && error.details.handler_kind === 'catch-all',
       'catch-all exception handler must reject move-result opcode ' + opcode.toString(16),
     );
