@@ -210,7 +210,7 @@ test('ResourceTable parser enforces file, field, item and output limits', () => 
   assert.equal(truncated.summary.entry_count, 1);
 });
 
-test('ResourceTable parser rejects out-of-range resource identifiers', () => {
+test('ResourceTable parser rejects out-of-range package and assigned type identifiers', () => {
   const bad_package = Buffer.concat([
     field_bytes(1, id_message(256)),
     field_string(2, 'bad.package'),
@@ -218,5 +218,19 @@ test('ResourceTable parser rejects out-of-range resource identifiers', () => {
   assert.throws(
     () => parse_android_resource_table(field_bytes(2, bad_package)),
     error => error.code === 'ORIX_RESOURCE_TABLE_ID_RANGE',
+  );
+
+  const bad_type = Buffer.concat([
+    field_bytes(1, id_message(0)),
+    field_string(2, 'invalid'),
+  ]);
+  const bad_type_package = Buffer.concat([
+    field_bytes(1, id_message(0x7f)),
+    field_string(2, 'bad.type'),
+    field_bytes(3, bad_type),
+  ]);
+  assert.throws(
+    () => parse_android_resource_table(field_bytes(2, bad_type_package)),
+    error => error.code === 'ORIX_RESOURCE_TABLE_ID_RANGE' && error.details.minimum === 1,
   );
 });
