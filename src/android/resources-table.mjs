@@ -264,8 +264,12 @@ function parse_reference(buffer, start, end, budget, limits, depth) {
       expect_wire('Reference', field, wire, 0);
       singular(seen, field, 'Reference');
       const decoded = uint32(value, 'Reference.field_' + field);
-      if (field === 1) result.type = decoded;
-      else result.id = decoded;
+      if (field === 1) {
+        if (decoded > 1) {
+          fail('ORIX_RESOURCE_TABLE_REFERENCE_TYPE', 'Reference type must be REFERENCE (0) or ATTRIBUTE (1)', { type: decoded });
+        }
+        result.type = decoded;
+      } else result.id = decoded;
     } else if (field === 4) {
       expect_wire('Reference', field, wire, 0);
       singular(seen, field, 'Reference');
