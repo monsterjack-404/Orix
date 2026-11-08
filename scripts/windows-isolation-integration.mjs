@@ -394,6 +394,56 @@ async function main() {
       'Native preflight rejection before AppContainer profile creation must not mutate rootfs ACLs during cleanup');
     assert.equal(await readFile(externalHardLinkTarget, 'utf8'), externalHardLinkValue,
       'Native hard-link preflight must not modify the external target');
+    // Bypass the JavaScript preflight and prove that the native helper
+    // independently rejects an over-deep rootfs before profile creation.
+    const nativeDeepRoot = path.join(base, 'native-depth-rootfs');
+    await mkdir(path.join(nativeDeepRoot, 'work'), { recursive: true });
+    await mkdir(path.join(nativeDeepRoot, 'tmp'), { recursive: true });
+    await copyFile(process.execPath, path.join(nativeDeepRoot, 'node.exe'));
+    let nativeDeepDirectory = path.join(nativeDeepRoot, 'work');
+    for (let index = 0; index < 65; index++) {
+      nativeDeepDirectory = path.join(nativeDeepDirectory, 'd');
+      await mkdir(nativeDeepDirectory);
+    }
+    const nativeDepthConfig = path.join(hardLinkHelperWorkspace, 'depth-provider.json');
+    const nativeDepthLog = path.join(hardLinkHelperWorkspace, 'depth-provider.log');
+    await writeFile(nativeDepthConfig, JSON.stringify({
+      executable: path.join(nativeDeepRoot, 'node.exe'),
+      args: ['-e', 'process.stdout.write("must-not-run")'],
+      cwd: path.join(nativeDeepRoot, 'work'),
+      sandboxRoot: nativeDeepRoot,
+      profileName: 'ORIX-DEPTH-PROBE-' + process.pid,
+      logPath: nativeDepthLog,
+      environment: {
+        SystemRoot: trustedSystemRoot,
+        WINDIR: trustedSystemRoot,
+        PATH: process.env.PATH || '',
+        TEMP: path.join(nativeDeepRoot, 'tmp'),
+        TMP: path.join(nativeDeepRoot, 'tmp'),
+        HOME: nativeDeepRoot,
+        USERPROFILE: nativeDeepRoot,
+        LOCALAPPDATA: nativeDeepRoot,
+        APPDATA: nativeDeepRoot,
+      },
+    }), 'utf8');
+    let nativeDepthError = null;
+    try {
+      execFileSync(nativeLauncher, ['run', nativeDepthConfig], {
+        cwd: hardLinkHelperWorkspace,
+        env: { ...process.env },
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    } catch (error) { nativeDepthError = error; }
+    assert.ok(nativeDepthError, 'Native Windows launcher must independently reject an over-deep rootfs');
+    assert.equal(nativeDepthError.status, 125,
+      'Native rootfs depth rejection must fail closed with exit code 125');
+    assert.match(String(nativeDepthError.stderr),
+      /ORIX_WINDOWS_ROOTFS_UNTRUSTED: provider rootfs exceeds the maximum directory depth/,
+      'Native rootfs validator did not report its bounded directory-depth failure');
+    assert.doesNotMatch(String(nativeDepthError.stderr), /ORIX_CLEANUP:BEGIN/,
+      'Native depth preflight rejection must happen before AppContainer profile creation or cleanup');
+
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
 
     server = net.createServer();
