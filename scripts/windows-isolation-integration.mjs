@@ -79,17 +79,29 @@ async function main() {
     /GetAccessRules\(true, false, typeof\(SecurityIdentifier\)\)[\s\S]*?hasExplicitProfileRule[\s\S]*?Directory\.SetAccessControl/,
     'Ancestor cleanup must rewrite only directories where this profile inserted an explicit traversal ACE');
 
+  const collectorStart = launcherSource.indexOf('static List<KeyValuePair<string, FileAttributes>> CollectCleanupTree(');
   const purgeStart = launcherSource.indexOf('static void PurgeTree(');
   const deleteStart = launcherSource.indexOf('static void DeleteTreeNoReparse(', purgeStart);
-  assert.ok(purgeStart >= 0 && deleteStart > purgeStart,
-    'Native helper must retain an explicit AppContainer cleanup tree walker');
+  assert.ok(collectorStart >= 0 && purgeStart > collectorStart && deleteStart > purgeStart,
+    'Native helper must retain an explicit bounded AppContainer cleanup tree collector');
+  const collectorEnd = launcherSource.indexOf('static void PurgeTree(', collectorStart);
+  const collectorSource = launcherSource.slice(collectorStart, collectorEnd);
   const purgeSource = launcherSource.slice(purgeStart, deleteStart);
-  assert.match(purgeSource, /File\.GetAttributes\(path\)/,
-    'Cleanup must inspect each directory entry before descending');
-  assert.doesNotMatch(purgeSource, /File\.Exists\(path\)|Directory\.Exists\(path\)/,
-    'Cleanup must not use path existence helpers that can follow a reparse target');
-  assert.match(purgeSource, /FileAttributes\.ReparsePoint[\s\S]*?throw new InvalidOperationException\("ORIX_WINDOWS_CLEANUP_REPARSE_POINT/,
-    'Cleanup must abort on reparse points instead of skipping them and continuing with descendant paths');
+  const deleteSource = launcherSource.slice(deleteStart, launcherSource.indexOf('static string Quote(', deleteStart));
+  assert.match(collectorSource, /File\.GetAttributes\(item\.Key\)/,
+    'Cleanup preflight must inspect each directory entry before descending');
+  assert.doesNotMatch(collectorSource, /File\.Exists\(item\.Key\)|Directory\.Exists\(item\.Key\)/,
+    'Cleanup preflight must not use path existence helpers that can follow a reparse target');
+  assert.match(collectorSource, /FileAttributes\.ReparsePoint[\s\S]*?throw new InvalidOperationException\(reparseError \+ item\.Key\)/,
+    'Cleanup preflight must abort on reparse points instead of skipping them and continuing with descendant paths');
+  assert.match(purgeSource, /CollectCleanupTree\([\s\S]*?ORIX_WINDOWS_CLEANUP_REPARSE_POINT:/,
+    'ACL cleanup must preflight paths with a reparse-point failure marker');
+  assert.match(deleteSource, /CollectCleanupTree\([\s\S]*?ORIX_WINDOWS_CLEANUP_REPARSE_POINT:/,
+    'Scratch deletion must preflight paths with a reparse-point failure marker');
+  assert.match(purgeSource, /for \(int index = entries\.Count - 1; index >= 0; index--\)/,
+    'ACL cleanup must process collected entries child-first without recursion');
+  assert.match(deleteSource, /for \(int index = entries\.Count - 1; index >= 0; index--\)/,
+    'Scratch deletion must process collected entries child-first without recursion');
   const cleanupStart = launcherSource.indexOf('public static void Cleanup(');
   assert.ok(cleanupStart >= 0, 'Native helper must expose the explicit profile cleanup path');
   const cleanupSource = launcherSource.slice(cleanupStart);
