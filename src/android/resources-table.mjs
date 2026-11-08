@@ -645,9 +645,11 @@ export function parse_android_resource_table(buffer, options = {}) {
     source_pool_present: false,
     source_pool_data_bytes: null,
     package_count: 0,
+    packages_reported: 0,
     packages: [],
     packages_omitted: 0,
     overlayable_count: 0,
+    overlayables_reported: 0,
     overlayables: [],
     overlayables_omitted: 0,
     tool_fingerprint_count: 0,
@@ -691,6 +693,8 @@ export function parse_android_resource_table(buffer, options = {}) {
       budget.unknown_fields += 1;
     }
   }, 'ResourceTable');
+  result.packages_reported = result.packages.length;
+  result.overlayables_reported = result.overlayables.length;
   result.tool_fingerprints_reported = result.tool_fingerprints.length;
   result.dynamic_ref_tables_reported = result.dynamic_ref_tables.length;
   return {
