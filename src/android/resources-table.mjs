@@ -291,11 +291,113 @@ function parse_reference(buffer, start, end, budget, limits, depth) {
         } else budget.unknown_fields += 1;
       }, 'Reference.is_dynamic');
       result.dynamic = dynamic;
+    } else if (field === 6) {
+      expect_wire('Reference', field, wire, 0);
+      singular(seen, field, 'Reference');
+      uint32(value, 'Reference.type_flags');
+    } else if (field === 7) {
+      expect_wire('Reference', field, wire, 0);
+      singular(seen, field, 'Reference');
     } else {
       budget.unknown_fields += 1;
     }
   }, 'Reference');
   return result;
+}
+
+function parse_text_item(buffer, start, end, budget, limits, label) {
+  const seen = new Set();
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    if (field === 1) {
+      expect_wire(label, field, wire, 2);
+      singular(seen, field, label);
+      decode_string(buffer, value, label + '.value', budget, limits);
+    } else budget.unknown_fields += 1;
+  }, label);
+}
+
+function parse_styled_text_item(buffer, start, end, budget, limits, depth) {
+  assert_depth(depth, limits, 'StyledString');
+  const seen = new Set();
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    if (field === 1) {
+      expect_wire('StyledString', field, wire, 2);
+      singular(seen, field, 'StyledString');
+      decode_string(buffer, value, 'StyledString.value', budget, limits);
+    } else if (field === 2) {
+      expect_wire('StyledString', field, wire, 2);
+      consume_item(budget, limits, 'StyledString.Span');
+      const span_seen = new Set();
+      walk_fields(buffer, value.start, value.end, budget, (span_field, span_wire, span_value) => {
+        if (span_field === 1) {
+          expect_wire('StyledString.Span', span_field, span_wire, 2);
+          singular(span_seen, span_field, 'StyledString.Span');
+          decode_string(buffer, span_value, 'StyledString.Span.tag', budget, limits);
+        } else if (span_field === 2 || span_field === 3) {
+          expect_wire('StyledString.Span', span_field, span_wire, 0);
+          singular(span_seen, span_field, 'StyledString.Span');
+          uint32(span_value, 'StyledString.Span.' + (span_field === 2 ? 'first_char' : 'last_char'));
+        } else budget.unknown_fields += 1;
+      }, 'StyledString.Span');
+    } else budget.unknown_fields += 1;
+  }, 'StyledString');
+}
+
+function parse_file_reference(buffer, start, end, budget, limits) {
+  const seen = new Set();
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    if (field === 1) {
+      expect_wire('FileReference', field, wire, 2);
+      singular(seen, field, 'FileReference');
+      decode_string(buffer, value, 'FileReference.path', budget, limits);
+    } else if (field === 2) {
+      expect_wire('FileReference', field, wire, 0);
+      singular(seen, field, 'FileReference');
+      uint32(value, 'FileReference.type');
+    } else budget.unknown_fields += 1;
+  }, 'FileReference');
+}
+
+function parse_primitive(buffer, start, end, budget) {
+  const variants = {
+    1: { name: 'null_value', wire: 2 },
+    2: { name: 'empty_value', wire: 2 },
+    3: { name: 'float_value', wire: 5 },
+    4: { name: 'dimension_value_deprecated', wire: 5 },
+    5: { name: 'fraction_value_deprecated', wire: 5 },
+    6: { name: 'int_decimal_value', wire: 0 },
+    7: { name: 'int_hexadecimal_value', wire: 0 },
+    8: { name: 'boolean_value', wire: 0 },
+    9: { name: 'color_argb8_value', wire: 0 },
+    10: { name: 'color_rgb8_value', wire: 0 },
+    11: { name: 'color_argb4_value', wire: 0 },
+    12: { name: 'color_rgb4_value', wire: 0 },
+    13: { name: 'dimension_value', wire: 0 },
+    14: { name: 'fraction_value', wire: 0 },
+  };
+  let selected = null;
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    const variant = variants[field];
+    if (!variant) {
+      budget.unknown_fields += 1;
+      return;
+    }
+    expect_wire('Primitive', field, wire, variant.wire);
+    if (selected !== null) {
+      fail('ORIX_RESOURCE_TABLE_ONEOF', 'ResourceTable Primitive contains more than one value variant', {
+        previous: variants[selected].name, next: variant.name,
+      });
+    }
+    selected = field;
+    if (wire === 2) {
+      walk_fields(buffer, value.start, value.end, budget, () => { budget.unknown_fields += 1; }, 'Primitive.' + variant.name);
+    } else if (field === 6) {
+      // int32 uses sign-extended varints; preserve only its format-valid width.
+      BigInt.asIntN(32, value);
+    } else {
+      uint32(value, 'Primitive.' + variant.name);
+    }
+  }, 'Primitive');
 }
 
 function parse_item(buffer, start, end, budget, limits, depth) {
@@ -313,11 +415,16 @@ function parse_item(buffer, start, end, budget, limits, depth) {
       }
       kind = ITEM_KINDS[field];
       if (field === 1) reference = parse_reference(buffer, value.start, value.end, budget, limits, depth + 1);
-      else {
-        // Validate the nested message framing even when only the value kind is inventoried.
-        walk_fields(buffer, value.start, value.end, budget, () => {}, 'Item.' + kind);
-      }
-    } else if (field === 8 || field === 9) {
+      else if (field === 2 || field === 3) parse_text_item(buffer, value.start, value.end, budget, limits, 'Item.' + kind);
+      else if (field === 4) parse_styled_text_item(buffer, value.start, value.end, budget, limits, depth + 1);
+      else if (field === 5) parse_file_reference(buffer, value.start, value.end, budget, limits);
+      else if (field === 6) walk_fields(buffer, value.start, value.end, budget, () => { budget.unknown_fields += 1; }, 'Item.id');
+      else parse_primitive(buffer, value.start, value.end, budget);
+    } else if (field === 8) {
+      expect_wire('Item', field, wire, 0);
+      singular(seen, field, 'Item');
+      uint32(value, 'Item.flag_status');
+    } else if (field === 9) {
       expect_wire('Item', field, wire, 0);
       singular(seen, field, 'Item');
     } else if (field === 10) {
@@ -345,7 +452,11 @@ function parse_compound_value(buffer, start, end, budget, depth, limits) {
       }
       kind = COMPOUND_KINDS[field];
       walk_fields(buffer, value.start, value.end, budget, () => {}, 'CompoundValue.' + kind);
-    } else if (field === 7 || field === 8) {
+    } else if (field === 7) {
+      expect_wire('CompoundValue', field, wire, 0);
+      singular(seen, field, 'CompoundValue');
+      uint32(value, 'CompoundValue.flag_status');
+    } else if (field === 8) {
       expect_wire('CompoundValue', field, wire, 0);
       singular(seen, field, 'CompoundValue');
     } else if (field === 9) {
