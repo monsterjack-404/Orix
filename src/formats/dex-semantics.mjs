@@ -107,20 +107,10 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
       max_instruction_units: limits.max_instruction_units,
     });
   }
-  const decoded = decode_dex_instructions(buffer, {
-    offset: offset + 16,
-    instruction_units: insns_size,
-    registers_size,
-    dex_version,
-    counts,
-    max_output_instructions: Math.max(0, limits.max_decoded_instructions - state.decoded_instruction_items),
-    max_payload_bytes: limits.max_payload_bytes,
-    max_switch_targets: limits.max_switch_targets,
-  });
-  state.decoded_instruction_items += decoded.instruction_count + decoded.payload_count;
-  state.instruction_output_items += decoded.instructions.length;
-  state.instruction_output_omitted += decoded.instruction_output_omitted;
+  // Parse code_item metadata first so every referenced code address can be
+  // checked against the decoded instruction-boundary map in one bounded pass.
   let cursor = offset + 16 + instruction_bytes;
+  const code_address_references = [];
   const try_items = [];
   const handler_offsets = new Set();
   let handler_count = 0;
@@ -149,6 +139,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
       }
       previous_end = end_addr;
       try_items.push({ start_addr, insn_count, handler_off });
+      code_address_references.push(start_addr, end_addr);
     }
     cursor += tries_bytes;
     const handler_list_start = cursor;
@@ -177,6 +168,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
             offset, index, item, type_index: type.value, type_count, address: address.value, insns_size,
           });
         }
+        code_address_references.push(address.value);
       }
       if (size.value <= 0) {
         const catch_all = uleb(buffer, cursor, data.end, 'catch-all handler address');
@@ -186,6 +178,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
             offset, index, address: catch_all.value, insns_size,
           });
         }
+        code_address_references.push(catch_all.value);
       }
     }
     for (const item of try_items) {
@@ -196,6 +189,20 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
       }
     }
   }
+  const decoded = decode_dex_instructions(buffer, {
+    offset: offset + 16,
+    instruction_units: insns_size,
+    registers_size,
+    dex_version,
+    counts,
+    max_output_instructions: Math.max(0, limits.max_decoded_instructions - state.decoded_instruction_items),
+    max_payload_bytes: limits.max_payload_bytes,
+    max_switch_targets: limits.max_switch_targets,
+    required_instruction_boundaries: code_address_references,
+  });
+  state.decoded_instruction_items += decoded.instruction_count + decoded.payload_count;
+  state.instruction_output_items += decoded.instructions.length;
+  state.instruction_output_omitted += decoded.instruction_output_omitted;
   state.code_bytes += cursor - offset;
   return {
     offset,
