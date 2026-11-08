@@ -613,6 +613,42 @@ async function main() {
       'A Node/libuv descendant continued writing after its provider leader exited; the Job Object did not clean it up');
     console.log('PASS: Node/libuv child spawned inside AppContainer and Job Object terminated it after leader exit');
 
+    // Verify the native CreateProcessW command-line quoting independently from
+    // the descendant tests. Empty arguments, embedded quotes, whitespace,
+    // trailing backslashes and UTF-16 text must survive the Windows argv parser.
+    const argumentRoundTrip = [
+      'plain',
+      'argument with spaces',
+      'embedded "quotes"',
+      'trailing-backslash\\',
+      'trailing-backslash with space\\ ',
+      '',
+      'Unicode: 日本語 / 🚀',
+    ];
+    const argumentExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      env: {},
+      args: [
+        '-e',
+        'process.stdout.write(JSON.stringify(process.argv.slice(1)))',
+        ...argumentRoundTrip,
+      ],
+      timeout_ms: 12_000,
+      max_output_bytes: 4_096,
+    });
+    assert.equal(argumentExecution.ok, true, JSON.stringify({
+      exit_code: argumentExecution.exit_code,
+      stdout: argumentExecution.stdout,
+      stderr: argumentExecution.stderr,
+    }));
+    assert.deepEqual(JSON.parse(argumentExecution.stdout), argumentRoundTrip,
+      'Windows CreateProcessW argv quoting must preserve every argument byte-for-character');
+    console.log('PASS: Windows native command-line quoting preserved spaces, quotes, empty values, trailing backslashes and Unicode');
+
     // Exercise the cleanup traversal with a real directory junction. The
     // provider process waits while the host replaces its writable Packages
     // directory with a junction to an external sentinel tree. Cleanup must
