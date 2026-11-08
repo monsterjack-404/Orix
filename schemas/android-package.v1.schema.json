@@ -950,6 +950,7 @@
                   "status": {
                     "enum": [
                       "decoded", "duplicate-path", "entry-limit", "size-limit", "aggregate-size-limit",
+                      "unsafe-path", "symlink", "not-regular-file",
                       "encrypted", "unsupported-compression", "invalid-local-range", "invalid-local-header",
                       "local-header-mismatch", "size-mismatch", "decompression-failed", "crc-mismatch", "malformed"
                     ]
