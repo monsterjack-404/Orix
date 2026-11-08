@@ -19,22 +19,106 @@ function within(root, candidate) {
     !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
 }
 
+export function assess_trusted_system_path_component(metadata, expected_type = 'directory') {
+  const valid = metadata !== null && typeof metadata === 'object' &&
+    Number.isSafeInteger(metadata.uid) && metadata.uid >= 0 && metadata.uid <= 0xffff_ffff &&
+    Number.isSafeInteger(metadata.mode) && metadata.mode >= 0 && metadata.mode <= 0o177777 &&
+    typeof metadata.is_directory === 'boolean' &&
+    typeof metadata.is_file === 'boolean' &&
+    typeof metadata.is_symlink === 'boolean';
+  const is_directory = valid && metadata.is_directory;
+  const is_file = valid && metadata.is_file;
+  const is_symlink = !valid || metadata.is_symlink;
+  const expected_type_matches = expected_type === 'directory'
+    ? is_directory
+    : expected_type === 'file' ? is_file : false;
+  const owner_is_root = valid && metadata.uid === 0;
+  const not_group_or_other_writable = valid && (metadata.mode & 0o022) === 0;
+  const no_setuid_or_setgid = valid && (metadata.mode & 0o6000) === 0;
+  return Object.freeze({
+    expected_type_matches,
+    is_symlink,
+    owner_is_root,
+    not_group_or_other_writable,
+    no_setuid_or_setgid,
+    trusted: expected_type_matches && !is_symlink && owner_is_root &&
+      not_group_or_other_writable && no_setuid_or_setgid,
+  });
+}
+
+function stat_metadata(info) {
+  return {
+    uid: info.uid,
+    mode: info.mode,
+    is_directory: info.isDirectory(),
+    is_file: info.isFile(),
+    is_symlink: info.isSymbolicLink(),
+  };
+}
+
+// Walk the canonical path from the filesystem root. Every component must be a
+// real root-owned object with no untrusted write bits or setuid/setgid mode.
+// This is a fail-closed preflight; path-based checks do not pin open handles
+// across validation-to-spawn and therefore do not eliminate every TOCTOU race.
+async function trusted_system_path(canonical) {
+  const root = path.parse(canonical).root;
+  if (!root) return { trusted: false, reason: 'canonical-path-has-no-filesystem-root' };
+  let current = root;
+  try {
+    let info = await lstat(current);
+    let metadata = stat_metadata(info);
+    let assessment = assess_trusted_system_path_component(metadata, 'directory');
+    if (!assessment.trusted) {
+      return { trusted: false, component: current, metadata, assessment };
+    }
+    const components = path.relative(root, canonical).split(path.sep).filter(Boolean);
+    if (components.length === 0) {
+      return { trusted: false, component: current, reason: 'canonical-path-is-filesystem-root' };
+    }
+    for (let index = 0; index < components.length; index += 1) {
+      current = path.join(current, components[index]);
+      info = await lstat(current);
+      metadata = stat_metadata(info);
+      const expected_type = index === components.length - 1 ? 'file' : 'directory';
+      assessment = assess_trusted_system_path_component(metadata, expected_type);
+      if (!assessment.trusted) {
+        return { trusted: false, component: current, expected_type, metadata, assessment };
+      }
+    }
+    return { trusted: true };
+  } catch (error) {
+    return { trusted: false, component: current, reason: error.code ?? 'filesystem-error' };
+  }
+}
+
 async function resolve_trusted_executable(candidates, label) {
+  const rejected_candidates = [];
   for (const candidate of candidates) {
     try {
       const info = await lstat(candidate);
-      if (info.isSymbolicLink() || !info.isFile()) continue;
+      if (info.isSymbolicLink() || !info.isFile()) {
+        rejected_candidates.push({
+          candidate,
+          reason: info.isSymbolicLink() ? 'candidate-is-symlink' : 'candidate-is-not-file',
+        });
+        continue;
+      }
       const canonical = await realpath(candidate);
+      const trust = await trusted_system_path(canonical);
+      if (!trust.trusted) {
+        rejected_candidates.push({ candidate, canonical, ...trust });
+        continue;
+      }
       await access(canonical, 1);
       return canonical;
-    } catch {
-      // Only fixed system locations are considered; never search PATH.
+    } catch (error) {
+      rejected_candidates.push({ candidate, reason: error.code ?? 'filesystem-error' });
     }
   }
   isolation_error(
     'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
     label + ' is not installed at a trusted system path; required isolation cannot start',
-    { platform: process.platform, backend: label },
+    { platform: process.platform, backend: label, rejected_candidates },
   );
 }
 
