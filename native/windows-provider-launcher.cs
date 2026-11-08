@@ -108,6 +108,11 @@ namespace OrixWindowsSandbox {
     static readonly IntPtr PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY = new IntPtr(0x0002000E);
     static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
 
+    const int MAX_ROOTFS_TREE_DEPTH = 64;
+    const int MAX_ROOTFS_TREE_ENTRIES = 100000;
+    const int MAX_CLEANUP_TREE_DEPTH = 256;
+    const int MAX_CLEANUP_TREE_ENTRIES = 100000;
+
     [StructLayout(LayoutKind.Sequential)]
     struct SECURITY_CAPABILITIES {
       public IntPtr AppContainerSid;
@@ -365,6 +370,15 @@ namespace OrixWindowsSandbox {
     }
 
     static void ValidateTree(string path, SecurityIdentifier serviceSid) {
+      int entriesSeen = 0;
+      ValidateTree(path, serviceSid, 0, ref entriesSeen);
+    }
+
+    static void ValidateTree(string path, SecurityIdentifier serviceSid, int depth, ref int entriesSeen) {
+      if (depth > MAX_ROOTFS_TREE_DEPTH)
+        throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: provider rootfs exceeds the maximum directory depth");
+      if (++entriesSeen > MAX_ROOTFS_TREE_ENTRIES)
+        throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: provider rootfs exceeds the maximum entry count");
       FileAttributes attributes = File.GetAttributes(path);
       if ((attributes & FileAttributes.ReparsePoint) != 0)
         throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: reparse points are not allowed in the provider rootfs: " + path);
@@ -394,7 +408,7 @@ namespace OrixWindowsSandbox {
 
       if (directory) {
         foreach (string child in Directory.EnumerateFileSystemEntries(path))
-          ValidateTree(child, serviceSid);
+          ValidateTree(child, serviceSid, depth + 1, ref entriesSeen);
       }
     }
 
@@ -561,6 +575,15 @@ namespace OrixWindowsSandbox {
     }
 
     static void GrantTree(string path, SecurityIdentifier sid, FileSystemRights rights, bool root) {
+      int entriesSeen = 0;
+      GrantTree(path, sid, rights, root, 0, ref entriesSeen);
+    }
+
+    static void GrantTree(string path, SecurityIdentifier sid, FileSystemRights rights, bool root, int depth, ref int entriesSeen) {
+      if (depth > MAX_ROOTFS_TREE_DEPTH)
+        throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: provider rootfs exceeds the maximum directory depth while applying its AppContainer ACL");
+      if (++entriesSeen > MAX_ROOTFS_TREE_ENTRIES)
+        throw new InvalidOperationException("ORIX_WINDOWS_ROOTFS_UNTRUSTED: provider rootfs exceeds the maximum entry count while applying its AppContainer ACL");
       FileAttributes attributes = File.GetAttributes(path);
       if ((attributes & FileAttributes.ReparsePoint) != 0)
         throw new InvalidOperationException("Reparse points are not allowed in the provider rootfs: " + path);
@@ -571,7 +594,8 @@ namespace OrixWindowsSandbox {
           InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
           PropagationFlags.None, AccessControlType.Allow));
         Directory.SetAccessControl(path, security);
-        foreach (string child in Directory.EnumerateFileSystemEntries(path)) GrantTree(child, sid, rights, false);
+        foreach (string child in Directory.EnumerateFileSystemEntries(path))
+          GrantTree(child, sid, rights, false, depth + 1, ref entriesSeen);
       } else {
         FileSecurity security = File.GetAccessControl(path, AccessControlSections.Access);
         security.AddAccessRule(new FileSystemAccessRule(sid, rights, AccessControlType.Allow));
@@ -579,48 +603,65 @@ namespace OrixWindowsSandbox {
       }
     }
 
+    static List<KeyValuePair<string, FileAttributes>> CollectCleanupTree(string path, string reparseError) {
+      var collected = new List<KeyValuePair<string, FileAttributes>>();
+      var pending = new Stack<KeyValuePair<string, int>>();
+      pending.Push(new KeyValuePair<string, int>(path, 0));
+      while (pending.Count > 0) {
+        KeyValuePair<string, int> item = pending.Pop();
+        FileAttributes attributes;
+        try { attributes = File.GetAttributes(item.Key); }
+        catch (FileNotFoundException) { continue; }
+        catch (DirectoryNotFoundException) { continue; }
+        if (item.Value > MAX_CLEANUP_TREE_DEPTH)
+          throw new InvalidOperationException("ORIX_WINDOWS_CLEANUP_LIMIT: cleanup tree exceeds the maximum directory depth");
+        if (collected.Count >= MAX_CLEANUP_TREE_ENTRIES)
+          throw new InvalidOperationException("ORIX_WINDOWS_CLEANUP_LIMIT: cleanup tree exceeds the maximum entry count");
+        if ((attributes & FileAttributes.ReparsePoint) != 0)
+          throw new InvalidOperationException(reparseError + item.Key);
+        collected.Add(new KeyValuePair<string, FileAttributes>(item.Key, attributes));
+        if ((attributes & FileAttributes.Directory) != 0) {
+          foreach (string child in Directory.EnumerateFileSystemEntries(item.Key))
+            pending.Push(new KeyValuePair<string, int>(child, item.Value + 1));
+        }
+      }
+      return collected;
+    }
+
+    // Preflight the complete tree before mutating any ACL. The iterative walk
+    // is bounded and cannot overflow the native stack on provider-controlled
+    // directory depth. Children are processed before parents during cleanup.
     static void PurgeTree(string path, SecurityIdentifier sid) {
-      // Inspect the directory entry itself before any existence helper can
-      // follow a reparse target. A provider-controlled junction in scratch
-      // must abort cleanup; silently skipping it and later deleting a child
-      // path would allow that child path to resolve outside the sandbox root.
-      FileAttributes attributes;
-      try { attributes = File.GetAttributes(path); }
-      catch (FileNotFoundException) { return; }
-      catch (DirectoryNotFoundException) { return; }
-      if ((attributes & FileAttributes.ReparsePoint) != 0)
-        throw new InvalidOperationException("ORIX_WINDOWS_CLEANUP_REPARSE_POINT: refusing to traverse cleanup path: " + path);
-      bool directory = (attributes & FileAttributes.Directory) != 0;
-      if (directory) {
-        foreach (string child in Directory.EnumerateFileSystemEntries(path)) PurgeTree(child, sid);
-        DirectorySecurity security = Directory.GetAccessControl(path, AccessControlSections.Access);
-        security.PurgeAccessRules(sid);
-        Directory.SetAccessControl(path, security);
-      } else {
-        FileSecurity security = File.GetAccessControl(path, AccessControlSections.Access);
-        security.PurgeAccessRules(sid);
-        File.SetAccessControl(path, security);
+      List<KeyValuePair<string, FileAttributes>> entries = CollectCleanupTree(
+        path, "ORIX_WINDOWS_CLEANUP_REPARSE_POINT: refusing to traverse cleanup path: ");
+      for (int index = entries.Count - 1; index >= 0; index--) {
+        string entryPath = entries[index].Key;
+        if ((entries[index].Value & FileAttributes.Directory) != 0) {
+          DirectorySecurity security = Directory.GetAccessControl(entryPath, AccessControlSections.Access);
+          security.PurgeAccessRules(sid);
+          Directory.SetAccessControl(entryPath, security);
+        } else {
+          FileSecurity security = File.GetAccessControl(entryPath, AccessControlSections.Access);
+          security.PurgeAccessRules(sid);
+          File.SetAccessControl(entryPath, security);
+        }
       }
     }
 
-    // Remove only the per-profile AppContainer temp tree. Never recurse through
-    // reparse points: a provider or concurrent host actor must not redirect cleanup.
+    // Remove only the per-profile AppContainer temp tree. Preflight the entire
+    // subtree and delete children before parents without recursive calls.
     static void DeleteTreeNoReparse(string path) {
-      FileAttributes attributes;
-      try { attributes = File.GetAttributes(path); }
-      catch (FileNotFoundException) { return; }
-      catch (DirectoryNotFoundException) { return; }
-      if ((attributes & FileAttributes.ReparsePoint) != 0)
-        throw new InvalidOperationException("Refusing to clean an AppContainer temp reparse point: " + path);
-      if ((attributes & FileAttributes.Directory) != 0) {
-        foreach (string child in Directory.EnumerateFileSystemEntries(path)) DeleteTreeNoReparse(child);
+      List<KeyValuePair<string, FileAttributes>> entries = CollectCleanupTree(
+        path, "ORIX_WINDOWS_CLEANUP_REPARSE_POINT: refusing to clean an AppContainer temp reparse point: ");
+      for (int index = entries.Count - 1; index >= 0; index--) {
+        string entryPath = entries[index].Key;
+        FileAttributes attributes = entries[index].Value;
         if ((attributes & FileAttributes.ReadOnly) != 0)
-          File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
-        Directory.Delete(path, false);
-      } else {
-        if ((attributes & FileAttributes.ReadOnly) != 0)
-          File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
-        File.Delete(path);
+          File.SetAttributes(entryPath, attributes & ~FileAttributes.ReadOnly);
+        if ((attributes & FileAttributes.Directory) != 0)
+          Directory.Delete(entryPath, false);
+        else
+          File.Delete(entryPath);
       }
     }
 
