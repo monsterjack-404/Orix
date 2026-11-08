@@ -141,6 +141,39 @@ test('DEX decoder reads aligned packed-switch payload and validates case targets
   assert.equal(result.instructions[4].kind, 'packed-switch');
 });
 
+test('DEX decoder enforces one aggregate switch-target output budget across a method', () => {
+  const code = words(
+    0x002b, 0x0008, 0x0000,
+    0x002b, 0x000b, 0x0000,
+    0x000e, 0x0000,
+    0x0100, 0x0001, 0x000a, 0x0000, 0x0006, 0x0000,
+    0x0100, 0x0001, 0x0014, 0x0000, 0x0003, 0x0000,
+  );
+  const result = decode(code, {
+    registers_size: 1,
+    max_output_switch_targets: 1,
+  });
+  const switches = result.instructions.filter(item => item.mnemonic === 'packed-switch');
+  assert.equal(switches.length, 2);
+  assert.deepEqual(switches[0].switch.targets, [{ key: 10, target: 6, offset: 6 }]);
+  assert.deepEqual(switches[1].switch.targets, []);
+  assert.equal(switches[1].switch.targets_omitted, 1);
+  assert.equal(switches[1].switch.targets_truncated, true);
+  assert.equal(result.switch_target_count, 2);
+  assert.equal(result.switch_target_output_count, 1);
+  assert.equal(result.switch_target_output_omitted, 1);
+  assert.equal(result.switch_targets_truncated, true);
+  assert.equal(result.instructions_truncated, true);
+
+  const validationOnly = decode(code, {
+    registers_size: 1,
+    max_output_switch_targets: 0,
+  });
+  assert.equal(validationOnly.switch_target_count, 2);
+  assert.equal(validationOnly.switch_target_output_count, 0);
+  assert.equal(validationOnly.switch_target_output_omitted, 2);
+});
+
 test('DEX decoder rejects unsorted sparse-switch keys', () => {
   assert.throws(
     () => decode(words(
