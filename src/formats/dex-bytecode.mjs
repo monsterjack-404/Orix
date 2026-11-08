@@ -180,6 +180,13 @@ function readOperands(buffer, base, pc, spec) {
   const a4 = (first >>> 8) & 0x0f;
   const b4 = (first >>> 12) & 0x0f;
   const out = { registers: [], wide_registers: [], reference: null, branch_offset: null };
+  // The DEX specification marks the high byte as zero for 20t, 30t and 32x.
+  // Reject malformed encodings instead of silently accepting non-canonical instructions.
+  if (['20t', '30t', '32x'].includes(spec.format) && aa !== 0) {
+    fail('ORIX_DEX_BYTECODE_RESERVED_BITS', 'DEX instruction format contains nonzero reserved high-order bits', {
+      pc, word: first, format: spec.format, reserved_bits: aa,
+    });
+  }
   switch (spec.format) {
     case '10x':
       if (first !== spec.opcode) fail('ORIX_DEX_BYTECODE_RESERVED_BITS', 'DEX 10x instruction has nonzero unused bits', { pc, word: first });
