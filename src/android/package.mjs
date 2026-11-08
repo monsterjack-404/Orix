@@ -25,7 +25,7 @@ function is_resource_table_candidate(name) {
 function is_aab_resource_table_entry(name) {
   if (!is_resource_table_candidate(name)) return false;
   const module = name.slice(0, name.indexOf('/'));
-  return module !== '.' && module !== '..' && !module.includes('\\\\') && !module.includes(':');
+  return module !== '.' && module !== '..' && !module.includes('\\') && !module.includes(':');
 }
 
 function is_dex_entry(name, is_aab) {
