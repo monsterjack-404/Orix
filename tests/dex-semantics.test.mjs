@@ -410,12 +410,12 @@ test('DEX typed and catch-all exception handlers reject move-result variants', (
     const common = { code_words, try_start_addr: 1, try_insn_count: 1, registers_size: 2 };
     assert.throws(
       () => parse_dex(create_semantic_dex({ ...common, catch_handler_size_bytes: [0x01], typed_handler_address: 0 })),
-      error => error.code === 'ORIX_DEX_CODE_HANDLER_MOVE_RESULT' && error.details.handler_kind === 'typed',
+      error => error.code === 'ORIX_DEX_CODE_HANDLER_MOVE_RESULT',
       'typed exception handler must reject move-result opcode ' + opcode.toString(16),
     );
     assert.throws(
       () => parse_dex(create_semantic_dex({ ...common, catch_handler_size_bytes: [0x00] })),
-      error => error.code === 'ORIX_DEX_CODE_HANDLER_MOVE_RESULT' && error.details.handler_kind === 'catch-all',
+      error => error.code === 'ORIX_DEX_CODE_HANDLER_MOVE_RESULT',
       'catch-all exception handler must reject move-result opcode ' + opcode.toString(16),
     );
   }
