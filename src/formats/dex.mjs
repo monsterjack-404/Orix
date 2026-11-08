@@ -67,6 +67,7 @@ export function parse_dex(buffer,options={}){
   max_decoded_instructions:options.max_decoded_instructions??10000,
   max_payload_bytes:options.max_payload_bytes??16777216,
   max_switch_targets:options.max_switch_targets??1024,
+  max_output_switch_targets:options.max_output_switch_targets??4096,
  });
  const expectedAdler=buffer.readUInt32LE(8);
  let adlerA=1,adlerB=0;
