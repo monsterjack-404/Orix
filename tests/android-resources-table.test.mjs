@@ -172,7 +172,7 @@ test('ResourceTable parser rejects duplicate singular fields and malformed oneof
 
 test('ResourceTable parser rejects invalid UTF-8, bad wire types and truncated payloads', () => {
   assert.throws(
-    () => parse_android_resource_table(Buffer.concat([varint(0x0a), varint(1), Buffer.from([0xff])])),
+    () => parse_android_resource_table(field_bytes(2, field_bytes(2, Buffer.from([0xff])))),
     error => error.code === 'ORIX_RESOURCE_TABLE_UTF8',
   );
   assert.throws(
