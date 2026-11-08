@@ -6,6 +6,7 @@ import { parse_dex } from '../formats/dex.mjs';
 import { parse_android_binary_xml } from './binary-xml.mjs';
 import { parse_android_proto_xml } from './proto-xml.mjs';
 import { parse_android_bundle_config } from './bundle-config.mjs';
+import { parse_android_resource_table } from './resources-table.mjs';
 import { constants as fs_constants, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { hash_buffer } from '../core/hash.mjs';
@@ -13,6 +14,19 @@ import { inflateRawSync } from 'node:zlib';
 
 const LOCAL_HEADER = 0x04034b50;
 const BINARY_XML = 0x0003;
+
+function is_resource_table_candidate(name) {
+  const separator = name.indexOf('/');
+  return separator > 0 && separator === name.lastIndexOf('/') &&
+    name.slice(separator + 1) === 'resources.pb' &&
+    name.slice(0, separator) !== 'BUNDLE-METADATA';
+}
+
+function is_aab_resource_table_entry(name) {
+  if (!is_resource_table_candidate(name)) return false;
+  const module = name.slice(0, name.indexOf('/'));
+  return module !== '.' && module !== '..' && !module.includes('\\') && !module.includes(':');
+}
 
 function is_dex_entry(name, is_aab) {
   const parts = name.split('/');
@@ -41,6 +55,11 @@ function crc32(buffer) {
 }
 
 function local_entry_data(buffer, entry, max_output_bytes, central_directory_offset) {
+  // Selected metadata is never decoded from path-traversing, symlink or
+  // directory members. This applies equally to APK and AAB manifests/DEX/config.
+  if (entry.unsafe_path) return { status: 'unsafe-path' };
+  if (entry.is_symlink) return { status: 'symlink' };
+  if (entry.is_directory) return { status: 'not-regular-file' };
   if (!entry.local_header_valid || !entry.local_data_range_valid) return { status: 'invalid-local-range' };
   if (entry.encrypted || entry.strongly_encrypted) return { status: 'encrypted' };
   const method_code = entry.compression_method === 'stored'
@@ -189,6 +208,92 @@ function inspect_bundle_config(buffer, entries, central_directory_offset, option
   }
 }
 
+
+function inspect_resource_tables(buffer, entries, central_directory_offset, options = {}) {
+  const max_bytes = options.max_resource_table_bytes ?? 4 * 1024 * 1024;
+  const max_total_bytes = options.max_resource_table_total_bytes ?? 64 * 1024 * 1024;
+  const max_tables = options.max_resource_tables ?? 256;
+  if (!Number.isSafeInteger(max_bytes) || max_bytes < 1 || max_bytes > 64 * 1024 * 1024) {
+    throw new TypeError('max_resource_table_bytes must be between 1 and 67108864');
+  }
+  if (!Number.isSafeInteger(max_total_bytes) || max_total_bytes < 1 || max_total_bytes > 256 * 1024 * 1024) {
+    throw new TypeError('max_resource_table_total_bytes must be between 1 and 268435456');
+  }
+  if (!Number.isSafeInteger(max_tables) || max_tables < 1 || max_tables > 4096) {
+    throw new TypeError('max_resource_tables must be between 1 and 4096');
+  }
+  const matches = entries.filter(entry => is_resource_table_candidate(entry.name));
+  const counts = new Map();
+  for (const entry of matches) counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
+  const tables = [];
+  let total_bytes_used = 0;
+  let omitted = 0;
+  for (const entry of matches) {
+    if (tables.length >= max_tables) {
+      omitted += 1;
+      continue;
+    }
+    const separator = entry.name.indexOf('/');
+    const module = entry.name.slice(0, separator);
+    const base = { module, path: entry.name, uncompressed_size: entry.uncompressed_size };
+    // Module resources must be regular, safe archive members. Parsing happens
+    // in memory, but an unsafe path or symlink is not a trustworthy AAB file.
+    if (entry.is_symlink) {
+      tables.push({ ...base, status: 'symlink', table: null });
+      continue;
+    }
+    if (entry.unsafe_path || module === '.' || module === '..' || module.includes('\\') || module.includes(':')) {
+      tables.push({ ...base, status: 'unsafe-path', table: null });
+      continue;
+    }
+    if (entry.is_directory) {
+      tables.push({ ...base, status: 'not-regular-file', table: null });
+      continue;
+    }
+    if ((counts.get(entry.name) ?? 0) > 1) {
+      tables.push({ ...base, status: 'duplicate-path', table: null });
+      continue;
+    }
+    if (entry.uncompressed_size > max_bytes) {
+      tables.push({ ...base, status: 'size-limit', table: null });
+      continue;
+    }
+    if (total_bytes_used + entry.uncompressed_size > max_total_bytes) {
+      tables.push({ ...base, status: 'aggregate-size-limit', table: null });
+      continue;
+    }
+    // Reserve declared output before decompression; malformed entries do not
+    // receive a fresh aggregate budget on a subsequent path.
+    total_bytes_used += entry.uncompressed_size;
+    const data = local_entry_data(buffer, entry, max_bytes, central_directory_offset);
+    if (data.status !== 'available') {
+      tables.push({ ...base, status: data.status, table: null });
+      continue;
+    }
+    try {
+      const table = parse_android_resource_table(data.bytes, {
+        max_file_bytes: max_bytes,
+        ...(options.resource_table ?? {}),
+      });
+      tables.push({ ...base, status: 'decoded', table });
+    } catch (error) {
+      tables.push({
+        ...base,
+        status: 'malformed',
+        table: null,
+        error: { code: error.code ?? 'ORIX_RESOURCE_TABLE_ERROR', message: error.message },
+      });
+    }
+  }
+  return {
+    count: matches.length,
+    reported: tables.length,
+    omitted,
+    bytes_used: total_bytes_used,
+    tables,
+  };
+}
+
 const APK_SIGNING_BLOCK_MAGIC = Buffer.from('APK Sig Block 42', 'ascii');
 const APK_SIGNING_IDS = new Map([
   [0x7109871a, 'APK Signature Scheme v2'],
@@ -320,6 +425,9 @@ export function analyze_android_package(buffer, options = {}) {
   const max_signing_block_pairs = options.max_signing_block_pairs ?? 4096;
   const max_aab_modules = options.max_aab_modules ?? 256;
   const max_bundle_config_bytes = options.max_bundle_config_bytes ?? 4 * 1024 * 1024;
+  const max_resource_table_bytes = options.max_resource_table_bytes ?? 4 * 1024 * 1024;
+  const max_resource_table_total_bytes = options.max_resource_table_total_bytes ?? 64 * 1024 * 1024;
+  const max_resource_tables = options.max_resource_tables ?? 256;
   if (!Number.isSafeInteger(max_dex_entries) || max_dex_entries < 1 || max_dex_entries > 256) throw new TypeError('max_dex_entries must be between 1 and 256');
   if (!Number.isSafeInteger(max_dex_entry_bytes) || max_dex_entry_bytes < 112 || max_dex_entry_bytes > 536_870_912) throw new TypeError('max_dex_entry_bytes must be between 112 and 536870912');
   if (!Number.isSafeInteger(max_dex_total_bytes) || max_dex_total_bytes < 112 || max_dex_total_bytes > 1_073_741_824) throw new TypeError('max_dex_total_bytes must be between 112 and 1073741824');
@@ -332,6 +440,9 @@ export function analyze_android_package(buffer, options = {}) {
   if (!Number.isSafeInteger(max_signing_block_pairs) || max_signing_block_pairs < 1 || max_signing_block_pairs > 65_536) throw new TypeError('max_signing_block_pairs must be between 1 and 65536');
   if (!Number.isSafeInteger(max_aab_modules) || max_aab_modules < 1 || max_aab_modules > 4096) throw new TypeError('max_aab_modules must be between 1 and 4096');
   if (!Number.isSafeInteger(max_bundle_config_bytes) || max_bundle_config_bytes < 1 || max_bundle_config_bytes > 64 * 1024 * 1024) throw new TypeError('max_bundle_config_bytes must be between 1 and 67108864');
+  if (!Number.isSafeInteger(max_resource_table_bytes) || max_resource_table_bytes < 1 || max_resource_table_bytes > 64 * 1024 * 1024) throw new TypeError('max_resource_table_bytes must be between 1 and 67108864');
+  if (!Number.isSafeInteger(max_resource_table_total_bytes) || max_resource_table_total_bytes < 1 || max_resource_table_total_bytes > 256 * 1024 * 1024) throw new TypeError('max_resource_table_total_bytes must be between 1 and 268435456');
+  if (!Number.isSafeInteger(max_resource_tables) || max_resource_tables < 1 || max_resource_tables > 4096) throw new TypeError('max_resource_tables must be between 1 and 4096');
   const archive = parse_zip(buffer, options.zip ?? {});
   const entries = archive.entries.filter(entry => !entry.unsafe_path && !entry.is_symlink);
   const entry_name_counts = new Map();
@@ -355,7 +466,8 @@ export function analyze_android_package(buffer, options = {}) {
   const names = new Set(entries.map(entry => entry.name));
   const apk_manifest = names.has('AndroidManifest.xml');
   const bundle_manifest = entries.some(entry => entry.name.endsWith('/manifest/AndroidManifest.xml'));
-  const is_aab = names.has('BundleConfig.pb') || bundle_manifest;
+  const is_aab = names.has('BundleConfig.pb') || bundle_manifest ||
+    entries.some(entry => is_aab_resource_table_entry(entry.name));
   const is_apk = apk_manifest && !is_aab;
   const dex_entries = entries.filter(entry => is_dex_entry(entry.name, is_aab));
   const manifest_entries = entries.filter(entry => entry.name === 'AndroidManifest.xml' || entry.name.endsWith('/manifest/AndroidManifest.xml'));
@@ -415,10 +527,21 @@ export function analyze_android_package(buffer, options = {}) {
       bundle_config: options.bundle_config,
     })
     : { status: 'not-applicable', path: null, uncompressed_size: null, config: null };
+  // Keep the raw ZIP inventory for resource-table diagnostics so unsafe
+  // paths and symlink records can be reported without ever parsing them.
+  const resource_tables = is_aab
+    ? inspect_resource_tables(buffer, archive.entries, archive.archive.central_directory_offset, {
+      max_resource_table_bytes,
+      max_resource_table_total_bytes,
+      max_resource_tables,
+      resource_table: options.resource_table,
+    })
+    : { count: 0, reported: 0, omitted: 0, bytes_used: 0, tables: [] };
   const bundle = is_aab ? {
     status: 'recognized',
     bundle_config_present: names.has('BundleConfig.pb'),
     bundle_config,
+    resource_tables,
     module_count: module_names.length,
     modules_reported: reported_modules.length,
     modules_omitted: Math.max(0, module_names.length - reported_modules.length),
@@ -428,6 +551,7 @@ export function analyze_android_package(buffer, options = {}) {
     status: 'not-applicable',
     bundle_config_present: false,
     bundle_config,
+    resource_tables,
     module_count: 0,
     modules_reported: 0,
     modules_omitted: 0,
@@ -507,7 +631,7 @@ export function analyze_android_package(buffer, options = {}) {
       native_libraries: native_libraries.length,
       native_libraries_reported: reported_native_libraries.length,
       native_libraries_omitted: Math.max(0, native_libraries.length - reported_native_libraries.length),
-      resources_table_present: names.has('resources.arsc') || entries.some(entry => entry.name.endsWith('/resources.pb')),
+      resources_table_present: names.has('resources.arsc') || entries.some(entry => is_aab_resource_table_entry(entry.name)),
       manifest_entries: manifest_entries.length,
       manifest_entries_reported: reported_manifest_entries.length,
       manifest_entries_omitted: Math.max(0, manifest_entries.length - reported_manifest_entries.length),
@@ -520,6 +644,11 @@ export function analyze_android_package(buffer, options = {}) {
       aab_modules_reported: reported_modules.length,
       aab_modules_omitted: Math.max(0, module_names.length - reported_modules.length),
       bundle_config_present: names.has('BundleConfig.pb'),
+      resource_tables: resource_tables.count,
+      resource_tables_reported: resource_tables.reported,
+      resource_tables_omitted: resource_tables.omitted,
+      resource_table_packages: resource_tables.tables.reduce((total, item) => total + (item.table?.summary.package_count ?? 0), 0),
+      resource_table_entries: resource_tables.tables.reduce((total, item) => total + (item.table?.summary.entry_count ?? 0), 0),
     },
     manifests: (() => {
       let manifest_bytes_budget_used = 0;
@@ -558,7 +687,7 @@ export function analyze_android_package(buffer, options = {}) {
     limitations: [
       'ZIP entries are inventoried without filesystem extraction. Selected stored and raw-DEFLATE DEX/manifest entries are expanded in memory only within per-entry and aggregate output ceilings; encrypted, unsafe, malformed or unsupported entries are not parsed.',
       'APK binary XML and AAB AAPT2 protobuf XML manifests are decoded from stored or raw-DEFLATE, unencrypted entries whose local ZIP header and CRC match, within per-manifest and aggregate decompression budgets plus explicit parser limits; resource-reference resolution is not performed.',
-      'AAB module names and DEX/native/resource/asset/root path counts are inventoried from ZIP entry names; bounded module manifest metadata is decoded from AAPT2 protobuf XML and BundleConfig.pb is parsed for tool version, bundle type, compression globs, split dimensions and recognized optimization metadata. resources.pb resource-table semantics, dependency graph and split/install relationships remain unsupported.',
+      'AAB module names and DEX/native/resource/asset/root path counts are inventoried from ZIP entry names; bounded module manifests, BundleConfig.pb metadata and AAPT2 resources.pb package/type/entry/configuration/value-kind metadata are decoded under per-entry and aggregate byte, protobuf field, repeated-item, string and output budgets. Full resource-reference resolution, compound-value decoding, compiled resource-file decoding, dependency graph and split/install relationships remain unsupported.',
       'DEX strings (including Modified UTF-8), type/field/method/prototype identifiers, class-data indexes and bounded code-item structure are inspected; instruction opcodes, operands, control flow, annotations, debug programs and decompilation are not decoded.',
       'For APK files, the APK Signing Block container and ID-value pair boundaries are inventoried (v2/v3/v3.1 and unknown IDs); cryptographic signatures, content digests, certificate chains, v1 JAR signatures and publisher identity are not verified.',
       'This is offline file analysis. No Android device, adb command, app installation, emulator or application code is accessed or executed.',
@@ -567,6 +696,7 @@ export function analyze_android_package(buffer, options = {}) {
       ...dex.filter(item => item.status !== 'metadata-parsed').map(item => ({ path: item.path, reason: item.status })),
       ...(signing_block.status === 'malformed' ? [{ path: 'APK Signing Block', reason: signing_block.error.code }] : []),
       ...(is_aab && bundle_config.status !== 'decoded' ? [{ path: 'BundleConfig.pb', reason: bundle_config.status }] : []),
+      ...resource_tables.tables.filter(item => item.status !== 'decoded').map(item => ({ path: item.path, reason: item.status })),
       ...reported_manifest_entries.filter(entry => duplicate_manifest_paths.has(entry.name)).map(entry => ({
         path: entry.name.slice(0, max_archive_entry_path_length), reason: 'duplicate-path',
       })),
@@ -727,6 +857,17 @@ export function render_android_package_markdown(report) {
       if (config.coverage.unknown_fields > 0) lines.push('- BundleConfig unknown fields preserved as skipped metadata: ' + config.coverage.unknown_fields);
     }
     lines.push('- Modules reported: ' + report.bundle.modules_reported + ' / ' + report.bundle.module_count);
+    lines.push('- Resource tables decoded: ' + report.bundle.resource_tables.tables.filter(item => item.status === 'decoded').length +
+      ' / ' + report.bundle.resource_tables.count + ' (' + report.bundle.resource_tables.bytes_used + ' bytes charged)');
+    if (report.bundle.resource_tables.omitted > 0) lines.push('- Resource table outputs omitted by configured table limit: ' + report.bundle.resource_tables.omitted);
+    if (report.bundle.resource_tables.tables.length > 0) {
+      lines.push('', '| Module | resources.pb status | Packages | Types | Entries |', '|---|---|---:|---:|---:|');
+      for (const item of report.bundle.resource_tables.tables) {
+        const summary = item.table?.summary;
+        lines.push('| ' + markdown_cell(item.module) + ' | ' + markdown_cell(item.status) + ' | ' +
+          (summary?.package_count ?? '—') + ' | ' + (summary?.type_count ?? '—') + ' | ' + (summary?.entry_count ?? '—') + ' |');
+      }
+    }
     lines.push('', '| Module | Manifest | DEX | Native libraries | resources.pb | res/ | assets/ | root/ |', '|---|---:|---:|---:|---|---:|---:|---:|');
     for (const item of report.bundle.modules) {
       lines.push('| ' + markdown_cell(item.name) + ' | ' + String(item.manifest_present) + ' | ' + item.dex_entries + ' | ' + item.native_libraries + ' | ' + String(item.resources_pb_present) + ' | ' + item.resource_paths + ' | ' + item.asset_paths + ' | ' + item.root_paths + ' |');
