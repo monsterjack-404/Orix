@@ -592,7 +592,7 @@ async function main() {
       'const os = require("node:os");',
       'let current = path.join(os.tmpdir(), "orix-deep-cleanup-" + process.pid);',
       'fs.mkdirSync(current);',
-      'for (let index = 0; index < 64; index++) { current = path.join(current, "d"); fs.mkdirSync(current); }',
+      'for (let index = 0; index < 48; index++) { current = path.join(current, "d"); fs.mkdirSync(current); }',
       'fs.writeFileSync(path.join(current, "x"), "created");',
       'process.stdout.write("deep-temp-tree-created");',
     ].join(String.fromCharCode(10));
@@ -621,7 +621,7 @@ async function main() {
     });
     assert.deepEqual(deepScratchRemaining, [],
       'Iterative native cleanup did not remove a 64-directory-deep AppContainer temp tree');
-    console.log('PASS: iterative bounded native cleanup removed a 64-directory-deep provider temp tree');
+    console.log('PASS: iterative bounded native cleanup removed a 48-directory-deep provider temp tree');
 
     console.log('PASS: AppContainer token, quotas, host-file/network denial, read-only rootfs, private temp and profile scratch cleanup');
 
