@@ -225,6 +225,20 @@ function inspect_resource_tables(buffer, entries, central_directory_offset, opti
     const separator = entry.name.indexOf('/');
     const module = entry.name.slice(0, separator);
     const base = { module, path: entry.name, uncompressed_size: entry.uncompressed_size };
+    // Module resources must be regular, safe archive members. Parsing happens
+    // in memory, but an unsafe path or symlink is not a trustworthy AAB file.
+    if (entry.is_symlink) {
+      tables.push({ ...base, status: 'symlink', table: null });
+      continue;
+    }
+    if (entry.unsafe_path || module === '.' || module === '..' || module.includes('\\') || module.includes(':')) {
+      tables.push({ ...base, status: 'unsafe-path', table: null });
+      continue;
+    }
+    if (entry.is_directory) {
+      tables.push({ ...base, status: 'not-regular-file', table: null });
+      continue;
+    }
     if ((counts.get(entry.name) ?? 0) > 1) {
       tables.push({ ...base, status: 'duplicate-path', table: null });
       continue;
