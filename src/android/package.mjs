@@ -516,8 +516,10 @@ export function analyze_android_package(buffer, options = {}) {
       bundle_config: options.bundle_config,
     })
     : { status: 'not-applicable', path: null, uncompressed_size: null, config: null };
+  // Keep the raw ZIP inventory for resource-table diagnostics so unsafe
+  // paths and symlink records can be reported without ever parsing them.
   const resource_tables = is_aab
-    ? inspect_resource_tables(buffer, entries, archive.archive.central_directory_offset, {
+    ? inspect_resource_tables(buffer, archive.entries, archive.archive.central_directory_offset, {
       max_resource_table_bytes,
       max_resource_table_total_bytes,
       max_resource_tables,
