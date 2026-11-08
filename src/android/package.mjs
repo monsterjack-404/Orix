@@ -6,6 +6,7 @@ import { parse_dex } from '../formats/dex.mjs';
 import { parse_android_binary_xml } from './binary-xml.mjs';
 import { parse_android_proto_xml } from './proto-xml.mjs';
 import { parse_android_bundle_config } from './bundle-config.mjs';
+import { parse_android_resource_table } from './resources-table.mjs';
 import { constants as fs_constants, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { hash_buffer } from '../core/hash.mjs';
@@ -187,6 +188,78 @@ function inspect_bundle_config(buffer, entries, central_directory_offset, option
       error: { code: error.code ?? 'ORIX_BUNDLE_CONFIG_ERROR', message: error.message },
     };
   }
+}
+
+
+function inspect_resource_tables(buffer, entries, central_directory_offset, options = {}) {
+  const max_bytes = options.max_resource_table_bytes ?? 4 * 1024 * 1024;
+  const max_total_bytes = options.max_resource_table_total_bytes ?? 64 * 1024 * 1024;
+  const max_tables = options.max_resource_tables ?? 256;
+  if (!Number.isSafeInteger(max_bytes) || max_bytes < 1 || max_bytes > 64 * 1024 * 1024) {
+    throw new TypeError('max_resource_table_bytes must be between 1 and 67108864');
+  }
+  if (!Number.isSafeInteger(max_total_bytes) || max_total_bytes < 1 || max_total_bytes > 256 * 1024 * 1024) {
+    throw new TypeError('max_resource_table_total_bytes must be between 1 and 268435456');
+  }
+  if (!Number.isSafeInteger(max_tables) || max_tables < 1 || max_tables > 4096) {
+    throw new TypeError('max_resource_tables must be between 1 and 4096');
+  }
+  const matches = entries.filter(entry => entry.name.includes('/') && entry.name.endsWith('/resources.pb'));
+  const counts = new Map();
+  for (const entry of matches) counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
+  const tables = [];
+  let total_bytes_used = 0;
+  let omitted = 0;
+  for (const entry of matches) {
+    if (tables.length >= max_tables) {
+      omitted += 1;
+      continue;
+    }
+    const separator = entry.name.indexOf('/');
+    const module = entry.name.slice(0, separator);
+    const base = { module, path: entry.name, uncompressed_size: entry.uncompressed_size };
+    if ((counts.get(entry.name) ?? 0) > 1) {
+      tables.push({ ...base, status: 'duplicate-path', table: null });
+      continue;
+    }
+    if (entry.uncompressed_size > max_bytes) {
+      tables.push({ ...base, status: 'size-limit', table: null });
+      continue;
+    }
+    if (total_bytes_used + entry.uncompressed_size > max_total_bytes) {
+      tables.push({ ...base, status: 'aggregate-size-limit', table: null });
+      continue;
+    }
+    // Reserve declared output before decompression; malformed entries do not
+    // receive a fresh aggregate budget on a subsequent path.
+    total_bytes_used += entry.uncompressed_size;
+    const data = local_entry_data(buffer, entry, max_bytes, central_directory_offset);
+    if (data.status !== 'available') {
+      tables.push({ ...base, status: data.status, table: null });
+      continue;
+    }
+    try {
+      const table = parse_android_resource_table(data.bytes, {
+        max_file_bytes: max_bytes,
+        ...(options.resource_table ?? {}),
+      });
+      tables.push({ ...base, status: 'decoded', table });
+    } catch (error) {
+      tables.push({
+        ...base,
+        status: 'malformed',
+        table: null,
+        error: { code: error.code ?? 'ORIX_RESOURCE_TABLE_ERROR', message: error.message },
+      });
+    }
+  }
+  return {
+    count: matches.length,
+    reported: tables.length,
+    omitted,
+    bytes_used: total_bytes_used,
+    tables,
+  };
 }
 
 const APK_SIGNING_BLOCK_MAGIC = Buffer.from('APK Sig Block 42', 'ascii');
