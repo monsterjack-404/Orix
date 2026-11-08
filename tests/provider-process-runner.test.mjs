@@ -5,7 +5,11 @@ import assert from 'node:assert/strict';
 import { chmod, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { run_static_provider } from '../src/providers/process-runner.mjs';
+import { run_static_provider as run_static_provider_impl } from '../src/providers/process-runner.mjs';
+
+// All legacy process-control tests make the unsandboxed choice explicit. Tests
+// for the public default use the implementation directly below.
+const run_static_provider = options => run_static_provider_impl({ isolation: 'none', ...options });
 
 function manifest(overrides = {}) {
   return {
@@ -44,6 +48,18 @@ async function node_executable() {
   return realpath(process.execPath);
 }
 
+test('static provider runner refuses an implicit unsandboxed execution policy', async () => {
+  await assert.rejects(
+    run_static_provider_impl({
+      manifest: manifest(),
+      executable: await node_executable(),
+      args: ['-e', 'process.exit(0)'],
+    }),
+    /isolation must be explicitly set/,
+  );
+});
+
+
 test('static provider runner uses argv without shell interpolation and returns bounded diagnostics', async () => {
   const result = await run_static_provider({
     manifest: manifest(),
@@ -53,6 +69,8 @@ test('static provider runner uses argv without shell interpolation and returns b
     timeout_ms: 1000,
   });
   assert.equal(result.ok, true);
+  assert.equal(result.isolation, 'none');
+  assert.equal(result.isolation_enforced, false);
   assert.equal(result.schema_version, 'orix.provider-execution.v1');
   assert.equal(result.success, true);
   assert.equal(result.termination_reason, null);

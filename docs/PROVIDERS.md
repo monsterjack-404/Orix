@@ -1,6 +1,6 @@
 # ORIX Provider Manifests and Registry
 
-The provider layer validates metadata, maintains an in-memory capability catalog, and supports an opt-in bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, or grant authorization. Process execution is not sandboxed by default. On Linux, the separate `isolation: 'required'` mode combines Bubblewrap namespace/filesystem isolation with per-run cgroup v2 resource limits; it requires an administrator-delegated `ORIX_CGROUP_PARENT` and fails closed when that host setup is unavailable. Windows and macOS have no enforced backend. ORIX does not claim that a provider is available before it has actually been located and invoked.
+The provider layer validates metadata, maintains an in-memory capability catalog, and supports a bounded runner for explicitly declared static providers. It does **not** load JavaScript plugins, install software, or grant authorization. Every process execution must explicitly select `isolation: 'none'` (unsandboxed process-control mode) or `isolation: 'required'` (enforced Linux Bubblewrap plus delegated cgroup v2 limits). Omitting the policy is rejected before launch. Windows and macOS have no enforced backend and reject required isolation. ORIX does not claim that a provider is available before it has actually been located and invoked.
 
 
 
@@ -116,6 +116,7 @@ const result = await run_static_provider({
   args: ['-N', '-q', '-c', 'iij', '/evidence/sample.bin'],
   timeout_ms: 30000,
   max_output_bytes: 4 * 1024 * 1024,
+  isolation: 'none', // explicit unsandboxed legacy process-control mode
 });
 
 if (!result.ok) {
@@ -125,7 +126,7 @@ if (!result.ok) {
 
 On POSIX, the runner checks for remaining members of the provider's process group when the leader exits; it sends SIGTERM, escalates to SIGKILL after the configured grace period, and then waits up to five additional seconds for the kernel to report that the group is empty. If the group remains present, the execution is marked unsuccessful with `process-group-cleanup-failed`. This does not catch descendants that deliberately create a new session/process group, and it is not a kernel-owned process-tree container. Windows legacy mode signals only the direct child; process-tree teardown is not guaranteed.
 
-Without `isolation: 'required'`, this runner is a process-control boundary, **not an operating-system sandbox**: it cannot force a declared-static executable to avoid network access, filesystem writes, child processes, or malicious behavior. On Linux, explicit `isolation: 'required'` combines Bubblewrap's private namespaces/read-only rootfs with a dedicated per-run cgroup v2 leaf. It fails closed unless the rootfs, Bubblewrap/prlimit binaries, delegated cgroup parent and required kernel controls are available. The fixed host policy is `cpu.max=50000 100000` (50% of one CPU's bandwidth), `memory.max=512 MiB`, `memory.swap.max=0`, `memory.oom.group=1`, and `pids.max=64`; inherited per-process limits cap CPU time at 60 seconds, file size at 64 MiB, open files at 256, and core dumps at zero. CPU bandwidth is not a total CPU-time budget. Timeout, cancellation, output overflow and normal completion trigger verified cgroup teardown; the runner does not report success when cleanup fails. The default remains `isolation: 'none'`. Windows and macOS reject required isolation. Windows process-tree teardown is not guaranteed. Do not treat the default runner as safe for hostile binaries.
+`isolation: 'none'` is an explicit unsandboxed process-control choice, **not an operating-system sandbox**: it cannot confine filesystem access, networking or malicious descendants. Omitting `isolation` is rejected before launch. On Linux, `isolation: 'required'` combines Bubblewrap's private namespaces/read-only rootfs with a dedicated per-run cgroup v2 leaf. It fails closed unless the rootfs, Bubblewrap/prlimit binaries, delegated cgroup parent and required kernel controls are available. The fixed host policy is `cpu.max=50000 100000` (50% of one CPU's bandwidth), `memory.max=512 MiB`, `memory.swap.max=0`, `memory.oom.group=1`, and `pids.max=64`; inherited per-process limits cap CPU time at 60 seconds, file size at 64 MiB, open files at 256, and core dumps at zero. CPU bandwidth is not a total CPU-time budget. Timeout, cancellation, output overflow and normal completion trigger verified cgroup teardown; the runner does not report success when cleanup fails. Windows and macOS reject required isolation. Windows process-tree teardown is not guaranteed. Do not treat `none` mode as safe for hostile binaries.
 
 ## 5. Rizin import adapter
 
@@ -137,6 +138,7 @@ import { analyze_rizin_imports } from '@orix/cli';
 const report = await analyze_rizin_imports({
   executable: '/opt/rizin/bin/rizin',
   input_path: '/evidence/sample.elf',
+  isolation: 'none', // explicit unsandboxed process-control mode
 });
 
 console.log(report.provider.engine_version);
@@ -149,7 +151,7 @@ The adapter report contract is defined in [rizin-imports.v1.schema.json](../sche
 
 ### Opt-in Linux process isolation
 
-The Rizin JavaScript adapter functions `analyze_rizin_imports`, `analyze_rizin_functions`, and `probe_rizin` accept the same optional `isolation` and `sandbox_root` fields as `run_static_provider`. The default remains `isolation: 'none'`. On Linux, request the required Bubblewrap + cgroup v2 backend explicitly:
+The Rizin JavaScript adapter functions `analyze_rizin_imports`, `analyze_rizin_functions`, and `probe_rizin` accept the same `isolation` and `sandbox_root` fields as `run_static_provider`. The caller must explicitly choose `isolation: 'none'` or `isolation: 'required'`. On Linux, request the required Bubblewrap + cgroup v2 backend explicitly:
 
 ~~~js
 const report = await analyze_rizin_imports({
@@ -182,6 +184,7 @@ const report = await analyze_rizin_functions({
   address: '0x401000',
   max_instructions: 100,
   decompile: true, // optional; requires rz-ghidra to be installed in Rizin
+  isolation: 'none', // explicit unsandboxed process-control mode
 });
 
 console.log(report.functions);
@@ -202,7 +205,7 @@ node src/cli.mjs providers list --json
 Check an explicit Rizin installation without opening an artifact:
 
 ~~~sh
-node src/cli.mjs providers rizin doctor --executable /opt/rizin/bin/rizin --json
+node src/cli.mjs providers rizin doctor --executable /opt/rizin/bin/rizin --isolation none --json
 ~~~
 
 The doctor command launches only the version probe. It never searches PATH and does not prove that all Rizin analysis commands work.
@@ -215,7 +218,8 @@ node src/cli.mjs providers rizin imports ./sample.elf \
   --format json \
   --timeout-ms 30000 \
   --max-output-kib 4096 \
-  --max-imports 100000
+  --max-imports 100000 \
+  --isolation none
 ~~~
 
 The timeout applies to the complete adapter workflow, including the version and import probes. The output cap is applied per process and covers combined stdout/stderr capture. The Markdown renderer displays at most 2,000 rows by default; use JSON to preserve the complete normalized result.
@@ -223,8 +227,8 @@ The timeout applies to the complete adapter workflow, including the version and 
 Run bounded function inventory and an optional instruction window:
 
 ~~~sh
-orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --max-functions 10000 --json
-orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --address 0x401000 --max-instructions 100 --json
+orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --max-functions 10000 --isolation none --json
+orix providers rizin functions ./sample.elf --executable /opt/rizin/bin/rizin --address 0x401000 --max-instructions 100 --isolation none --json
 ~~~
 
 

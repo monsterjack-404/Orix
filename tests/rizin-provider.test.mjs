@@ -6,7 +6,26 @@ import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { analyze_rizin_imports, analyze_rizin_functions, probe_rizin, RIZIN_PROVIDER_MANIFEST } from '../src/providers/rizin.mjs';
+import {
+  analyze_rizin_imports as analyze_rizin_imports_impl,
+  analyze_rizin_functions as analyze_rizin_functions_impl,
+  probe_rizin as probe_rizin_impl,
+  RIZIN_PROVIDER_MANIFEST,
+} from '../src/providers/rizin.mjs';
+
+// Normal adapter tests explicitly exercise the unsandboxed legacy path. The
+// separate fail-closed regression calls the actual exports without a policy.
+const analyze_rizin_imports = options => analyze_rizin_imports_impl({ isolation: 'none', ...options });
+const analyze_rizin_functions = options => analyze_rizin_functions_impl({ isolation: 'none', ...options });
+const probe_rizin = options => probe_rizin_impl({ isolation: 'none', ...options });
+
+test('Rizin adapter refuses an implicit unsandboxed provider policy', async () => {
+  await assert.rejects(
+    probe_rizin_impl({ executable: await realpath(process.execPath) }),
+    /isolation must be explicitly set/,
+  );
+});
+
 import { create_rizin_snapshot_directory } from '../src/providers/rizin-snapshot.mjs';
 
 const RIZIN_STUB = fileURLToPath(new URL('./fixtures/rizin-stub.mjs', import.meta.url));
