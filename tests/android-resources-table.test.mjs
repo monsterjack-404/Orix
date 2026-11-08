@@ -629,6 +629,15 @@ test('ResourceTable validates binary string-pool style tables and END-terminated
     () => parse_android_resource_table(field_bytes(1, field_bytes(1, unterminated))),
     error => error.code === 'ORIX_RESOURCE_TABLE_STRING_POOL_STYLE_TERMINATOR',
   );
+
+  const out_of_range_span = Buffer.from(styled_pool);
+  const out_of_range_styles_start = out_of_range_span.readUInt32LE(24);
+  out_of_range_span.writeUInt32LE('bold'.length, out_of_range_styles_start + 8);
+  assert.throws(
+    () => parse_android_resource_table(field_bytes(1, field_bytes(1, out_of_range_span))),
+    error => error.code === 'ORIX_RESOURCE_TABLE_STRING_POOL_STYLE_SPAN_RANGE',
+    'A style span last_char must be inside the associated UTF-16 string',
+  );
 });
 
 test('ResourceTable source-pool UTF-8 lengths support two-byte length prefixes', () => {
