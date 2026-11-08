@@ -40,7 +40,13 @@ function require_crypto() {
 }
 import * as crypto_module from 'node:crypto';
 
-function create_semantic_dex({ catch_handler_size_bytes = null } = {}) {
+function create_semantic_dex({
+  catch_handler_size_bytes = null,
+  code_words = [0x000e],
+  try_start_addr = 0,
+  try_insn_count = code_words.length,
+  typed_handler_address = 0,
+} = {}) {
   const strings = ['I', 'Lcom/example/App;', 'Ljava/lang/Object;', 'V', 'run', 'value'];
   const string_ids_off = 112;
   const type_ids_off = string_ids_off + strings.length * 4;
@@ -65,9 +71,11 @@ function create_semantic_dex({ catch_handler_size_bytes = null } = {}) {
   const code_off = align4(class_data_off + 10);
   const has_catch_handlers = Array.isArray(catch_handler_size_bytes);
   const handler_bytes = has_catch_handlers
-    ? Buffer.from([1, ...catch_handler_size_bytes, 0, 0, 0])
+    ? Buffer.from([1, ...catch_handler_size_bytes, 0, typed_handler_address, 0])
     : Buffer.alloc(0);
-  const code_item_size = 16 + 2 + (has_catch_handlers ? 2 + 8 + handler_bytes.length : 0);
+  const code_padding_bytes = has_catch_handlers && (code_words.length & 1) ? 2 : 0;
+  const code_item_size = 16 + code_words.length * 2 +
+    (has_catch_handlers ? code_padding_bytes + 8 + handler_bytes.length : 0);
   const map_off = align4(code_off + code_item_size);
   const map_items = [
     [0x0000, 1, 0],
@@ -147,13 +155,14 @@ function create_semantic_dex({ catch_handler_size_bytes = null } = {}) {
   buffer.writeUInt16LE(0, code_off + 4);
   buffer.writeUInt16LE(has_catch_handlers ? 1 : 0, code_off + 6);
   buffer.writeUInt32LE(0, code_off + 8);
-  buffer.writeUInt32LE(1, code_off + 12);
-  buffer.writeUInt16LE(0x000e, code_off + 16); // return-void; deliberately not decoded by ORIX.
+  buffer.writeUInt32LE(code_words.length, code_off + 12);
+  code_words.forEach((word, index) => buffer.writeUInt16LE(word, code_off + 16 + index * 2));
   if (has_catch_handlers) {
-    const try_item = code_off + 20; // 16-byte header, one code unit, and two-byte alignment padding.
-    buffer.writeUInt16LE(0, code_off + 18);
-    buffer.writeUInt32LE(0, try_item);
-    buffer.writeUInt16LE(1, try_item + 4);
+    const instructions_end = code_off + 16 + code_words.length * 2;
+    if (code_padding_bytes) buffer.writeUInt16LE(0, instructions_end);
+    const try_item = instructions_end + code_padding_bytes;
+    buffer.writeUInt32LE(try_start_addr, try_item);
+    buffer.writeUInt16LE(try_insn_count, try_item + 4);
     buffer.writeUInt16LE(1, try_item + 6); // First handler starts one byte after the list count.
     handler_bytes.copy(buffer, try_item + 8);
   }
@@ -167,6 +176,16 @@ function create_semantic_dex({ catch_handler_size_bytes = null } = {}) {
     buffer.writeUInt32LE(offset, position + 8);
   });
   return finalize_integrity(buffer);
+}
+
+function code_item_offset(buffer) {
+  const map_off = buffer.readUInt32LE(52);
+  const map_count = buffer.readUInt32LE(map_off);
+  for (let index = 0; index < map_count; index += 1) {
+    const item = map_off + 4 + index * 12;
+    if (buffer.readUInt16LE(item) === 0x2001) return buffer.readUInt32LE(item + 8);
+  }
+  throw new Error('Fixture is missing its code_item map entry');
 }
 
 test('DEX semantic parser inventories prototypes, fields, methods, class data and bounded code headers', () => {
@@ -185,6 +204,46 @@ test('DEX semantic parser inventories prototypes, fields, methods, class data an
   assert.deepEqual(parsed.class_data[0].direct_methods[0].code.instructions.map(item => item.mnemonic), ['return-void']);
   assert.equal(parsed.integrity.adler32_verified, true);
   assert.equal(parsed.integrity.signature_sha1_verified, true);
+});
+
+test('DEX try ranges and catch handlers must reference instruction boundaries', () => {
+  const instructions = [0x0013, 0x0000]; // const/16 v0, #0 spans code units 0 and 1.
+  const invalid_try_start = create_semantic_dex({
+    catch_handler_size_bytes: [0x01],
+    code_words: instructions,
+    try_start_addr: 1,
+    try_insn_count: 1,
+  });
+  assert.throws(
+    () => parse_dex(invalid_try_start),
+    error => error.code === 'ORIX_DEX_BYTECODE_CODE_ADDRESS',
+    'try_item.start_addr must point to the first code unit of an instruction',
+  );
+
+  const invalid_try_end = create_semantic_dex({
+    catch_handler_size_bytes: [0x01],
+    code_words: instructions,
+    try_start_addr: 0,
+    try_insn_count: 1,
+  });
+  assert.throws(
+    () => parse_dex(invalid_try_end),
+    error => error.code === 'ORIX_DEX_BYTECODE_CODE_ADDRESS',
+    'try_item end must not split a multi-code-unit instruction',
+  );
+
+  const invalid_handler = create_semantic_dex({
+    catch_handler_size_bytes: [0x01],
+    code_words: instructions,
+    try_start_addr: 0,
+    try_insn_count: 2,
+    typed_handler_address: 1,
+  });
+  assert.throws(
+    () => parse_dex(invalid_handler),
+    error => error.code === 'ORIX_DEX_BYTECODE_CODE_ADDRESS',
+    'catch handler addresses must point to the first code unit of an instruction',
+  );
 });
 
 test('DEX semantic parser rejects an encoded method index outside method_ids', () => {
