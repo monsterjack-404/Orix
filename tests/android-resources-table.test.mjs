@@ -199,7 +199,7 @@ test('ResourceTable validates AOSP Source, Visibility, AllowNew, OverlayableItem
     'StagedId.staged_id must be a uint32 varint',
   );
 
-  const invalid_visibility = field_bytes(3, field_varint(2, 123));
+  const invalid_visibility = field_varint(2, 123);
   assert.throws(
     () => parse_android_resource_table(resource_table_fixture({ visibility_metadata: invalid_visibility })),
     error => error.code === 'ORIX_RESOURCE_TABLE_WIRE_MISMATCH',
