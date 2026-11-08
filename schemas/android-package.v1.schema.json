@@ -190,7 +190,12 @@
         },
         "bundle_config_present": {
           "type": "boolean"
-        }
+        },
+        "resource_tables": { "type": "integer", "minimum": 0 },
+        "resource_tables_reported": { "type": "integer", "minimum": 0 },
+        "resource_tables_omitted": { "type": "integer", "minimum": 0 },
+        "resource_table_packages": { "type": "integer", "minimum": 0 },
+        "resource_table_entries": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": false
     },
@@ -907,7 +912,8 @@
         "modules_omitted",
         "modules",
         "module_semantics_decoded",
-        "bundle_config"
+        "bundle_config",
+        "resource_tables"
       ],
       "properties": {
         "status": {
@@ -918,6 +924,47 @@
         },
         "bundle_config_present": {
           "type": "boolean"
+        },
+        "resource_tables": {
+          "$ref": "#/properties/bundle/properties/resource_tables"
+        },
+        "resource_tables": {
+          "type": "object",
+          "required": ["count", "reported", "omitted", "bytes_used", "tables"],
+          "properties": {
+            "count": { "type": "integer", "minimum": 0 },
+            "reported": { "type": "integer", "minimum": 0 },
+            "omitted": { "type": "integer", "minimum": 0 },
+            "bytes_used": { "type": "integer", "minimum": 0 },
+            "tables": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["module", "path", "uncompressed_size", "status", "table"],
+                "properties": {
+                  "module": { "type": "string" },
+                  "path": { "type": "string" },
+                  "uncompressed_size": { "type": "integer", "minimum": 0 },
+                  "status": {
+                    "enum": [
+                      "decoded", "duplicate-path", "entry-limit", "size-limit", "aggregate-size-limit",
+                      "encrypted", "unsupported-compression", "invalid-local-range", "invalid-local-header",
+                      "local-header-mismatch", "size-mismatch", "decompression-failed", "crc-mismatch", "malformed"
+                    ]
+                  },
+                  "table": {
+                    "oneOf": [
+                      { "type": "null" },
+                      { "$ref": "https://orix.dev/schemas/android-resource-table.v1.schema.json" }
+                    ]
+                  },
+                  "error": { "type": "object", "additionalProperties": true }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
         },
         "bundle_config": {
           "type": "object",
