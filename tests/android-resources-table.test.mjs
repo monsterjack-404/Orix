@@ -455,9 +455,10 @@ test('ResourceTable parser skips and counts unknown wire-valid fields', () => {
 });
 
 test('ResourceTable parser rejects duplicate singular fields and malformed oneof variants', () => {
+  const valid_source_pool = field_bytes(1, android_string_pool(['res/values/strings.xml']));
   const duplicate_source_pool = Buffer.concat([
-    field_bytes(1, Buffer.alloc(0)),
-    field_bytes(1, Buffer.alloc(0)),
+    field_bytes(1, valid_source_pool),
+    field_bytes(1, valid_source_pool),
   ]);
   assert.throws(
     () => parse_android_resource_table(duplicate_source_pool),
