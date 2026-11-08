@@ -2,6 +2,7 @@
 // provider-visible filesystem; it is mounted read-only except for an ephemeral /tmp.
 // No host home, project tree, credentials, or network namespace is exposed by default.
 
+import { execFileSync } from 'node:child_process';
 import { access, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +17,34 @@ function within(root, candidate) {
   const relative = path.relative(root, candidate);
   return relative === '' || (relative !== '..' &&
     !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
+}
+
+const MINIMUM_BUBBLEWRAP_VERSION = Object.freeze([0, 12, 0]);
+
+/**
+ * Bubblewrap <0.12.0 is vulnerable to GHSA-pxhw-h44j-8pfx / CVE-2026-87766,
+ * which can follow an untrusted sandbox-root symlink into the host while the
+ * sandbox is being prepared. Reject unknown, malformed and prerelease labels.
+ */
+export function assess_bubblewrap_version(output) {
+  if (typeof output !== 'string') return Object.freeze({ supported: false, version: null });
+  const match = /^\\s*bubblewrap\\s+v?(\\d+)\\.(\\d+)\\.(\\d+)\\s*$/i.exec(output);
+  if (!match) return Object.freeze({ supported: false, version: null });
+  const version = match.slice(1, 4).map(Number);
+  if (!version.every(Number.isSafeInteger)) return Object.freeze({ supported: false, version: null });
+  let supported = true;
+  for (let index = 0; index < MINIMUM_BUBBLEWRAP_VERSION.length; index += 1) {
+    if (version[index] > MINIMUM_BUBBLEWRAP_VERSION[index]) break;
+    if (version[index] < MINIMUM_BUBBLEWRAP_VERSION[index]) {
+      supported = false;
+      break;
+    }
+  }
+  return Object.freeze({
+    supported,
+    version: version.join('.'),
+    minimum_version: MINIMUM_BUBBLEWRAP_VERSION.join('.'),
+  });
 }
 
 export function assess_trusted_system_path_component(metadata, expected_type = 'directory') {
@@ -106,13 +135,43 @@ async function resolve_trusted_executable(candidates, label) {
 }
 
 async function resolve_bwrap() {
-  // CI builds a checksum-verified Bubblewrap into /usr/local/bin. Only fixed
-  // root-owned, non-group/other-writable paths are trusted; PATH is never searched.
-  return resolve_trusted_executable([
-    '/usr/bin/bwrap',
+  // Prefer the CI-built, checksum-verified copy. System installations are
+  // accepted only after the same root-owned path checks and a runtime version
+  // probe; PATH is never searched.
+  const canonical = await resolve_trusted_executable([
     '/usr/lib/orix-system-binaries/bin/bwrap',
+    '/usr/bin/bwrap',
     '/bin/bwrap',
   ], 'bubblewrap');
+  let version_output;
+  try {
+    version_output = execFileSync(canonical, ['--version'], {
+      encoding: 'utf8',
+      timeout: 3000,
+      maxBuffer: 4096,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+  } catch (error) {
+    isolation_error(
+      'ORIX_PROVIDER_BUBBLEWRAP_VERSION_UNVERIFIED',
+      'Bubblewrap version could not be verified; required isolation will not start',
+      { path: canonical, reason: error.code ?? error.name ?? 'version-probe-failed' },
+    );
+  }
+  const assessment = assess_bubblewrap_version(version_output);
+  if (!assessment.supported) {
+    isolation_error(
+      'ORIX_PROVIDER_BUBBLEWRAP_VERSION_UNSUPPORTED',
+      'Bubblewrap 0.12.0 or newer is required due to GHSA-pxhw-h44j-8pfx / CVE-2026-87766',
+      {
+        path: canonical,
+        reported_version: String(version_output).trim().slice(0, 128),
+        minimum_version: MINIMUM_BUBBLEWRAP_VERSION.join('.'),
+      },
+    );
+  }
+  return canonical;
 }
 
 async function resolve_prlimit() {
