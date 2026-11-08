@@ -130,7 +130,7 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.equal(androidResourceTable.additionalProperties, false);
   assert.ok(androidResourceTable.properties.coverage.required.includes('unknown_fields'));
   assert.ok(androidResourceTable.properties.summary.required.includes('entry_count'));
-  assert.ok(androidResourceTable.properties.required.includes('source_pool_encoding'));
+  assert.ok(androidResourceTable.required.includes('source_pool_encoding'));
   assert.ok(androidResourceTable.properties.source_paths.items.required.includes('reference_count'));
   assert.ok(androidResourceTable.properties.summary.required.includes('source_paths_resolved'));
 });
