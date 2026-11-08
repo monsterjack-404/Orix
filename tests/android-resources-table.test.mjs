@@ -421,6 +421,12 @@ test('ResourceTable validates known nested compound-value protobuf schemas witho
     const value = Buffer.concat([field_varint(3, 1), field_bytes(5, compound)]);
     const parsed = parse_android_resource_table(resource_table_fixture({ value_contents: value }));
     assert.equal(parsed.summary.compound_kinds[kind], 1, kind + ' compound value should remain inventoried');
+    const expectedReferences = { attribute: 1, style: 3, styleable: 1, array: 1, plural: 1, macro: 0 };
+    assert.equal(
+      parsed.summary.reference_count,
+      expectedReferences[kind],
+      kind + ' nested ResourceTable references must be included in the summary count',
+    );
   }
 
   const malformed_attribute = field_bytes(1, field_bytes(1, Buffer.from([1])));
