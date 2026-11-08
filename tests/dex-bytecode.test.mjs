@@ -61,6 +61,26 @@ test('DEX 35c and 45cc use A as argument count and G as the fifth register', () 
   assert.deepEqual(polymorphic.instructions[0].proto_reference, { index: 0, kind: 'proto_ids' });
 });
 
+test('DEX invoke argument words must fit code_item.outs_size', () => {
+  const counts = { ...emptyCounts, method_ids: 1, type_ids: 1 };
+  const invocation = words(0x2a6e, 0x0000, 0x4321);
+  assert.throws(
+    () => decode(invocation, { registers_size: 11, counts, outs_size: 1 }),
+    error => error.code === 'ORIX_DEX_BYTECODE_OUTS_SIZE',
+  );
+  const valid = decode(invocation, { registers_size: 11, counts, outs_size: 2 });
+  assert.equal(valid.instructions[0].argument_words, 2);
+
+  // filled-new-array uses the same register-list encoding but does not consume
+  // the code_item method-invocation outgoing-argument area.
+  const filledArray = decode(words(0x2a24, 0x0000, 0x4321), {
+    registers_size: 11,
+    counts,
+    outs_size: 0,
+  });
+  assert.equal(filledArray.instructions[0].mnemonic, 'filled-new-array');
+});
+
 test('DEX decoder checks destination and source register pairs for wide conversions and literals', () => {
   const intToDouble = decode(words(0x2083), { registers_size: 3 });
   assert.deepEqual(intToDouble.instructions[0].wide_registers, [0]);
