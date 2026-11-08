@@ -110,7 +110,7 @@ async function resolve_bwrap() {
   // root-owned, non-group/other-writable paths are trusted; PATH is never searched.
   return resolve_trusted_executable([
     '/usr/bin/bwrap',
-    '/opt/orix-system-binaries/bin/bwrap',
+    '/usr/lib/orix-system-binaries/bin/bwrap',
     '/bin/bwrap',
   ], 'bubblewrap');
 }
