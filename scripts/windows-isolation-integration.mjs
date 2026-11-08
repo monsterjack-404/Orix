@@ -621,7 +621,7 @@ async function main() {
       'argument with spaces',
       'embedded "quotes"',
       'trailing-backslash\\',
-      'trailing-backslash with space\\ ',
+      'trailing-backslash with space\\',
       '',
       'Unicode: 日本語 / 🚀',
     ];
