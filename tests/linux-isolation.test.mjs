@@ -6,9 +6,30 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   assess_bubblewrap_version,
+  assess_trusted_system_path_component,
   assess_rootfs_directory_permissions,
   prepare_linux_provider_isolation,
 } from '../src/providers/linux-isolation.mjs';
+
+test('trusted system executable components require root ownership and safe modes', () => {
+  const safeDirectory = {
+    uid: 0, mode: 0o40755, is_directory: true, is_file: false, is_symlink: false,
+  };
+  const safeExecutable = {
+    uid: 0, mode: 0o100755, is_directory: false, is_file: true, is_symlink: false,
+  };
+  assert.equal(assess_trusted_system_path_component(safeDirectory, 'directory').trusted, true);
+  assert.equal(assess_trusted_system_path_component(safeExecutable, 'file').trusted, true);
+  assert.equal(assess_trusted_system_path_component({ ...safeDirectory, uid: 1000 }, 'directory').trusted, false);
+  assert.equal(assess_trusted_system_path_component({ ...safeDirectory, mode: 0o40775 }, 'directory').trusted, false);
+  assert.equal(assess_trusted_system_path_component({ ...safeDirectory, is_symlink: true }, 'directory').trusted, false);
+  assert.equal(assess_trusted_system_path_component(safeExecutable, 'directory').trusted, false);
+  assert.equal(assess_trusted_system_path_component({ ...safeExecutable, mode: 0o100775 }, 'file').trusted, false);
+  assert.equal(assess_trusted_system_path_component({ ...safeExecutable, mode: 0o104755 }, 'file').trusted, false);
+  assert.equal(assess_trusted_system_path_component({ ...safeExecutable, mode: 0o102755 }, 'file').trusted, false);
+  assert.equal(assess_trusted_system_path_component({ ...safeDirectory, uid: -1 }, 'directory').trusted, false);
+  assert.equal(assess_trusted_system_path_component({ ...safeExecutable, mode: -1 }, 'file').trusted, false);
+});
 
 test('Bubblewrap version policy blocks vulnerable releases below 0.12.0', () => {
   for (const output of [

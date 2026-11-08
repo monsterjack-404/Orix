@@ -1,11 +1,15 @@
 // Windows AppContainer + Job Object hostile-process integration gate.
 import assert from 'node:assert/strict';
-import { access, copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { access, copyFile, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
+import { execFileSync, spawn } from 'node:child_process';
 import net from 'node:net';
 import os_host from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { run_static_provider } from '../src/providers/process-runner.mjs';
+import { prepare_windows_provider_isolation } from '../src/providers/windows-isolation.mjs';
+import { decodeWindowsProviderLauncher, decodeWindowsProviderLauncherBase64, WINDOWS_PROVIDER_LAUNCHER_SHA256 } from '../src/providers/windows-launcher-integrity.mjs';
 
 function manifest() {
   return {
@@ -31,8 +35,140 @@ function manifest() {
 
 async function main() {
   assert.equal(process.platform, 'win32', 'This integration gate must run on Windows');
-  const isolationSource = await (await import('node:fs/promises')).readFile(
-    new URL('../src/providers/windows-isolation.mjs', import.meta.url), 'utf8');
+  const launcherSource = await readFile(new URL('../native/windows-provider-launcher.cs', import.meta.url), 'utf8');
+  assert.match(launcherSource, /GetSystemDirectoryW/,
+    'Native helper must resolve security-sensitive Windows utilities through the OS API');
+  assert.match(launcherSource, /if \(!process\.WaitForExit\(10000\)\)[\s\S]*?process\.Kill\(\)[\s\S]*?process\.WaitForExit\(\)[\s\S]*?throw new TimeoutException/,
+    'Timed-out icacls must be observed exited before helper cleanup can mutate its target');
+  assert.ok(launcherSource.includes('MAX_ROOTFS_TREE_DEPTH = 64') &&
+    launcherSource.includes('MAX_ROOTFS_TREE_ENTRIES = 100000'),
+    'Native rootfs validation and ACL application must have explicit depth and entry ceilings');
+  assert.ok(launcherSource.includes('MAX_CLEANUP_TREE_DEPTH = 256') &&
+    launcherSource.includes('MAX_CLEANUP_TREE_ENTRIES = 100000'),
+    'Native post-provider cleanup must have explicit depth and entry ceilings');
+  assert.match(launcherSource, /collected\.Count \+ pending\.Count >= MAX_CLEANUP_TREE_ENTRIES/,
+    'Cleanup traversal must cap both visited entries and its pending directory frontier');
+  assert.match(launcherSource, /static List<KeyValuePair<string, FileAttributes>> CollectCleanupTree[\s\S]*?new Stack<KeyValuePair<string, int>>\(\)/,
+    'Provider-controlled cleanup trees must be preflighted with an iterative bounded walker');
+  const cleanupWalkers = launcherSource.slice(
+    launcherSource.indexOf('static void PurgeTree('),
+    launcherSource.indexOf('static string Quote('),
+  );
+  assert.doesNotMatch(cleanupWalkers, /PurgeTree\(child|DeleteTreeNoReparse\(child/,
+    'Cleanup walkers must not recurse on provider-controlled directory depth');
+
+  assert.match(launcherSource, /static void TerminateAndWaitForProvider[\s\S]*?WaitForSingleObject\(job, 5000\)/,
+    'Provider teardown must wait for the assigned Job Object to become empty');
+  assert.match(launcherSource, /static void TerminateAndWaitForProvider[\s\S]*?WaitForSingleObject\(processHandle, 5000\)/,
+    'A provider process created before Job Object assignment must be terminated and observed exited');
+  assert.ok(launcherSource.includes('RUN:TEARDOWN_INCOMPLETE') &&
+    launcherSource.includes('ProviderTeardownIncompleteException'),
+    'Unverified process teardown must be surfaced as a distinct fail-closed result');
+  assert.match(launcherSource, /catch \(ProviderTeardownIncompleteException error\)[\s\S]*?return 125/,
+    'Native Main must skip AppContainer cleanup when process-tree emptiness was not confirmed');
+
+  assert.match(launcherSource,
+    /FileSystemRights volumeRootDestructiveMask = FileSystemRights\.DeleteSubdirectoriesAndFiles \|[\s\S]*?FileSystemRights deniedRights = rootfsComponent[\s\S]*?volumeRootComponent \? volumeRootDestructiveMask : ancestorDestructiveMask;/,
+    'Volume-root ACLs must ignore non-actionable DELETE on the volume object while rejecting DELETE_CHILD and ACL/ownership mutation');
+
+  assert.match(launcherSource,
+    /static bool HasAppContainerTraversalGrant\([\s\S]*?S-1-15-2-1[\s\S]*?FileSystemRights\.Traverse[\s\S]*?AccessControlType\.Deny/,
+    'Ancestor traversal must recognize built-in AppContainer group grants and must not override applicable deny ACEs');
+  assert.match(launcherSource,
+    /if \(HasAppContainerTraversalGrant\(security, sid\)\)[\s\S]*?RUN:ANCESTOR_TRAVERSE_INHERITED[\s\S]*?Directory\.SetAccessControl/,
+    'The helper must not rewrite protected ancestors when AppContainer traverse is already granted');
+  assert.match(launcherSource,
+    /GetAccessRules\(true, false, typeof\(SecurityIdentifier\)\)[\s\S]*?hasExplicitProfileRule[\s\S]*?Directory\.SetAccessControl/,
+    'Ancestor cleanup must rewrite only directories where this profile inserted an explicit traversal ACE');
+
+  const collectorStart = launcherSource.indexOf('static List<KeyValuePair<string, FileAttributes>> CollectCleanupTree(');
+  const purgeStart = launcherSource.indexOf('static void PurgeTree(');
+  const deleteStart = launcherSource.indexOf('static void DeleteTreeNoReparse(', purgeStart);
+  assert.ok(collectorStart >= 0 && purgeStart > collectorStart && deleteStart > purgeStart,
+    'Native helper must retain an explicit bounded AppContainer cleanup tree collector');
+  const collectorEnd = launcherSource.indexOf('static void PurgeTree(', collectorStart);
+  const collectorSource = launcherSource.slice(collectorStart, collectorEnd);
+  const purgeSource = launcherSource.slice(purgeStart, deleteStart);
+  const deleteSource = launcherSource.slice(deleteStart, launcherSource.indexOf('static string Quote(', deleteStart));
+  assert.match(collectorSource, /File\.GetAttributes\(item\.Key\)/,
+    'Cleanup preflight must inspect each directory entry before descending');
+  assert.doesNotMatch(collectorSource, /File\.Exists\(item\.Key\)|Directory\.Exists\(item\.Key\)/,
+    'Cleanup preflight must not use path existence helpers that can follow a reparse target');
+  assert.match(collectorSource, /FileAttributes\.ReparsePoint[\s\S]*?throw new InvalidOperationException\(reparseError \+ item\.Key\)/,
+    'Cleanup preflight must abort on reparse points instead of skipping them and continuing with descendant paths');
+  assert.match(purgeSource, /CollectCleanupTree\([\s\S]*?ORIX_WINDOWS_CLEANUP_REPARSE_POINT:/,
+    'ACL cleanup must preflight paths with a reparse-point failure marker');
+  assert.match(deleteSource, /CollectCleanupTree\([\s\S]*?ORIX_WINDOWS_CLEANUP_REPARSE_POINT:/,
+    'Scratch deletion must preflight paths with a reparse-point failure marker');
+  assert.match(purgeSource, /for \(int index = entries\.Count - 1; index >= 0; index--\)/,
+    'ACL cleanup must process collected entries child-first without recursion');
+  assert.match(deleteSource, /for \(int index = entries\.Count - 1; index >= 0; index--\)/,
+    'Scratch deletion must process collected entries child-first without recursion');
+  const cleanupStart = launcherSource.indexOf('public static void Cleanup(');
+  assert.ok(cleanupStart >= 0, 'Native helper must expose the explicit profile cleanup path');
+  const cleanupSource = launcherSource.slice(cleanupStart);
+  assert.match(cleanupSource, /DeriveAppContainerSidFromAppContainerName\(profileName, out sid\)[\s\S]*?if \(hr != 0\) Marshal\.ThrowExceptionForHR\(hr\)/,
+    'AppContainer SID lookup errors must fail cleanup instead of being treated as profile absence');
+  assert.doesNotMatch(cleanupSource, /ORIX_CLEANUP:NO_PROFILE/,
+    'Cleanup must not silently report success for an arbitrary SID lookup failure');
+
+
+  assert.ok(launcherSource.includes('CREATE_NEW_CONSOLE') &&
+    launcherSource.includes('STARTF_USESHOWWINDOW') &&
+    launcherSource.includes('startup.StartupInfo.lpDesktop = null') &&
+    launcherSource.includes('ORIX_WINDOWS_CONSOLE=NEW_HIDDEN;DESKTOP=INHERITED'),
+    'AppContainer console hosts must use a fresh hidden console without selecting a private desktop');
+
+  assert.ok(launcherSource.includes('DuplicateHandle(') &&
+    launcherSource.includes('DUPLICATE_SAME_ACCESS'),
+    'Native helper must duplicate standard handles instead of changing the host handle table');
+  assert.ok(
+    launcherSource.includes('DuplicateStandardHandle(GetStdHandle(-10), "stdin", inheritedStandardHandles)') &&
+    launcherSource.includes('DuplicateStandardHandle(GetStdHandle(-11), "stdout", inheritedStandardHandles)') &&
+    launcherSource.includes('DuplicateStandardHandle(GetStdHandle(-12), "stderr", inheritedStandardHandles)'),
+    'The child must receive dedicated duplicates of stdin, stdout and stderr');
+  assert.ok(launcherSource.includes('PROC_THREAD_ATTRIBUTE_HANDLE_LIST'),
+    'The child handle inheritance must remain restricted to the explicit standard-handle list');
+  assert.equal(launcherSource.includes('SetHandleInformation('), false,
+    'The helper must not alter inheritance flags on the host process standard handles');
+  assert.ok(launcherSource.includes('foreach (IntPtr inheritedHandle in inheritedStandardHandles)') &&
+    launcherSource.includes('CloseHandle(inheritedHandle)'),
+    'The helper must close its temporary standard-handle duplicates during teardown');
+  assert.doesNotMatch(launcherSource, /Environment\.GetEnvironmentVariable\("SystemRoot"\)/,
+    'Native helper must not resolve icacls.exe from inherited SystemRoot');
+  const isolationSource = await readFile(new URL('../src/providers/windows-isolation.mjs', import.meta.url), 'utf8');
+  assert.match(isolationSource, /normalizedKey === 'systemroot' \|\| normalizedKey === 'windir'/,
+    'Provider environment overrides must not replace reserved Windows runtime identity keys');
+  assert.ok(isolationSource.includes("const WINDOWS_PRIVATE_ENVIRONMENT_KEYS = new Set(['home', 'userprofile', 'appdata', 'localappdata', 'temp', 'tmp']);"),
+    'Sandbox-owned path variables must be reserved case-insensitively');
+  assert.ok(isolationSource.includes('seenProviderEnvironmentKeys.has(normalizedKey)') &&
+    isolationSource.includes('Windows provider environment contains duplicate case-insensitive keys'),
+    'Ambiguous case-variant environment keys must fail closed before native launch');
+  assert.match(isolationSource, /const trustedSystemRoot = \[process\.env\.SystemRoot, process\.env\.WINDIR\]\.find\(value => typeof value === 'string' && value\.trim\(\)\.length > 0\);[\s\S]*?providerEnvironment\.SystemRoot = trustedSystemRoot;[\s\S]*?providerEnvironment\.WINDIR = trustedSystemRoot;/,
+    'Windows runtime identity must be restored from the first non-empty trusted host value after provider overrides');
+  assert.doesNotMatch(isolationSource, /resolve_csc|csc\.exe|windows-provider-launcher\.cs/,
+    'Windows runtime must not discover a compiler or compile native helper source');
+  assert.match(isolationSource, /decodeWindowsProviderLauncher/,
+    'Windows runtime must load the prebuilt source-pinned launcher');
+  assert.match(isolationSource, /RUN:TEARDOWN_INCOMPLETE[\s\S]*?ORIX_PROVIDER_WINDOWS_TEARDOWN_UNVERIFIED/,
+    'Host cleanup must refuse to traverse AppContainer state after unverified provider teardown');
+  const packagedPayloadParts = [
+    new URL('../native/bin/win32-anycpu/launcher-payload-01.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-02.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-03.b64', import.meta.url),
+    new URL('../native/bin/win32-anycpu/launcher-payload-04.b64', import.meta.url),
+  ];
+  const packagedPayloadBase64 = (await Promise.all(packagedPayloadParts.map(url => readFile(url, 'utf8')))).join('');
+  const packagedPayload = decodeWindowsProviderLauncherBase64(packagedPayloadBase64);
+  const packagedLauncher = decodeWindowsProviderLauncher(packagedPayload);
+  assert.equal(createHash('sha256').update(packagedLauncher).digest('hex'), WINDOWS_PROVIDER_LAUNCHER_SHA256,
+    'Packaged Windows launcher does not match its source-pinned digest');
+  assert.match(isolationSource, /child\.once\('close'/,
+    'Native helper timeout handling must wait until the helper process and stdio handles are closed');
+  assert.doesNotMatch(isolationSource, /child\.once\('exit'/,
+    'Native helper lifecycle must use close, not exit, before temporary-directory cleanup');
+  assert.match(isolationSource, /timedOut = true;[\s\S]*?child\.kill\(\);[\s\S]*?child\.once\('close'/,
+    'Native helper timeout must terminate the helper and defer rejection until close');
   const timeoutRequest = isolationSource.indexOf('timedOut = true;');
   const killRequest = isolationSource.indexOf('child.kill();', timeoutRequest);
   const closeHandler = isolationSource.indexOf("child.once('close', async (code, signal) => {", killRequest);
@@ -79,6 +215,45 @@ async function main() {
     await mkdir(path.join(root, 'tmp'), { recursive: true });
     // The normal rootfs runtime must exist before both negative ACL probes.
     await copyFile(process.execPath, path.join(root, 'node.exe'));
+
+    // A failed native process-tree wait must block the later host-driven
+    // cleanup helper. Simulate the durable teardown marker before any profile
+    // has been created; cleanup must not launch a second helper or erase it.
+    const blockedTeardown = await prepare_windows_provider_isolation({
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      args: ['-e', 'process.exit(0)'],
+      env: {},
+    });
+    const blockedTeardownLog = path.join(blockedTeardown.cwd, 'provider.log');
+    const teardownMarker = 'RUN:TEARDOWN_INCOMPLETE:simulated wait failure\\n';
+    await writeFile(blockedTeardownLog, teardownMarker, 'utf8');
+    await assert.rejects(
+      blockedTeardown.cleanup(),
+      error => error.code === 'ORIX_PROVIDER_WINDOWS_TEARDOWN_UNVERIFIED',
+      'Host cleanup must refuse when the native helper could not confirm the provider Job Object is empty',
+    );
+    assert.equal(await readFile(blockedTeardownLog, 'utf8'), teardownMarker,
+      'The blocked cleanup path must not launch another helper or mutate the teardown log');
+    assert.equal((await lstat(path.join(blockedTeardown.cwd, 'orix-windows-provider-launcher.exe'))).isFile(), true,
+      'The cleanup guard must leave the helper workspace intact for recovery');
+    await rm(blockedTeardown.cwd, { recursive: true, force: true });
+
+    // Windows environment names are case-insensitive. Reject conflicting
+    // spellings before any native helper workspace or AppContainer is created.
+    await assert.rejects(
+      prepare_windows_provider_isolation({
+        executable: path.join(root, 'node.exe'),
+        cwd: path.join(root, 'work'),
+        sandbox_root: root,
+        args: ['-e', 'process.exit(0)'],
+        env: { ORIX_CASE_COLLISION: 'first', orix_case_collision: 'second' },
+      }),
+      error => error.code === 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE' &&
+        /duplicate case-insensitive keys/.test(error.message),
+      'Windows isolation must reject duplicate environment keys differing only by case',
+    );
 
     // An ACL that lets every local principal modify the provider rootfs must
     // be rejected by the native launcher before the AppContainer is created.
@@ -142,6 +317,147 @@ async function main() {
       ], { encoding: 'utf8', windowsHide: true });
     }
 
+    // A hard link inside the rootfs can alias an otherwise external file.
+    const hardLinkRoot = path.join(base, 'hardlink-rootfs');
+    await mkdir(path.join(hardLinkRoot, 'work'), { recursive: true });
+    await mkdir(path.join(hardLinkRoot, 'tmp'), { recursive: true });
+    await copyFile(process.execPath, path.join(hardLinkRoot, 'node.exe'));
+    const externalHardLinkTarget = path.join(base, 'external-hardlink-target.txt');
+    const externalHardLinkValue = 'ORIX external hard-link sentinel';
+    await writeFile(externalHardLinkTarget, externalHardLinkValue, 'utf8');
+    await link(externalHardLinkTarget, path.join(hardLinkRoot, 'linked-secret.txt'));
+
+    // The JavaScript preflight must reject the alias before staging a helper.
+    let nodeHardLinkError = null;
+    try {
+      await run_static_provider({
+        manifest: manifest(),
+        executable: path.join(hardLinkRoot, 'node.exe'),
+        cwd: path.join(hardLinkRoot, 'work'),
+        sandbox_root: hardLinkRoot,
+        isolation: 'required',
+        env: {},
+        args: ['-e', 'process.stdout.write("must-not-run")'],
+        timeout_ms: 12_000,
+        max_output_bytes: 4_096,
+      });
+    } catch (error) {
+      nodeHardLinkError = error;
+    }
+    assert.ok(nodeHardLinkError, 'Windows JavaScript preflight must reject a rootfs hard link');
+    assert.equal(nodeHardLinkError.code, 'ORIX_PROVIDER_SANDBOX_PATH_DENIED');
+    assert.match(nodeHardLinkError.message, /must not contain hard-linked files/);
+    assert.equal(await readFile(externalHardLinkTarget, 'utf8'), externalHardLinkValue,
+      'JavaScript hard-link preflight must not modify the external target');
+
+    // Invoke the package-owned native helper directly to exercise its independent
+    // handle-based link-count check, bypassing the JavaScript preflight above.
+    const hardLinkHelperWorkspace = path.join(base, 'hardlink-native-helper');
+    await mkdir(hardLinkHelperWorkspace, { recursive: true });
+    const launcherPayloadParts = [
+      new URL('../native/bin/win32-anycpu/launcher-payload-01.b64', import.meta.url),
+      new URL('../native/bin/win32-anycpu/launcher-payload-02.b64', import.meta.url),
+      new URL('../native/bin/win32-anycpu/launcher-payload-03.b64', import.meta.url),
+      new URL('../native/bin/win32-anycpu/launcher-payload-04.b64', import.meta.url),
+    ];
+    const launcherPayloadBase64 = (await Promise.all(launcherPayloadParts.map(url => readFile(url, 'utf8')))).join('');
+    const launcherPayload = decodeWindowsProviderLauncherBase64(launcherPayloadBase64);
+    const launcherBytes = decodeWindowsProviderLauncher(launcherPayload);
+    const nativeLauncher = path.join(hardLinkHelperWorkspace, 'orix-windows-provider-launcher.exe');
+    await writeFile(nativeLauncher, launcherBytes);
+    const nativeConfigPath = path.join(hardLinkHelperWorkspace, 'hardlink-provider.json');
+    const nativeLogPath = path.join(hardLinkHelperWorkspace, 'hardlink-provider.log');
+    const trustedSystemRoot = process.env.SystemRoot || process.env.WINDIR;
+    await writeFile(nativeConfigPath, JSON.stringify({
+      executable: path.join(hardLinkRoot, 'node.exe'),
+      args: ['-e', 'process.stdout.write("must-not-run")'],
+      cwd: path.join(hardLinkRoot, 'work'),
+      sandboxRoot: hardLinkRoot,
+      profileName: 'ORIX-HL-PROBE-' + process.pid,
+      logPath: nativeLogPath,
+      environment: {
+        SystemRoot: trustedSystemRoot,
+        WINDIR: trustedSystemRoot,
+        PATH: process.env.PATH || '',
+        TEMP: path.join(hardLinkRoot, 'tmp'),
+        TMP: path.join(hardLinkRoot, 'tmp'),
+        HOME: hardLinkRoot,
+        USERPROFILE: hardLinkRoot,
+        LOCALAPPDATA: hardLinkRoot,
+        APPDATA: hardLinkRoot,
+      },
+    }), 'utf8');
+    let nativeHardLinkError = null;
+    try {
+      execFileSync(nativeLauncher, ['run', nativeConfigPath], {
+        cwd: hardLinkHelperWorkspace,
+        env: { ...process.env },
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    } catch (error) {
+      nativeHardLinkError = error;
+    }
+    assert.ok(nativeHardLinkError, 'Native Windows launcher must independently reject a rootfs hard link');
+    assert.equal(nativeHardLinkError.status, 125,
+      'Native hard-link rejection must fail closed with exit code 125');
+    assert.match(String(nativeHardLinkError.stderr),
+      /ORIX_WINDOWS_ISOLATION_ERROR=.*ORIX_WINDOWS_ROOTFS_UNTRUSTED: hard-linked files are not allowed/,
+      'Native launcher did not reject the hard link using the file handle link count');
+    assert.doesNotMatch(String(nativeHardLinkError.stderr), /ORIX_CLEANUP:BEGIN/,
+      'Native preflight rejection before AppContainer profile creation must not mutate rootfs ACLs during cleanup');
+    assert.equal(await readFile(externalHardLinkTarget, 'utf8'), externalHardLinkValue,
+      'Native hard-link preflight must not modify the external target');
+    // Bypass the JavaScript preflight and prove that the native helper
+    // independently rejects an over-deep rootfs before profile creation.
+    const nativeDeepRoot = path.join(base, 'native-depth-rootfs');
+    await mkdir(path.join(nativeDeepRoot, 'work'), { recursive: true });
+    await mkdir(path.join(nativeDeepRoot, 'tmp'), { recursive: true });
+    await copyFile(process.execPath, path.join(nativeDeepRoot, 'node.exe'));
+    let nativeDeepDirectory = path.join(nativeDeepRoot, 'work');
+    for (let index = 0; index < 65; index++) {
+      nativeDeepDirectory = path.join(nativeDeepDirectory, 'd');
+      await mkdir(nativeDeepDirectory);
+    }
+    const nativeDepthConfig = path.join(hardLinkHelperWorkspace, 'depth-provider.json');
+    const nativeDepthLog = path.join(hardLinkHelperWorkspace, 'depth-provider.log');
+    await writeFile(nativeDepthConfig, JSON.stringify({
+      executable: path.join(nativeDeepRoot, 'node.exe'),
+      args: ['-e', 'process.stdout.write("must-not-run")'],
+      cwd: path.join(nativeDeepRoot, 'work'),
+      sandboxRoot: nativeDeepRoot,
+      profileName: 'ORIX-DEPTH-PROBE-' + process.pid,
+      logPath: nativeDepthLog,
+      environment: {
+        SystemRoot: trustedSystemRoot,
+        WINDIR: trustedSystemRoot,
+        PATH: process.env.PATH || '',
+        TEMP: path.join(nativeDeepRoot, 'tmp'),
+        TMP: path.join(nativeDeepRoot, 'tmp'),
+        HOME: nativeDeepRoot,
+        USERPROFILE: nativeDeepRoot,
+        LOCALAPPDATA: nativeDeepRoot,
+        APPDATA: nativeDeepRoot,
+      },
+    }), 'utf8');
+    let nativeDepthError = null;
+    try {
+      execFileSync(nativeLauncher, ['run', nativeDepthConfig], {
+        cwd: hardLinkHelperWorkspace,
+        env: { ...process.env },
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    } catch (error) { nativeDepthError = error; }
+    assert.ok(nativeDepthError, 'Native Windows launcher must independently reject an over-deep rootfs');
+    assert.equal(nativeDepthError.status, 125,
+      'Native rootfs depth rejection must fail closed with exit code 125');
+    assert.match(String(nativeDepthError.stderr),
+      /ORIX_WINDOWS_ROOTFS_UNTRUSTED: provider rootfs exceeds the maximum directory depth/,
+      'Native rootfs validator did not report its bounded directory-depth failure');
+    assert.doesNotMatch(String(nativeDepthError.stderr), /ORIX_CLEANUP:BEGIN/,
+      'Native depth preflight rejection must happen before AppContainer profile creation or cleanup');
+
     await writeFile(hostSecret, hostSecretValue, { encoding: 'utf8', mode: 0o600 });
 
     server = net.createServer();
@@ -164,6 +480,10 @@ async function main() {
       try { fs.writeFileSync(path.join(process.cwd(), 'host-write-probe'), 'escape'); result.root_write = 'writable'; }
       catch (error) { result.root_write = error.code || 'blocked'; }
       result.temp_dir = os.tmpdir(); result.temp_env = process.env.TEMP; result.tmp_env = process.env.TMP; result.temp_exists = fs.existsSync(os.tmpdir());
+      result.home_env = process.env.HOME || '';
+      result.userprofile_env = process.env.USERPROFILE || '';
+      result.appdata_env = process.env.APPDATA || '';
+      result.localappdata_env = process.env.LOCALAPPDATA || '';
       try { fs.writeFileSync(path.join(os.tmpdir(), 'provider-write-probe'), 'allowed'); result.tmp_write = 'allowed'; }
       catch (error) { result.tmp_write = error.code || 'blocked'; }
       const actualTemp = path.resolve(os.tmpdir()).replace(/[\\\\/]+$/, '').toLowerCase();
@@ -195,7 +515,17 @@ async function main() {
       cwd: path.join(root, 'work'),
       sandbox_root: root,
       isolation: 'required',
-      env: { ORIX_HOST_PID: String(process.pid) },
+      // Deliberately hostile lower-case spellings must not redirect
+      // sandbox-owned Windows paths to host locations.
+      env: {
+        ORIX_HOST_PID: String(process.pid),
+        TEMP: process.env.SystemRoot || process.env.WINDIR,
+        TMP: process.env.SystemRoot || process.env.WINDIR,
+        home: process.env.SystemRoot || process.env.WINDIR,
+        userprofile: process.env.SystemRoot || process.env.WINDIR,
+        appdata: process.env.SystemRoot || process.env.WINDIR,
+        localappdata: process.env.SystemRoot || process.env.WINDIR,
+      },
       args: ['--input-type=module', '-e', probe],
       timeout_ms: 12_000,
       max_output_bytes: 4_096,
@@ -210,12 +540,40 @@ async function main() {
     }));
     assert.match(execution.stderr, /ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64/,
       'AppContainer token and Job Object limits were not confirmed by the native launcher');
+    assert.match(execution.stderr, /ORIX_WINDOWS_TRACE=RUN:HELPER_CHILD_PROCESS_POLICY_FLAGS(?:_UNAVAILABLE)?=/,
+      'Native launcher did not report the broker child-process mitigation policy');
+    assert.match(execution.stderr, /ORIX_WINDOWS_TRACE=RUN:PROVIDER_CHILD_PROCESS_POLICY_FLAGS(?:_UNAVAILABLE)?=/,
+      'Native launcher did not report the AppContainer child-process mitigation policy');
+    assert.match(execution.stderr, /ORIX_WINDOWS_TRACE=RUN:PROVIDER_SE_CHANGE_NOTIFY_ENABLED=[01]/,
+      'Native launcher did not report the provider token traverse-bypass privilege');
+    assert.match(execution.stderr, /ORIX_CLEANUP:ANCESTOR_TRAVERSE_PURGED/,
+      'Per-profile traverse-only ancestor ACL grants were not removed after provider teardown');
+    const ancestorGrantLines = execution.stderr.split(/\r?\n/).filter(line =>
+      line.includes('RUN:ANCESTOR_TRAVERSE_GRANTED:'));
+    assert.equal(ancestorGrantLines.some(line => line.endsWith('RUN:ANCESTOR_TRAVERSE_GRANTED:' + trustedParent)), false,
+      'The native launcher must never attempt to rewrite the protected Program Files ancestor ACL');
     const result = JSON.parse(execution.stdout);
     assert.ok(result.system_root, 'Provider did not receive the trusted SystemRoot required by the Windows runtime');
     assert.equal(result.windir.toLowerCase(), result.system_root.toLowerCase(), 'WINDIR and SystemRoot disagree');
     assert.notEqual(result.host_file, 'readable', JSON.stringify(result) + ' — provider read a host file outside its rootfs');
     assert.notEqual(result.root_write, 'writable', 'Provider modified the read-only sandbox rootfs');
     assert.equal(result.temp_exists, true, JSON.stringify(result));
+    const expectedPrivateTempRoot = path.resolve(root, 'tmp').toLowerCase();
+    for (const [label, value] of Object.entries({
+      TEMP: result.temp_env,
+      TMP: result.tmp_env,
+      HOME: result.home_env,
+      USERPROFILE: result.userprofile_env,
+      APPDATA: result.appdata_env,
+      LOCALAPPDATA: result.localappdata_env,
+    })) {
+      const normalizedValue = path.resolve(String(value)).toLowerCase();
+      assert.ok(
+        normalizedValue === expectedPrivateTempRoot ||
+          normalizedValue.startsWith(expectedPrivateTempRoot + path.sep),
+        label + ' escaped the sandbox-owned private temp tree: ' + JSON.stringify(result),
+      );
+    }
     assert.equal(result.tmp_inside_root, true, JSON.stringify(result));
     assert.equal(result.tmp_write, 'allowed', JSON.stringify(result));
     assert.equal(result.host_network, 'blocked', 'Provider reached host loopback network');
@@ -225,7 +583,312 @@ async function main() {
     });
     assert.deepEqual(remainingPackageScratch, [],
       'Per-profile AppContainer temp files must be removed after provider teardown');
-    process.stdout.write('Windows AppContainer hostile-process checks passed: token, filesystem ACLs, private temp, network isolation and Job Object quotas.\\n');
+    // Stress native cleanup with a provider-created deep temp tree. The
+    // provider can write in its private temp directory; cleanup must remove
+    // this tree iteratively rather than recurse on provider-controlled depth.
+    const deepTempScript = [
+      'const fs = require("node:fs");',
+      'const path = require("node:path");',
+      'const os = require("node:os");',
+      'let current = path.join(os.tmpdir(), "orix-deep-cleanup-" + process.pid);',
+      'fs.mkdirSync(current);',
+      'for (let index = 0; index < 48; index++) { current = path.join(current, "d"); fs.mkdirSync(current); }',
+      'fs.writeFileSync(path.join(current, "x"), "created");',
+      'process.stdout.write("deep-temp-tree-created");',
+    ].join(String.fromCharCode(10));
+    const deepTempExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      env: {},
+      args: ['-e', deepTempScript],
+      timeout_ms: 12_000,
+      max_output_bytes: 4_096,
+    });
+    assert.equal(deepTempExecution.ok, true, JSON.stringify({
+      exit_code: deepTempExecution.exit_code,
+      stdout: deepTempExecution.stdout,
+      stderr: deepTempExecution.stderr,
+      termination_reason: deepTempExecution.termination_reason,
+    }));
+    assert.match(deepTempExecution.stdout, /deep-temp-tree-created/,
+      'Provider failed to create the deep private-temp cleanup fixture');
+    const deepScratchRemaining = await readdir(path.join(root, 'tmp', 'Packages')).catch(error => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    });
+    assert.deepEqual(deepScratchRemaining, [],
+      'Iterative native cleanup did not remove a 48-directory-deep AppContainer temp tree');
+    console.log('PASS: iterative bounded native cleanup removed a 48-directory-deep provider temp tree');
+
+    console.log('PASS: AppContainer token, quotas, host-file/network denial, read-only rootfs, private temp and profile scratch cleanup');
+
+    // Prove that a provider's descendants are actually terminated when the
+    // provider leader exits. Configuration checks alone do not prove Job Object
+    // containment or descendant cleanup.
+    // Verify real OS child-process containment without relying on Node/libuv
+    // child stdio or pipe creation inside the AppContainer. The C# fixture uses
+    // System.Diagnostics.Process and the same Windows process APIs as native
+    // providers. The OS Job Object must still terminate its child when the
+    // provider leader exits.
+    const descendantCounter = path.join(root, 'tmp', 'job-descendant-counter-' + process.pid);
+    const probeSource = fileURLToPath(new URL('../artifacts/windows-child-probe/orix-windows-appcontainer-child-probe.exe', import.meta.url));
+    await access(probeSource);
+    const probeExecutable = path.join(root, 'orix-windows-appcontainer-child-probe.exe');
+    await copyFile(probeSource, probeExecutable);
+    const descendantExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: probeExecutable,
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      env: {},
+      args: ['parent', descendantCounter],
+      timeout_ms: 12_000,
+      max_output_bytes: 4_096,
+    });
+    assert.equal(descendantExecution.ok, true, JSON.stringify({
+      exit_code: descendantExecution.exit_code,
+      stdout: descendantExecution.stdout,
+      stderr: descendantExecution.stderr,
+      termination_reason: descendantExecution.termination_reason,
+    }));
+    assert.match(descendantExecution.stdout, /provider-descendant-started/,
+      'Native provider leader must exit only after its OS-created child process has started');
+    assert.match(descendantExecution.stderr, /ORIX_WINDOWS_APPCONTAINER=1;JOB_CPU_RATE=5000;JOB_MEMORY=536870912;JOB_ACTIVE_PROCESSES=64/,
+      'Native launcher did not confirm AppContainer and Job Object limits for the descendant test');
+    assert.match(descendantExecution.stderr, /ORIX_WINDOWS_CHILD_PROCESS_POLICY=OVERRIDE_JOB_CONTAINED/,
+      'Native launcher did not explicitly permit child creation inside the inherited AppContainer Job Object');
+    assert.match(descendantExecution.stderr, /ORIX_WINDOWS_CONSOLE=NEW_HIDDEN;DESKTOP=INHERITED/,
+      'Native launcher must attest a fresh hidden console with the inherited desktop context');
+    assert.match(descendantExecution.stderr, /ORIX_CLEANUP:ANCESTOR_TRAVERSE_PURGED/,
+      'Ancestor traversal ACLs must be purged after the descendant Job Object becomes empty');
+    const descendantCountAfterExit = await readFile(descendantCounter, 'utf8');
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const descendantCountLater = await readFile(descendantCounter, 'utf8');
+    assert.equal(descendantCountLater, descendantCountAfterExit,
+      'A provider-spawned native descendant continued writing after its leader exited; the Job Object did not clean it up');
+    console.log('PASS: native AppContainer child started; Job Object terminated it after provider leader exit');
+    console.log('PASS: launcher attested new hidden console, inherited desktop and Job-contained child policy');
+
+    // Retain an independent Node/libuv compatibility regression. The C# probe
+    // above proves the Windows OS process-creation and Job Object boundary;
+    // this probe verifies that a Node-based provider can still spawn a child
+    // without inheriting console handles or requesting detached-process behavior.
+    const nodeDescendantCounter = path.join(root, 'tmp', 'node-job-descendant-counter-' + process.pid);
+    const nodeDescendantScript = [
+      'const fs = require("node:fs");',
+      'const counter = ' + JSON.stringify(nodeDescendantCounter) + ';',
+      'let count = 0;',
+      'fs.writeFileSync(counter, "0");',
+      'setInterval(() => fs.writeFileSync(counter, String(++count)), 20);',
+    ].join(String.fromCharCode(10));
+    const nodeParentScript = [
+      'const { spawn } = require("node:child_process");',
+      'const fs = require("node:fs");',
+      'const child = spawn(process.execPath, ["-e", ' + JSON.stringify(nodeDescendantScript) + '], { detached: false, stdio: "inherit", windowsHide: true });',
+      'child.once("error", error => { console.error("Node provider descendant spawn failed: " + JSON.stringify({ code: error.code, errno: error.errno, syscall: error.syscall, path: error.path, spawnargs: error.spawnargs, cwd: process.cwd(), execPath: process.execPath, execPathExists: fs.existsSync(process.execPath), systemRoot: process.env.SystemRoot, node: process.version, libuv: process.versions.uv })); process.exit(89); });',
+      'child.once("spawn", () => {',
+      '  const deadline = Date.now() + 10000;',
+      '  const timer = setInterval(() => {',
+      '    if (fs.existsSync(' + JSON.stringify(nodeDescendantCounter) + ')) {',
+      '      clearInterval(timer);',
+      '      process.stdout.write("node-provider-descendant-started");',
+      '      process.exit(0);',
+      '    }',
+      '    if (Date.now() >= deadline) {',
+      '      clearInterval(timer);',
+      '      console.error("Node provider descendant did not become ready");',
+      '      process.exit(88);',
+      '    }',
+      '  }, 25);',
+      '});',
+    ].join(String.fromCharCode(10));
+    const nodeDescendantExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      env: {},
+      args: ['-e', nodeParentScript],
+      timeout_ms: 12_000,
+      max_output_bytes: 4_096,
+    });
+    assert.equal(nodeDescendantExecution.ok, true, JSON.stringify({
+      exit_code: nodeDescendantExecution.exit_code,
+      stdout: nodeDescendantExecution.stdout,
+      stderr: nodeDescendantExecution.stderr,
+      termination_reason: nodeDescendantExecution.termination_reason,
+    }));
+    assert.match(nodeDescendantExecution.stdout, /node-provider-descendant-started/,
+      'Node provider leader must exit only after its Node/libuv child has started');
+    const nodeDescendantCountAfterExit = await readFile(nodeDescendantCounter, 'utf8');
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const nodeDescendantCountLater = await readFile(nodeDescendantCounter, 'utf8');
+    assert.equal(nodeDescendantCountLater, nodeDescendantCountAfterExit,
+      'A Node/libuv descendant continued writing after its provider leader exited; the Job Object did not clean it up');
+    console.log('PASS: Node/libuv child spawned inside AppContainer and Job Object terminated it after leader exit');
+
+    // Verify the native CreateProcessW command-line quoting independently from
+    // the descendant tests. Empty arguments, embedded quotes, whitespace,
+    // trailing backslashes and UTF-16 text must survive the Windows argv parser.
+    const argumentRoundTrip = [
+      'plain',
+      'argument with spaces',
+      'embedded "quotes"',
+      'trailing-backslash\\',
+      'trailing-backslash with space\\',
+      '',
+      'Unicode: 日本語 / 🚀',
+    ];
+    const argumentExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      env: {},
+      args: [
+        '-e',
+        'process.stdout.write(JSON.stringify(process.argv.slice(1)))',
+        ...argumentRoundTrip,
+      ],
+      timeout_ms: 12_000,
+      max_output_bytes: 4_096,
+    });
+    assert.equal(argumentExecution.ok, true, JSON.stringify({
+      exit_code: argumentExecution.exit_code,
+      stdout: argumentExecution.stdout,
+      stderr: argumentExecution.stderr,
+    }));
+    assert.deepEqual(JSON.parse(argumentExecution.stdout), argumentRoundTrip,
+      'Windows CreateProcessW argv quoting must preserve every argument byte-for-character');
+    console.log('PASS: Windows native command-line quoting preserved spaces, quotes, empty values, trailing backslashes and Unicode');
+
+    // Exercise the cleanup traversal with a real directory junction. The
+    // provider process waits while the host replaces its writable Packages
+    // directory with a junction to an external sentinel tree. Cleanup must
+    // stop at the reparse point and leave the external sentinel untouched.
+    const cleanupReady = path.join(root, 'tmp', 'cleanup-reparse-ready-' + process.pid);
+    const cleanupContinue = path.join(root, 'tmp', 'cleanup-reparse-continue-' + process.pid);
+    const reparsePrepared = await prepare_windows_provider_isolation({
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      args: ['-e', [
+        'const fs = require("node:fs");',
+        'fs.writeFileSync(' + JSON.stringify(cleanupReady) + ', "ready");',
+        'const go = ' + JSON.stringify(cleanupContinue) + ';',
+        'const cell = new Int32Array(new SharedArrayBuffer(4));',
+        'const deadline = Date.now() + 15000;',
+        'while (!fs.existsSync(go) && Date.now() < deadline) Atomics.wait(cell, 0, 0, 25);',
+        'if (!fs.existsSync(go)) { console.error("cleanup injection host timed out"); process.exitCode = 88; }',
+      ].join('\n')],
+      env: {},
+    });
+    let reparseChild = null;
+    let reparseClosed = null;
+    let junctionInstalled = false;
+    let preparedCleanupComplete = false;
+    const packagesRoot = path.join(root, 'tmp', 'Packages');
+    try {
+      reparseChild = spawn(reparsePrepared.executable, reparsePrepared.args, {
+        cwd: reparsePrepared.cwd,
+        env: reparsePrepared.env,
+        shell: false,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let helperStdout = '';
+      let helperStderr = '';
+      reparseChild.stdout.on('data', chunk => { helperStdout += chunk.toString('utf8'); });
+      reparseChild.stderr.on('data', chunk => { helperStderr += chunk.toString('utf8'); });
+      reparseClosed = new Promise((resolve, reject) => {
+        reparseChild.once('error', reject);
+        reparseChild.once('close', (code, signal) => resolve({ code, signal, stdout: helperStdout, stderr: helperStderr }));
+      });
+
+      const readyDeadline = Date.now() + 15000;
+      let providerReady = false;
+      while (Date.now() < readyDeadline) {
+        try { await access(cleanupReady); providerReady = true; break; }
+        catch { await new Promise(resolve => setTimeout(resolve, 25)); }
+      }
+      assert.equal(providerReady, true, 'Provider did not enter the controlled cleanup-junction test');
+
+      const [profileName] = await readdir(packagesRoot);
+      assert.ok(profileName, 'AppContainer redirected Packages profile directory was not created');
+      const externalRoot = path.join(base, 'external-cleanup-target');
+      const externalProfile = path.join(externalRoot, profileName);
+      const externalSentinel = path.join(externalProfile, 'must-survive-cleanup.txt');
+      await mkdir(path.join(externalProfile, 'AC', 'Temp'), { recursive: true });
+      await writeFile(externalSentinel, 'external-data-must-survive', 'utf8');
+
+      await rm(packagesRoot, { recursive: true, force: true });
+      await symlink(externalRoot, packagesRoot, 'junction');
+      junctionInstalled = true;
+      const junctionInfo = await lstat(packagesRoot);
+      assert.equal(junctionInfo.isSymbolicLink(), true, 'Test fixture did not create a Windows junction/reparse point');
+
+      await writeFile(cleanupContinue, 'continue', 'utf8');
+      const reparseResult = await reparseClosed;
+      reparseChild = null;
+      assert.equal(reparseResult.code, 125,
+        'Cleanup must fail closed when an AppContainer cleanup ancestor is a reparse point: ' +
+        JSON.stringify({ stdout: reparseResult.stdout, stderr: reparseResult.stderr }));
+      assert.match(reparseResult.stderr, /ORIX_WINDOWS_CLEANUP_REPARSE_POINT/,
+        'Native cleanup did not report the rejected reparse-point path');
+      assert.equal(await readFile(externalSentinel, 'utf8'), 'external-data-must-survive',
+        'Cleanup traversed the junction and deleted data outside the sandbox root');
+      console.log('PASS: reparse-safe cleanup rejected junction traversal and preserved external sentinel');
+
+      await rmdir(packagesRoot);
+      junctionInstalled = false;
+
+      // A malformed profile name must not be mistaken for an absent profile.
+      // DeriveAppContainerSidFromAppContainerName documents invalid arguments
+      // as failures; the launcher must return non-zero instead of claiming that
+      // cleanup succeeded and discarding its diagnostics.
+      const invalidProfileConfig = path.join(base, 'invalid-appcontainer-profile.json');
+      await writeFile(invalidProfileConfig, JSON.stringify({
+        sandboxRoot: root,
+        profileName: 'x'.repeat(65),
+        logPath: path.join(base, 'invalid-appcontainer-profile.log'),
+      }), 'utf8');
+      let invalidCleanupError = null;
+      try {
+        execFileSync(reparsePrepared.executable, ['cleanup', invalidProfileConfig], {
+          cwd: reparsePrepared.cwd,
+          env: reparsePrepared.env,
+          encoding: 'utf8',
+          windowsHide: true,
+        });
+      } catch (error) { invalidCleanupError = error; }
+      assert.ok(invalidCleanupError, 'Invalid AppContainer profile names must not be reported as successful cleanup');
+      assert.equal(invalidCleanupError.status, 125,
+        'Invalid AppContainer profile name should fail closed with exit code 125');
+      assert.match(String(invalidCleanupError.stderr), /ORIX_WINDOWS_ISOLATION_ERROR=/,
+        'Invalid AppContainer profile name did not surface a native cleanup diagnostic');
+      assert.equal((String(invalidCleanupError.stderr).match(/ORIX_WINDOWS_ISOLATION_ERROR=/g) ?? []).length, 1,
+        'Explicit cleanup failure must not trigger a duplicate cleanup attempt');
+      console.log('PASS: invalid AppContainer profile cleanup failed closed exactly once with native diagnostic');
+
+      await reparsePrepared.cleanup();
+      preparedCleanupComplete = true;
+      await access(externalSentinel);
+    } finally {
+      if (reparseChild) {
+        try { reparseChild.kill(); } catch { /* process may already have exited */ }
+        if (reparseClosed) await reparseClosed.catch(() => {});
+      }
+      if (junctionInstalled) await rmdir(packagesRoot).catch(() => {});
+      if (!preparedCleanupComplete) await reparsePrepared.cleanup().catch(() => {});
+    }
+
+    process.stdout.write('Windows AppContainer hostile-process checks passed: token, filesystem ACLs, private temp, network isolation, Job Object quotas and reparse-safe cleanup.\\n');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await rm(base, { recursive: true, force: true });
