@@ -55,3 +55,4 @@ export { analyze_android_package, analyze_android_package_file, render_android_p
 export { parse_android_binary_xml } from './android/binary-xml.mjs';
 export { parse_android_proto_xml } from './android/proto-xml.mjs';
 export { parse_android_bundle_config } from './android/bundle-config.mjs';
+export { parse_android_resource_table } from './android/resources-table.mjs';
