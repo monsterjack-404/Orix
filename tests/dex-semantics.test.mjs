@@ -40,7 +40,14 @@ function require_crypto() {
 }
 import * as crypto_module from 'node:crypto';
 
-function create_semantic_dex({ catch_handler_size_bytes = null } = {}) {
+function create_semantic_dex({
+  catch_handler_size_bytes = null,
+  instructions = [0x000e],
+  try_start_addr = 0,
+  try_insn_count = instructions.length,
+  handler_address = 0,
+  catch_all_address = 0,
+} = {}) {
   const strings = ['I', 'Lcom/example/App;', 'Ljava/lang/Object;', 'V', 'run', 'value'];
   const string_ids_off = 112;
   const type_ids_off = string_ids_off + strings.length * 4;
@@ -65,9 +72,12 @@ function create_semantic_dex({ catch_handler_size_bytes = null } = {}) {
   const code_off = align4(class_data_off + 10);
   const has_catch_handlers = Array.isArray(catch_handler_size_bytes);
   const handler_bytes = has_catch_handlers
-    ? Buffer.from([1, ...catch_handler_size_bytes, 0, 0, 0])
+    ? Buffer.from([1, ...catch_handler_size_bytes, 0, handler_address, catch_all_address, 0])
     : Buffer.alloc(0);
-  const code_item_size = 16 + 2 + (has_catch_handlers ? 2 + 8 + handler_bytes.length : 0);
+  const instruction_bytes = instructions.length * 2;
+  const try_padding_bytes = has_catch_handlers && (instructions.length & 1) !== 0 ? 2 : 0;
+  const code_item_size = 16 + instruction_bytes + try_padding_bytes +
+    (has_catch_handlers ? 8 + handler_bytes.length : 0);
   const map_off = align4(code_off + code_item_size);
   const map_items = [
     [0x0000, 1, 0],
@@ -147,13 +157,13 @@ function create_semantic_dex({ catch_handler_size_bytes = null } = {}) {
   buffer.writeUInt16LE(0, code_off + 4);
   buffer.writeUInt16LE(has_catch_handlers ? 1 : 0, code_off + 6);
   buffer.writeUInt32LE(0, code_off + 8);
-  buffer.writeUInt32LE(1, code_off + 12);
-  buffer.writeUInt16LE(0x000e, code_off + 16); // return-void; deliberately not decoded by ORIX.
+  buffer.writeUInt32LE(instructions.length, code_off + 12);
+  instructions.forEach((unit, index) => buffer.writeUInt16LE(unit, code_off + 16 + index * 2));
   if (has_catch_handlers) {
-    const try_item = code_off + 20; // 16-byte header, one code unit, and two-byte alignment padding.
-    buffer.writeUInt16LE(0, code_off + 18);
-    buffer.writeUInt32LE(0, try_item);
-    buffer.writeUInt16LE(1, try_item + 4);
+    const try_item = code_off + 16 + instruction_bytes + try_padding_bytes;
+    if (try_padding_bytes) buffer.writeUInt16LE(0, code_off + 16 + instruction_bytes);
+    buffer.writeUInt32LE(try_start_addr, try_item);
+    buffer.writeUInt16LE(try_insn_count, try_item + 4);
     buffer.writeUInt16LE(1, try_item + 6); // First handler starts one byte after the list count.
     handler_bytes.copy(buffer, try_item + 8);
   }
@@ -312,4 +322,41 @@ test('DEX checksum and SHA-1 fields are independently verified without claiming 
   const parsed = parse_dex(fixture);
   assert.equal(parsed.integrity.adler32_verified, true);
   assert.equal(parsed.integrity.signature_sha1_verified, false);
+});
+
+test('DEX try blocks and typed/catch-all handlers must target instruction boundaries', () => {
+  const instructions = [0x0013, 0x0000, 0x000e]; // const/16 v0, #0; return-void
+  const valid = parse_dex(create_semantic_dex({
+    catch_handler_size_bytes: [0x7f],
+    instructions,
+    try_start_addr: 0,
+    try_insn_count: 2,
+    handler_address: 2,
+    catch_all_address: 2,
+  }));
+  assert.equal(valid.class_data[0].direct_methods[0].code.handlers, 1);
+
+  assert.throws(
+    () => parse_dex(create_semantic_dex({
+      catch_handler_size_bytes: [0x7f], instructions, try_start_addr: 0,
+      try_insn_count: 2, handler_address: 1, catch_all_address: 2,
+    })),
+    error => error.code === 'ORIX_DEX_CODE_HANDLER_BOUNDARY' && error.details.handler_kind === 'typed',
+  );
+
+  assert.throws(
+    () => parse_dex(create_semantic_dex({
+      catch_handler_size_bytes: [0x7f], instructions, try_start_addr: 0,
+      try_insn_count: 2, handler_address: 2, catch_all_address: 1,
+    })),
+    error => error.code === 'ORIX_DEX_CODE_HANDLER_BOUNDARY' && error.details.handler_kind === 'catch-all',
+  );
+
+  assert.throws(
+    () => parse_dex(create_semantic_dex({
+      catch_handler_size_bytes: [0x7f], instructions, try_start_addr: 1,
+      try_insn_count: 1, handler_address: 2, catch_all_address: 2,
+    })),
+    error => error.code === 'ORIX_DEX_CODE_TRY_START_BOUNDARY',
+  );
 });
