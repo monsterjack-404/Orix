@@ -185,7 +185,7 @@ test('ResourceTable validates AOSP Source, Visibility, AllowNew, OverlayableItem
     'AllowNew.source must be a Source message, not a varint',
   );
 
-  const invalid_overlayable_item = field_bytes(5, field_bytes(3, field_string(1, 'wrong-wire')));
+  const invalid_overlayable_item = field_bytes(5, Buffer.from([0x1d, 0, 0, 0, 0]));
   assert.throws(
     () => parse_android_resource_table(resource_table_fixture({ entry_metadata: invalid_overlayable_item })),
     error => error.code === 'ORIX_RESOURCE_TABLE_WIRE_MISMATCH',
