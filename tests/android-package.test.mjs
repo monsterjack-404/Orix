@@ -1037,6 +1037,23 @@ test('AAB resources.pb duplicate, per-entry and aggregate limits fail closed', (
   assert.deepEqual(aggregate.bundle.resource_tables.tables.map(item => item.status), ['decoded', 'aggregate-size-limit']);
 });
 
+test('AAB resources.pb entries reject unsafe module paths and symlink archive records', () => {
+  const resources = resource_table_fixture();
+  const config = Buffer.from([0x40, 0x00]);
+  const report = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: config },
+    { name: '../resources.pb', contents: resources },
+    { name: './resources.pb', contents: resources },
+    { name: 'base/resources.pb', contents: resources, unix_mode: 0o120777 },
+  ]));
+  assert.deepEqual(
+    report.bundle.resource_tables.tables.map(item => item.status),
+    ['unsafe-path', 'unsafe-path', 'symlink'],
+  );
+  assert.ok(report.bundle.resource_tables.tables.every(item => item.table === null),
+    'Unsafe paths and symlink entries must never be passed to the ResourceTable decoder');
+});
+
 test('AAB resources.pb entries with invalid CRC or encryption are not decoded', () => {
   const resources = resource_table_fixture();
   const config = Buffer.from([0x40, 0x00]);
