@@ -508,6 +508,15 @@ test('ResourceTable source-pool strings resolve Source.path_idx in UTF-8 and UTF
   assert.equal(utf16.source_pool_encoding, 'utf-16le');
   assert.equal(utf16.source_paths_resolved, 1);
   assert.equal(utf16.source_paths[0].path, 'res/values/attrs.xml');
+
+  const default_index = parse_android_resource_table(resource_table_fixture({
+    overlayable_source: Buffer.alloc(0),
+  }));
+  assert.equal(default_index.source_path_references, 1);
+  assert.equal(default_index.source_paths_resolved, 1);
+  assert.deepEqual(default_index.source_paths, [{
+    index: 0, path: 'res/values/strings.xml', reference_count: 1,
+  }]);
 });
 
 test('ResourceTable rejects invalid source path indices and malformed binary string pools', () => {
