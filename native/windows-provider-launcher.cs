@@ -621,8 +621,14 @@ namespace OrixWindowsSandbox {
           throw new InvalidOperationException(reparseError + item.Key);
         collected.Add(new KeyValuePair<string, FileAttributes>(item.Key, attributes));
         if ((attributes & FileAttributes.Directory) != 0) {
-          foreach (string child in Directory.EnumerateFileSystemEntries(item.Key))
+          foreach (string child in Directory.EnumerateFileSystemEntries(item.Key)) {
+            // Bound the pending stack as well as the visited count. A single
+            // hostile directory with millions of children must not allocate an
+            // unbounded frontier before the main loop can observe the limit.
+            if (collected.Count + pending.Count >= MAX_CLEANUP_TREE_ENTRIES)
+              throw new InvalidOperationException("ORIX_WINDOWS_CLEANUP_LIMIT: cleanup tree exceeds the maximum entry count");
             pending.Push(new KeyValuePair<string, int>(child, item.Value + 1));
+          }
         }
       }
       return collected;
