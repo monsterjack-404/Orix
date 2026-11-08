@@ -193,6 +193,21 @@ test('DEX decoder rejects malformed and unsupported version identifiers', () => 
   }
 });
 
+test('DEX decoder rejects nonzero reserved bits in 20t, 30t and 32x formats', () => {
+  const vectors = [
+    { name: '20t', code: words(0x0129, 0x0002, 0x000e), registers_size: 0 },
+    { name: '30t', code: words(0x012a, 0x0003, 0x0000, 0x000e), registers_size: 0 },
+    { name: '32x', code: words(0x0103, 0x0000, 0x0001), registers_size: 2 },
+  ];
+  for (const vector of vectors) {
+    assert.throws(
+      () => decode(vector.code, { registers_size: vector.registers_size }),
+      error => error.code === 'ORIX_DEX_BYTECODE_RESERVED_BITS',
+      vector.name + ' must reject a nonzero reserved high byte',
+    );
+  }
+});
+
 test('DEX decoder rejects unused, truncated and version-gated opcodes', () => {
   assert.throws(() => decode(words(0x003e)), error => error.code === 'ORIX_DEX_BYTECODE_OPCODE');
   assert.throws(() => decode(words(0x0014, 0x0000)), error => error.code === 'ORIX_DEX_BYTECODE_TRUNCATED');
