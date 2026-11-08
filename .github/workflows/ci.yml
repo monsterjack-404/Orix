@@ -198,3 +198,5 @@ jobs:
       - name: Run macOS Seatbelt hostile-process isolation checks
         if: runner.os == 'macOS'
         run: node scripts/macos-isolation-integration.mjs
+
+# Exact-head revalidation trigger; no runtime or test behavior changed.
