@@ -43,6 +43,7 @@ import * as crypto_module from 'node:crypto';
 function create_semantic_dex({
   catch_handler_size_bytes = null,
   instructions = [0x000e],
+  registers_size = 1,
   try_start_addr = 0,
   try_insn_count = instructions.length,
   handler_address = 0,
@@ -152,7 +153,7 @@ function create_semantic_dex({
   item = write_uleb(buffer, item, code_off);
   assert.equal(item, class_data_off + 10);
 
-  buffer.writeUInt16LE(1, code_off);
+  buffer.writeUInt16LE(registers_size, code_off);
   buffer.writeUInt16LE(1, code_off + 2);
   buffer.writeUInt16LE(0, code_off + 4);
   buffer.writeUInt16LE(has_catch_handlers ? 1 : 0, code_off + 6);
@@ -359,4 +360,27 @@ test('DEX try blocks and typed/catch-all handlers must target instruction bounda
     })),
     error => error.code === 'ORIX_DEX_CODE_TRY_START_BOUNDARY',
   );
+});
+
+test('DEX typed and catch-all handlers must not begin with move-result variants', () => {
+  const moveResults = [0x000a, 0x000b, 0x000c];
+  for (const opcode of moveResults) {
+    const instructions = [0x0013, 0x0000, opcode, 0x000e];
+    const options = {
+      catch_handler_size_bytes: [0x7f], instructions, registers_size: 2,
+      try_start_addr: 0, try_insn_count: 2,
+    };
+
+    assert.throws(
+      () => parse_dex(create_semantic_dex({ ...options, handler_address: 2, catch_all_address: 3 })),
+      error => error.code === 'ORIX_DEX_CODE_HANDLER_MOVE_RESULT' && error.details.handler_kind === 'typed',
+      'typed handler must reject move-result opcode 0x' + opcode.toString(16),
+    );
+
+    assert.throws(
+      () => parse_dex(create_semantic_dex({ ...options, handler_address: 3, catch_all_address: 2 })),
+      error => error.code === 'ORIX_DEX_CODE_HANDLER_MOVE_RESULT' && error.details.handler_kind === 'catch-all',
+      'catch-all handler must reject move-result opcode 0x' + opcode.toString(16),
+    );
+  }
 });
