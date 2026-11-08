@@ -24,6 +24,42 @@ function field_bytes(field, value) {
   return Buffer.concat([varint(BigInt(field * 8 + 2)), varint(bytes.length), bytes]);
 }
 
+function encode_pool_length_u8(value) {
+  if (value <= 0x7f) return Buffer.from([value]);
+  if (value > 0x7fff) throw new RangeError('UTF-8 pool fixture length is too large');
+  return Buffer.from([0x80 | (value >> 8), value & 0xff]);
+}
+
+function android_string_pool(strings, encoding = 'utf-8') {
+  const utf8 = encoding === 'utf-8';
+  const records = [];
+  const offsets = [];
+  let cursor = 0;
+  for (const value of strings) {
+    const encoded = Buffer.from(value, utf8 ? 'utf8' : 'utf16le');
+    const length = utf8
+      ? Buffer.concat([encode_pool_length_u8(value.length), encode_pool_length_u8(encoded.length)])
+      : Buffer.from([value.length & 0xff, (value.length >> 8) & 0x7f]);
+    const record = Buffer.concat([length, encoded, utf8 ? Buffer.from([0]) : Buffer.from([0, 0])]);
+    offsets.push(cursor);
+    records.push(record);
+    cursor += record.length;
+  }
+  const table_end = 28 + strings.length * 4;
+  const string_data = Buffer.concat(records);
+  const header = Buffer.alloc(table_end);
+  header.writeUInt16LE(0x0001, 0);
+  header.writeUInt16LE(28, 2);
+  header.writeUInt32LE(table_end + string_data.length, 4);
+  header.writeUInt32LE(strings.length, 8);
+  header.writeUInt32LE(0, 12);
+  header.writeUInt32LE(utf8 ? 0x100 : 0, 16);
+  header.writeUInt32LE(table_end, 20);
+  header.writeUInt32LE(0, 24);
+  offsets.forEach((offset, index) => header.writeUInt32LE(offset, 28 + index * 4));
+  return Buffer.concat([header, string_data]);
+}
+
 function make_reference_value() {
   const dynamic_boolean = field_varint(1, 1);
   const reference = Buffer.concat([
@@ -39,7 +75,8 @@ function make_reference_value() {
 }
 
 function make_resource_table({ unknown_top_level = false, second_config_value = false } = {}) {
-  const source_pool = field_bytes(1, Buffer.from([0, 1, 2, 255]));
+  const source_pool_data = android_string_pool(['res/values/strings.xml', 'res/values/public.xml', 'res/values/attrs.xml']);
+  const source_pool = field_bytes(1, source_pool_data);
   const configuration = Buffer.concat([
     field_bytes(3, 'en-US'),
     field_varint(18, 420),
@@ -104,7 +141,9 @@ test('ResourceTable decodes package/type/entry IDs, names, visibility, config qu
   const report = parse_android_resource_table(make_resource_table());
   assert.equal(report.schema_version, 'orix.android-resource-table.v1');
   assert.equal(report.source_pool_present, true);
-  assert.equal(report.source_pool_data_bytes, 4);
+  assert.equal(report.source_pool_data_bytes, source_pool_data.length);
+  assert.equal(report.source_pool_string_count, 3);
+  assert.equal(report.source_pool_encoding, 'utf-8');
   assert.equal(report.package_count, 1);
   assert.equal(report.packages_reported, 1);
   const pkg = report.packages[0];
