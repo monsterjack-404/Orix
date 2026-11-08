@@ -438,6 +438,147 @@ function parse_item(buffer, start, end, budget, limits, depth) {
   return { kind: kind ?? 'unspecified', reference };
 }
 
+function validate_schema_message(buffer, start, end, budget, limits, depth, label, schema) {
+  assert_depth(depth, limits, label);
+  const seen = new Set();
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    const spec = schema[field];
+    if (!spec) {
+      budget.unknown_fields += 1;
+      return;
+    }
+    expect_wire(label, field, wire, spec.wire);
+    if (spec.repeated) consume_item(budget, limits, label + '.' + spec.name);
+    else singular(seen, field, label);
+    if (spec.type === 'uint32' || spec.type === 'enum') uint32(value, label + '.' + spec.name);
+    else if (spec.type === 'int32') BigInt.asIntN(32, value);
+    else if (spec.type === 'bool') { /* protobuf bool accepts any nonzero varint */ }
+    else if (spec.type === 'uint64') { /* read_varint already enforces the 64-bit bound */ }
+    else if (spec.type === 'string') decode_string(buffer, value, label + '.' + spec.name, budget, limits);
+    else if (spec.type === 'message') spec.parse(buffer, value.start, value.end, budget, limits, depth + 1);
+    else fail('ORIX_RESOURCE_TABLE_SCHEMA', 'Unknown ResourceTable schema validator type', { label, field, type: spec.type });
+  }, label);
+}
+
+function parse_attribute_symbol(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'Attribute.Symbol', {
+    1: { name: 'source', wire: 2, type: 'message', parse: parse_source },
+    2: { name: 'comment', wire: 2, type: 'string' },
+    3: { name: 'name', wire: 2, type: 'message', parse: parse_reference },
+    4: { name: 'value', wire: 0, type: 'uint32' },
+    5: { name: 'type', wire: 0, type: 'uint32' },
+  });
+}
+
+function parse_attribute(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'Attribute', {
+    1: { name: 'format_flags', wire: 0, type: 'uint32' },
+    2: { name: 'min_int', wire: 0, type: 'int32' },
+    3: { name: 'max_int', wire: 0, type: 'int32' },
+    4: { name: 'symbol', wire: 2, type: 'message', repeated: true, parse: parse_attribute_symbol },
+  });
+}
+
+function parse_style_entry(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'Style.Entry', {
+    1: { name: 'source', wire: 2, type: 'message', parse: parse_source },
+    2: { name: 'comment', wire: 2, type: 'string' },
+    3: { name: 'key', wire: 2, type: 'message', parse: parse_reference },
+    4: { name: 'item', wire: 2, type: 'message', parse: parse_item },
+  });
+}
+
+function parse_style(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'Style', {
+    1: { name: 'parent', wire: 2, type: 'message', parse: parse_reference },
+    2: { name: 'parent_source', wire: 2, type: 'message', parse: parse_source },
+    3: { name: 'entry', wire: 2, type: 'message', repeated: true, parse: parse_style_entry },
+  });
+}
+
+function parse_styleable_entry(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'Styleable.Entry', {
+    1: { name: 'source', wire: 2, type: 'message', parse: parse_source },
+    2: { name: 'comment', wire: 2, type: 'string' },
+    3: { name: 'attr', wire: 2, type: 'message', parse: parse_reference },
+  });
+}
+
+function parse_styleable(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'Styleable', {
+    1: { name: 'entry', wire: 2, type: 'message', repeated: true, parse: parse_styleable_entry },
+  });
+}
+
+function parse_array_element(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'Array.Element', {
+    1: { name: 'source', wire: 2, type: 'message', parse: parse_source },
+    2: { name: 'comment', wire: 2, type: 'string' },
+    3: { name: 'item', wire: 2, type: 'message', parse: parse_item },
+  });
+}
+
+function parse_array(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'Array', {
+    1: { name: 'element', wire: 2, type: 'message', repeated: true, parse: parse_array_element },
+  });
+}
+
+function parse_plural_entry(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'Plural.Entry', {
+    1: { name: 'source', wire: 2, type: 'message', parse: parse_source },
+    2: { name: 'comment', wire: 2, type: 'string' },
+    3: { name: 'arity', wire: 0, type: 'enum' },
+    4: { name: 'item', wire: 2, type: 'message', parse: parse_item },
+  });
+}
+
+function parse_plural(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'Plural', {
+    1: { name: 'entry', wire: 2, type: 'message', repeated: true, parse: parse_plural_entry },
+  });
+}
+
+function parse_style_string_span(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'StyleString.Span', {
+    1: { name: 'name', wire: 2, type: 'string' },
+    2: { name: 'start_index', wire: 0, type: 'uint32' },
+    3: { name: 'end_index', wire: 0, type: 'uint32' },
+  });
+}
+
+function parse_style_string(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'StyleString', {
+    1: { name: 'str', wire: 2, type: 'string' },
+    2: { name: 'spans', wire: 2, type: 'message', repeated: true, parse: parse_style_string_span },
+  });
+}
+
+function parse_untranslatable_section(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'UntranslatableSection', {
+    1: { name: 'start_index', wire: 0, type: 'uint64' },
+    2: { name: 'end_index', wire: 0, type: 'uint64' },
+  });
+}
+
+function parse_namespace_alias(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'NamespaceAlias', {
+    1: { name: 'prefix', wire: 2, type: 'string' },
+    2: { name: 'package_name', wire: 2, type: 'string' },
+    3: { name: 'is_private', wire: 0, type: 'bool' },
+  });
+}
+
+function parse_macro_body(buffer, start, end, budget, limits, depth) {
+  validate_schema_message(buffer, start, end, budget, limits, depth, 'MacroBody', {
+    1: { name: 'raw_string', wire: 2, type: 'string' },
+    2: { name: 'style_string', wire: 2, type: 'message', parse: parse_style_string },
+    3: { name: 'untranslatable_sections', wire: 2, type: 'message', repeated: true, parse: parse_untranslatable_section },
+    4: { name: 'namespace_stack', wire: 2, type: 'message', repeated: true, parse: parse_namespace_alias },
+    5: { name: 'source', wire: 2, type: 'message', parse: parse_source_position },
+  });
+}
+
 function parse_compound_value(buffer, start, end, budget, depth, limits) {
   assert_depth(depth, limits, 'CompoundValue');
   let kind = null;
@@ -451,7 +592,15 @@ function parse_compound_value(buffer, start, end, budget, depth, limits) {
         });
       }
       kind = COMPOUND_KINDS[field];
-      walk_fields(buffer, value.start, value.end, budget, () => {}, 'CompoundValue.' + kind);
+      const validators = {
+        1: parse_attribute,
+        2: parse_style,
+        3: parse_styleable,
+        4: parse_array,
+        5: parse_plural,
+        6: parse_macro_body,
+      };
+      validators[field](buffer, value.start, value.end, budget, limits, depth + 1);
     } else if (field === 7) {
       expect_wire('CompoundValue', field, wire, 0);
       singular(seen, field, 'CompoundValue');
