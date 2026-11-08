@@ -18,16 +18,70 @@ function within(root, candidate) {
     !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
 }
 
+export function assess_trusted_system_path_component(metadata, expected_type = 'directory') {
+  const valid = metadata !== null && typeof metadata === 'object' &&
+    Number.isSafeInteger(metadata.uid) && Number.isSafeInteger(metadata.mode);
+  const is_directory = valid && metadata.is_directory === true;
+  const is_file = valid && metadata.is_file === true;
+  const is_symlink = !valid || metadata.is_symlink === true;
+  const expected_type_matches = expected_type === 'directory'
+    ? is_directory
+    : expected_type === 'file' ? is_file : false;
+  const owner_is_root = valid && metadata.uid === 0;
+  const not_group_or_other_writable = valid && (metadata.mode & 0o022) === 0;
+  return Object.freeze({
+    expected_type_matches,
+    is_symlink,
+    owner_is_root,
+    not_group_or_other_writable,
+    trusted: expected_type_matches && !is_symlink && owner_is_root && not_group_or_other_writable,
+  });
+}
+
+function stat_metadata(info) {
+  return {
+    uid: info.uid,
+    mode: info.mode,
+    is_directory: info.isDirectory(),
+    is_file: info.isFile(),
+    is_symlink: info.isSymbolicLink(),
+  };
+}
+
+async function trusted_system_path(canonical) {
+  const root = path.parse(canonical).root;
+  if (!root) return false;
+  let current = root;
+  let info;
+  try {
+    info = await lstat(current);
+    if (!assess_trusted_system_path_component(stat_metadata(info), 'directory').trusted) return false;
+    const relative = path.relative(root, canonical);
+    const components = relative.split(path.sep).filter(Boolean);
+    if (components.length === 0) return false;
+    for (let index = 0; index < components.length; index += 1) {
+      current = path.join(current, components[index]);
+      info = await lstat(current);
+      const expected_type = index === components.length - 1 ? 'file' : 'directory';
+      if (!assess_trusted_system_path_component(stat_metadata(info), expected_type).trusted) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function resolve_trusted_executable(candidates, label) {
   for (const candidate of candidates) {
     try {
       const info = await lstat(candidate);
       if (info.isSymbolicLink() || !info.isFile()) continue;
       const canonical = await realpath(candidate);
+      if (!await trusted_system_path(canonical)) continue;
       await access(canonical, 1);
       return canonical;
     } catch {
-      // Only fixed system locations are considered; never search PATH.
+      // Only fixed, root-owned, non-writable system locations are considered; never search PATH.
     }
   }
   isolation_error(
@@ -38,7 +92,13 @@ async function resolve_trusted_executable(candidates, label) {
 }
 
 async function resolve_bwrap() {
-  return resolve_trusted_executable(['/usr/bin/bwrap', '/bin/bwrap'], 'bubblewrap');
+  // CI builds a checksum-verified Bubblewrap into /usr/local/bin. Only fixed
+  // root-owned, non-group/other-writable paths are trusted; PATH is never searched.
+  return resolve_trusted_executable([
+    '/usr/bin/bwrap',
+    '/usr/local/bin/bwrap',
+    '/bin/bwrap',
+  ], 'bubblewrap');
 }
 
 async function resolve_prlimit() {
