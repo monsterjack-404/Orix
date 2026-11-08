@@ -113,6 +113,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
     registers_size,
     dex_version,
     counts,
+    max_instruction_units: limits.max_instruction_units,
     max_output_instructions: Math.max(0, limits.max_decoded_instructions - state.decoded_instruction_items),
     max_payload_bytes: limits.max_payload_bytes,
     max_switch_targets: limits.max_switch_targets,
