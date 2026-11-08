@@ -123,7 +123,7 @@ function resource_table_fixture({
   source_pool_encoding = 'utf-8',
 } = {}) {
   const source_pool_data = android_string_pool(source_pool_strings, source_pool_encoding);
-  const source_pool = field_bytes(1, source_pool_data);
+  const source_pool = field_bytes(1, field_bytes(1, source_pool_data));
   const visibility = visibility_metadata ?? field_varint(1, 2);
   const configuration = Buffer.concat([
     field_string(3, 'en-US'),
@@ -506,7 +506,7 @@ test('ResourceTable parser enforces file, field, item and output limits', () => 
     error => error.code === 'ORIX_RESOURCE_TABLE_FIELD_LIMIT',
   );
   assert.throws(
-    () => parse_android_resource_table(fixture, { max_items: 1 }),
+    () => parse_android_resource_table(fixture, { max_items: 3 }),
     error => error.code === 'ORIX_RESOURCE_TABLE_ITEM_LIMIT',
   );
   const truncated = parse_android_resource_table(fixture, { max_output_items: 0 });
