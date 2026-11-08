@@ -473,6 +473,10 @@ function parse_entry(buffer, start, end, budget, limits, depth) {
       budget.unknown_fields += 1;
     }
   }, 'Entry');
+  result.config_values_reported = result.config_values.length;
+  result.config_values_omitted = result.config_value_count - result.config_values_reported;
+  result.flag_disabled_config_values_reported = result.flag_disabled_config_values.length;
+  result.flag_disabled_config_values_omitted = result.flag_disabled_config_value_count - result.flag_disabled_config_values_reported;
   return result;
 }
 
@@ -500,6 +504,8 @@ function parse_type(buffer, start, end, budget, limits, depth) {
       budget.unknown_fields += 1;
     }
   }, 'Type');
+  result.entries_reported = result.entries.length;
+  result.entries_omitted = result.entry_count - result.entries_reported;
   return result;
 }
 
@@ -527,6 +533,8 @@ function parse_package(buffer, start, end, budget, limits, depth) {
       budget.unknown_fields += 1;
     }
   }, 'Package');
+  result.types_reported = result.types.length;
+  result.types_omitted = result.type_count - result.types_reported;
   for (const type of result.types) {
     if (result.id === null || type.id === null) continue;
     for (const entry of type.entries) {
@@ -643,8 +651,12 @@ export function parse_android_resource_table(buffer, options = {}) {
     overlayables: [],
     overlayables_omitted: 0,
     tool_fingerprint_count: 0,
+    tool_fingerprints_reported: 0,
+    tool_fingerprints_omitted: 0,
     tool_fingerprints: [],
     dynamic_ref_table_count: 0,
+    dynamic_ref_tables_reported: 0,
+    dynamic_ref_tables_omitted: 0,
     dynamic_ref_tables: [],
   };
   const seen = new Set();
@@ -669,16 +681,18 @@ export function parse_android_resource_table(buffer, options = {}) {
       expect_wire('ResourceTable', field, wire, 2);
       result.tool_fingerprint_count += 1;
       const item = parse_tool_fingerprint(buffer, value.start, value.end, budget, limits, 1);
-      add_output(result.tool_fingerprints, item, budget);
+      if (!add_output(result.tool_fingerprints, item, budget)) result.tool_fingerprints_omitted += 1;
     } else if (field === 5) {
       expect_wire('ResourceTable', field, wire, 2);
       result.dynamic_ref_table_count += 1;
       const item = parse_dynamic_ref_table(buffer, value.start, value.end, budget, limits, 1);
-      add_output(result.dynamic_ref_tables, item, budget);
+      if (!add_output(result.dynamic_ref_tables, item, budget)) result.dynamic_ref_tables_omitted += 1;
     } else {
       budget.unknown_fields += 1;
     }
   }, 'ResourceTable');
+  result.tool_fingerprints_reported = result.tool_fingerprints.length;
+  result.dynamic_ref_tables_reported = result.dynamic_ref_tables.length;
   return {
     ...result,
     summary: {
