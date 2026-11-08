@@ -926,9 +926,6 @@
           "type": "boolean"
         },
         "resource_tables": {
-          "$ref": "#/properties/bundle/properties/resource_tables"
-        },
-        "resource_tables": {
           "type": "object",
           "required": ["count", "reported", "omitted", "bytes_used", "tables"],
           "properties": {
