@@ -834,7 +834,7 @@ function parse_value(buffer, start, end, budget, limits, depth) {
     if (field === 1) {
       expect_wire('Value', field, wire, 2);
       singular(seen, field, 'Value');
-      walk_fields(buffer, value.start, value.end, budget, () => {}, 'Value.source');
+      parse_source(buffer, value.start, value.end, budget, limits, depth + 1);
     } else if (field === 2) {
       expect_wire('Value', field, wire, 2);
       singular(seen, field, 'Value');
