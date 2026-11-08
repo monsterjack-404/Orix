@@ -35,7 +35,7 @@ function make_reference_value() {
     field_varint(6, 0x20),
   ]);
   const item = field_bytes(1, reference);
-  return field_bytes(4, item);
+  return field_bytes(2, field_bytes(4, item));
 }
 
 function make_resource_table({ unknown_top_level = false, second_config_value = false } = {}) {
