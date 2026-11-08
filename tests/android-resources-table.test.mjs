@@ -158,7 +158,7 @@ test('ResourceTable validates AOSP Source, Visibility, AllowNew, OverlayableItem
     field_bytes(1, source),
     field_string(2, 'overlay item'),
     field_varint(3, 8),
-    field_varint(3, 9),
+    field_bytes(3, Buffer.from([9, 5])),
     field_varint(4, 0),
   ]);
   const staged_id = Buffer.concat([
@@ -190,6 +190,13 @@ test('ResourceTable validates AOSP Source, Visibility, AllowNew, OverlayableItem
     () => parse_android_resource_table(resource_table_fixture({ entry_metadata: invalid_overlayable_item })),
     error => error.code === 'ORIX_RESOURCE_TABLE_WIRE_MISMATCH',
     'OverlayableItem.policy must be a varint enum',
+  );
+
+  const malformed_packed_policy = field_bytes(5, field_bytes(3, Buffer.from([0x80])));
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({ entry_metadata: malformed_packed_policy })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_VARINT_TRUNCATED',
+    'Packed OverlayableItem.policy values must be fully terminated inside their field',
   );
 
   const invalid_staged_id = field_bytes(7, field_bytes(2, field_string(1, 'wrong-wire')));
