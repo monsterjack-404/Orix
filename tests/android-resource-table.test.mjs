@@ -233,3 +233,26 @@ test('ResourceTable enforces file, field, item, depth and string budgets', () =>
   );
   assert.throws(() => parse_android_resource_table(table, { max_output_items: -1 }), TypeError);
 });
+
+test('ResourceTable rejects unknown Reference.type enum values', () => {
+  const invalid_reference = field_varint(1, 2);
+  const item = field_bytes(1, invalid_reference);
+  const value = field_bytes(4, item);
+  const config_value = field_bytes(2, value);
+  const entry = Buffer.concat([
+    field_bytes(1, field_varint(1, 1)),
+    field_bytes(6, config_value),
+  ]);
+  const type = Buffer.concat([
+    field_bytes(1, field_varint(1, 1)),
+    field_bytes(3, entry),
+  ]);
+  const pkg = Buffer.concat([
+    field_bytes(1, field_varint(1, 0x7f)),
+    field_bytes(3, type),
+  ]);
+  assert.throws(
+    () => parse_android_resource_table(field_bytes(2, pkg)),
+    error => error.code === 'ORIX_RESOURCE_TABLE_REFERENCE_TYPE',
+  );
+});
