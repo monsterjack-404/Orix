@@ -32,8 +32,67 @@ function id_message(id) {
   return field_varint(1, id);
 }
 
-function resource_table_fixture({ entry_metadata = Buffer.alloc(0), visibility_metadata = null, overlayable_source = null, value_contents = null } = {}) {
-  const source_pool = field_bytes(1, Buffer.from([1, 2, 3, 4]));
+function encode_pool_length_u8(value) {
+  if (value <= 0x7f) return Buffer.from([value]);
+  if (value > 0x7fff) throw new RangeError('UTF-8 pool fixture length is too large');
+  return Buffer.from([0x80 | (value >> 8), value & 0xff]);
+}
+
+function encode_pool_length_u16(value) {
+  if (value <= 0x7fff) {
+    const result = Buffer.alloc(2);
+    result.writeUInt16LE(value, 0);
+    return result;
+  }
+  if (value > 0x7fffffff) throw new RangeError('UTF-16 pool fixture length is too large');
+  const result = Buffer.alloc(4);
+  result.writeUInt16LE(0x8000 | Math.floor(value / 0x10000), 0);
+  result.writeUInt16LE(value & 0xffff, 2);
+  return result;
+}
+
+function android_string_pool(strings, encoding = 'utf-8') {
+  const utf8 = encoding === 'utf-8';
+  const records = [];
+  const offsets = [];
+  let cursor = 0;
+  for (const value of strings) {
+    const encoded = Buffer.from(value, utf8 ? 'utf8' : 'utf16le');
+    const length = utf8
+      ? Buffer.concat([encode_pool_length_u8(value.length), encode_pool_length_u8(encoded.length)])
+      : encode_pool_length_u16(value.length);
+    const record = Buffer.concat([length, encoded, utf8 ? Buffer.from([0]) : Buffer.from([0, 0])]);
+    offsets.push(cursor);
+    records.push(record);
+    cursor += record.length;
+  }
+  const table_end = 28 + strings.length * 4;
+  const string_data = Buffer.concat(records);
+  const header = Buffer.alloc(table_end);
+  header.writeUInt16LE(0x0001, 0);
+  header.writeUInt16LE(28, 2);
+  header.writeUInt32LE(table_end + string_data.length, 4);
+  header.writeUInt32LE(strings.length, 8);
+  header.writeUInt32LE(0, 12);
+  header.writeUInt32LE(utf8 ? 0x100 : 0, 16);
+  header.writeUInt32LE(table_end, 20);
+  header.writeUInt32LE(0, 24);
+  offsets.forEach((offset, index) => header.writeUInt32LE(offset, 28 + index * 4));
+  return Buffer.concat([header, string_data]);
+}
+
+function resource_table_fixture({
+  entry_metadata = Buffer.alloc(0),
+  visibility_metadata = null,
+  overlayable_source = null,
+  value_contents = null,
+  source_pool_first = true,
+  include_source_pool = true,
+  source_pool_strings = ['res/values/strings.xml', 'res/values/public.xml', 'res/values/attrs.xml'],
+  source_pool_encoding = 'utf-8',
+} = {}) {
+  const source_pool_data = android_string_pool(source_pool_strings, source_pool_encoding);
+  const source_pool = field_bytes(1, source_pool_data);
   const visibility = visibility_metadata ?? field_varint(1, 2);
   const configuration = Buffer.concat([
     field_string(3, 'en-US'),
@@ -84,20 +143,25 @@ function resource_table_fixture({ entry_metadata = Buffer.alloc(0), visibility_m
     field_bytes(1, id_message(0x7f)),
     field_string(2, 'com.example.app'),
   ]);
-  return Buffer.concat([
-    field_bytes(1, source_pool),
+  const fields = [
     field_bytes(2, pkg),
     field_bytes(3, overlayable),
     field_bytes(4, fingerprint),
     field_bytes(5, dynamic_ref),
-  ]);
+  ];
+  if (include_source_pool && source_pool_first) fields.unshift(source_pool);
+  else if (include_source_pool) fields.push(source_pool);
+  return Buffer.concat(fields);
 }
 
 test('ResourceTable parser inventories packages, types, entries, IDs and selected configurations', () => {
   const parsed = parse_android_resource_table(resource_table_fixture());
   assert.equal(parsed.schema_version, 'orix.android-resource-table.v1');
   assert.equal(parsed.source_pool_present, true);
-  assert.equal(parsed.source_pool_data_bytes, 4);
+  assert.equal(parsed.source_pool_data_bytes > 28, true);
+  assert.equal(parsed.source_pool_string_count, 3);
+  assert.equal(parsed.source_pool_style_count, 0);
+  assert.equal(parsed.source_pool_encoding, 'utf-8');
   assert.equal(parsed.package_count, 1);
   assert.equal(parsed.packages[0].id, 0x7f);
   assert.equal(parsed.packages[0].name, 'com.example.app');
@@ -415,4 +479,66 @@ test('ResourceTable parser rejects out-of-range package and assigned type identi
     () => parse_android_resource_table(field_bytes(2, bad_type_package)),
     error => error.code === 'ORIX_RESOURCE_TABLE_ID_RANGE' && error.details.minimum === 1,
   );
+});
+
+test('ResourceTable source-pool strings resolve Source.path_idx in UTF-8 and UTF-16LE chunks', () => {
+  const source = field_varint(1, 2);
+  const visibility = Buffer.concat([
+    field_varint(1, 2),
+    field_bytes(2, source),
+  ]);
+  const overlay_source = field_varint(1, 2);
+  const utf8 = parse_android_resource_table(resource_table_fixture({
+    visibility_metadata: visibility,
+    overlayable_source: overlay_source,
+    source_pool_first: false,
+  }));
+  assert.equal(utf8.source_pool_encoding, 'utf-8');
+  assert.equal(utf8.source_path_references, 2);
+  assert.equal(utf8.source_paths_resolved, 2);
+  assert.equal(utf8.source_paths_unresolved, 0);
+  assert.deepEqual(utf8.source_paths, [{
+    index: 2, path: 'res/values/attrs.xml', reference_count: 2,
+  }]);
+
+  const utf16 = parse_android_resource_table(resource_table_fixture({
+    overlayable_source: overlay_source,
+    source_pool_encoding: 'utf-16le',
+  }));
+  assert.equal(utf16.source_pool_encoding, 'utf-16le');
+  assert.equal(utf16.source_paths_resolved, 1);
+  assert.equal(utf16.source_paths[0].path, 'res/values/attrs.xml');
+});
+
+test('ResourceTable rejects invalid source path indices and malformed binary string pools', () => {
+  const out_of_range_source = field_varint(1, 3);
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({ overlayable_source: out_of_range_source })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_SOURCE_PATH_INDEX',
+  );
+
+  assert.throws(
+    () => parse_android_resource_table(Buffer.concat([
+      field_bytes(1, field_bytes(1, Buffer.from([1, 2, 3, 4]))),
+    ])),
+    error => error.code === 'ORIX_RESOURCE_TABLE_STRING_POOL_HEADER',
+  );
+
+  const bad_terminator_pool = android_string_pool(['res/values/strings.xml']);
+  bad_terminator_pool[bad_terminator_pool.length - 1] = 0x41;
+  assert.throws(
+    () => parse_android_resource_table(field_bytes(1, field_bytes(1, bad_terminator_pool))),
+    error => error.code === 'ORIX_RESOURCE_TABLE_STRING_POOL_TERMINATOR',
+  );
+});
+
+test('ResourceTable reports unresolved source paths when the source pool is absent', () => {
+  const source = field_varint(1, 0);
+  const parsed = parse_android_resource_table(resource_table_fixture({
+    overlayable_source: source,
+    include_source_pool: false,
+  }));
+  assert.equal(parsed.source_path_references, 1);
+  assert.equal(parsed.source_paths_resolved, 0);
+  assert.equal(parsed.source_paths_unresolved, 1);
 });
