@@ -233,3 +233,19 @@ test('DEX decoder rejects branch targets outside the method', () => {
     error => error.code === 'ORIX_DEX_BYTECODE_BRANCH_RANGE',
   );
 });
+
+test('DEX bytecode decoder enforces an instruction-unit budget before boundary allocation', () => {
+  const code = words(0x000e, 0x000e);
+  assert.throws(
+    () => decode(code, { registers_size: 0, max_instruction_units: 1 }),
+    error => error.code === 'ORIX_DEX_BYTECODE_INSTRUCTION_BUDGET',
+  );
+  assert.doesNotThrow(() => decode(code, { registers_size: 0, max_instruction_units: 2 }));
+
+  for (const max_instruction_units of [-1, 100_000_001, 1.5]) {
+    assert.throws(
+      () => decode(words(0x000e), { registers_size: 0, max_instruction_units }),
+      TypeError,
+    );
+  }
+});
