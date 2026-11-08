@@ -1042,17 +1042,21 @@ test('APK/AAB metadata readers never decode unsafe, symlink or directory ZIP mem
   const config = Buffer.from([0x40, 0x00]);
   const resources = resource_table_fixture();
   const report = analyze_android_package(create_zip([
+    // The valid BundleConfig identifies the AAB; all other metadata members
+    // in this fixture are unsafe or symlinks and must stay out of decoders.
+    { name: 'BundleConfig.pb', contents: config },
     { name: '../manifest/AndroidManifest.xml', contents: proto_manifest },
     { name: 'base/manifest/AndroidManifest.xml', contents: proto_manifest, unix_mode: 0o120777 },
     { name: '../dex/classes.dex', contents: create_dex_fixture() },
     { name: 'base/dex/classes2.dex', contents: create_dex_fixture(), unix_mode: 0o120777 },
-    { name: 'BundleConfig.pb', contents: config, unix_mode: 0o120777 },
+    { name: '../resources.pb', contents: resources },
     { name: 'base/resources.pb', contents: resources, unix_mode: 0o120777 },
   ]));
-  assert.deepEqual(report.manifests.map(item => item.status), ['unsafe-path', 'symlink']);
-  assert.deepEqual(report.dex.map(item => item.status), ['unsafe-path', 'symlink']);
-  assert.equal(report.bundle.bundle_config.status, 'symlink');
-  assert.equal(report.bundle.resource_tables.tables[0].status, 'symlink');
+  assert.equal(report.format, 'AAB');
+  assert.deepEqual(report.manifests, []);
+  assert.deepEqual(report.dex, []);
+  assert.equal(report.bundle.bundle_config.status, 'decoded');
+  assert.deepEqual(report.bundle.resource_tables.tables.map(item => item.status), ['unsafe-path', 'symlink']);
   assert.ok(report.bundle.resource_tables.tables.every(item => item.table === null));
 });
 
