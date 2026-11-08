@@ -32,7 +32,7 @@ function id_message(id) {
   return field_varint(1, id);
 }
 
-function resource_table_fixture({ entry_metadata = Buffer.alloc(0), visibility_metadata = null, overlayable_source = null } = {}) {
+function resource_table_fixture({ entry_metadata = Buffer.alloc(0), visibility_metadata = null, overlayable_source = null, value_contents = null } = {}) {
   const source_pool = field_bytes(1, Buffer.from([1, 2, 3, 4]));
   const visibility = visibility_metadata ?? field_varint(1, 2);
   const configuration = Buffer.concat([
@@ -46,7 +46,7 @@ function resource_table_fixture({ entry_metadata = Buffer.alloc(0), visibility_m
     field_string(3, 'string/app_name'),
   ]);
   const item = field_bytes(1, reference);
-  const value = Buffer.concat([
+  const value = value_contents ?? Buffer.concat([
     field_varint(3, 1),
     field_bytes(4, item),
   ]);
@@ -204,6 +204,107 @@ test('ResourceTable validates AOSP Source, Visibility, AllowNew, OverlayableItem
     () => parse_android_resource_table(resource_table_fixture({ visibility_metadata: invalid_visibility })),
     error => error.code === 'ORIX_RESOURCE_TABLE_WIRE_MISMATCH',
     'Visibility.source must be a Source message',
+  );
+});
+
+test('ResourceTable validates known nested compound-value protobuf schemas without decoding values', () => {
+  const source = field_varint(1, 2);
+  const reference = Buffer.concat([
+    field_varint(1, 0),
+    field_varint(2, 0x7f010001),
+  ]);
+  const item = field_bytes(1, reference);
+
+  const symbol = Buffer.concat([
+    field_bytes(1, source),
+    field_string(2, 'symbol'),
+    field_bytes(3, reference),
+    field_varint(4, 1),
+    field_varint(5, 2),
+  ]);
+  const attribute = Buffer.concat([
+    field_varint(1, 3),
+    field_varint(2, -2),
+    field_varint(3, 99),
+    field_bytes(4, symbol),
+  ]);
+  const style_entry = Buffer.concat([
+    field_bytes(1, source),
+    field_string(2, 'style entry'),
+    field_bytes(3, reference),
+    field_bytes(4, item),
+  ]);
+  const style = Buffer.concat([
+    field_bytes(1, reference),
+    field_bytes(2, source),
+    field_bytes(3, style_entry),
+  ]);
+  const styleable = field_bytes(1, Buffer.concat([
+    field_bytes(1, source),
+    field_string(2, 'styleable entry'),
+    field_bytes(3, reference),
+  ]));
+  const array = field_bytes(1, Buffer.concat([
+    field_bytes(1, source),
+    field_string(2, 'array element'),
+    field_bytes(3, item),
+  ]));
+  const plural = field_bytes(1, Buffer.concat([
+    field_bytes(1, source),
+    field_string(2, 'plural entry'),
+    field_varint(3, 5),
+    field_bytes(4, item),
+  ]));
+  const style_string = Buffer.concat([
+    field_string(1, 'styled macro'),
+    field_bytes(2, Buffer.concat([
+      field_string(1, 'b'),
+      field_varint(2, 0),
+      field_varint(3, 5),
+    ])),
+  ]);
+  const macro = Buffer.concat([
+    field_string(1, 'raw'),
+    field_bytes(2, style_string),
+    field_bytes(3, Buffer.concat([field_varint(1, 0), field_varint(2, 5)])),
+    field_bytes(4, Buffer.concat([
+      field_string(1, 'android'),
+      field_string(2, 'com.example'),
+      field_varint(3, 1),
+    ])),
+    field_bytes(5, Buffer.concat([field_varint(1, 4), field_varint(2, 8)])),
+  ]);
+
+  const variants = [
+    [1, attribute, 'attribute'],
+    [2, style, 'style'],
+    [3, styleable, 'styleable'],
+    [4, array, 'array'],
+    [5, plural, 'plural'],
+    [6, macro, 'macro'],
+  ];
+  for (const [field, payload, kind] of variants) {
+    const compound = field_bytes(field, payload);
+    const value = Buffer.concat([field_varint(3, 1), field_bytes(5, compound)]);
+    const parsed = parse_android_resource_table(resource_table_fixture({ value_contents: value }));
+    assert.equal(parsed.summary.compound_kinds[kind], 1, kind + ' compound value should remain inventoried');
+  }
+
+  const malformed_attribute = field_bytes(1, field_bytes(1, Buffer.from([1])));
+  const malformed_compound = field_bytes(1, malformed_attribute);
+  const malformed_value = Buffer.concat([field_varint(3, 1), field_bytes(5, malformed_compound)]);
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({ value_contents: malformed_value })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_WIRE_MISMATCH',
+    'Known Attribute fields must reject a wrong inner protobuf wire type',
+  );
+
+  const malformed_macro = field_bytes(6, field_varint(5, 1));
+  const malformed_macro_value = Buffer.concat([field_varint(3, 1), field_bytes(5, malformed_macro)]);
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({ value_contents: malformed_macro_value })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_WIRE_MISMATCH',
+    'MacroBody.source must be a SourcePosition message',
   );
 });
 
