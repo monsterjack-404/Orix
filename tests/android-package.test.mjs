@@ -1066,10 +1066,25 @@ test('AAB resource-table path limits are validated and BUNDLE-METADATA is not pa
 
   const report = analyze_android_package(create_zip([
     { name: 'BUNDLE-METADATA/vendor/resources.pb', contents: resources },
+    { name: 'base/assets/nested/resources.pb', contents: resources },
   ]));
   assert.equal(report.format, 'Android package candidate');
   assert.equal(report.bundle.status, 'not-applicable');
   assert.equal(report.bundle.resource_tables.count, 0);
   assert.equal(report.bundle.resource_tables.tables.length, 0);
+  assert.equal(report.summary.resources_table_present, false);
 });
 
+test('AAB resource-table output limits report omitted module tables without inflating them', () => {
+  const resources = resource_table_fixture();
+  const report = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: Buffer.from([0x40, 0x00]) },
+    { name: 'base/resources.pb', contents: resources },
+    { name: 'feature/resources.pb', contents: resources },
+  ]), { max_resource_tables: 1 });
+  assert.equal(report.bundle.resource_tables.count, 2);
+  assert.equal(report.bundle.resource_tables.reported, 1);
+  assert.equal(report.bundle.resource_tables.omitted, 1);
+  assert.equal(report.bundle.resource_tables.tables.length, 1);
+  assert.equal(report.bundle.resource_tables.bytes_used, resources.length);
+});
