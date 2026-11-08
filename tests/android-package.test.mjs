@@ -1107,6 +1107,9 @@ test('AAB resource-table path limits are validated and BUNDLE-METADATA is not pa
   const report = analyze_android_package(create_zip([
     { name: 'BUNDLE-METADATA/vendor/resources.pb', contents: resources },
     { name: 'base/assets/nested/resources.pb', contents: resources },
+    { name: './resources.pb', contents: resources },
+    { name: '../resources.pb', contents: resources },
+    { name: 'bad\\\\module/resources.pb', contents: resources },
   ]));
   assert.equal(report.format, 'Android package candidate');
   assert.equal(report.bundle.status, 'not-applicable');
