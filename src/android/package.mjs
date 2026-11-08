@@ -822,6 +822,17 @@ export function render_android_package_markdown(report) {
       if (config.coverage.unknown_fields > 0) lines.push('- BundleConfig unknown fields preserved as skipped metadata: ' + config.coverage.unknown_fields);
     }
     lines.push('- Modules reported: ' + report.bundle.modules_reported + ' / ' + report.bundle.module_count);
+    lines.push('- Resource tables decoded: ' + report.bundle.resource_tables.tables.filter(item => item.status === 'decoded').length +
+      ' / ' + report.bundle.resource_tables.count + ' (' + report.bundle.resource_tables.bytes_used + ' bytes charged)');
+    if (report.bundle.resource_tables.omitted > 0) lines.push('- Resource table outputs omitted by configured table limit: ' + report.bundle.resource_tables.omitted);
+    if (report.bundle.resource_tables.tables.length > 0) {
+      lines.push('', '| Module | resources.pb status | Packages | Types | Entries |', '|---|---|---:|---:|---:|');
+      for (const item of report.bundle.resource_tables.tables) {
+        const summary = item.table?.summary;
+        lines.push('| ' + markdown_cell(item.module) + ' | ' + markdown_cell(item.status) + ' | ' +
+          (summary?.package_count ?? '—') + ' | ' + (summary?.type_count ?? '—') + ' | ' + (summary?.entry_count ?? '—') + ' |');
+      }
+    }
     lines.push('', '| Module | Manifest | DEX | Native libraries | resources.pb | res/ | assets/ | root/ |', '|---|---:|---:|---:|---|---:|---:|---:|');
     for (const item of report.bundle.modules) {
       lines.push('| ' + markdown_cell(item.name) + ' | ' + String(item.manifest_present) + ' | ' + item.dex_entries + ' | ' + item.native_libraries + ' | ' + String(item.resources_pb_present) + ' | ' + item.resource_paths + ' | ' + item.asset_paths + ' | ' + item.root_paths + ' |');
