@@ -300,9 +300,7 @@ test('Rizin CLI refuses to execute a provider without an explicit isolation poli
 test('Rizin CLI forwards required isolation and sandbox root to the adapter and fails closed', async () => {
   await with_fixture(async ({ directory, executable, executable_args }) => {
     const missing_root = path.join(directory, 'missing-rootfs');
-    const expected_code = process.platform === 'linux'
-      ? 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE'
-      : 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE';
+    const expected_code = 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE';
     await assert.rejects(
       main([
         'providers', 'rizin', 'doctor',

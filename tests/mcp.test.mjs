@@ -724,9 +724,7 @@ test('MCP Rizin isolation mode is schema-validated and uses the administrator sa
       call_orix_tool('orix.rizin_functions', {
         path: file, executable, executable_args, isolation: 'required',
       }, { roots: [directory] }),
-      error => error.code === (process.platform === 'linux'
-        ? 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE'
-        : 'ORIX_PROVIDER_ISOLATION_UNAVAILABLE'),
+      error => error.code === 'ORIX_PROVIDER_SANDBOX_ROOT_UNAVAILABLE',
     );
     await assert.rejects(
       call_orix_tool('orix.rizin_functions', {
