@@ -46,6 +46,8 @@ async function main() {
   assert.ok(launcherSource.includes('MAX_CLEANUP_TREE_DEPTH = 256') &&
     launcherSource.includes('MAX_CLEANUP_TREE_ENTRIES = 100000'),
     'Native post-provider cleanup must have explicit depth and entry ceilings');
+  assert.match(launcherSource, /collected\.Count \+ pending\.Count >= MAX_CLEANUP_TREE_ENTRIES/,
+    'Cleanup traversal must cap both visited entries and its pending directory frontier');
   assert.match(launcherSource, /static List<KeyValuePair<string, FileAttributes>> CollectCleanupTree[\s\S]*?new Stack<KeyValuePair<string, int>>\(\)/,
     'Provider-controlled cleanup trees must be preflighted with an iterative bounded walker');
   const cleanupWalkers = launcherSource.slice(
