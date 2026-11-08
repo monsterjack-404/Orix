@@ -50,44 +50,58 @@ function stat_metadata(info) {
 
 async function trusted_system_path(canonical) {
   const root = path.parse(canonical).root;
-  if (!root) return false;
+  if (!root) return { trusted: false, reason: 'canonical-path-has-no-filesystem-root' };
   let current = root;
   let info;
   try {
     info = await lstat(current);
-    if (!assess_trusted_system_path_component(stat_metadata(info), 'directory').trusted) return false;
+    let assessment = assess_trusted_system_path_component(stat_metadata(info), 'directory');
+    if (!assessment.trusted) {
+      return { trusted: false, component: current, expected_type: 'directory', metadata: stat_metadata(info), assessment };
+    }
     const relative = path.relative(root, canonical);
     const components = relative.split(path.sep).filter(Boolean);
-    if (components.length === 0) return false;
+    if (components.length === 0) return { trusted: false, reason: 'canonical-path-is-filesystem-root' };
     for (let index = 0; index < components.length; index += 1) {
       current = path.join(current, components[index]);
       info = await lstat(current);
       const expected_type = index === components.length - 1 ? 'file' : 'directory';
-      if (!assess_trusted_system_path_component(stat_metadata(info), expected_type).trusted) return false;
+      assessment = assess_trusted_system_path_component(stat_metadata(info), expected_type);
+      if (!assessment.trusted) {
+        return { trusted: false, component: current, expected_type, metadata: stat_metadata(info), assessment };
+      }
     }
-    return true;
-  } catch {
-    return false;
+    return { trusted: true };
+  } catch (error) {
+    return { trusted: false, component: current, reason: error.code ?? 'filesystem-error' };
   }
 }
 
 async function resolve_trusted_executable(candidates, label) {
+  const rejected_candidates = [];
   for (const candidate of candidates) {
     try {
       const info = await lstat(candidate);
-      if (info.isSymbolicLink() || !info.isFile()) continue;
+      if (info.isSymbolicLink() || !info.isFile()) {
+        rejected_candidates.push({ candidate, reason: info.isSymbolicLink() ? 'candidate-is-symlink' : 'candidate-is-not-file' });
+        continue;
+      }
       const canonical = await realpath(candidate);
-      if (!await trusted_system_path(canonical)) continue;
+      const trust = await trusted_system_path(canonical);
+      if (!trust.trusted) {
+        rejected_candidates.push({ candidate, canonical, ...trust });
+        continue;
+      }
       await access(canonical, 1);
       return canonical;
-    } catch {
-      // Only fixed, root-owned, non-writable system locations are considered; never search PATH.
+    } catch (error) {
+      rejected_candidates.push({ candidate, reason: error.code ?? 'filesystem-error' });
     }
   }
   isolation_error(
     'ORIX_PROVIDER_ISOLATION_UNAVAILABLE',
     label + ' is not installed at a trusted system path; required isolation cannot start',
-    { platform: process.platform, backend: label },
+    { platform: process.platform, backend: label, rejected_candidates },
   );
 }
 
