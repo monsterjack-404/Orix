@@ -356,16 +356,24 @@ export function decode_dex_instructions(buffer, options = {}) {
   const dexVersion = options.dex_version ?? '040';
   const counts = options.counts ?? {};
   const maxOutput = options.max_output_instructions ?? 10_000;
+  const maxInstructionUnits = options.max_instruction_units ?? 20_000_000;
   const maxPayloadBytes = options.max_payload_bytes ?? 16 * 1024 * 1024;
   const maxSwitchTargets = options.max_switch_targets ?? 1_024;
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(instructionUnits) || instructionUnits < 0 ||
       !Number.isSafeInteger(registersSize) || registersSize < 0 || !Number.isSafeInteger(maxOutput) || maxOutput < 0 || maxOutput > 100_000 ||
+      !Number.isSafeInteger(maxInstructionUnits) || maxInstructionUnits < 0 || maxInstructionUnits > 100_000_000 ||
       !Number.isSafeInteger(maxPayloadBytes) || maxPayloadBytes < 0 || maxPayloadBytes > 128 * 1024 * 1024 ||
       !Number.isSafeInteger(maxSwitchTargets) || maxSwitchTargets < 0 || maxSwitchTargets > 65_535) {
     throw new TypeError('DEX bytecode option is outside its supported range');
   }
   if (offset > buffer.length || instructionUnits > Math.floor((buffer.length - offset) / 2)) {
     fail('ORIX_DEX_BYTECODE_RANGE', 'DEX code_item instruction array exceeds the input buffer', { offset, instruction_units: instructionUnits, file_size: buffer.length });
+  }
+  if (instructionUnits > maxInstructionUnits) {
+    fail('ORIX_DEX_BYTECODE_INSTRUCTION_BUDGET', 'DEX instruction-unit count exceeds the configured decoder budget', {
+      instruction_units: instructionUnits,
+      max_instruction_units: maxInstructionUnits,
+    });
   }
   const version = versionNumber(dexVersion);
   if (!Number.isInteger(version)) throw new TypeError('DEX version must be a numeric three-digit string');
