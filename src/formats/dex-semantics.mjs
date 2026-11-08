@@ -205,6 +205,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
     offset: offset + 16,
     instruction_units: insns_size,
     registers_size,
+    outs_size,
     dex_version,
     counts,
     max_output_instructions: Math.max(0, limits.max_decoded_instructions - state.decoded_instruction_items),
