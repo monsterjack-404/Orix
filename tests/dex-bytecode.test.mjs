@@ -242,6 +242,42 @@ test('DEX decoder caps displayed instructions while validating the full stream',
   assert.equal(result.instructions_truncated, true);
 });
 
+test('DEX decoder validates required code-address boundaries and the exclusive method end', () => {
+  const valid = decode(words(0x000e), {
+    registers_size: 0,
+    required_instruction_boundaries: [0, 1],
+  });
+  assert.equal(valid.instruction_count, 1);
+
+  assert.throws(
+    () => decode(words(0x000e), {
+      registers_size: 0,
+      required_instruction_boundaries: [2],
+    }),
+    error => error.code === 'ORIX_DEX_BYTECODE_CODE_ADDRESS',
+  );
+});
+
+test('DEX decoder rejects code-address reference lists above the aggregate bound before iterating them', () => {
+  assert.throws(
+    () => decode(words(0x000e), {
+      registers_size: 0,
+      required_instruction_boundaries: new Array(1_000_001),
+    }),
+    TypeError,
+  );
+});
+
+test('DEX decoder accepts only the explicitly supported three-digit DEX version labels', () => {
+  for (const dex_version of ['040x', '036', '4.0', '0400', 40]) {
+    assert.throws(
+      () => decode(words(0x000e), { registers_size: 0, dex_version }),
+      TypeError,
+      'Malformed or unsupported DEX version should fail: ' + dex_version,
+    );
+  }
+});
+
 test('DEX decoder rejects branch targets outside the method', () => {
   assert.throws(
     () => decode(words(0x0128), { registers_size: 0 }),
