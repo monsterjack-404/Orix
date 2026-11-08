@@ -401,9 +401,10 @@ function parse_binary_source_string_pool(bytes, budget, limits) {
           terminated = true;
           break;
         }
-        if (name >= string_count || first_char > last_char) {
-          fail('ORIX_RESOURCE_TABLE_STRING_POOL_STYLE_SPAN', 'Source-pool style span has an invalid name index or character range', {
-            index, name, string_count, first_char, last_char,
+        const styled_string_length = strings[index]?.length ?? 0;
+        if (name >= string_count || first_char > last_char || last_char >= styled_string_length) {
+          fail('ORIX_RESOURCE_TABLE_STRING_POOL_STYLE_SPAN_RANGE', 'Source-pool style span has an invalid name index or exceeds the associated string range', {
+            index, name, string_count, first_char, last_char, styled_string_length,
           });
         }
         style_spans += 1;
