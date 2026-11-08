@@ -365,6 +365,10 @@ export function decode_dex_instructions(buffer, options = {}) {
   const maxOutput = options.max_output_instructions ?? 10_000;
   const maxPayloadBytes = options.max_payload_bytes ?? 16 * 1024 * 1024;
   const maxSwitchTargets = options.max_switch_targets ?? 1_024;
+  const requiredInstructionBoundaries = options.required_instruction_boundaries ?? [];
+  if (!Array.isArray(requiredInstructionBoundaries) || requiredInstructionBoundaries.length > 1_000_000) {
+    throw new TypeError('DEX required instruction-boundary references exceed their supported range');
+  }
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(instructionUnits) || instructionUnits < 0 ||
       !Number.isSafeInteger(registersSize) || registersSize < 0 || !Number.isSafeInteger(maxOutput) || maxOutput < 0 || maxOutput > 100_000 ||
       !Number.isSafeInteger(maxPayloadBytes) || maxPayloadBytes < 0 || maxPayloadBytes > 128 * 1024 * 1024 ||
@@ -412,6 +416,22 @@ export function decode_dex_instructions(buffer, options = {}) {
     boundaries[pc] = 1;
     totalInstructions += 1;
     pc += units;
+  }
+
+  // Structural code_item references (try-range edges and catch-handler addresses)
+  // must land on instruction starts. The method end is a valid exclusive try-range edge.
+  for (const target of requiredInstructionBoundaries) {
+    if (!Number.isSafeInteger(target) || target < 0 || target > instructionUnits) {
+      fail('ORIX_DEX_BYTECODE_CODE_ADDRESS', 'DEX code_item address reference is outside the method', {
+        target, instruction_units: instructionUnits,
+      });
+    }
+    if (target !== instructionUnits && boundaries[target] !== 1) {
+      fail('ORIX_DEX_BYTECODE_CODE_ADDRESS', 'DEX code_item address reference does not point to an instruction boundary', {
+        target, instruction_units: instructionUnits,
+        target_kind: boundaries[target] >= 2 ? 'payload' : 'not-boundary',
+      });
+    }
   }
 
   const instructions = [];
