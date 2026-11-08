@@ -625,6 +625,8 @@ test('ResourceTable validates binary string-pool style tables and END-terminated
   const unterminated = Buffer.from(styled_pool);
   const styles_start = unterminated.readUInt32LE(24);
   unterminated.writeUInt32LE(0, styles_start + 12);
+  unterminated.writeUInt32LE(0, styles_start + 16);
+  unterminated.writeUInt32LE(3, styles_start + 20);
   assert.throws(
     () => parse_android_resource_table(field_bytes(1, field_bytes(1, unterminated))),
     error => error.code === 'ORIX_RESOURCE_TABLE_STRING_POOL_STYLE_TERMINATOR',
