@@ -15,11 +15,17 @@ import { inflateRawSync } from 'node:zlib';
 const LOCAL_HEADER = 0x04034b50;
 const BINARY_XML = 0x0003;
 
-function is_aab_resource_table_entry(name) {
+function is_resource_table_candidate(name) {
   const separator = name.indexOf('/');
   return separator > 0 && separator === name.lastIndexOf('/') &&
     name.slice(separator + 1) === 'resources.pb' &&
     name.slice(0, separator) !== 'BUNDLE-METADATA';
+}
+
+function is_aab_resource_table_entry(name) {
+  if (!is_resource_table_candidate(name)) return false;
+  const module = name.slice(0, name.indexOf('/'));
+  return module !== '.' && module !== '..' && !module.includes('\\\\') && !module.includes(':');
 }
 
 function is_dex_entry(name, is_aab) {
@@ -216,7 +222,7 @@ function inspect_resource_tables(buffer, entries, central_directory_offset, opti
   if (!Number.isSafeInteger(max_tables) || max_tables < 1 || max_tables > 4096) {
     throw new TypeError('max_resource_tables must be between 1 and 4096');
   }
-  const matches = entries.filter(entry => is_aab_resource_table_entry(entry.name));
+  const matches = entries.filter(entry => is_resource_table_candidate(entry.name));
   const counts = new Map();
   for (const entry of matches) counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
   const tables = [];
