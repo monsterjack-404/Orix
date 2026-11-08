@@ -685,8 +685,8 @@ function parse_config_value(buffer, start, end, budget, limits, depth) {
   return result;
 }
 
-function parse_source_position(buffer, start, end, budget, depth) {
-  assert_depth(depth, budget.limits, 'SourcePosition');
+function parse_source_position(buffer, start, end, budget, limits, depth) {
+  assert_depth(depth, limits, 'SourcePosition');
   const seen = new Set();
   walk_fields(buffer, start, end, budget, (field, wire, value) => {
     if (field === 1 || field === 2) {
@@ -708,7 +708,7 @@ function parse_source(buffer, start, end, budget, limits, depth) {
     } else if (field === 2) {
       expect_wire('Source', field, wire, 2);
       singular(seen, field, 'Source');
-      parse_source_position(buffer, value.start, value.end, budget, depth + 1);
+      parse_source_position(buffer, value.start, value.end, budget, limits, depth + 1);
     } else budget.unknown_fields += 1;
   }, 'Source');
 }
