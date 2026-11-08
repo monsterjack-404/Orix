@@ -906,7 +906,8 @@
         "modules_reported",
         "modules_omitted",
         "modules",
-        "module_semantics_decoded"
+        "module_semantics_decoded",
+        "bundle_config"
       ],
       "properties": {
         "status": {
@@ -917,6 +918,44 @@
         },
         "bundle_config_present": {
           "type": "boolean"
+        },
+        "bundle_config": {
+          "type": "object",
+          "required": ["status", "path", "uncompressed_size", "config"],
+          "properties": {
+            "status": {
+              "enum": [
+                "not-applicable",
+                "absent",
+                "decoded",
+                "duplicate-path",
+                "size-limit",
+                "output-size-limit",
+                "encrypted",
+                "unsupported-compression",
+                "invalid-local-range",
+                "invalid-local-header",
+                "local-header-mismatch",
+                "size-mismatch",
+                "decompression-failed",
+                "crc-mismatch",
+                "malformed"
+              ]
+            },
+            "path": { "type": ["string", "null"] },
+            "uncompressed_size": { "type": ["integer", "null"], "minimum": 0 },
+            "config": {
+              "oneOf": [
+                { "type": "null" },
+                { "$ref": "https://orix.dev/schemas/android-bundle-config.v1.schema.json" }
+              ]
+            },
+            "error": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
         },
         "module_count": {
           "type": "integer",

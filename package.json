@@ -23,6 +23,7 @@
     "./formats/dex": "./src/formats/dex.mjs",
     "./android/package": "./src/android/package.mjs",
     "./android/proto-xml": "./src/android/proto-xml.mjs",
+    "./android/bundle-config": "./src/android/bundle-config.mjs",
     "./formats/cpio": "./src/formats/cpio.mjs",
     "./formats/gzip": "./src/formats/gzip.mjs",
     "./formats/tar": "./src/formats/tar.mjs",

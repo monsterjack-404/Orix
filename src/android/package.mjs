@@ -5,6 +5,7 @@ import { parse_zip } from '../formats/zip.mjs';
 import { parse_dex } from '../formats/dex.mjs';
 import { parse_android_binary_xml } from './binary-xml.mjs';
 import { parse_android_proto_xml } from './proto-xml.mjs';
+import { parse_android_bundle_config } from './bundle-config.mjs';
 import { constants as fs_constants, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { hash_buffer } from '../core/hash.mjs';
@@ -151,6 +152,43 @@ function inspect_manifest(buffer, entry, central_directory_offset, options = {})
 }
 
 
+function inspect_bundle_config(buffer, entries, central_directory_offset, options = {}) {
+  const max_bytes = options.max_bundle_config_bytes ?? 4 * 1024 * 1024;
+  if (!Number.isSafeInteger(max_bytes) || max_bytes < 1 || max_bytes > 64 * 1024 * 1024) {
+    throw new TypeError('max_bundle_config_bytes must be between 1 and 67108864');
+  }
+  const matches = entries.filter(entry => entry.name === 'BundleConfig.pb');
+  if (matches.length === 0) {
+    return { status: 'absent', path: null, uncompressed_size: null, config: null };
+  }
+  if (matches.length > 1) {
+    return { status: 'duplicate-path', path: 'BundleConfig.pb', uncompressed_size: null, config: null };
+  }
+  const entry = matches[0];
+  const base = { path: 'BundleConfig.pb', uncompressed_size: entry.uncompressed_size };
+  if (entry.uncompressed_size > max_bytes) {
+    return { ...base, status: 'size-limit', config: null };
+  }
+  const data = local_entry_data(buffer, entry, max_bytes, central_directory_offset);
+  if (data.status !== 'available') {
+    return { ...base, status: data.status, config: null };
+  }
+  try {
+    const config = parse_android_bundle_config(data.bytes, {
+      max_file_bytes: max_bytes,
+      ...(options.bundle_config ?? {}),
+    });
+    return { ...base, status: 'decoded', config };
+  } catch (error) {
+    return {
+      ...base,
+      status: 'malformed',
+      config: null,
+      error: { code: error.code ?? 'ORIX_BUNDLE_CONFIG_ERROR', message: error.message },
+    };
+  }
+}
+
 const APK_SIGNING_BLOCK_MAGIC = Buffer.from('APK Sig Block 42', 'ascii');
 const APK_SIGNING_IDS = new Map([
   [0x7109871a, 'APK Signature Scheme v2'],
@@ -281,6 +319,7 @@ export function analyze_android_package(buffer, options = {}) {
   const max_signing_block_bytes = options.max_signing_block_bytes ?? 64 * 1024 * 1024;
   const max_signing_block_pairs = options.max_signing_block_pairs ?? 4096;
   const max_aab_modules = options.max_aab_modules ?? 256;
+  const max_bundle_config_bytes = options.max_bundle_config_bytes ?? 4 * 1024 * 1024;
   if (!Number.isSafeInteger(max_dex_entries) || max_dex_entries < 1 || max_dex_entries > 256) throw new TypeError('max_dex_entries must be between 1 and 256');
   if (!Number.isSafeInteger(max_dex_entry_bytes) || max_dex_entry_bytes < 112 || max_dex_entry_bytes > 536_870_912) throw new TypeError('max_dex_entry_bytes must be between 112 and 536870912');
   if (!Number.isSafeInteger(max_dex_total_bytes) || max_dex_total_bytes < 112 || max_dex_total_bytes > 1_073_741_824) throw new TypeError('max_dex_total_bytes must be between 112 and 1073741824');
@@ -292,6 +331,7 @@ export function analyze_android_package(buffer, options = {}) {
   if (!Number.isSafeInteger(max_signing_block_bytes) || max_signing_block_bytes < 32 || max_signing_block_bytes > 536_870_912) throw new TypeError('max_signing_block_bytes must be between 32 and 536870912');
   if (!Number.isSafeInteger(max_signing_block_pairs) || max_signing_block_pairs < 1 || max_signing_block_pairs > 65_536) throw new TypeError('max_signing_block_pairs must be between 1 and 65536');
   if (!Number.isSafeInteger(max_aab_modules) || max_aab_modules < 1 || max_aab_modules > 4096) throw new TypeError('max_aab_modules must be between 1 and 4096');
+  if (!Number.isSafeInteger(max_bundle_config_bytes) || max_bundle_config_bytes < 1 || max_bundle_config_bytes > 64 * 1024 * 1024) throw new TypeError('max_bundle_config_bytes must be between 1 and 67108864');
   const archive = parse_zip(buffer, options.zip ?? {});
   const entries = archive.entries.filter(entry => !entry.unsafe_path && !entry.is_symlink);
   const entry_name_counts = new Map();
@@ -369,9 +409,16 @@ export function analyze_android_package(buffer, options = {}) {
     name_original_length: name.length,
     ...module_inventory.get(name),
   }));
+  const bundle_config = is_aab
+    ? inspect_bundle_config(buffer, entries, archive.archive.central_directory_offset, {
+      max_bundle_config_bytes,
+      bundle_config: options.bundle_config,
+    })
+    : { status: 'not-applicable', path: null, uncompressed_size: null, config: null };
   const bundle = is_aab ? {
     status: 'recognized',
     bundle_config_present: names.has('BundleConfig.pb'),
+    bundle_config,
     module_count: module_names.length,
     modules_reported: reported_modules.length,
     modules_omitted: Math.max(0, module_names.length - reported_modules.length),
@@ -380,6 +427,7 @@ export function analyze_android_package(buffer, options = {}) {
   } : {
     status: 'not-applicable',
     bundle_config_present: false,
+    bundle_config,
     module_count: 0,
     modules_reported: 0,
     modules_omitted: 0,
@@ -510,7 +558,7 @@ export function analyze_android_package(buffer, options = {}) {
     limitations: [
       'ZIP entries are inventoried without filesystem extraction. Selected stored and raw-DEFLATE DEX/manifest entries are expanded in memory only within per-entry and aggregate output ceilings; encrypted, unsafe, malformed or unsupported entries are not parsed.',
       'APK binary XML and AAB AAPT2 protobuf XML manifests are decoded from stored or raw-DEFLATE, unencrypted entries whose local ZIP header and CRC match, within per-manifest and aggregate decompression budgets plus explicit parser limits; resource-reference resolution is not performed.',
-      'AAB module names and DEX/native/resource/asset/root path counts are inventoried from ZIP entry names; bounded module manifest metadata is decoded from AAPT2 protobuf XML, while BundleConfig.pb, resources.pb, dependency graph and split/install relationships remain unsupported.',
+      'AAB module names and DEX/native/resource/asset/root path counts are inventoried from ZIP entry names; bounded module manifest metadata is decoded from AAPT2 protobuf XML and BundleConfig.pb is parsed for tool version, bundle type, compression globs, split dimensions and recognized optimization metadata. resources.pb resource-table semantics, dependency graph and split/install relationships remain unsupported.',
       'DEX strings (including Modified UTF-8), type/field/method/prototype identifiers, class-data indexes and bounded code-item structure are inspected; instruction opcodes, operands, control flow, annotations, debug programs and decompilation are not decoded.',
       'For APK files, the APK Signing Block container and ID-value pair boundaries are inventoried (v2/v3/v3.1 and unknown IDs); cryptographic signatures, content digests, certificate chains, v1 JAR signatures and publisher identity are not verified.',
       'This is offline file analysis. No Android device, adb command, app installation, emulator or application code is accessed or executed.',
@@ -518,6 +566,7 @@ export function analyze_android_package(buffer, options = {}) {
     warnings: [
       ...dex.filter(item => item.status !== 'metadata-parsed').map(item => ({ path: item.path, reason: item.status })),
       ...(signing_block.status === 'malformed' ? [{ path: 'APK Signing Block', reason: signing_block.error.code }] : []),
+      ...(is_aab && bundle_config.status !== 'decoded' ? [{ path: 'BundleConfig.pb', reason: bundle_config.status }] : []),
       ...reported_manifest_entries.filter(entry => duplicate_manifest_paths.has(entry.name)).map(entry => ({
         path: entry.name.slice(0, max_archive_entry_path_length), reason: 'duplicate-path',
       })),
@@ -667,6 +716,16 @@ export function render_android_package_markdown(report) {
   lines.push('', '## App Bundle modules', '');
   if (report.bundle.status === 'recognized') {
     lines.push('- BundleConfig.pb present: ' + String(report.bundle.bundle_config_present));
+    lines.push('- BundleConfig status: ' + markdown_cell(report.bundle.bundle_config.status));
+    if (report.bundle.bundle_config.config) {
+      const config = report.bundle.bundle_config.config;
+      if (config.bundletool?.version) lines.push('- Bundletool version: ' + markdown_cell(config.bundletool.version));
+      lines.push('- Bundle type: ' + markdown_cell(config.type.name));
+      if (config.compression?.uncompressed_globs.length) lines.push('- Uncompressed globs: ' + config.compression.uncompressed_globs.map(markdown_cell).join(', '));
+      if (config.optimizations) lines.push('- Optimization metadata: decoded');
+      if (config.coverage.output_truncated) lines.push('- BundleConfig metadata output was truncated by configured limits.');
+      if (config.coverage.unknown_fields > 0) lines.push('- BundleConfig unknown fields preserved as skipped metadata: ' + config.coverage.unknown_fields);
+    }
     lines.push('- Modules reported: ' + report.bundle.modules_reported + ' / ' + report.bundle.module_count);
     lines.push('', '| Module | Manifest | DEX | Native libraries | resources.pb | res/ | assets/ | root/ |', '|---|---:|---:|---:|---|---:|---:|---:|');
     for (const item of report.bundle.modules) {
