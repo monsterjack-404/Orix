@@ -1057,3 +1057,19 @@ test('AAB resources.pb entries with invalid CRC or encryption are not decoded', 
   ]));
   assert.equal(encrypted.bundle.resource_tables.tables[0].status, 'encrypted');
 });
+
+test('AAB resource-table path limits are validated and BUNDLE-METADATA is not parsed as a module table', () => {
+  const resources = resource_table_fixture();
+  assert.throws(() => analyze_android_package(make_apk(), { max_resource_table_bytes: 0 }), /max_resource_table_bytes must be/);
+  assert.throws(() => analyze_android_package(make_apk(), { max_resource_table_total_bytes: 0 }), /max_resource_table_total_bytes must be/);
+  assert.throws(() => analyze_android_package(make_apk(), { max_resource_tables: 0 }), /max_resource_tables must be/);
+
+  const report = analyze_android_package(create_zip([
+    { name: 'BUNDLE-METADATA/vendor/resources.pb', contents: resources },
+  ]));
+  assert.equal(report.format, 'Android package candidate');
+  assert.equal(report.bundle.status, 'not-applicable');
+  assert.equal(report.bundle.resource_tables.count, 0);
+  assert.equal(report.bundle.resource_tables.tables.length, 0);
+});
+
