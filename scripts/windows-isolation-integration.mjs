@@ -40,6 +40,21 @@ async function main() {
     'Native helper must resolve security-sensitive Windows utilities through the OS API');
   assert.match(launcherSource, /if \(!process\.WaitForExit\(10000\)\)[\s\S]*?process\.Kill\(\)[\s\S]*?process\.WaitForExit\(\)[\s\S]*?throw new TimeoutException/,
     'Timed-out icacls must be observed exited before helper cleanup can mutate its target');
+  assert.ok(launcherSource.includes('MAX_ROOTFS_TREE_DEPTH = 64') &&
+    launcherSource.includes('MAX_ROOTFS_TREE_ENTRIES = 100000'),
+    'Native rootfs validation and ACL application must have explicit depth and entry ceilings');
+  assert.ok(launcherSource.includes('MAX_CLEANUP_TREE_DEPTH = 256') &&
+    launcherSource.includes('MAX_CLEANUP_TREE_ENTRIES = 100000'),
+    'Native post-provider cleanup must have explicit depth and entry ceilings');
+  assert.match(launcherSource, /static List<KeyValuePair<string, FileAttributes>> CollectCleanupTree[\\s\\S]*?new Stack<KeyValuePair<string, int>>\\(\\)/,
+    'Provider-controlled cleanup trees must be preflighted with an iterative bounded walker');
+  const cleanupWalkers = launcherSource.slice(
+    launcherSource.indexOf('static void PurgeTree('),
+    launcherSource.indexOf('static string Quote('),
+  );
+  assert.doesNotMatch(cleanupWalkers, /PurgeTree\\(child|DeleteTreeNoReparse\\(child/,
+    'Cleanup walkers must not recurse on provider-controlled directory depth');
+
   assert.match(launcherSource, /static void TerminateAndWaitForProvider[\s\S]*?WaitForSingleObject\(job, 5000\)/,
     'Provider teardown must wait for the assigned Job Object to become empty');
   assert.match(launcherSource, /static void TerminateAndWaitForProvider[\s\S]*?WaitForSingleObject\(processHandle, 5000\)/,
@@ -504,6 +519,46 @@ async function main() {
     });
     assert.deepEqual(remainingPackageScratch, [],
       'Per-profile AppContainer temp files must be removed after provider teardown');
+    // Stress native cleanup with a provider-created deep temp tree. The
+    // provider can write in its private temp directory; cleanup must remove
+    // this tree iteratively rather than recurse on provider-controlled depth.
+    const deepTempScript = [
+      'const fs = require("node:fs");',
+      'const path = require("node:path");',
+      'const os = require("node:os");',
+      'let current = path.join(os.tmpdir(), "orix-deep-cleanup-" + process.pid);',
+      'fs.mkdirSync(current);',
+      'for (let index = 0; index < 128; index++) { current = path.join(current, "d"); fs.mkdirSync(current); }',
+      'fs.writeFileSync(path.join(current, "sentinel.txt"), "created");',
+      'process.stdout.write("deep-temp-tree-created");',
+    ].join(String.fromCharCode(10));
+    const deepTempExecution = await run_static_provider({
+      manifest: manifest(),
+      executable: path.join(root, 'node.exe'),
+      cwd: path.join(root, 'work'),
+      sandbox_root: root,
+      isolation: 'required',
+      env: {},
+      args: ['-e', deepTempScript],
+      timeout_ms: 12_000,
+      max_output_bytes: 4_096,
+    });
+    assert.equal(deepTempExecution.ok, true, JSON.stringify({
+      exit_code: deepTempExecution.exit_code,
+      stdout: deepTempExecution.stdout,
+      stderr: deepTempExecution.stderr,
+      termination_reason: deepTempExecution.termination_reason,
+    }));
+    assert.match(deepTempExecution.stdout, /deep-temp-tree-created/,
+      'Provider failed to create the deep private-temp cleanup fixture');
+    const deepScratchRemaining = await readdir(path.join(root, 'tmp', 'Packages')).catch(error => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    });
+    assert.deepEqual(deepScratchRemaining, [],
+      'Iterative native cleanup did not remove a 128-directory-deep AppContainer temp tree');
+    console.log('PASS: iterative bounded native cleanup removed a 128-directory-deep provider temp tree');
+
     console.log('PASS: AppContainer token, quotas, host-file/network denial, read-only rootfs, private temp and profile scratch cleanup');
 
     // Prove that a provider's descendants are actually terminated when the
