@@ -620,7 +620,7 @@ async function main() {
       throw error;
     });
     assert.deepEqual(deepScratchRemaining, [],
-      'Iterative native cleanup did not remove a 64-directory-deep AppContainer temp tree');
+      'Iterative native cleanup did not remove a 48-directory-deep AppContainer temp tree');
     console.log('PASS: iterative bounded native cleanup removed a 48-directory-deep provider temp tree');
 
     console.log('PASS: AppContainer token, quotas, host-file/network denial, read-only rootfs, private temp and profile scratch cleanup');
