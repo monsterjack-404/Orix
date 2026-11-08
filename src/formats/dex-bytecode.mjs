@@ -188,12 +188,21 @@ function readOperands(buffer, base, pc, spec) {
     case '12x': out.registers = [a4, b4]; break;
     case '11n': out.registers = [a4]; out.literal = signed8(b4 << 4) >> 4; break;
     case '10t': out.branch_offset = signed8(aa); break;
-    case '20t': out.branch_offset = signed16(second); break;
-    case '30t': out.branch_offset = signed32(second | (third << 16)); break;
+    case '20t':
+      if (aa !== 0) fail('ORIX_DEX_BYTECODE_RESERVED_BITS', 'DEX 20t instruction has nonzero reserved bits', { pc, format: spec.format, reserved_byte: aa });
+      out.branch_offset = signed16(second);
+      break;
+    case '30t':
+      if (aa !== 0) fail('ORIX_DEX_BYTECODE_RESERVED_BITS', 'DEX 30t instruction has nonzero reserved bits', { pc, format: spec.format, reserved_byte: aa });
+      out.branch_offset = signed32(second | (third << 16));
+      break;
     case '21t': out.registers = [aa]; out.branch_offset = signed16(second); break;
     case '22t': out.registers = [a4, b4]; out.branch_offset = signed16(second); break;
     case '22x': out.registers = [aa, second]; break;
-    case '32x': out.registers = [second, third]; break;
+    case '32x':
+      if (aa !== 0) fail('ORIX_DEX_BYTECODE_RESERVED_BITS', 'DEX 32x instruction has nonzero reserved bits', { pc, format: spec.format, reserved_byte: aa });
+      out.registers = [second, third];
+      break;
     case '21s': out.registers = [aa]; out.literal = signed16(second); break;
     case '21h': out.registers = [aa]; out.literal_upper16 = second; break;
     case '21c': out.registers = [aa]; out.reference = { index: second }; break;
