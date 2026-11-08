@@ -46,6 +46,8 @@ function create_semantic_dex({
   try_start_addr = 0,
   try_insn_count = code_words.length,
   typed_handler_address = 0,
+  registers_size = 1,
+  outs_size = 0,
 } = {}) {
   const strings = ['I', 'Lcom/example/App;', 'Ljava/lang/Object;', 'V', 'run', 'value'];
   const string_ids_off = 112;
@@ -150,9 +152,9 @@ function create_semantic_dex({
   item = write_uleb(buffer, item, code_off);
   assert.equal(item, class_data_off + 10);
 
-  buffer.writeUInt16LE(1, code_off);
+  buffer.writeUInt16LE(registers_size, code_off);
   buffer.writeUInt16LE(1, code_off + 2);
-  buffer.writeUInt16LE(0, code_off + 4);
+  buffer.writeUInt16LE(outs_size, code_off + 4);
   buffer.writeUInt16LE(has_catch_handlers ? 1 : 0, code_off + 6);
   buffer.writeUInt32LE(0, code_off + 8);
   buffer.writeUInt32LE(code_words.length, code_off + 12);
@@ -229,6 +231,19 @@ test('DEX parser applies one aggregate switch-target output budget to method rep
   assert.equal(parsed.class_data_summary.switch_target_output_items, 1);
   assert.equal(parsed.class_data_summary.switch_target_output_omitted, 1);
   assert.equal(parsed.class_data_summary.output_truncated, true);
+});
+
+test('DEX semantic parser rejects invocations larger than code_item.outs_size', () => {
+  const fixture = create_semantic_dex({
+    code_words: [0x2a6e, 0x0000, 0x4321],
+    registers_size: 3,
+    outs_size: 1,
+  });
+  assert.throws(
+    () => parse_dex(fixture),
+    error => error.code === 'ORIX_DEX_BYTECODE_OUTS_SIZE',
+    'Parsed invoke argument words must fit the code_item outgoing invocation space',
+  );
 });
 
 test('DEX try ranges and catch handlers must reference instruction boundaries', () => {
