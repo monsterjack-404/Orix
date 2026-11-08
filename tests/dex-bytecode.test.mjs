@@ -233,3 +233,30 @@ test('DEX decoder rejects branch targets outside the method', () => {
     error => error.code === 'ORIX_DEX_BYTECODE_BRANCH_RANGE',
   );
 });
+
+test('DEX 20t, 30t and 32x instructions reject nonzero reserved bytes', () => {
+  const invalid = [
+    { format: '20t', code: words(0x0129, 0x0001, 0x000e) },
+    { format: '30t', code: words(0x012a, 0x0001, 0x0000, 0x000e) },
+    { format: '32x', code: words(0x0103, 0x0001, 0x0002) },
+  ];
+  for (const item of invalid) {
+    assert.throws(
+      () => decode(item.code, { registers_size: 4 }),
+      error => error.code === 'ORIX_DEX_BYTECODE_RESERVED_BITS' && error.details.format === item.format,
+      item.format + ' must reject a nonzero reserved byte',
+    );
+  }
+
+  const goto16 = decode(words(0x0029, 0x0001, 0x000e), { registers_size: 0 });
+  assert.equal(goto16.instructions[0].mnemonic, 'goto/16');
+  assert.equal(goto16.instructions[0].branch_target, 1);
+
+  const goto32 = decode(words(0x002a, 0x0001, 0x0000, 0x000e), { registers_size: 0 });
+  assert.equal(goto32.instructions[0].mnemonic, 'goto/32');
+  assert.equal(goto32.instructions[0].branch_target, 1);
+
+  const move16 = decode(words(0x0003, 0x0001, 0x0002), { registers_size: 4 });
+  assert.equal(move16.instructions[0].mnemonic, 'move/16');
+  assert.deepEqual(move16.instructions[0].registers, [1, 2]);
+});
