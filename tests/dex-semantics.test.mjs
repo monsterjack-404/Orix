@@ -206,6 +206,31 @@ test('DEX semantic parser inventories prototypes, fields, methods, class data an
   assert.equal(parsed.integrity.signature_sha1_verified, true);
 });
 
+test('DEX parser applies one aggregate switch-target output budget to method reports', () => {
+  const parsed = parse_dex(create_semantic_dex({
+    code_words: [
+      0x002b, 0x0008, 0x0000,
+      0x002b, 0x000b, 0x0000,
+      0x000e, 0x0000,
+      0x0100, 0x0001, 0x000a, 0x0000, 0x0006, 0x0000,
+      0x0100, 0x0001, 0x0014, 0x0000, 0x0003, 0x0000,
+    ],
+  }), { max_output_switch_targets: 1 });
+  const code = parsed.class_data[0].direct_methods[0].code;
+  const switches = code.instructions.filter(item => item.mnemonic === 'packed-switch');
+  assert.equal(switches.length, 2);
+  assert.equal(switches[0].switch.targets.length, 1);
+  assert.equal(switches[1].switch.targets.length, 0);
+  assert.equal(switches[1].switch.targets_omitted, 1);
+  assert.equal(code.switch_target_count, 2);
+  assert.equal(code.switch_target_output_count, 1);
+  assert.equal(code.switch_target_output_omitted, 1);
+  assert.equal(parsed.class_data_summary.switch_target_count, 2);
+  assert.equal(parsed.class_data_summary.switch_target_output_items, 1);
+  assert.equal(parsed.class_data_summary.switch_target_output_omitted, 1);
+  assert.equal(parsed.class_data_summary.output_truncated, true);
+});
+
 test('DEX try ranges and catch handlers must reference instruction boundaries', () => {
   const instructions = [0x0013, 0x0000]; // const/16 v0, #0 spans code units 0 and 1.
   const invalid_try_start = create_semantic_dex({
