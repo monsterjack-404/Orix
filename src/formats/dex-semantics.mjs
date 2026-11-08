@@ -76,6 +76,15 @@ function parse_type_list(buffer, offset, data, type_count, max_items, aggregate)
   return result;
 }
 
+function check_exception_handler_opcode(buffer, code_item_offset, address, handler_kind) {
+  const opcode = buffer.readUInt16LE(code_item_offset + 16 + address * 2) & 0xff;
+  if (opcode === 0x0a || opcode === 0x0b || opcode === 0x0c) {
+    fail('ORIX_DEX_CODE_HANDLER_MOVE_RESULT', 'DEX exception handler must not begin with a move-result instruction', {
+      code_item_offset, address, opcode, handler_kind,
+    });
+  }
+}
+
 function parse_code_item(buffer, offset, data, type_count, limits, state, dex_version, counts) {
   if (!offset || offset < data.offset || offset % 4 !== 0 || offset > data.end - 16) {
     fail('ORIX_DEX_CODE_ITEM_RANGE', 'DEX code_item offset is invalid or unaligned', { offset, data });
@@ -187,6 +196,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
             handler_kind: 'typed',
           });
         }
+        check_exception_handler_opcode(buffer, offset, address.value, 'typed');
       }
       if (size.value <= 0) {
         const catch_all = uleb(buffer, cursor, data.end, 'catch-all handler address');
@@ -202,6 +212,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
             handler_kind: 'catch-all',
           });
         }
+        check_exception_handler_opcode(buffer, offset, catch_all.value, 'catch-all');
       }
     }
     for (const item of try_items) {
