@@ -767,9 +767,22 @@ function parse_overlayable_item(buffer, start, end, budget, limits, depth) {
       singular(seen, field, 'OverlayableItem');
       decode_string(buffer, value, 'OverlayableItem.comment', budget, limits);
     } else if (field === 3) {
-      expect_wire('OverlayableItem', field, wire, 0);
-      consume_item(budget, limits, 'OverlayableItem.policy');
-      uint32(value, 'OverlayableItem.policy');
+      // Repeated proto3 enums may be encoded as unpacked varints (wire 0)
+      // or as a packed length-delimited run (wire 2).
+      if (wire === 0) {
+        consume_item(budget, limits, 'OverlayableItem.policy');
+        uint32(value, 'OverlayableItem.policy');
+      } else if (wire === 2) {
+        let cursor = value.start;
+        while (cursor < value.end) {
+          const decoded = read_varint(buffer, cursor, value.end, 'OverlayableItem.policy');
+          consume_item(budget, limits, 'OverlayableItem.policy');
+          uint32(decoded.value, 'OverlayableItem.policy');
+          cursor = decoded.next;
+        }
+      } else {
+        expect_wire('OverlayableItem', field, wire, 0);
+      }
     } else if (field === 4) {
       expect_wire('OverlayableItem', field, wire, 0);
       singular(seen, field, 'OverlayableItem');
