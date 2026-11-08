@@ -3,6 +3,8 @@
 import { OrixError } from '../core/errors.mjs';
 import { decode_dex_instructions } from './dex-bytecode.mjs';
 
+const MAX_CODE_ADDRESS_REFERENCES = 1_000_000;
+
 function fail(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
 }
@@ -111,6 +113,15 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
   // checked against the decoded instruction-boundary map in one bounded pass.
   let cursor = offset + 16 + instruction_bytes;
   const code_address_references = [];
+  const remember_code_address = value => {
+    if (state.code_address_references >= MAX_CODE_ADDRESS_REFERENCES) {
+      fail('ORIX_DEX_CODE_ADDRESS_LIMIT', 'DEX aggregate try/catch code-address references exceed the configured safety limit', {
+        max_code_address_references: MAX_CODE_ADDRESS_REFERENCES,
+      });
+    }
+    state.code_address_references += 1;
+    code_address_references.push(value);
+  };
   const try_items = [];
   const handler_offsets = new Set();
   let handler_count = 0;
@@ -139,7 +150,8 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
       }
       previous_end = end_addr;
       try_items.push({ start_addr, insn_count, handler_off });
-      code_address_references.push(start_addr, end_addr);
+      remember_code_address(start_addr);
+      remember_code_address(end_addr);
     }
     cursor += tries_bytes;
     const handler_list_start = cursor;
@@ -168,7 +180,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
             offset, index, item, type_index: type.value, type_count, address: address.value, insns_size,
           });
         }
-        code_address_references.push(address.value);
+        remember_code_address(address.value);
       }
       if (size.value <= 0) {
         const catch_all = uleb(buffer, cursor, data.end, 'catch-all handler address');
@@ -178,7 +190,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
             offset, index, address: catch_all.value, insns_size,
           });
         }
-        code_address_references.push(catch_all.value);
+        remember_code_address(catch_all.value);
       }
     }
     for (const item of try_items) {
@@ -361,7 +373,7 @@ export function parse_dex_semantics({
     if (index < max_output_items) method_ids.push(item);
   }
 
-  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0, decoded_instruction_items: 0, instruction_output_items: 0, instruction_output_omitted: 0, output_items: 0, output_items_omitted: 0 };
+  const state = { total_data_items: 0, class_data_items: 0, encoded_fields: 0, encoded_methods: 0, code_items: 0, instruction_units: 0, code_bytes: 0, code_address_references: 0, decoded_instruction_items: 0, instruction_output_items: 0, instruction_output_omitted: 0, output_items: 0, output_items_omitted: 0 };
   const class_data = [];
   const class_data_counts = { classes_with_data: 0, static_fields: 0, instance_fields: 0, direct_methods: 0, virtual_methods: 0 };
   for (let class_index = 0; class_index < counts.class_defs; class_index += 1) {
