@@ -22,6 +22,7 @@ const schema_paths = [
   new URL('../schemas/rizin-functions.v1.schema.json', import.meta.url),
   new URL('../schemas/android-package.v1.schema.json', import.meta.url),
   new URL('../schemas/android-bundle-config.v1.schema.json', import.meta.url),
+  new URL('../schemas/android-resource-table.v1.schema.json', import.meta.url),
   new URL('../schemas/case.v1.schema.json', import.meta.url),
   new URL('../schemas/case-bundle.v1.schema.json', import.meta.url),
 ];
@@ -124,4 +125,9 @@ test('public JSON Schemas are valid JSON and use Draft 2020-12', async () => {
   assert.equal(androidBundleConfig.additionalProperties, false);
   assert.ok(androidBundleConfig.properties.coverage.required.includes('unknown_fields'));
   assert.ok(androidBundleConfig.properties.coverage.required.includes('output_truncated'));
+  const androidResourceTable = schemas.find(schema => schema.properties.schema_version?.const === 'orix.android-resource-table.v1');
+  assert.ok(androidResourceTable, 'ResourceTable metadata schema must be registered in schema contract tests');
+  assert.equal(androidResourceTable.additionalProperties, false);
+  assert.ok(androidResourceTable.properties.coverage.required.includes('unknown_fields'));
+  assert.ok(androidResourceTable.properties.summary.required.includes('entry_count'));
 });

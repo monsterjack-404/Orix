@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orix.dev/schemas/android-resource-table.v1.schema.json",
+  "title": "ORIX Android AAPT2 ResourceTable Inventory v1",
+  "type": "object",
+  "required": [
+    "schema_version", "source_pool_present", "source_pool_data_bytes",
+    "package_count", "packages_reported", "packages_omitted", "packages",
+    "overlayable_count", "overlayables_reported", "overlayables_omitted", "overlayables",
+    "tool_fingerprint_count", "tool_fingerprints_reported", "tool_fingerprints_omitted", "tool_fingerprints",
+    "dynamic_ref_table_count", "dynamic_ref_tables_reported", "dynamic_ref_tables_omitted", "dynamic_ref_tables",
+    "summary", "coverage", "notes"
+  ],
+  "properties": {
+    "schema_version": { "const": "orix.android-resource-table.v1" },
+    "source_pool_present": { "type": "boolean" },
+    "source_pool_data_bytes": { "type": ["integer", "null"], "minimum": 0 },
+    "package_count": { "type": "integer", "minimum": 0 },
+    "packages_reported": { "type": "integer", "minimum": 0 },
+    "packages_omitted": { "type": "integer", "minimum": 0 },
+    "packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "type_count", "types_reported", "types_omitted", "entry_count", "types"],
+        "properties": {
+          "id": { "type": ["integer", "null"], "minimum": 0, "maximum": 255 },
+          "name": { "type": ["string", "null"] },
+          "type_count": { "type": "integer", "minimum": 0 },
+          "types_reported": { "type": "integer", "minimum": 0 },
+          "types_omitted": { "type": "integer", "minimum": 0 },
+          "entry_count": { "type": "integer", "minimum": 0 },
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "entry_count", "entries_reported", "entries_omitted", "entries"],
+              "properties": {
+                "id": { "type": ["integer", "null"], "minimum": 1, "maximum": 255 },
+                "name": { "type": ["string", "null"] },
+                "entry_count": { "type": "integer", "minimum": 0 },
+                "entries_reported": { "type": "integer", "minimum": 0 },
+                "entries_omitted": { "type": "integer", "minimum": 0 },
+                "entries": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id", "name", "visibility", "resource_id",
+                      "config_value_count", "config_values_reported", "config_values_omitted", "config_values",
+                      "flag_disabled_config_value_count", "flag_disabled_config_values_reported",
+                      "flag_disabled_config_values_omitted", "flag_disabled_config_values"
+                    ],
+                    "properties": {
+                      "id": { "type": ["integer", "null"], "minimum": 0, "maximum": 65535 },
+                      "name": { "type": ["string", "null"] },
+                      "visibility": { "enum": ["unknown", "private", "public"] },
+                      "resource_id": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]{8}$" },
+                      "config_value_count": { "type": "integer", "minimum": 0 },
+                      "config_values_reported": { "type": "integer", "minimum": 0 },
+                      "config_values_omitted": { "type": "integer", "minimum": 0 },
+                      "config_values": { "$ref": "#/$defs/config_values" },
+                      "flag_disabled_config_value_count": { "type": "integer", "minimum": 0 },
+                      "flag_disabled_config_values_reported": { "type": "integer", "minimum": 0 },
+                      "flag_disabled_config_values_omitted": { "type": "integer", "minimum": 0 },
+                      "flag_disabled_config_values": { "$ref": "#/$defs/config_values" }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "overlayable_count": { "type": "integer", "minimum": 0 },
+    "overlayables_reported": { "type": "integer", "minimum": 0 },
+    "overlayables_omitted": { "type": "integer", "minimum": 0 },
+    "overlayables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "actor"],
+        "properties": {
+          "name": { "type": ["string", "null"] },
+          "actor": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "tool_fingerprint_count": { "type": "integer", "minimum": 0 },
+    "tool_fingerprints_reported": { "type": "integer", "minimum": 0 },
+    "tool_fingerprints_omitted": { "type": "integer", "minimum": 0 },
+    "tool_fingerprints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool", "version"],
+        "properties": {
+          "tool": { "type": ["string", "null"] },
+          "version": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "dynamic_ref_table_count": { "type": "integer", "minimum": 0 },
+    "dynamic_ref_tables_reported": { "type": "integer", "minimum": 0 },
+    "dynamic_ref_tables_omitted": { "type": "integer", "minimum": 0 },
+    "dynamic_ref_tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["package_id", "package_name"],
+        "properties": {
+          "package_id": { "type": ["integer", "null"], "minimum": 0, "maximum": 255 },
+          "package_name": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "package_count", "type_count", "entry_count", "config_value_count",
+        "flag_disabled_config_value_count", "item_kinds", "compound_kinds", "reference_count"
+      ],
+      "properties": {
+        "package_count": { "type": "integer", "minimum": 0 },
+        "type_count": { "type": "integer", "minimum": 0 },
+        "entry_count": { "type": "integer", "minimum": 0 },
+        "config_value_count": { "type": "integer", "minimum": 0 },
+        "flag_disabled_config_value_count": { "type": "integer", "minimum": 0 },
+        "item_kinds": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "compound_kinds": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "reference_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "fields_seen", "items_seen", "output_items", "items_omitted",
+        "unknown_fields", "string_bytes", "output_truncated"
+      ],
+      "properties": {
+        "fields_seen": { "type": "integer", "minimum": 0 },
+        "items_seen": { "type": "integer", "minimum": 0 },
+        "output_items": { "type": "integer", "minimum": 0 },
+        "items_omitted": { "type": "integer", "minimum": 0 },
+        "unknown_fields": { "type": "integer", "minimum": 0 },
+        "string_bytes": { "type": "integer", "minimum": 0 },
+        "output_truncated": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "configuration": {
+      "type": "object",
+      "properties": {
+        "locale": { "type": "string" },
+        "product": { "type": "string" },
+        "mcc": { "type": "integer", "minimum": 0 },
+        "mnc": { "type": "integer", "minimum": 0 },
+        "layout_direction": { "type": "integer", "minimum": 0 },
+        "screen_width": { "type": "integer", "minimum": 0 },
+        "screen_height": { "type": "integer", "minimum": 0 },
+        "screen_width_dp": { "type": "integer", "minimum": 0 },
+        "screen_height_dp": { "type": "integer", "minimum": 0 },
+        "smallest_screen_width_dp": { "type": "integer", "minimum": 0 },
+        "screen_layout_size": { "type": "integer", "minimum": 0 },
+        "screen_layout_long": { "type": "integer", "minimum": 0 },
+        "screen_round": { "type": "integer", "minimum": 0 },
+        "wide_color_gamut": { "type": "integer", "minimum": 0 },
+        "hdr": { "type": "integer", "minimum": 0 },
+        "orientation": { "type": "integer", "minimum": 0 },
+        "ui_mode_type": { "type": "integer", "minimum": 0 },
+        "ui_mode_night": { "type": "integer", "minimum": 0 },
+        "density": { "type": "integer", "minimum": 0 },
+        "touchscreen": { "type": "integer", "minimum": 0 },
+        "keys_hidden": { "type": "integer", "minimum": 0 },
+        "keyboard": { "type": "integer", "minimum": 0 },
+        "nav_hidden": { "type": "integer", "minimum": 0 },
+        "navigation": { "type": "integer", "minimum": 0 },
+        "sdk_version": { "type": "integer", "minimum": 0 },
+        "grammatical_gender": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "reference": {
+      "type": "object",
+      "required": ["type", "id", "name", "private", "dynamic"],
+      "properties": {
+        "type": { "type": "integer", "minimum": 0 },
+        "id": { "type": ["integer", "null"], "minimum": 0 },
+        "name": { "type": ["string", "null"] },
+        "private": { "type": "boolean" },
+        "dynamic": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "value": {
+      "type": "object",
+      "required": ["weak", "kind", "detail_kind", "reference"],
+      "properties": {
+        "weak": { "type": "boolean" },
+        "kind": { "enum": ["unspecified", "item", "compound"] },
+        "detail_kind": { "type": ["string", "null"] },
+        "reference": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/reference" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "config_values": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["configuration", "value"],
+        "properties": {
+          "configuration": { "$ref": "#/$defs/configuration" },
+          "value": {
+            "oneOf": [
+              { "type": "null" },
+              { "$ref": "#/$defs/value" }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -18,6 +18,7 @@ The JSON Schema documents in this directory describe the public JSON report cont
 | `har.v1.schema.json` | Offline HAR 1.2 network investigation | `orix.har.v1` |
 | `android-package.v1.schema.json` | Offline APK/AAB inventory, manifests, DEX metadata and BundleConfig result | `orix.android-package.v1` |
 | `android-bundle-config.v1.schema.json` | Bounded BundleConfig protobuf metadata | `orix.android-bundle-config.v1` |
+| `android-resource-table.v1.schema.json` | Bounded AAPT2 resources.pb package/type/entry/configuration inventory | `orix.android-resource-table.v1` |
 | `case.v1.schema.json` | Reconstructed local investigation case | `orix.case.v1` |
 | `case-bundle.v1.schema.json` | Portable case bundle manifest | `orix.case-bundle.v1` |
 
