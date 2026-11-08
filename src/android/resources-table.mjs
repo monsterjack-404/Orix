@@ -1243,6 +1243,7 @@ export function parse_android_resource_table(buffer, options = {}) {
     source_pool_data_bytes: null,
     source_pool_string_count: 0,
     source_pool_style_count: 0,
+    source_pool_style_span_count: 0,
     source_pool_encoding: null,
     source_paths: [],
     source_paths_omitted: 0,
@@ -1277,6 +1278,7 @@ export function parse_android_resource_table(buffer, options = {}) {
       result.source_pool_data_bytes = pool.data_bytes;
       result.source_pool_string_count = pool.string_count;
       result.source_pool_style_count = pool.style_count;
+      result.source_pool_style_span_count = pool.style_spans;
       result.source_pool_encoding = pool.encoding;
     } else if (field === 2) {
       expect_wire('ResourceTable', field, wire, 2);
@@ -1354,6 +1356,7 @@ export function parse_android_resource_table(buffer, options = {}) {
     },
     notes: [
       'AAPT2 ResourceTable package, type, entry, resource-ID, visibility, configuration and value-kind metadata are inventoried under explicit protobuf, string and output budgets.',
+      'The embedded binary ResStringPool chunk is validated in UTF-8 or UTF-16LE form, including string/style offset tables, terminators and style spans; Source.path_idx references are resolved after the top-level message is read.',
       'Configuration metadata includes locale, density, SDK and selected device qualifiers; unknown wire-valid fields are skipped and counted.',
       'Resource references are inventoried by kind only. Reference resolution, complete compound-value decoding, compiled resource-file decoding and install/split semantics are not implemented.',
     ],
