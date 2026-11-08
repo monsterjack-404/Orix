@@ -280,7 +280,7 @@ test('ResourceTable validates AOSP Source, Visibility, AllowNew, OverlayableItem
 
 test('ResourceTable validates Value.source with the AOSP Source field schema', () => {
   const validSource = Buffer.concat([
-    field_varint(1, 1),
+    field_varint(1, 0),
     field_bytes(2, Buffer.concat([field_varint(1, 10), field_varint(2, 2)])),
   ]);
   const validValue = Buffer.concat([
