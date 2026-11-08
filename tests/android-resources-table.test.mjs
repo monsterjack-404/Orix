@@ -32,9 +32,9 @@ function id_message(id) {
   return field_varint(1, id);
 }
 
-function resource_table_fixture() {
+function resource_table_fixture({ entry_metadata = Buffer.alloc(0), visibility_metadata = null, overlayable_source = null } = {}) {
   const source_pool = field_bytes(1, Buffer.from([1, 2, 3, 4]));
-  const visibility = field_varint(1, 2);
+  const visibility = visibility_metadata ?? field_varint(1, 2);
   const configuration = Buffer.concat([
     field_string(3, 'en-US'),
     field_varint(18, 320),
@@ -59,6 +59,7 @@ function resource_table_fixture() {
     field_string(2, 'app_name'),
     field_bytes(3, visibility),
     field_bytes(6, config_value),
+    entry_metadata,
   ]);
   const type = Buffer.concat([
     field_bytes(1, id_message(1)),
@@ -72,6 +73,7 @@ function resource_table_fixture() {
   ]);
   const overlayable = Buffer.concat([
     field_string(1, 'SystemUi'),
+    ...(overlayable_source ? [field_bytes(2, overlayable_source)] : []),
     field_string(3, 'overlay://actor'),
   ]);
   const fingerprint = Buffer.concat([
@@ -131,6 +133,78 @@ test('ResourceTable parser inventories packages, types, entries, IDs and selecte
   assert.equal(parsed.overlayables[0].actor, 'overlay://actor');
   assert.deepEqual(parsed.tool_fingerprints[0], { tool: 'aapt2', version: '8.4.0' });
   assert.deepEqual(parsed.dynamic_ref_tables[0], { package_id: 0x7f, package_name: 'com.example.app' });
+});
+
+test('ResourceTable validates AOSP Source, Visibility, AllowNew, OverlayableItem and StagedId fields', () => {
+  const source_position = Buffer.concat([
+    field_varint(1, 12),
+    field_varint(2, 3),
+  ]);
+  const source = Buffer.concat([
+    field_varint(1, 2),
+    field_bytes(2, source_position),
+  ]);
+  const visibility = Buffer.concat([
+    field_varint(1, 2),
+    field_bytes(2, source),
+    field_string(3, 'declared public'),
+    field_varint(4, 1),
+  ]);
+  const allow_new = Buffer.concat([
+    field_bytes(1, source),
+    field_string(2, 'compile-time overlay'),
+  ]);
+  const overlayable_item = Buffer.concat([
+    field_bytes(1, source),
+    field_string(2, 'overlay item'),
+    field_varint(3, 8),
+    field_varint(3, 9),
+    field_varint(4, 0),
+  ]);
+  const staged_id = Buffer.concat([
+    field_bytes(1, source),
+    field_varint(2, 0x7f010002),
+  ]);
+  const metadata = Buffer.concat([
+    field_bytes(4, allow_new),
+    field_bytes(5, overlayable_item),
+    field_bytes(7, staged_id),
+  ]);
+  const parsed = parse_android_resource_table(resource_table_fixture({
+    entry_metadata: metadata,
+    visibility_metadata: visibility,
+    overlayable_source: source,
+  }));
+  assert.equal(parsed.packages[0].types[0].entries[0].visibility, 'public');
+  assert.equal(parsed.overlayables[0].name, 'SystemUi');
+
+  const invalid_allow_new = field_bytes(4, field_varint(1, 1));
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({ entry_metadata: invalid_allow_new })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_WIRE_MISMATCH',
+    'AllowNew.source must be a Source message, not a varint',
+  );
+
+  const invalid_overlayable_item = field_bytes(5, field_bytes(3, field_string(1, 'wrong-wire')));
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({ entry_metadata: invalid_overlayable_item })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_WIRE_MISMATCH',
+    'OverlayableItem.policy must be a varint enum',
+  );
+
+  const invalid_staged_id = field_bytes(7, field_bytes(2, field_string(1, 'wrong-wire')));
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({ entry_metadata: invalid_staged_id })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_WIRE_MISMATCH',
+    'StagedId.staged_id must be a uint32 varint',
+  );
+
+  const invalid_visibility = field_bytes(3, field_varint(2, 123));
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({ visibility_metadata: invalid_visibility })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_WIRE_MISMATCH',
+    'Visibility.source must be a Source message',
+  );
 });
 
 test('ResourceTable parser exports through the package root and package subpath', async () => {
