@@ -23,16 +23,16 @@ Runtime no longer discovers a compiler, invokes `csc.exe`, or compiles C# source
 The source-pinned executable SHA-256 is:
 
 ```text
-a158b954393fd98ed638af1327123ec3dacca4c9e6fce02a370dc14380796f3d
+9dfbf55f31e9ff2e215da31153afc74a4117ec96af47ab5de56fc0daeae5ec31
 ```
 
 The source-pinned gzip SHA-256 is:
 
 ```text
-fabe002f8dd9f665b92db1a548b3101fdbdaff62b9caacbf955ec048d4d3e7eb
+d1e783190ba3f69a867a6a2d622c44ca616e18cd091205c6964b2820fe5fdc61
 ```
 
-Both independent Windows CI runners built the launcher from the exact PR head. Their fresh executables were byte-for-byte identical and passed the PE/CLR metadata and IL-only AnyCPU checks. The exact matching binary was then packaged and its compressed and uncompressed hashes checked. The launcher creates a fresh hidden console without inheriting the runner's desktop, allowing contained descendants to use the approved standard handles. This artifact's GitHub Actions provenance is a CI build result, not a publisher signature.
+Both independent Windows CI runners built the launcher from the exact PR head. Their fresh executables were byte-for-byte identical and passed the PE/CLR metadata and IL-only AnyCPU checks. The exact matching binary was then packaged and its compressed and uncompressed hashes checked. The launcher creates a fresh hidden console (`CREATE_NEW_CONSOLE`, `SW_HIDE`) while leaving `STARTUPINFO.lpDesktop` null. ORIX does not select or create a private desktop/window station; Windows uses the caller's desktop context. The provider remains suspended until Job Object assignment and AppContainer verification complete. This artifact's GitHub Actions provenance is a CI build result, not a publisher signature.
 
 CI also checks that `npm pack --dry-run --json` contains the integrity module and all four payload segments. The Windows hostile-process smoke test runs through the actual runtime path using the packaged executable, rather than treating a compiler-success step as proof of isolation.
 
@@ -52,7 +52,7 @@ Cleanup removes a per-profile ancestor ACE only when that exact explicit ACE was
 
 The native launcher now treats process termination as an operation that must be observed, not merely requested.
 
-Before launch, it sets `PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY` with `PROCESS_CREATION_CHILD_PROCESS_OVERRIDE` so the provider can spawn required descendants. The launcher is trusted and not itself an AppContainer; the provider's descendants inherit the provider's AppContainer token and remain inside the assigned non-breakaway Job Object. The provider is created with a fresh hidden console (`CREATE_NEW_CONSOLE`, `SW_HIDE`) and an empty desktop selection rather than inheriting a runner/service desktop; it remains suspended until the Job Object assignment and AppContainer verification complete.
+Before launch, it sets `PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY` with `PROCESS_CREATION_CHILD_PROCESS_OVERRIDE` so the provider can spawn required descendants. The launcher is trusted and not itself an AppContainer; the provider's descendants inherit the provider's AppContainer token and remain inside the assigned non-breakaway Job Object. The provider is created with a fresh hidden console (`CREATE_NEW_CONSOLE`, `SW_HIDE`) and `STARTUPINFO.lpDesktop = null`; ORIX does not select a private desktop/window station. The process remains suspended until Job Object assignment and AppContainer verification complete.
 
 - After the provider is assigned to its Job Object, teardown checks whether the job is already signaled; otherwise it calls `TerminateJobObject` and waits up to five seconds for the Job Object to become empty.
 - If process creation succeeded but Job Object assignment did not, teardown terminates the direct suspended process and waits for its process handle to become signaled.
