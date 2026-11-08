@@ -23,13 +23,13 @@ Runtime no longer discovers a compiler, invokes `csc.exe`, or compiles C# source
 The source-pinned executable SHA-256 is:
 
 ```text
-9dfbf55f31e9ff2e215da31153afc74a4117ec96af47ab5de56fc0daeae5ec31
+4c7cf078de466c1c583c0047d6456434bed3d041469f9192a1cab7adc4766092
 ```
 
 The source-pinned gzip SHA-256 is:
 
 ```text
-d1e783190ba3f69a867a6a2d622c44ca616e18cd091205c6964b2820fe5fdc61
+8d69c8a54af3cd4ad5dcbd0207a6b6c609de3356982b858e7d82a27d5f85c184
 ```
 
 Both independent Windows CI runners built the launcher from the exact PR head. Their fresh executables were byte-for-byte identical and passed the PE/CLR metadata and IL-only AnyCPU checks. The exact matching binary was then packaged and its compressed and uncompressed hashes checked. The launcher creates a fresh hidden console (`CREATE_NEW_CONSOLE`, `SW_HIDE`) while leaving `STARTUPINFO.lpDesktop` null. ORIX does not select or create a private desktop/window station; Windows uses the caller's desktop context. The provider remains suspended until Job Object assignment and AppContainer verification complete. This artifact's GitHub Actions provenance is a CI build result, not a publisher signature.
