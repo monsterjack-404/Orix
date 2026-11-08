@@ -133,8 +133,10 @@ test('ResourceTable parser inventories packages, types, entries, IDs and selecte
   assert.deepEqual(parsed.dynamic_ref_tables[0], { package_id: 0x7f, package_name: 'com.example.app' });
 });
 
-test('ResourceTable parser exports through the package root', () => {
+test('ResourceTable parser exports through the package root and package subpath', async () => {
   assert.equal(public_api.parse_android_resource_table, parse_android_resource_table);
+  const exported = await import('@orix/cli/android/resources-table');
+  assert.equal(exported.parse_android_resource_table, parse_android_resource_table);
 });
 
 test('ResourceTable parser skips and counts unknown wire-valid fields', () => {
@@ -200,7 +202,7 @@ test('ResourceTable parser enforces file, field, item and output limits', () => 
     error => error.code === 'ORIX_RESOURCE_TABLE_ITEM_LIMIT',
   );
   const truncated = parse_android_resource_table(fixture, { max_output_items: 0 });
-  assert.equal(truncated.packages_reported, undefined);
+  assert.equal(truncated.packages_reported, 0);
   assert.equal(truncated.package_count, 1);
   assert.equal(truncated.packages.length, 0);
   assert.equal(truncated.packages_omitted, 1);
