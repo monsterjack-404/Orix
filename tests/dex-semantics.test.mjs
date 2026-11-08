@@ -404,6 +404,23 @@ test('DEX parser rejects duplicate or unsorted string_ids and type_ids', () => {
   assert.throws(() => parse_dex(unsorted_types), error => error.code === 'ORIX_DEX_TYPE_ORDER');
 });
 
+test('DEX typed and catch-all exception handlers reject move-result variants', () => {
+  for (const opcode of [0x000a, 0x000b, 0x000c]) {
+    const code_words = [opcode, 0x000e];
+    const common = { code_words, try_start_addr: 1, try_insn_count: 1, registers_size: 2 };
+    assert.throws(
+      () => parse_dex(create_semantic_dex({ ...common, catch_handler_size_bytes: [0x01], typed_handler_address: 0 })),
+      error => error.code === 'ORIX_DEX_CODE_HANDLER_MOVE_RESULT' && error.details.handler_kind === 'typed',
+      'typed exception handler must reject move-result opcode ' + opcode.toString(16),
+    );
+    assert.throws(
+      () => parse_dex(create_semantic_dex({ ...common, catch_handler_size_bytes: [0x7f] })),
+      error => error.code === 'ORIX_DEX_CODE_HANDLER_MOVE_RESULT' && error.details.handler_kind === 'catch-all',
+      'catch-all exception handler must reject move-result opcode ' + opcode.toString(16),
+    );
+  }
+});
+
 test('DEX checksum and SHA-1 fields are independently verified without claiming publisher authenticity', () => {
   const fixture = create_semantic_dex();
   fixture[12] ^= 1;

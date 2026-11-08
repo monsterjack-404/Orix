@@ -9,6 +9,15 @@ function fail(code, message, details = {}) {
   throw new OrixError(code, message, { details, recoverable: true });
 }
 
+function check_exception_handler_opcode(buffer, code_item_offset, address, handler_kind) {
+  const opcode = buffer.readUInt16LE(code_item_offset + 16 + address * 2) & 0xff;
+  if (opcode === 0x0a || opcode === 0x0b || opcode === 0x0c) {
+    fail('ORIX_DEX_CODE_HANDLER_MOVE_RESULT', 'DEX exception handler must not begin with a move-result instruction', {
+      code_item_offset, address, opcode, handler_kind,
+    });
+  }
+}
+
 function need(buffer, offset, size, end, label) {
   if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(size) || size < 0 ||
       offset < 0 || end > buffer.length || offset > end - size) {
@@ -113,6 +122,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
   // checked against the decoded instruction-boundary map in one bounded pass.
   let cursor = offset + 16 + instruction_bytes;
   const code_address_references = [];
+  const handler_instruction_targets = [];
   const remember_code_address = value => {
     if (state.code_address_references >= MAX_CODE_ADDRESS_REFERENCES) {
       fail('ORIX_DEX_CODE_ADDRESS_LIMIT', 'DEX aggregate try/catch code-address references exceed the configured safety limit', {
@@ -181,6 +191,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
           });
         }
         remember_code_address(address.value);
+        handler_instruction_targets.push({ address: address.value, handler_kind: 'typed' });
       }
       if (size.value <= 0) {
         const catch_all = uleb(buffer, cursor, data.end, 'catch-all handler address');
@@ -191,6 +202,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
           });
         }
         remember_code_address(catch_all.value);
+        handler_instruction_targets.push({ address: catch_all.value, handler_kind: 'catch-all' });
       }
     }
     for (const item of try_items) {
@@ -213,7 +225,13 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
     max_switch_targets: limits.max_switch_targets,
     max_output_switch_targets: Math.max(0, limits.max_output_switch_targets - state.switch_target_output_items),
     required_instruction_boundaries: code_address_references,
+    max_instruction_units: limits.max_instruction_units,
   });
+  // Required address validation above establishes that each handler is at a
+  // real instruction boundary before reading its opcode.
+  for (const target of handler_instruction_targets) {
+    check_exception_handler_opcode(buffer, offset, target.address, target.handler_kind);
+  }
   state.decoded_instruction_items += decoded.instruction_count + decoded.payload_count;
   state.instruction_output_items += decoded.instructions.length;
   state.instruction_output_omitted += decoded.instruction_output_omitted;
