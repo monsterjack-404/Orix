@@ -15,6 +15,13 @@ import { inflateRawSync } from 'node:zlib';
 const LOCAL_HEADER = 0x04034b50;
 const BINARY_XML = 0x0003;
 
+function is_aab_resource_table_entry(name) {
+  const separator = name.indexOf('/');
+  return separator > 0 && separator === name.lastIndexOf('/') &&
+    name.slice(separator + 1) === 'resources.pb' &&
+    name.slice(0, separator) !== 'BUNDLE-METADATA';
+}
+
 function is_dex_entry(name, is_aab) {
   const parts = name.split('/');
   const base = parts.at(-1);
@@ -204,8 +211,7 @@ function inspect_resource_tables(buffer, entries, central_directory_offset, opti
   if (!Number.isSafeInteger(max_tables) || max_tables < 1 || max_tables > 4096) {
     throw new TypeError('max_resource_tables must be between 1 and 4096');
   }
-  const matches = entries.filter(entry => entry.name.includes('/') &&
-    !entry.name.startsWith('BUNDLE-METADATA/') && entry.name.endsWith('/resources.pb'));
+  const matches = entries.filter(entry => is_aab_resource_table_entry(entry.name));
   const counts = new Map();
   for (const entry of matches) counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
   const tables = [];
@@ -436,7 +442,7 @@ export function analyze_android_package(buffer, options = {}) {
   const apk_manifest = names.has('AndroidManifest.xml');
   const bundle_manifest = entries.some(entry => entry.name.endsWith('/manifest/AndroidManifest.xml'));
   const is_aab = names.has('BundleConfig.pb') || bundle_manifest ||
-    entries.some(entry => entry.name.includes('/') && !entry.name.startsWith('BUNDLE-METADATA/') && entry.name.endsWith('/resources.pb'));
+    entries.some(entry => is_aab_resource_table_entry(entry.name));
   const is_apk = apk_manifest && !is_aab;
   const dex_entries = entries.filter(entry => is_dex_entry(entry.name, is_aab));
   const manifest_entries = entries.filter(entry => entry.name === 'AndroidManifest.xml' || entry.name.endsWith('/manifest/AndroidManifest.xml'));
@@ -598,7 +604,7 @@ export function analyze_android_package(buffer, options = {}) {
       native_libraries: native_libraries.length,
       native_libraries_reported: reported_native_libraries.length,
       native_libraries_omitted: Math.max(0, native_libraries.length - reported_native_libraries.length),
-      resources_table_present: names.has('resources.arsc') || entries.some(entry => entry.name.endsWith('/resources.pb')),
+      resources_table_present: names.has('resources.arsc') || entries.some(entry => is_aab_resource_table_entry(entry.name)),
       manifest_entries: manifest_entries.length,
       manifest_entries_reported: reported_manifest_entries.length,
       manifest_entries_omitted: Math.max(0, manifest_entries.length - reported_manifest_entries.length),
