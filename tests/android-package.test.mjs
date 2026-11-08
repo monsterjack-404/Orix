@@ -107,6 +107,51 @@ function create_zip(entries) {
   return Buffer.concat([local_data, central_data, eocd]);
 }
 
+function proto_varint(input) {
+  let value = BigInt(input);
+  const bytes = [];
+  do {
+    let byte = Number(value & 0x7fn);
+    value >>= 7n;
+    if (value !== 0n) byte |= 0x80;
+    bytes.push(byte);
+  } while (value !== 0n);
+  return Buffer.from(bytes);
+}
+
+function proto_field_varint(field, value) {
+  return Buffer.concat([proto_varint(BigInt(field * 8)), proto_varint(value)]);
+}
+
+function proto_field_bytes(field, contents) {
+  return Buffer.concat([proto_varint(BigInt(field * 8 + 2)), proto_varint(contents.length), contents]);
+}
+
+function proto_field_string(field, value) {
+  return proto_field_bytes(field, Buffer.from(value, 'utf8'));
+}
+
+function resource_table_fixture() {
+  const entry_id = proto_field_varint(1, 1);
+  const entry = Buffer.concat([
+    proto_field_bytes(1, entry_id),
+    proto_field_string(2, 'app_name'),
+  ]);
+  const type_id = proto_field_varint(1, 1);
+  const type = Buffer.concat([
+    proto_field_bytes(1, type_id),
+    proto_field_string(2, 'string'),
+    proto_field_bytes(3, entry),
+  ]);
+  const package_id = proto_field_varint(1, 0x7f);
+  const pkg = Buffer.concat([
+    proto_field_bytes(1, package_id),
+    proto_field_string(2, 'com.example.resource'),
+    proto_field_bytes(3, type),
+  ]);
+  return proto_field_bytes(2, pkg);
+}
+
 function binary_manifest() { return Buffer.from('AwAIAO4CAAABABwATgEAAA8AAAAAAAAAAAEAAFgAAAAAAAAAAAAAAAsAAAAVAAAAKAAAADoAAABBAAAASwAAAHgAAACWAAAApAAAALEAAAC8AAAA1wAAAOIAAADwAAAACAhtYW5pZmVzdAAHB3BhY2thZ2UAEBBjb20uZXhhbXBsZS5vcml4AA8PdXNlcy1wZXJtaXNzaW9uAAQEbmFtZQAHB2FuZHJvaWQAKipodHRwOi8vc2NoZW1hcy5hbmRyb2lkLmNvbS9hcGsvcmVzL2FuZHJvaWQAGxthbmRyb2lkLnBlcm1pc3Npb24uSU5URVJORVQACwthcHBsaWNhdGlvbgAKCmRlYnVnZ2FibGUACAhhY3Rpdml0eQAYGGNvbS5leGFtcGxlLk1haW5BY3Rpdml0eQAICGV4cG9ydGVkAAsLdmVyc2lvbk5hbWUAAwMxLjAAAAEQABgAAAAAAAAAAAAAAAUAAAAGAAAAAgEQAEwAAAAAAAAAAAAAAP////8AAAAAFAAUAAIAAAAAAAAA/////wEAAAACAAAACAAAAwIAAAAGAAAADQAAAA4AAAAIAAADDgAAAAIBEAA4AAAAAAAAAAAAAAD/////AwAAABQAFAABAAAAAAAAAAYAAAAEAAAABwAAAAgAAAMHAAAAAwEQABgAAAAAAAAAAAAAAP////8DAAAAAgEQADgAAAAAAAAAAAAAAP////8IAAAAFAAUAAEAAAAAAAAABgAAAAkAAAD/////CAAAEgEAAAACARAATAAAAAAAAAAAAAAA/////woAAAAUABQAAgAAAAAAAAAGAAAABAAAAAsAAAAIAAADCwAAAAYAAAAMAAAA/////wgAABIBAAAAAwEQABgAAAAAAAAAAAAAAP////8KAAAAAwEQABgAAAAAAAAAAAAAAP////8IAAAAAwEQABgAAAAAAAAAAAAAAP////8AAAAAAQEQABgAAAAAAAAAAAAAAAUAAAAGAAAA', 'base64'); }
 
 
@@ -945,4 +990,70 @@ test('AAB without BundleConfig reports absent metadata and APKs mark it not appl
   const apk = analyze_android_package(make_apk());
   assert.equal(apk.bundle.status, 'not-applicable');
   assert.equal(apk.bundle.bundle_config.status, 'not-applicable');
+});
+
+test('AAB resources.pb entries are decoded for stored and raw-DEFLATE module payloads', () => {
+  const resources = resource_table_fixture();
+  const config = Buffer.from([0x40, 0x00]); // BundleType.REGULAR
+  for (const method of [0, 8]) {
+    const report = analyze_android_package(create_zip([
+      { name: 'BundleConfig.pb', contents: config },
+      { name: 'base/resources.pb', contents: resources, method },
+    ]));
+    assert.equal(report.format, 'AAB');
+    assert.equal(report.bundle.resource_tables.count, 1);
+    assert.equal(report.bundle.resource_tables.reported, 1);
+    assert.equal(report.bundle.resource_tables.tables[0].status, 'decoded');
+    assert.equal(report.bundle.resource_tables.tables[0].module, 'base');
+    assert.equal(report.bundle.resource_tables.tables[0].table.packages[0].name, 'com.example.resource');
+    assert.equal(report.bundle.resource_tables.tables[0].table.summary.entry_count, 1);
+    assert.equal(report.bundle.modules[0].resources_pb_present, true);
+    assert.equal(report.summary.resource_table_entries, 1);
+  }
+});
+
+test('AAB resources.pb duplicate, per-entry and aggregate limits fail closed', () => {
+  const resources = resource_table_fixture();
+  const config = Buffer.from([0x40, 0x00]);
+  const duplicate = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: config },
+    { name: 'base/resources.pb', contents: resources },
+    { name: 'base/resources.pb', contents: resources },
+  ]));
+  assert.equal(duplicate.bundle.resource_tables.count, 2);
+  assert.deepEqual(duplicate.bundle.resource_tables.tables.map(item => item.status), ['duplicate-path', 'duplicate-path']);
+
+  const limited = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: config },
+    { name: 'base/resources.pb', contents: resources },
+  ]), { max_resource_table_bytes: 1 });
+  assert.equal(limited.bundle.resource_tables.tables[0].status, 'size-limit');
+
+  const aggregate = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: config },
+    { name: 'base/resources.pb', contents: resources },
+    { name: 'feature/resources.pb', contents: resources },
+  ]), { max_resource_table_total_bytes: resources.length });
+  assert.deepEqual(aggregate.bundle.resource_tables.tables.map(item => item.status), ['decoded', 'aggregate-size-limit']);
+});
+
+test('AAB resources.pb entries with invalid CRC or encryption are not decoded', () => {
+  const resources = resource_table_fixture();
+  const config = Buffer.from([0x40, 0x00]);
+  const damaged = create_zip([
+    { name: 'BundleConfig.pb', contents: config },
+    { name: 'base/resources.pb', contents: resources },
+  ]);
+  const marker = Buffer.from('com.example.resource');
+  const marker_offset = damaged.indexOf(marker);
+  assert.notEqual(marker_offset, -1);
+  damaged[marker_offset] ^= 0x01;
+  const crc_report = analyze_android_package(damaged);
+  assert.equal(crc_report.bundle.resource_tables.tables[0].status, 'crc-mismatch');
+
+  const encrypted = analyze_android_package(create_zip([
+    { name: 'BundleConfig.pb', contents: config },
+    { name: 'base/resources.pb', contents: resources, flags: 1 },
+  ]));
+  assert.equal(encrypted.bundle.resource_tables.tables[0].status, 'encrypted');
 });
