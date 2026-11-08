@@ -101,9 +101,9 @@ memory limit, 64 active processes and kill-on-job-close. It terminates and
 waits for remaining descendants before cleanup. Windows does not expose the
 same per-process RLIMIT file-size/open-descriptor controls used by Linux and
 macOS; ORIX's parent runner still limits wall-clock time and captured output.
-The Windows hostile-process integration test checks host-file denial,
+The native rootfs validator and ACL grant walk are independently capped at 64 directory levels and 100,000 entries. Post-provider cleanup first inventories the complete tree with an iterative, reparse-safe walker capped at 256 levels and 100,000 entries, then purges ACLs/deletes children before parents; a limit or reparse failure aborts cleanup with an explicit error instead of recursing indefinitely or following the path. These are traversal/cleanup ceilings, not a filesystem storage quota. The Windows backend does not currently impose a maximum byte count or disk quota on `rootfs/tmp`, so a hostile provider can still consume available disk space before its wall-clock timeout. This is a known residual resource-exhaustion boundary, not a claim of complete resource isolation. The Windows hostile-process integration test checks host-file denial,
 read-only rootfs, confined writable temporary storage and loopback network
-denial, and the launcher confirms Job Object configuration.
+denial, deep-tree cleanup, and the launcher confirms Job Object configuration.
 
 The runtime trust anchor is a package-owned .NET Framework 4.8 AnyCPU helper.
 Its executable and gzip payload hashes are pinned in
