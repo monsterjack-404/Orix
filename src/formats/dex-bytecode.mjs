@@ -366,6 +366,7 @@ export function decode_dex_instructions(buffer, options = {}) {
   const offset = options.offset;
   const instructionUnits = options.instruction_units;
   const registersSize = options.registers_size;
+  const outsSize = options.outs_size ?? null;
   const dexVersion = options.dex_version ?? '040';
   const counts = options.counts ?? {};
   const maxOutput = options.max_output_instructions ?? 10_000;
@@ -377,7 +378,9 @@ export function decode_dex_instructions(buffer, options = {}) {
     throw new TypeError('DEX required instruction-boundary references exceed their supported range');
   }
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(instructionUnits) || instructionUnits < 0 ||
-      !Number.isSafeInteger(registersSize) || registersSize < 0 || !Number.isSafeInteger(maxOutput) || maxOutput < 0 || maxOutput > 100_000 ||
+      !Number.isSafeInteger(registersSize) || registersSize < 0 ||
+      (outsSize !== null && (!Number.isSafeInteger(outsSize) || outsSize < 0 || outsSize > 65_535)) ||
+      !Number.isSafeInteger(maxOutput) || maxOutput < 0 || maxOutput > 100_000 ||
       !Number.isSafeInteger(maxPayloadBytes) || maxPayloadBytes < 0 || maxPayloadBytes > 128 * 1024 * 1024 ||
       !Number.isSafeInteger(maxSwitchTargets) || maxSwitchTargets < 0 || maxSwitchTargets > 65_535 ||
       !Number.isSafeInteger(maxOutputSwitchTargets) || maxOutputSwitchTargets < 0 || maxOutputSwitchTargets > 100_000) {
@@ -465,6 +468,13 @@ export function decode_dex_instructions(buffer, options = {}) {
     const operands = readOperands(buffer, offset, pc, spec);
     validateRegisters(opcode, operands, registersSize, pc, spec.format);
     validateReference(opcode, spec.format, operands, counts, pc);
+    const isMethodInvocation = (opcode >= 0x6e && opcode <= 0x72) ||
+      (opcode >= 0x74 && opcode <= 0x78) || (opcode >= 0xfa && opcode <= 0xfd);
+    if (outsSize !== null && isMethodInvocation && operands.argument_words > outsSize) {
+      fail('ORIX_DEX_BYTECODE_OUTS_SIZE', 'DEX method invocation uses more outgoing argument words than code_item.outs_size provides', {
+        pc, opcode, mnemonic: spec.mnemonic, argument_words: operands.argument_words, outs_size: outsSize,
+      });
+    }
     const item = {
       offset: pc,
       opcode,
