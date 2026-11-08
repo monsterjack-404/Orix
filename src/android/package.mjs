@@ -49,6 +49,11 @@ function crc32(buffer) {
 }
 
 function local_entry_data(buffer, entry, max_output_bytes, central_directory_offset) {
+  // Selected metadata is never decoded from path-traversing, symlink or
+  // directory members. This applies equally to APK and AAB manifests/DEX/config.
+  if (entry.unsafe_path) return { status: 'unsafe-path' };
+  if (entry.is_symlink) return { status: 'symlink' };
+  if (entry.is_directory) return { status: 'not-regular-file' };
   if (!entry.local_header_valid || !entry.local_data_range_valid) return { status: 'invalid-local-range' };
   if (entry.encrypted || entry.strongly_encrypted) return { status: 'encrypted' };
   const method_code = entry.compression_method === 'stored'
