@@ -195,7 +195,7 @@
       "type": "object",
       "required": ["type", "id", "name", "private", "dynamic"],
       "properties": {
-        "type": { "type": "integer", "minimum": 0 },
+        "type": { "type": "integer", "minimum": 0, "maximum": 1 },
         "id": { "type": ["integer", "null"], "minimum": 0 },
         "name": { "type": ["string", "null"] },
         "private": { "type": "boolean" },
