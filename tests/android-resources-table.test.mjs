@@ -32,6 +32,37 @@ function id_message(id) {
   return field_varint(1, id);
 }
 
+function android_string_pool_with_style(value = 'bold') {
+  const encoded = Buffer.from(value, 'utf8');
+  const string = Buffer.concat([
+    encode_pool_length_u8(value.length),
+    encode_pool_length_u8(encoded.length),
+    encoded,
+    Buffer.from([0]),
+  ]);
+  const table_end = 36;
+  const styles_start = table_end + string.length;
+  const styles = Buffer.alloc(24);
+  styles.writeUInt32LE(0, 0); // span name string index
+  styles.writeUInt32LE(0, 4); // first character
+  styles.writeUInt32LE(value.length - 1, 8); // last character
+  styles.writeUInt32LE(0xffffffff, 12);
+  styles.writeUInt32LE(0xffffffff, 16);
+  styles.writeUInt32LE(0xffffffff, 20);
+  const header = Buffer.alloc(table_end);
+  header.writeUInt16LE(0x0001, 0);
+  header.writeUInt16LE(28, 2);
+  header.writeUInt32LE(table_end + string.length + styles.length, 4);
+  header.writeUInt32LE(1, 8);
+  header.writeUInt32LE(1, 12);
+  header.writeUInt32LE(0x100, 16);
+  header.writeUInt32LE(table_end, 20);
+  header.writeUInt32LE(styles_start, 24);
+  header.writeUInt32LE(0, 28); // string offset
+  header.writeUInt32LE(0, 32); // style offset
+  return Buffer.concat([header, string, styles]);
+}
+
 function encode_pool_length_u8(value) {
   if (value <= 0x7f) return Buffer.from([value]);
   if (value > 0x7fff) throw new RangeError('UTF-8 pool fixture length is too large');
@@ -581,4 +612,30 @@ test('ResourceTable reports unresolved source paths when the source pool is abse
   assert.equal(parsed.source_path_references, 1);
   assert.equal(parsed.source_paths_resolved, 0);
   assert.equal(parsed.source_paths_unresolved, 1);
+});
+
+test('ResourceTable validates binary string-pool style tables and END-terminated spans', () => {
+  const styled_pool = android_string_pool_with_style();
+  const parsed = parse_android_resource_table(field_bytes(1, field_bytes(1, styled_pool)));
+  assert.equal(parsed.source_pool_string_count, 1);
+  assert.equal(parsed.source_pool_style_count, 1);
+  assert.equal(parsed.source_pool_style_span_count, 1);
+
+  const unterminated = Buffer.from(styled_pool);
+  const styles_start = unterminated.readUInt32LE(24);
+  unterminated.writeUInt32LE(0, styles_start + 12);
+  assert.throws(
+    () => parse_android_resource_table(field_bytes(1, field_bytes(1, unterminated))),
+    error => error.code === 'ORIX_RESOURCE_TABLE_STRING_POOL_STYLE_TERMINATOR',
+  );
+});
+
+test('ResourceTable source-pool UTF-8 lengths support two-byte length prefixes', () => {
+  const long_path = 'res/values/' + 'x'.repeat(140) + '.xml';
+  const parsed = parse_android_resource_table(resource_table_fixture({
+    source_pool_strings: [long_path],
+    overlayable_source: Buffer.alloc(0),
+  }));
+  assert.equal(parsed.source_paths[0].path, long_path);
+  assert.equal(parsed.source_paths_resolved, 1);
 });
