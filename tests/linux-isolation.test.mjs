@@ -5,10 +5,38 @@ import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  assess_bubblewrap_version,
   assess_trusted_system_path_component,
   assess_rootfs_directory_permissions,
   prepare_linux_provider_isolation,
 } from '../src/providers/linux-isolation.mjs';
+
+test('Bubblewrap security floor rejects versions vulnerable to GHSA-pxhw-h44j-8pfx', () => {
+  for (const output of [
+    'bubblewrap 0.8.0',
+    'bubblewrap 0.9.0',
+    'bubblewrap 0.11.2',
+  ]) {
+    assert.equal(assess_bubblewrap_version(output).supported, false, output);
+  }
+  for (const output of [
+    'bubblewrap 0.12.0',
+    'bubblewrap 0.12.1',
+    'bubblewrap 0.13.1',
+    'bubblewrap 1.0.0',
+  ]) {
+    assert.equal(assess_bubblewrap_version(output).supported, true, output);
+  }
+});
+
+test('Bubblewrap security floor rejects unknown, malformed and prerelease version output', () => {
+  for (const output of [
+    '', 'bwrap 0.13.1', 'bubblewrap unknown', 'bubblewrap 0.12',
+    'bubblewrap 0.12.0-rc1', 'bubblewrap 0.12.0+vendor', null, 0.13,
+  ]) {
+    assert.equal(assess_bubblewrap_version(output).supported, false, String(output));
+  }
+});
 
 test('trusted system executable paths require root-owned non-writable real components', () => {
   const safeDirectory = {
