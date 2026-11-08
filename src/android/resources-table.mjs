@@ -536,6 +536,115 @@ function parse_config_value(buffer, start, end, budget, limits, depth) {
   return result;
 }
 
+function parse_source_position(buffer, start, end, budget, depth) {
+  assert_depth(depth, budget.limits, 'SourcePosition');
+  const seen = new Set();
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    if (field === 1 || field === 2) {
+      expect_wire('SourcePosition', field, wire, 0);
+      singular(seen, field, 'SourcePosition');
+      uint32(value, field === 1 ? 'SourcePosition.line_number' : 'SourcePosition.column_number');
+    } else budget.unknown_fields += 1;
+  }, 'SourcePosition');
+}
+
+function parse_source(buffer, start, end, budget, limits, depth) {
+  assert_depth(depth, limits, 'Source');
+  const seen = new Set();
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    if (field === 1) {
+      expect_wire('Source', field, wire, 0);
+      singular(seen, field, 'Source');
+      uint32(value, 'Source.path_idx');
+    } else if (field === 2) {
+      expect_wire('Source', field, wire, 2);
+      singular(seen, field, 'Source');
+      parse_source_position(buffer, value.start, value.end, budget, depth + 1);
+    } else budget.unknown_fields += 1;
+  }, 'Source');
+}
+
+function parse_visibility(buffer, start, end, budget, limits, depth) {
+  assert_depth(depth, limits, 'Visibility');
+  let level = 0;
+  const seen = new Set();
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    if (field === 1) {
+      expect_wire('Visibility', field, wire, 0);
+      singular(seen, field, 'Visibility');
+      level = uint32(value, 'Visibility.level');
+    } else if (field === 2) {
+      expect_wire('Visibility', field, wire, 2);
+      singular(seen, field, 'Visibility');
+      parse_source(buffer, value.start, value.end, budget, limits, depth + 1);
+    } else if (field === 3) {
+      expect_wire('Visibility', field, wire, 2);
+      singular(seen, field, 'Visibility');
+      decode_string(buffer, value, 'Visibility.comment', budget, limits);
+    } else if (field === 4) {
+      expect_wire('Visibility', field, wire, 0);
+      singular(seen, field, 'Visibility');
+    } else budget.unknown_fields += 1;
+  }, 'Visibility');
+  return VISIBILITY[level] ?? 'unknown';
+}
+
+function parse_allow_new(buffer, start, end, budget, limits, depth) {
+  assert_depth(depth, limits, 'AllowNew');
+  const seen = new Set();
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    if (field === 1) {
+      expect_wire('AllowNew', field, wire, 2);
+      singular(seen, field, 'AllowNew');
+      parse_source(buffer, value.start, value.end, budget, limits, depth + 1);
+    } else if (field === 2) {
+      expect_wire('AllowNew', field, wire, 2);
+      singular(seen, field, 'AllowNew');
+      decode_string(buffer, value, 'AllowNew.comment', budget, limits);
+    } else budget.unknown_fields += 1;
+  }, 'AllowNew');
+}
+
+function parse_overlayable_item(buffer, start, end, budget, limits, depth) {
+  assert_depth(depth, limits, 'OverlayableItem');
+  const seen = new Set();
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    if (field === 1) {
+      expect_wire('OverlayableItem', field, wire, 2);
+      singular(seen, field, 'OverlayableItem');
+      parse_source(buffer, value.start, value.end, budget, limits, depth + 1);
+    } else if (field === 2) {
+      expect_wire('OverlayableItem', field, wire, 2);
+      singular(seen, field, 'OverlayableItem');
+      decode_string(buffer, value, 'OverlayableItem.comment', budget, limits);
+    } else if (field === 3) {
+      expect_wire('OverlayableItem', field, wire, 0);
+      consume_item(budget, limits, 'OverlayableItem.policy');
+      uint32(value, 'OverlayableItem.policy');
+    } else if (field === 4) {
+      expect_wire('OverlayableItem', field, wire, 0);
+      singular(seen, field, 'OverlayableItem');
+      uint32(value, 'OverlayableItem.overlayable_idx');
+    } else budget.unknown_fields += 1;
+  }, 'OverlayableItem');
+}
+
+function parse_staged_id(buffer, start, end, budget, limits, depth) {
+  assert_depth(depth, limits, 'StagedId');
+  const seen = new Set();
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    if (field === 1) {
+      expect_wire('StagedId', field, wire, 2);
+      singular(seen, field, 'StagedId');
+      parse_source(buffer, value.start, value.end, budget, limits, depth + 1);
+    } else if (field === 2) {
+      expect_wire('StagedId', field, wire, 0);
+      singular(seen, field, 'StagedId');
+      uint32(value, 'StagedId.staged_id');
+    } else budget.unknown_fields += 1;
+  }, 'StagedId');
+}
+
 function parse_entry(buffer, start, end, budget, limits, depth) {
   assert_depth(depth, limits, 'Entry');
   consume_item(budget, limits, 'Entry');
@@ -558,16 +667,7 @@ function parse_entry(buffer, start, end, budget, limits, depth) {
     } else if (field === 3) {
       expect_wire('Entry', field, wire, 2);
       singular(seen, field, 'Entry');
-      const visibility_seen = new Set();
-      let level = 0;
-      walk_fields(buffer, value.start, value.end, budget, (vf, vw, vv) => {
-        if (vf === 1) {
-          expect_wire('Visibility', vf, vw, 0);
-          singular(visibility_seen, vf, 'Visibility');
-          level = uint32(vv, 'Visibility.level');
-        } else budget.unknown_fields += 1;
-      }, 'Visibility');
-      result.visibility = VISIBILITY[level] ?? 'unknown';
+      result.visibility = parse_visibility(buffer, value.start, value.end, budget, limits, depth + 1);
     } else if (field === 6 || field === 8) {
       expect_wire('Entry', field, wire, 2);
       consume_item(budget, limits, field === 6 ? 'ConfigValue' : 'FlagDisabledConfigValue');
@@ -583,7 +683,10 @@ function parse_entry(buffer, start, end, budget, limits, depth) {
       }
     } else if (field === 4 || field === 5 || field === 7) {
       expect_wire('Entry', field, wire, 2);
-      walk_fields(buffer, value.start, value.end, budget, () => {}, 'Entry.metadata.' + field);
+      singular(seen, field, 'Entry');
+      if (field === 4) parse_allow_new(buffer, value.start, value.end, budget, limits, depth + 1);
+      else if (field === 5) parse_overlayable_item(buffer, value.start, value.end, budget, limits, depth + 1);
+      else parse_staged_id(buffer, value.start, value.end, budget, limits, depth + 1);
     } else {
       budget.unknown_fields += 1;
     }
@@ -687,7 +790,7 @@ function parse_overlayable(buffer, start, end, budget, limits, depth) {
     } else if (field === 2) {
       expect_wire('Overlayable', field, wire, 2);
       singular(seen, field, 'Overlayable');
-      walk_fields(buffer, value.start, value.end, budget, () => {}, 'Overlayable.source');
+      parse_source(buffer, value.start, value.end, budget, limits, depth + 1);
     } else budget.unknown_fields += 1;
   }, 'Overlayable');
   return result;
