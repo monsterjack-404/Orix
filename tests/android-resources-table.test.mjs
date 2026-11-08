@@ -278,6 +278,37 @@ test('ResourceTable validates AOSP Source, Visibility, AllowNew, OverlayableItem
   );
 });
 
+test('ResourceTable validates Value.source with the AOSP Source field schema', () => {
+  const validSource = Buffer.concat([
+    field_varint(1, 1),
+    field_bytes(2, Buffer.concat([field_varint(1, 10), field_varint(2, 2)])),
+  ]);
+  const validValue = Buffer.concat([
+    field_bytes(1, validSource),
+    field_bytes(4, field_bytes(1, Buffer.concat([
+      field_varint(1, 0),
+      field_varint(2, 0x7f010001),
+    ]))),
+  ]);
+  const valid = parse_android_resource_table(resource_table_fixture({ value_contents: validValue }));
+  assert.equal(valid.source_paths_resolved, 1);
+  assert.equal(valid.source_paths[0].path, 'res/values/strings.xml');
+
+  const invalidSource = field_bytes(1, Buffer.from([1]));
+  const invalidValue = Buffer.concat([
+    field_bytes(1, invalidSource),
+    field_bytes(4, field_bytes(1, Buffer.concat([
+      field_varint(1, 0),
+      field_varint(2, 0x7f010001),
+    ]))),
+  ]);
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({ value_contents: invalidValue })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_WIRE_MISMATCH',
+    'Value.source.path_idx must be a uint32 varint and not a length-delimited field',
+  );
+});
+
 test('ResourceTable validates known nested compound-value protobuf schemas without decoding values', () => {
   const source = field_varint(1, 2);
   const reference = Buffer.concat([
