@@ -260,13 +260,16 @@ function parse_reference(buffer, start, end, budget, limits, depth) {
   const result = { type: 0, id: null, name: null, private: false, dynamic: false };
   const seen = new Set();
   walk_fields(buffer, start, end, budget, (field, wire, value) => {
-    if (field === 1 || field === 2 || field === 4) {
+    if (field === 1 || field === 2) {
       expect_wire('Reference', field, wire, 0);
       singular(seen, field, 'Reference');
       const decoded = uint32(value, 'Reference.field_' + field);
       if (field === 1) result.type = decoded;
-      else if (field === 2) result.id = decoded;
-      else result.private = decoded !== 0;
+      else result.id = decoded;
+    } else if (field === 4) {
+      expect_wire('Reference', field, wire, 0);
+      singular(seen, field, 'Reference');
+      result.private = value !== 0n;
     } else if (field === 3) {
       expect_wire('Reference', field, wire, 2);
       singular(seen, field, 'Reference');
@@ -421,6 +424,7 @@ function parse_config_value(buffer, start, end, budget, limits, depth) {
 function parse_entry(buffer, start, end, budget, limits, depth) {
   assert_depth(depth, limits, 'Entry');
   consume_item(budget, limits, 'Entry');
+  budget.entry_count += 1;
   const result = {
     id: null, name: null, visibility: 'unknown', resource_id: null,
     config_value_count: 0, flag_disabled_config_value_count: 0,
@@ -455,9 +459,11 @@ function parse_entry(buffer, start, end, budget, limits, depth) {
       const decoded = parse_config_value(buffer, value.start, value.end, budget, limits, depth + 1);
       if (field === 6) {
         result.config_value_count += 1;
+        budget.config_value_count += 1;
         add_output(result.config_values, decoded, budget);
       } else {
         result.flag_disabled_config_value_count += 1;
+        budget.flag_disabled_config_value_count += 1;
         add_output(result.flag_disabled_config_values, decoded, budget);
       }
     } else if (field === 4 || field === 5 || field === 7) {
@@ -473,6 +479,7 @@ function parse_entry(buffer, start, end, budget, limits, depth) {
 function parse_type(buffer, start, end, budget, limits, depth) {
   assert_depth(depth, limits, 'Type');
   consume_item(budget, limits, 'Type');
+  budget.type_count += 1;
   const result = { id: null, name: null, entry_count: 0, entries: [] };
   const seen = new Set();
   walk_fields(buffer, start, end, budget, (field, wire, value) => {
@@ -488,9 +495,6 @@ function parse_type(buffer, start, end, budget, limits, depth) {
       expect_wire('Type', field, wire, 2);
       result.entry_count += 1;
       const entry = parse_entry(buffer, value.start, value.end, budget, limits, depth + 1);
-      if (entry.id !== null && result.id !== null && result.id !== 0) {
-        entry.resource_id = '0x' + ((result.id * 0x10000 + entry.id) >>> 0).toString(16).padStart(8, '0');
-      }
       add_output(result.entries, entry, budget);
     } else {
       budget.unknown_fields += 1;
@@ -518,18 +522,19 @@ function parse_package(buffer, start, end, budget, limits, depth) {
       result.type_count += 1;
       const type = parse_type(buffer, value.start, value.end, budget, limits, depth + 1);
       result.entry_count += type.entry_count;
-      if (result.id !== null && type.id !== null) {
-        for (const entry of type.entries) {
-          if (entry.id !== null) {
-            entry.resource_id = '0x' + ((result.id * 0x1000000 + type.id * 0x10000 + entry.id) >>> 0).toString(16).padStart(8, '0');
-          }
-        }
-      }
       add_output(result.types, type, budget);
     } else {
       budget.unknown_fields += 1;
     }
   }, 'Package');
+  for (const type of result.types) {
+    if (result.id === null || type.id === null) continue;
+    for (const entry of type.entries) {
+      if (entry.id === null) continue;
+      const resource_id = result.id * 0x1000000 + type.id * 0x10000 + entry.id;
+      entry.resource_id = '0x' + resource_id.toString(16).padStart(8, '0');
+    }
+  }
   return result;
 }
 
@@ -622,6 +627,10 @@ export function parse_android_resource_table(buffer, options = {}) {
     item_kinds: {},
     compound_kinds: {},
     reference_count: 0,
+    type_count: 0,
+    entry_count: 0,
+    config_value_count: 0,
+    flag_disabled_config_value_count: 0,
   };
   const result = {
     schema_version: 'orix.android-resource-table.v1',
@@ -650,7 +659,7 @@ export function parse_android_resource_table(buffer, options = {}) {
       expect_wire('ResourceTable', field, wire, 2);
       result.package_count += 1;
       const item = parse_package(buffer, value.start, value.end, budget, limits, 1);
-      add_output(result.packages, item, budget);
+      if (!add_output(result.packages, item, budget)) result.packages_omitted += 1;
     } else if (field === 3) {
       expect_wire('ResourceTable', field, wire, 2);
       result.overlayable_count += 1;
@@ -670,25 +679,14 @@ export function parse_android_resource_table(buffer, options = {}) {
       budget.unknown_fields += 1;
     }
   }, 'ResourceTable');
-  const totals = { types: 0, entries: 0, config_values: 0, flag_disabled_config_values: 0 };
-  for (const pkg of result.packages) {
-    totals.types += pkg.type_count;
-    totals.entries += pkg.entry_count;
-    for (const type of pkg.types) {
-      for (const entry of type.entries) {
-        totals.config_values += entry.config_value_count;
-        totals.flag_disabled_config_values += entry.flag_disabled_config_value_count;
-      }
-    }
-  }
   return {
     ...result,
     summary: {
       package_count: result.package_count,
-      type_count: totals.types,
-      entry_count: totals.entries,
-      config_value_count: totals.config_values,
-      flag_disabled_config_value_count: totals.flag_disabled_config_values,
+      type_count: budget.type_count,
+      entry_count: budget.entry_count,
+      config_value_count: budget.config_value_count,
+      flag_disabled_config_value_count: budget.flag_disabled_config_value_count,
       item_kinds: budget.item_kinds,
       compound_kinds: budget.compound_kinds,
       reference_count: budget.reference_count,
