@@ -259,7 +259,7 @@ test('ResourceTable enforces file, field, item, depth and string budgets', () =>
     error => error.code === 'ORIX_RESOURCE_TABLE_FIELD_LIMIT',
   );
   assert.throws(
-    () => parse_android_resource_table(table, { max_items: 1 }),
+    () => parse_android_resource_table(table, { max_items: 3 }),
     error => error.code === 'ORIX_RESOURCE_TABLE_STRING_POOL_COUNT',
   );
   assert.throws(
