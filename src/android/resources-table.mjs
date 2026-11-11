@@ -529,15 +529,21 @@ function parse_text_item(buffer, start, end, budget, limits, label) {
 function parse_styled_text_item(buffer, start, end, budget, limits, depth) {
   assert_depth(depth, limits, 'StyledString');
   const seen = new Set();
+  let text_length = 0;
+  const spans = [];
   walk_fields(buffer, start, end, budget, (field, wire, value) => {
     if (field === 1) {
       expect_wire('StyledString', field, wire, 2);
       singular(seen, field, 'StyledString');
-      decode_string(buffer, value, 'StyledString.value', budget, limits);
+      const text = decode_string(buffer, value, 'StyledString.value', budget, limits);
+      // AOSP StyledString offsets are UTF-16 code-unit indexes, matching JS
+      // string length (including surrogate pairs as two code units).
+      text_length = text.length;
     } else if (field === 2) {
       expect_wire('StyledString', field, wire, 2);
       consume_item(budget, limits, 'StyledString.Span');
       const span_seen = new Set();
+      const span = { first_char: 0, last_char: 0 };
       walk_fields(buffer, value.start, value.end, budget, (span_field, span_wire, span_value) => {
         if (span_field === 1) {
           expect_wire('StyledString.Span', span_field, span_wire, 2);
@@ -546,11 +552,22 @@ function parse_styled_text_item(buffer, start, end, budget, limits, depth) {
         } else if (span_field === 2 || span_field === 3) {
           expect_wire('StyledString.Span', span_field, span_wire, 0);
           singular(span_seen, span_field, 'StyledString.Span');
-          uint32(span_value, 'StyledString.Span.' + (span_field === 2 ? 'first_char' : 'last_char'));
+          span[span_field === 2 ? 'first_char' : 'last_char'] =
+            uint32(span_value, 'StyledString.Span.' + (span_field === 2 ? 'first_char' : 'last_char'));
         } else budget.unknown_fields += 1;
       }, 'StyledString.Span');
+      spans.push(span);
     } else budget.unknown_fields += 1;
   }, 'StyledString');
+  for (const span of spans) {
+    if (span.first_char > span.last_char || span.last_char >= text_length) {
+      fail('ORIX_RESOURCE_TABLE_STYLED_STRING_SPAN_RANGE', 'StyledString span indexes exceed or invert the UTF-16 text range', {
+        first_char: span.first_char,
+        last_char: span.last_char,
+        text_length,
+      });
+    }
+  }
 }
 
 function parse_file_reference(buffer, start, end, budget, limits) {
