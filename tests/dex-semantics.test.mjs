@@ -480,6 +480,70 @@ test('DEX move-exception is accepted only at a non-entry exception-handler start
   );
 });
 
+
+test('DEX move-result instructions require an immediate invoke or filled-array producer', () => {
+  const invoke_then_result = create_semantic_dex({
+    code_words: [0x106e, 0x0000, 0x0000, 0x000a, 0x000e],
+    registers_size: 3,
+    outs_size: 1,
+  });
+  assert.doesNotThrow(() => parse_dex(invoke_then_result));
+
+  const filled_array_then_object_result = create_semantic_dex({
+    code_words: [0x0024, 0x0000, 0x0000, 0x000c, 0x000e],
+    registers_size: 1,
+  });
+  assert.doesNotThrow(() => parse_dex(filled_array_then_object_result));
+
+  for (const code_words of [
+    [0x000a, 0x000e],
+    [0x000b, 0x000e],
+    [0x000c, 0x000e],
+    [0x0000, 0x000a, 0x000e],
+  ]) {
+    assert.throws(
+      () => parse_dex(create_semantic_dex({ code_words })),
+      error => error.code === 'ORIX_DEX_BYTECODE_MOVE_RESULT_PREDECESSOR',
+    );
+  }
+
+  const wide_result_after_filled_array = create_semantic_dex({
+    code_words: [0x0024, 0x0000, 0x0000, 0x000b, 0x000e],
+    registers_size: 2,
+  });
+  assert.throws(
+    () => parse_dex(wide_result_after_filled_array),
+    error => error.code === 'ORIX_DEX_BYTECODE_MOVE_RESULT_PREDECESSOR',
+    'filled-new-array may only produce move-result-object',
+  );
+});
+
+test('DEX branch and switch targets reject move-result and move-exception opcodes', () => {
+  const branch_to_move_result = create_semantic_dex({
+    code_words: [0x0029, 0x0005, 0x106e, 0x0000, 0x0000, 0x000a, 0x000e],
+    registers_size: 3,
+    outs_size: 1,
+  });
+  assert.throws(
+    () => parse_dex(branch_to_move_result),
+    error => error.code === 'ORIX_DEX_BYTECODE_BRANCH_SPECIAL_TARGET' &&
+      error.details.target_opcode === 0x0a,
+  );
+
+  const branch_to_move_exception = create_semantic_dex({
+    code_words: [0x0029, 0x0005, 0x000e, 0x000e, 0x000e, 0x000d, 0x000e],
+    catch_handler_size_bytes: [0x01],
+    try_start_addr: 2,
+    try_insn_count: 1,
+    typed_handler_address: 5,
+  });
+  assert.throws(
+    () => parse_dex(branch_to_move_exception),
+    error => error.code === 'ORIX_DEX_BYTECODE_BRANCH_SPECIAL_TARGET' &&
+      error.details.target_opcode === 0x0d,
+  );
+});
+
 test('DEX checksum and SHA-1 fields are independently verified without claiming publisher authenticity', () => {
   const fixture = create_semantic_dex();
   fixture[12] ^= 1;
