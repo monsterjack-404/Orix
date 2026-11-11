@@ -994,6 +994,8 @@ function parse_allow_new(buffer, start, end, budget, limits, depth) {
 function parse_overlayable_item(buffer, start, end, budget, limits, depth) {
   assert_depth(depth, limits, 'OverlayableItem');
   const seen = new Set();
+  // Proto3 scalar omission means overlayable_idx defaults to zero.
+  let overlayable_idx = 0;
   walk_fields(buffer, start, end, budget, (field, wire, value) => {
     if (field === 1) {
       expect_wire('OverlayableItem', field, wire, 2);
@@ -1023,9 +1025,10 @@ function parse_overlayable_item(buffer, start, end, budget, limits, depth) {
     } else if (field === 4) {
       expect_wire('OverlayableItem', field, wire, 0);
       singular(seen, field, 'OverlayableItem');
-      budget.overlayable_indexes.push(uint32(value, 'OverlayableItem.overlayable_idx'));
+      overlayable_idx = uint32(value, 'OverlayableItem.overlayable_idx');
     } else budget.unknown_fields += 1;
   }, 'OverlayableItem');
+  budget.overlayable_indexes.push(overlayable_idx);
 }
 
 function parse_staged_id(buffer, start, end, budget, limits, depth) {
