@@ -256,6 +256,14 @@ function referenceKind(opcode, format) {
   return null;
 }
 
+function descriptorResultKind(descriptor) {
+  if (descriptor === 'V') return 'void';
+  if (descriptor === 'J' || descriptor === 'D') return 'wide';
+  if (typeof descriptor === 'string' && (descriptor[0] === 'L' || descriptor[0] === '[')) return 'object';
+  if (['Z', 'B', 'S', 'C', 'I', 'F'].includes(descriptor)) return 'single';
+  return null;
+}
+
 function validateRegisters(opcode, operands, registersSize, pc, format) {
   for (const register of operands.registers) checkRegister(register, 1, registersSize, pc);
   const wide = new Set();
@@ -377,6 +385,14 @@ export function decode_dex_instructions(buffer, options = {}) {
   const outsSize = options.outs_size ?? null;
   const dexVersion = options.dex_version ?? '040';
   const counts = options.counts ?? {};
+  const methodReturnTypes = options.method_return_types ?? null;
+  const protoReturnTypes = options.proto_return_types ?? null;
+  if (methodReturnTypes !== null && !Array.isArray(methodReturnTypes)) {
+    throw new TypeError('method_return_types must be an array when supplied');
+  }
+  if (protoReturnTypes !== null && !Array.isArray(protoReturnTypes)) {
+    throw new TypeError('proto_return_types must be an array when supplied');
+  }
   const maxOutput = options.max_output_instructions ?? 10_000;
   const maxInstructionUnits = options.max_instruction_units ?? 20_000_000;
   const maxPayloadBytes = options.max_payload_bytes ?? 16 * 1024 * 1024;
@@ -490,6 +506,7 @@ export function decode_dex_instructions(buffer, options = {}) {
   let switchTargetOutputOmitted = 0;
   let previousInstructionOpcode = null;
   let previousInstructionEnd = -1;
+  let previousInstructionResultKind = null;
   pc = 0;
   while (pc < instructionUnits) {
     const flags = boundaries[pc];
@@ -529,13 +546,34 @@ export function decode_dex_instructions(buffer, options = {}) {
           previous_instruction_end: previousInstructionEnd,
         });
       }
+      if (previousInstructionResultKind !== null) {
+        const actualResultKind = opcode === 0x0a ? 'single' : opcode === 0x0b ? 'wide' : 'object';
+        if (previousInstructionResultKind === 'void' || previousInstructionResultKind !== actualResultKind) {
+          fail('ORIX_DEX_BYTECODE_MOVE_RESULT_TYPE', 'DEX move-result variant does not match the preceding instruction result type', {
+            pc, opcode, previous_instruction_opcode: previousInstructionOpcode,
+            expected_result_kind: previousInstructionResultKind,
+            actual_result_kind: actualResultKind,
+          });
+        }
+      }
     }
     const spec = SPECS.get(opcode);
     const operands = readOperands(buffer, offset, pc, spec);
     validateRegisters(opcode, operands, registersSize, pc, spec.format);
     validateReference(opcode, spec.format, operands, counts, pc);
-    const isMethodInvocation = (opcode >= 0x6e && opcode <= 0x72) ||
-      (opcode >= 0x74 && opcode <= 0x78) || (opcode >= 0xfa && opcode <= 0xfd);
+    const isDirectMethodInvocation = (opcode >= 0x6e && opcode <= 0x72) ||
+      (opcode >= 0x74 && opcode <= 0x78);
+    const isPolymorphicInvocation = opcode === 0xfa || opcode === 0xfb;
+    const isMethodInvocation = isDirectMethodInvocation || isPolymorphicInvocation ||
+      opcode === 0xfc || opcode === 0xfd;
+    let instructionResultKind = null;
+    if (opcode === 0x24 || opcode === 0x25) {
+      instructionResultKind = 'object';
+    } else if (isDirectMethodInvocation) {
+      instructionResultKind = descriptorResultKind(methodReturnTypes?.[operands.reference?.index]);
+    } else if (isPolymorphicInvocation) {
+      instructionResultKind = descriptorResultKind(protoReturnTypes?.[operands.proto_reference?.index]);
+    }
     if (outsSize !== null && isMethodInvocation && operands.argument_words > outsSize) {
       fail('ORIX_DEX_BYTECODE_OUTS_SIZE', 'DEX method invocation uses more outgoing argument words than code_item.outs_size provides', {
         pc, opcode, mnemonic: spec.mnemonic, argument_words: operands.argument_words, outs_size: outsSize,
@@ -587,6 +625,7 @@ export function decode_dex_instructions(buffer, options = {}) {
     pc += item.code_units;
     previousInstructionOpcode = opcode;
     previousInstructionEnd = pc;
+    previousInstructionResultKind = instructionResultKind;
   }
   return {
     instruction_units: instructionUnits,
