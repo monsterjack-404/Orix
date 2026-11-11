@@ -121,6 +121,7 @@ function resource_table_fixture({
   include_source_pool = true,
   source_pool_strings = ['res/values/strings.xml', 'res/values/public.xml', 'res/values/attrs.xml'],
   source_pool_encoding = 'utf-8',
+  include_overlayable = true,
 } = {}) {
   const source_pool_data = android_string_pool(source_pool_strings, source_pool_encoding);
   const source_pool = field_bytes(1, field_bytes(1, source_pool_data));
@@ -176,7 +177,7 @@ function resource_table_fixture({
   ]);
   const fields = [
     field_bytes(2, pkg),
-    field_bytes(3, overlayable),
+    ...(include_overlayable ? [field_bytes(3, overlayable)] : []),
     field_bytes(4, fingerprint),
     field_bytes(5, dynamic_ref),
   ];
@@ -694,7 +695,7 @@ test('OverlayableItem indexes must resolve to top-level Overlayable declarations
     field_bytes(1, field_varint(1, 0)),
     field_string(2, 'overlay item'),
     field_varint(3, 1),
-    field_varint(4, index),
+    ...(index === undefined ? [] : [field_varint(4, index)]),
   ]));
 
   assert.throws(
@@ -705,6 +706,17 @@ test('OverlayableItem indexes must resolve to top-level Overlayable declarations
       error.details.overlayable_idx === 1 &&
       error.details.overlayable_count === 1,
     'overlayable_idx 1 must be rejected when only index 0 exists',
+  );
+
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({
+      entry_metadata: overlayable_item(undefined),
+      include_overlayable: false,
+    })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_OVERLAYABLE_INDEX' &&
+      error.details.overlayable_idx === 0 &&
+      error.details.overlayable_count === 0,
+    'an omitted proto3 overlayable_idx defaults to zero and must still resolve',
   );
 
   const valid_second_reference = Buffer.concat([
