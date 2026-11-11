@@ -511,7 +511,10 @@ export function decode_dex_instructions(buffer, options = {}) {
         is_exception_handler: exceptionHandlerAddressSet.has(pc),
       });
     }
-    if (opcode >= 0x0a && opcode <= 0x0c) {
+    if (opcode >= 0x0a && opcode <= 0x0c &&
+        !(exceptionHandlerAddressSet !== null && exceptionHandlerAddressSet.has(pc))) {
+      // Let the semantic parser's handler-specific validation report
+      // move-result* at exception-handler entry with its precise error code.
       const previous_is_invoke = previousInstructionOpcode !== null && (
         (previousInstructionOpcode >= 0x6e && previousInstructionOpcode <= 0x72) ||
         (previousInstructionOpcode >= 0x74 && previousInstructionOpcode <= 0x78) ||
