@@ -657,3 +657,41 @@ test('ResourceTable source-pool UTF-8 lengths support two-byte length prefixes',
   assert.equal(parsed.source_paths[0].path, long_path);
   assert.equal(parsed.source_paths_resolved, 1);
 });
+
+test('ResourceTable validates StyledString span ranges as UTF-16 code-unit indexes', () => {
+  const make_value = (text, first_char, last_char) => {
+    const span = Buffer.concat([
+      field_string(1, 'b'),
+      field_varint(2, first_char),
+      field_varint(3, last_char),
+    ]);
+    const styled_string = Buffer.concat([
+      field_string(1, text),
+      field_bytes(2, span),
+    ]);
+    const item = field_bytes(4, styled_string);
+    return field_bytes(4, item);
+  };
+
+  const valid = parse_android_resource_table(resource_table_fixture({
+    value_contents: make_value('A😀BC', 1, 2),
+  }));
+  assert.equal(valid.summary.item_kinds['styled-string'], 1);
+
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({
+      value_contents: make_value('hello', 1, 5),
+    })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_STYLED_STRING_SPAN_RANGE' &&
+      error.details.text_length === 5,
+    'last_char must be inside the UTF-16 string range',
+  );
+
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({
+      value_contents: make_value('hello', 4, 2),
+    })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_STYLED_STRING_SPAN_RANGE',
+    'first_char must not exceed last_char',
+  );
+});
