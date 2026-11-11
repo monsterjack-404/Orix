@@ -421,6 +421,65 @@ test('DEX typed and catch-all exception handlers reject move-result variants', (
   }
 });
 
+
+test('DEX move-exception is accepted only at a non-entry exception-handler start', () => {
+  const valid_handler = create_semantic_dex({
+    code_words: [0x000e, 0x000d, 0x000e],
+    catch_handler_size_bytes: [0x01],
+    try_start_addr: 0,
+    try_insn_count: 1,
+    typed_handler_address: 1,
+  });
+  assert.doesNotThrow(() => parse_dex(valid_handler));
+
+  // A handler may intentionally ignore its caught exception; move-exception
+  // is optional, but when present it must occupy the handler's first opcode.
+  const ignored_exception = create_semantic_dex({
+    code_words: [0x000e, 0x000e],
+    catch_handler_size_bytes: [0x01],
+    try_start_addr: 0,
+    try_insn_count: 1,
+    typed_handler_address: 1,
+  });
+  assert.doesNotThrow(() => parse_dex(ignored_exception));
+
+  for (const code_words of [[0x000d, 0x000e], [0x000e, 0x000d]]) {
+    assert.throws(
+      () => parse_dex(create_semantic_dex({ code_words })),
+      error => error.code === 'ORIX_DEX_BYTECODE_MOVE_EXCEPTION_TARGET',
+      'move-exception without an exception-handler table must be rejected',
+    );
+  }
+
+  const method_entry_handler = create_semantic_dex({
+    code_words: [0x000d, 0x000e],
+    catch_handler_size_bytes: [0x01],
+    try_start_addr: 1,
+    try_insn_count: 1,
+    typed_handler_address: 0,
+  });
+  assert.throws(
+    () => parse_dex(method_entry_handler),
+    error => error.code === 'ORIX_DEX_BYTECODE_MOVE_EXCEPTION_TARGET' &&
+      error.details.is_method_entry === true,
+    'move-exception at method entry must be rejected even when a handler points there',
+  );
+
+  const stray_inside_method = create_semantic_dex({
+    code_words: [0x000e, 0x000d, 0x000e],
+    catch_handler_size_bytes: [0x01],
+    try_start_addr: 0,
+    try_insn_count: 1,
+    typed_handler_address: 2,
+  });
+  assert.throws(
+    () => parse_dex(stray_inside_method),
+    error => error.code === 'ORIX_DEX_BYTECODE_MOVE_EXCEPTION_TARGET' &&
+      error.details.pc === 1,
+    'move-exception must not appear outside the handler start',
+  );
+});
+
 test('DEX checksum and SHA-1 fields are independently verified without claiming publisher authenticity', () => {
   const fixture = create_semantic_dex();
   fixture[12] ^= 1;
