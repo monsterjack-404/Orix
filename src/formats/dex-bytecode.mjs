@@ -308,13 +308,21 @@ function validateReference(opcode, format, operands, counts, pc) {
   }
 }
 
-function validateBranchTarget(target, boundaries, totalUnits, pc, type = 'instruction') {
+function validateBranchTarget(target, boundaries, totalUnits, pc, type = 'instruction', buffer = null, base = 0) {
   if (!Number.isSafeInteger(target) || target < 0 || target >= totalUnits) {
     fail('ORIX_DEX_BYTECODE_BRANCH_RANGE', 'DEX bytecode branch target is outside its method instruction array', { pc, target, instruction_units: totalUnits });
   }
   const flags = boundaries[target];
   if (type === 'instruction' && flags !== 1) {
     fail('ORIX_DEX_BYTECODE_BRANCH_BOUNDARY', 'DEX bytecode branch target does not point to an instruction boundary', { pc, target, target_kind: flags === undefined ? 'not-boundary' : 'payload' });
+  }
+  if (type === 'instruction' && buffer !== null) {
+    const target_opcode = atUnit(buffer, base, target) & 0xff;
+    if (target_opcode >= 0x0a && target_opcode <= 0x0d) {
+      fail('ORIX_DEX_BYTECODE_BRANCH_SPECIAL_TARGET', 'DEX branch and switch targets must not land on move-result* or move-exception instructions', {
+        pc, target, target_opcode,
+      });
+    }
   }
   if (type === 'packed-switch' && flags !== 2) fail('ORIX_DEX_BYTECODE_PAYLOAD_REFERENCE', 'packed-switch must reference a packed-switch payload', { pc, target, payload_kind: flags });
   if (type === 'sparse-switch' && flags !== 3) fail('ORIX_DEX_BYTECODE_PAYLOAD_REFERENCE', 'sparse-switch must reference a sparse-switch payload', { pc, target, payload_kind: flags });
@@ -347,7 +355,7 @@ function switchPayloadTargets(buffer, base, payloadPc, switchPc, kind, maxTarget
     }
     previousKey = key;
     const target = switchPc + delta;
-    validateBranchTarget(target, boundaries, totalUnits, switchPc);
+    validateBranchTarget(target, boundaries, totalUnits, switchPc, 'instruction', buffer, base);
     if (index < maxTargets) targets.push({ key, target, offset: delta });
   }
   return {
@@ -480,6 +488,8 @@ export function decode_dex_instructions(buffer, options = {}) {
   let switchTargetCount = 0;
   let switchTargetOutputCount = 0;
   let switchTargetOutputOmitted = 0;
+  let previousInstructionOpcode = null;
+  let previousInstructionEnd = -1;
   pc = 0;
   while (pc < instructionUnits) {
     const flags = boundaries[pc];
@@ -500,6 +510,25 @@ export function decode_dex_instructions(buffer, options = {}) {
         is_method_entry: pc === 0,
         is_exception_handler: exceptionHandlerAddressSet.has(pc),
       });
+    }
+    if (opcode >= 0x0a && opcode <= 0x0c &&
+        !(exceptionHandlerAddressSet !== null && exceptionHandlerAddressSet.has(pc))) {
+      // Let the semantic parser's handler-specific validation report
+      // move-result* at exception-handler entry with its precise error code.
+      const previous_is_invoke = previousInstructionOpcode !== null && (
+        (previousInstructionOpcode >= 0x6e && previousInstructionOpcode <= 0x72) ||
+        (previousInstructionOpcode >= 0x74 && previousInstructionOpcode <= 0x78) ||
+        (previousInstructionOpcode >= 0xfa && previousInstructionOpcode <= 0xfd)
+      );
+      const previous_is_filled_array = previousInstructionOpcode === 0x24 || previousInstructionOpcode === 0x25;
+      const valid_predecessor = previousInstructionEnd === pc &&
+        (previous_is_invoke || (opcode === 0x0c && previous_is_filled_array));
+      if (!valid_predecessor) {
+        fail('ORIX_DEX_BYTECODE_MOVE_RESULT_PREDECESSOR', 'DEX move-result* must immediately follow a compatible invoke or filled-new-array instruction', {
+          pc, opcode, previous_instruction_opcode: previousInstructionOpcode,
+          previous_instruction_end: previousInstructionEnd,
+        });
+      }
     }
     const spec = SPECS.get(opcode);
     const operands = readOperands(buffer, offset, pc, spec);
@@ -547,7 +576,7 @@ export function decode_dex_instructions(buffer, options = {}) {
           switchTargetOutputOmitted += item.switch.targets_omitted;
         }
       } else {
-        validateBranchTarget(target, boundaries, instructionUnits, pc);
+        validateBranchTarget(target, boundaries, instructionUnits, pc, 'instruction', buffer, offset);
         item.branch_target = target;
       }
       branchReferenceCount += 1;
@@ -556,6 +585,8 @@ export function decode_dex_instructions(buffer, options = {}) {
     opcodeCounts[spec.mnemonic] = (opcodeCounts[spec.mnemonic] ?? 0) + 1;
     if (instructions.length < maxOutput) instructions.push(item);
     pc += item.code_units;
+    previousInstructionOpcode = opcode;
+    previousInstructionEnd = pc;
   }
   return {
     instruction_units: instructionUnits,
@@ -573,7 +604,7 @@ export function decode_dex_instructions(buffer, options = {}) {
     opcode_counts: opcodeCounts,
     instructions,
     notes: [
-      'Dalvik instruction boundaries, standard opcode formats, register bounds, identifier references, branch targets and inline payload layouts are decoded statically.',
+      'Dalvik instruction boundaries, standard opcode formats, register bounds, identifier references, branch targets, move-result sequencing and inline payload layouts are decoded statically.',
       'This is instruction inventory and structural validation, not bytecode execution, full semantic verification, control-flow graph reconstruction or decompilation.',
     ],
   };
