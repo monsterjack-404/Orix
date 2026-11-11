@@ -1023,7 +1023,7 @@ function parse_overlayable_item(buffer, start, end, budget, limits, depth) {
     } else if (field === 4) {
       expect_wire('OverlayableItem', field, wire, 0);
       singular(seen, field, 'OverlayableItem');
-      uint32(value, 'OverlayableItem.overlayable_idx');
+      budget.overlayable_indexes.push(uint32(value, 'OverlayableItem.overlayable_idx'));
     } else budget.unknown_fields += 1;
   }, 'OverlayableItem');
 }
@@ -1261,6 +1261,7 @@ export function parse_android_resource_table(buffer, options = {}) {
     source_pool: null,
     source_path_references: 0,
     source_path_indexes: new Map(),
+    overlayable_indexes: [],
   };
   const result = {
     schema_version: 'orix.android-resource-table.v1',
@@ -1332,6 +1333,16 @@ export function parse_android_resource_table(buffer, options = {}) {
       budget.unknown_fields += 1;
     }
   }, 'ResourceTable');
+  // OverlayableItem.overlayable_idx is an index into the ResourceTable's
+  // top-level repeated Overlayable declarations (AOSP Resources.proto).
+  for (const overlayable_idx of budget.overlayable_indexes) {
+    if (overlayable_idx >= result.overlayable_count) {
+      fail('ORIX_RESOURCE_TABLE_OVERLAYABLE_INDEX', 'OverlayableItem.overlayable_idx points outside the ResourceTable overlayable list', {
+        overlayable_idx,
+        overlayable_count: result.overlayable_count,
+      });
+    }
+  }
   result.source_path_references = budget.source_path_references;
   if (budget.source_pool) {
     for (const [index, references] of budget.source_path_indexes) {
