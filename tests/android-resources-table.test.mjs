@@ -697,11 +697,6 @@ test('OverlayableItem indexes must resolve to top-level Overlayable declarations
     field_varint(4, index),
   ]));
 
-  const out_of_range = parse_android_resource_table(resource_table_fixture({
-    entry_metadata: overlayable_item(1),
-  }));
-  assert.equal(out_of_range.overlayable_count, 1);
-
   assert.throws(
     () => parse_android_resource_table(resource_table_fixture({
       entry_metadata: overlayable_item(1),
