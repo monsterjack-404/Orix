@@ -375,9 +375,20 @@ export function decode_dex_instructions(buffer, options = {}) {
   const maxSwitchTargets = options.max_switch_targets ?? 1_024;
   const maxOutputSwitchTargets = options.max_output_switch_targets ?? 4_096;
   const requiredInstructionBoundaries = options.required_instruction_boundaries ?? [];
+  const exceptionHandlerAddresses = options.exception_handler_addresses === undefined
+    ? null
+    : options.exception_handler_addresses;
   if (!Array.isArray(requiredInstructionBoundaries) || requiredInstructionBoundaries.length > 1_000_000) {
     throw new TypeError('DEX required instruction-boundary references exceed their supported range');
   }
+  if (exceptionHandlerAddresses !== null &&
+      (!Array.isArray(exceptionHandlerAddresses) || exceptionHandlerAddresses.length > 1_000_000 ||
+       !exceptionHandlerAddresses.every(Number.isSafeInteger))) {
+    throw new TypeError('DEX exception-handler addresses exceed their supported range');
+  }
+  const exceptionHandlerAddressSet = exceptionHandlerAddresses === null
+    ? null
+    : new Set(exceptionHandlerAddresses);
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(instructionUnits) || instructionUnits < 0 ||
       !Number.isSafeInteger(registersSize) || registersSize < 0 ||
       (outsSize !== null && (!Number.isSafeInteger(outsSize) || outsSize < 0 || outsSize > 65_535)) ||
@@ -452,6 +463,16 @@ export function decode_dex_instructions(buffer, options = {}) {
       });
     }
   }
+  if (exceptionHandlerAddresses !== null) {
+    for (const target of exceptionHandlerAddresses) {
+      if (target < 0 || target >= instructionUnits || boundaries[target] !== 1) {
+        fail('ORIX_DEX_BYTECODE_CODE_ADDRESS', 'DEX exception-handler address does not point to an instruction boundary', {
+          target, instruction_units: instructionUnits,
+          target_kind: target >= 0 && boundaries[target] >= 2 ? 'payload' : 'not-boundary',
+        });
+      }
+    }
+  }
 
   const instructions = [];
   const opcodeCounts = Object.create(null);
@@ -472,6 +493,14 @@ export function decode_dex_instructions(buffer, options = {}) {
     }
     const word = atUnit(buffer, offset, pc);
     const opcode = word & 0xff;
+    if (exceptionHandlerAddressSet !== null && opcode === 0x0d &&
+        (pc === 0 || !exceptionHandlerAddressSet.has(pc))) {
+      fail('ORIX_DEX_BYTECODE_MOVE_EXCEPTION_TARGET', 'DEX move-exception may appear only at the first instruction of a non-entry exception handler', {
+        pc,
+        is_method_entry: pc === 0,
+        is_exception_handler: exceptionHandlerAddressSet.has(pc),
+      });
+    }
     const spec = SPECS.get(opcode);
     const operands = readOperands(buffer, offset, pc, spec);
     validateRegisters(opcode, operands, registersSize, pc, spec.format);
