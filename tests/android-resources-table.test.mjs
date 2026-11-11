@@ -688,3 +688,35 @@ test('ResourceTable Attribute rejects the AOSP-forbidden ENUM and FLAGS combinat
     'additional format bits do not make the ENUM/FLAGS combination valid',
   );
 });
+
+test('OverlayableItem indexes must resolve to top-level Overlayable declarations', () => {
+  const overlayable_item = index => field_bytes(5, Buffer.concat([
+    field_bytes(1, field_varint(1, 0)),
+    field_string(2, 'overlay item'),
+    field_varint(3, 1),
+    field_varint(4, index),
+  ]));
+
+  const out_of_range = parse_android_resource_table(resource_table_fixture({
+    entry_metadata: overlayable_item(1),
+  }));
+  assert.equal(out_of_range.overlayable_count, 1);
+
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({
+      entry_metadata: overlayable_item(1),
+    })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_OVERLAYABLE_INDEX' &&
+      error.details.overlayable_idx === 1 &&
+      error.details.overlayable_count === 1,
+    'overlayable_idx 1 must be rejected when only index 0 exists',
+  );
+
+  const valid_second_reference = Buffer.concat([
+    resource_table_fixture({ entry_metadata: overlayable_item(1) }),
+    field_bytes(3, field_string(1, 'SecondOverlayable')),
+  ]);
+  const parsed = parse_android_resource_table(valid_second_reference);
+  assert.equal(parsed.overlayable_count, 2);
+  assert.equal(parsed.packages[0].types[0].entries[0].id, 1);
+});
