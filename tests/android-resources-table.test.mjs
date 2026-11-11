@@ -121,6 +121,7 @@ function resource_table_fixture({
   include_source_pool = true,
   source_pool_strings = ['res/values/strings.xml', 'res/values/public.xml', 'res/values/attrs.xml'],
   source_pool_encoding = 'utf-8',
+  include_overlayable = true,
 } = {}) {
   const source_pool_data = android_string_pool(source_pool_strings, source_pool_encoding);
   const source_pool = field_bytes(1, field_bytes(1, source_pool_data));
@@ -176,7 +177,7 @@ function resource_table_fixture({
   ]);
   const fields = [
     field_bytes(2, pkg),
-    field_bytes(3, overlayable),
+    ...(include_overlayable ? [field_bytes(3, overlayable)] : []),
     field_bytes(4, fingerprint),
     field_bytes(5, dynamic_ref),
   ];
@@ -687,4 +688,42 @@ test('ResourceTable Attribute rejects the AOSP-forbidden ENUM and FLAGS combinat
     error => error.code === 'ORIX_RESOURCE_TABLE_ATTRIBUTE_FORMAT_FLAGS',
     'additional format bits do not make the ENUM/FLAGS combination valid',
   );
+});
+
+test('OverlayableItem indexes must resolve to top-level Overlayable declarations', () => {
+  const overlayable_item = index => field_bytes(5, Buffer.concat([
+    field_bytes(1, field_varint(1, 0)),
+    field_string(2, 'overlay item'),
+    field_varint(3, 1),
+    ...(index === undefined ? [] : [field_varint(4, index)]),
+  ]));
+
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({
+      entry_metadata: overlayable_item(1),
+    })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_OVERLAYABLE_INDEX' &&
+      error.details.overlayable_idx === 1 &&
+      error.details.overlayable_count === 1,
+    'overlayable_idx 1 must be rejected when only index 0 exists',
+  );
+
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({
+      entry_metadata: overlayable_item(undefined),
+      include_overlayable: false,
+    })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_OVERLAYABLE_INDEX' &&
+      error.details.overlayable_idx === 0 &&
+      error.details.overlayable_count === 0,
+    'an omitted proto3 overlayable_idx defaults to zero and must still resolve',
+  );
+
+  const valid_second_reference = Buffer.concat([
+    resource_table_fixture({ entry_metadata: overlayable_item(1) }),
+    field_bytes(3, field_string(1, 'SecondOverlayable')),
+  ]);
+  const parsed = parse_android_resource_table(valid_second_reference);
+  assert.equal(parsed.overlayable_count, 2);
+  assert.equal(parsed.packages[0].types[0].entries[0].id, 1);
 });
