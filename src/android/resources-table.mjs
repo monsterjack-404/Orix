@@ -681,12 +681,35 @@ function parse_attribute_symbol(buffer, start, end, budget, limits, depth) {
 }
 
 function parse_attribute(buffer, start, end, budget, limits, depth) {
-  validate_schema_message(buffer, start, end, budget, limits, depth, 'Attribute', {
-    1: { name: 'format_flags', wire: 0, type: 'uint32' },
-    2: { name: 'min_int', wire: 0, type: 'int32' },
-    3: { name: 'max_int', wire: 0, type: 'int32' },
-    4: { name: 'symbol', wire: 2, type: 'message', repeated: true, parse: parse_attribute_symbol },
-  });
+  assert_depth(depth, limits, 'Attribute');
+  const seen = new Set();
+  let format_flags = 0;
+  walk_fields(buffer, start, end, budget, (field, wire, value) => {
+    if (field === 1) {
+      expect_wire('Attribute', field, wire, 0);
+      singular(seen, field, 'Attribute');
+      format_flags = uint32(value, 'Attribute.format_flags');
+    } else if (field === 2 || field === 3) {
+      expect_wire('Attribute', field, wire, 0);
+      singular(seen, field, 'Attribute');
+      BigInt.asIntN(32, value);
+    } else if (field === 4) {
+      expect_wire('Attribute', field, wire, 2);
+      consume_item(budget, limits, 'Attribute.Symbol');
+      parse_attribute_symbol(buffer, value.start, value.end, budget, limits, depth + 1);
+    } else {
+      budget.unknown_fields += 1;
+    }
+  }, 'Attribute');
+  // AOSP Resources.proto explicitly forbids ENUM and FLAGS together.
+  const enum_and_flags = 0x00010000 | 0x00020000;
+  if ((format_flags & enum_and_flags) === enum_and_flags) {
+    fail('ORIX_RESOURCE_TABLE_ATTRIBUTE_FORMAT_FLAGS', 'Attribute.format_flags must not combine ENUM and FLAGS', {
+      format_flags,
+      enum_flag: 0x00010000,
+      flags_flag: 0x00020000,
+    });
+  }
 }
 
 function parse_style_entry(buffer, start, end, budget, limits, depth) {
