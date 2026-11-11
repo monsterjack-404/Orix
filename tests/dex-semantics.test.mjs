@@ -544,6 +544,28 @@ test('DEX branch and switch targets reject move-result and move-exception opcode
   );
 });
 
+
+test('DEX packed-switch case targets reject move-result instructions', () => {
+  const packed_switch_to_move_result = create_semantic_dex({
+    code_words: [
+      0x002b, 0x0004, 0x0000, // packed-switch at pc 0, payload at pc 4
+      0x0000,                 // alignment nop
+      0x0100, 0x0001, 0x000a, 0x0000, 0x000d, 0x0000, // case target pc 13
+      0x106e, 0x0000, 0x0000, // invoke ends at pc 13
+      0x000a, 0x000e,          // move-result at pc 13
+    ],
+    registers_size: 3,
+    outs_size: 1,
+  });
+  assert.throws(
+    () => parse_dex(packed_switch_to_move_result),
+    error => error.code === 'ORIX_DEX_BYTECODE_BRANCH_SPECIAL_TARGET' &&
+      error.details.target === 13 &&
+      error.details.target_opcode === 0x0a,
+    'packed-switch case destinations must not target move-result instructions',
+  );
+});
+
 test('DEX checksum and SHA-1 fields are independently verified without claiming publisher authenticity', () => {
   const fixture = create_semantic_dex();
   fixture[12] ^= 1;
