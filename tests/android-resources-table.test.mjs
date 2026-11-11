@@ -657,3 +657,34 @@ test('ResourceTable source-pool UTF-8 lengths support two-byte length prefixes',
   assert.equal(parsed.source_paths[0].path, long_path);
   assert.equal(parsed.source_paths_resolved, 1);
 });
+
+test('ResourceTable Attribute rejects the AOSP-forbidden ENUM and FLAGS combination', () => {
+  const attribute_value = format_flags => {
+    const attribute = field_varint(1, format_flags);
+    const compound = field_bytes(1, attribute);
+    return Buffer.concat([field_varint(3, 1), field_bytes(5, compound)]);
+  };
+
+  for (const format_flags of [0x00010000, 0x00020000, 0x00010004, 0x00020004]) {
+    assert.doesNotThrow(() => parse_android_resource_table(resource_table_fixture({
+      value_contents: attribute_value(format_flags),
+    })), 'a single enum/flags mode may be combined with ordinary type bits');
+  }
+
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({
+      value_contents: attribute_value(0x00030000),
+    })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_ATTRIBUTE_FORMAT_FLAGS' &&
+      error.details.format_flags === 0x00030000,
+    'ENUM and FLAGS cannot both be set on one AAPT2 Attribute',
+  );
+
+  assert.throws(
+    () => parse_android_resource_table(resource_table_fixture({
+      value_contents: attribute_value(0x00030004),
+    })),
+    error => error.code === 'ORIX_RESOURCE_TABLE_ATTRIBUTE_FORMAT_FLAGS',
+    'additional format bits do not make the ENUM/FLAGS combination valid',
+  );
+});
