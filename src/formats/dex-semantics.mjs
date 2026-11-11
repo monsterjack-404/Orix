@@ -225,6 +225,7 @@ function parse_code_item(buffer, offset, data, type_count, limits, state, dex_ve
     max_switch_targets: limits.max_switch_targets,
     max_output_switch_targets: Math.max(0, limits.max_output_switch_targets - state.switch_target_output_items),
     required_instruction_boundaries: code_address_references,
+    exception_handler_addresses: handler_instruction_targets.map(target => target.address),
     max_instruction_units: limits.max_instruction_units,
   });
   // Required address validation above establishes that each handler is at a
@@ -557,7 +558,7 @@ export function parse_dex_semantics({
     },
     notes: [
       'Prototype, field, method and class-data indexes are structurally validated; class data is reported within output limits.',
-      'Method code_item headers, Dalvik opcodes and operands, register/reference bounds, branch targets, payload layouts, try ranges and catch-handler references are bounded and validated.',
+      'Method code_item headers, Dalvik opcodes and operands, register/reference bounds, branch targets, payload layouts, try ranges, catch-handler references and move-exception placement are bounded and validated.',
       'Bytecode is statically decoded for inventory and structural validation only; it is not executed, fully verified, converted into a complete control-flow graph or decompiled.',
     ],
   };
